@@ -41,6 +41,7 @@ module sample_gen_tb;
     wire [11:0] pixel_count;
     wire [9:0]  line_count;
     wire        hsync, vsync, active, sof, sol;
+    wire        sync_combined;
     wire [9:0]  dac;
 
     vid_timing dut_timing (
@@ -50,9 +51,15 @@ module sample_gen_tb;
         .sof(sof), .sol(sol)
     );
 
+    vbi_gen dut_vbi (
+        .pixel_count(pixel_count),
+        .line_count(line_count),
+        .sync(sync_combined)
+    );
+
     sample_gen dut_samples (
         .clk(clk), .rst(rst),
-        .hsync(hsync), .active(active),
+        .sync(sync_combined), .active(active),
         .pixel_count(pixel_count),
         .pattern_sel(pattern_sel),
         .dac(dac)
@@ -79,8 +86,8 @@ module sample_gen_tb;
     reg [9:0] expected_d;  // 1-cycle delay to match registered DAC
 
     always @(*) begin
-        if      (rst)    expected = CODE_BLANKING;
-        else if (hsync)  expected = CODE_SYNC_TIP;
+        if      (rst)            expected = CODE_BLANKING;
+        else if (sync_combined)  expected = CODE_SYNC_TIP;
         else if (active) begin
             case (pattern_sel)
                 2'd0: expected = CODE_GRAY_50;

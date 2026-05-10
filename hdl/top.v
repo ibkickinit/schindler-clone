@@ -95,6 +95,7 @@ module top (
     wire [11:0] pixel_count;
     wire [9:0]  line_count;
     wire        hsync, vsync, active, sof, sol;
+    wire        sync_combined;
     wire [9:0]  dac;
 
     vid_timing timing_inst (
@@ -109,10 +110,18 @@ module top (
         .sol         (sol)
     );
 
+    // Generate the full VBI-aware sync waveform: pre/post-equalizing pulses,
+    // broad V-sync, normal H-sync on active/blank lines. Drives sample_gen.
+    vbi_gen vbi_inst (
+        .pixel_count (pixel_count),
+        .line_count  (line_count),
+        .sync        (sync_combined)
+    );
+
     sample_gen sample_inst (
         .clk         (pixel_clk),
         .rst         (pixel_rst),
-        .hsync       (hsync),
+        .sync        (sync_combined),
         .active      (active),
         .pixel_count (pixel_count),
         .pattern_sel (pattern_sel),

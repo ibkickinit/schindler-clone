@@ -27,7 +27,7 @@ module sample_gen #(
     input  wire        rst,
 
     // From vid_timing
-    input  wire        hsync,        // HIGH during sync pulse window
+    input  wire        sync,         // HIGH during ANY sync interval (H-sync, equalizing, or V-sync — driven by vbi_gen)
     input  wire        active,       // HIGH during active video region
     input  wire [11:0] pixel_count,  // 0 .. PIXELS_PER_LINE-1
 
@@ -101,7 +101,7 @@ module sample_gen #(
     // ------------------------------------------------------------
     always @(posedge clk) begin
         if (rst)         dac <= CODE_BLANKING;
-        else if (hsync)  dac <= CODE_SYNC_TIP;
+        else if (sync)   dac <= CODE_SYNC_TIP;
         else if (active) dac <= pattern_value;
         else             dac <= CODE_BLANKING;
     end
