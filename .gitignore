@@ -1,0 +1,38 @@
+# Python
+**/.venv/
+**/__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+
+# Generated artifacts (encoder output, plots, sample dumps)
+**/out/
+*.npy
+*.png
+
+# Vivado / Xilinx build outputs
+build/
+*.bit
+*.bin
+*.runs/
+*.cache/
+*.hw/
+*.sim/
+*.ip_user_files/
+.Xil/
+*.jou
+*.log
+*.str
+*.wdb
+*.pb
+
+# xsim standalone artifacts
+xsim.dir/
+xelab.*
+xvlog.*
+xsim.*
+webtalk*
+
+# OS
+.DS_Store
+Thumbs.db
