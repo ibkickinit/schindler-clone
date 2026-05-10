@@ -1,9 +1,11 @@
 # build.tcl — Create Schindler 2.0 Vivado project from sources, synth, impl,
-# write bitstream. Idempotent: deletes any existing build dir first so the
-# script can always start from a known state.
+# write bitstream, and export hardware platform (.xsa) for FSBL generation.
+# Idempotent: deletes any existing build dir first.
 #
+# Requires BOARD_PARTS_REPO_PATHS to point at the Digilent vivado-boards repo.
 # Run from anywhere:
 #   source /tools/Xilinx/2025.2/Vivado/settings64.sh
+#   export BOARD_PARTS_REPO_PATHS=$HOME/fpga/vivado-boards/new/board_files
 #   vivado -mode batch -nojournal -log build.log -source <repo>/tcl/build.tcl
 
 set project_name "schindler-2.0"
@@ -15,7 +17,22 @@ set vivado_dir   [file join $build_dir $project_name]
 file delete -force $vivado_dir
 file mkdir $build_dir
 
+# Tell Vivado where the Digilent board files live (env var alone doesn't
+# populate the Tcl board.repoPaths param — needs explicit set_param BEFORE
+# create_project so the new project picks them up).
+if {[info exists ::env(BOARD_PARTS_REPO_PATHS)]} {
+    set_param board.repoPaths $::env(BOARD_PARTS_REPO_PATHS)
+}
+
 create_project $project_name $vivado_dir -part xc7z020clg400-1
+
+set board [lindex [get_board_parts -filter {NAME =~ "*zybo-z7-20*"}] 0]
+if {$board eq ""} {
+    puts "ERROR: Zybo Z7-20 board file not found. Set BOARD_PARTS_REPO_PATHS."
+    exit 1
+}
+set_property board_part $board [current_project]
+puts "BOARD: $board"
 
 # HDL sources
 foreach f [glob [file join $project_root hdl *.v]] {
@@ -34,6 +51,9 @@ foreach f [glob -nocomplain [file join $project_root sim *.v]] {
     add_files -fileset sim_1 -norecurse $f
     puts "ADD SIM: $f"
 }
+
+# Create the PS-only block design and import its wrapper
+source [file join $script_dir create_bd.tcl]
 
 set_property top top [current_fileset]
 update_compile_order -fileset sources_1
@@ -69,5 +89,12 @@ puts "BITSTREAM: [lindex $bitfiles 0]"
 set wns [get_property STATS.WNS [get_runs impl_1]]
 set whs [get_property STATS.WHS [get_runs impl_1]]
 puts "TIMING: WNS=$wns ns  WHS=$whs ns"
+
+# ---- Export hardware platform (.xsa) for FSBL generation ----
+set xsa_path [file join $build_dir "$project_name.xsa"]
+open_run impl_1
+write_hw_platform -fixed -include_bit -force $xsa_path
+puts "STAGE_OK: hardware platform exported"
+puts "XSA: $xsa_path"
 
 exit 0
