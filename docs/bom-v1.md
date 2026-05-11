@@ -1,0 +1,307 @@
+# Schindler 2.0 — V1 Bill of Materials
+
+**Status:** Draft 2026-05-11
+**Scope:** all silicon, modules, connectors, mechanical, and bench-eval boards for V1 Pro Full / Broadcast Digital.
+**Detailed tracker:** `Parts List.xlsx` (authoritative for procurement state, notes, supplier links). This doc is the markdown-readable summary mapping parts onto the architecture in `signal-flow.md` + `panel-layout.md`.
+
+## Status legend
+
+- ✅ **On order / received** — placed via DigiKey / Mouser / vendor
+- 📋 **Banked / planned** — part selected and recorded in spec, not yet ordered
+- 🔬 **Bench eval** — eval board on order or in use, production variant pending
+- ❓ **TBD** — placeholder, selection deferred to carrier-schematic phase
+
+---
+
+## 1. Signal Path
+
+Block-level breakdown of the video signal path per `signal-flow.md` diagram 1.
+
+### HDMI Input
+- **Chip 1:** `TPD12S016PWR` — HDMI ESD clamps + DDC/HPD level shift + 5V cable-power switch — TI — ~$1.50 — ✅
+- **Chip 2:** `LT8619C` — HDMI 1.4 RX, parallel RGB out, embedded HDCP 1.4 keys — Lontium — ~$2 — ✅ (raw chip + LT8619C-EVB)
+- **Connector:** HDMI Type A panel-mount — ❓
+
+### SDI Input *(broadcast tier — factory-populated option)*
+- **Chip 1:** `GS3470` — SDI receiver (3G-SDI); recovers clock + VITC; feeds video path AND genlock subsystem — Semtech — ~$15 — 📋
+- **Connector:** BNC 75 Ω panel-mount — ❓ production part; `0731711900` (straight) / `0731010401` (right-angle) on order for prototype — 🔬
+
+### Composite + Component Input
+- **Chip 1:** `ADV7280AWBCPZ-M-RL` — multi-format analog decoder (CVBS / YPbPr / S-Video → BT.656 YCbCr 4:2:2 over parallel bus); AEC-Q100 auto grade; `-M` variant adds MIPI option — Analog Devices — ~$19 — ✅
+- **Connectors:** 4× BNC 75 Ω panel-mount (1× CVBS + 3× YPbPr) — ❓ production part
+- **Passives:** input clamp diodes, switchable 75 Ω terminations, AC-coupling caps, anti-alias LPF — schematic-phase
+
+### FPGA Fabric (Zynq-7020)
+All compute / pipeline blocks run inside the Zynq-7020 silicon carried on the TE0720 SOM.
+
+- **SoC module:** Trenz **TE0720-04-62I33MA** — production target (Zynq-7020 -2I industrial, 1 GB DDR3L, 8 GB eMMC, 32 MB QSPI, GbE PHY on-module, 152 FPGA I/O via Samtec Razor Beam) — ~$300 — 📋
+- **SoC module (bench):** Trenz **TE0720-04-31C33MA** — commercial -1 speed grade, same memory config, identical pinout — ~$230 — 📋
+- **Heatsink:** Trenz **33337** springloaded — passive thermal — ✅
+- **HDL blocks** (Xilinx IP, free): AXI VDMA, HDMI 1.4 TX
+- **HDL blocks** (custom, in `hdl/`): polyphase scaler (8-tap H / 4-tap V), color pipeline (1024-entry gamma LUT + 3×3 matrix + per-channel trim), geometry (pincushion / keystone / 4-corner warp), test pattern generator (`sample_gen.v`), NTSC raster (`vid_timing.v` + `vbi_gen.v`), NTSC chroma (`chroma_gen.v`), luma+chroma combiner (inline in `top.v`)
+
+### Analog Video Output (Composite + Component + S-Video)
+- **Chip 1:** `ADV7393BCPZ-REEL` — output DAC/encoder; one chip serves composite/S-Video OR component, runtime mode-switched via I²C — Analog Devices — ~$16 — ✅
+- **Chip 2 (SDTV buffers):** `OPA2350UA/2K5` — dual op-amp, 38 MHz GBW, rail-to-rail, for composite + S-Video buffer stages — TI — ~$5/dual — ✅ (5× prototype stock)
+- **Chip 3 (HD buffers):** `LMH6643MAX/NOPB` — voltage-feedback op-amp, 130 MHz BW, low distortion, for component + SDI-adjacent stages — TI — ~$1.50/dual — ✅ (10× prototype stock)
+- **Connectors:** 4× BNC 75 Ω panel-mount (1× CVBS + 3× YPbPr) — ❓ production part
+- **Note:** S-Video out is generated free from ADV7393 in composite mode (Y + C on two DAC channels) but the mini-DIN connector was dropped from V1 panel.
+
+### SDI Output *(broadcast tier — factory-populated option)*
+- **Chip 1:** `GS2962` — SDI transmitter (3G-SDI); processed output, not passive loop-through — Semtech — ~$17 — 📋
+- **Connector:** BNC 75 Ω panel-mount — ❓ production part
+
+### HDMI Output (Monitoring/Analysis)
+- **Chip 1:** `TPD12S016PWR` — HDMI ESD + level shift (same part as input) — TI — ~$1.50 — ✅
+- **HDMI TX core:** Xilinx free HDMI 1.4 TX IP — FPGA-internal, no separate chip
+- **Connector:** HDMI Type A panel-mount — ❓
+
+### Section subtotal (silicon only, per V1 unit)
+
+| Item | Base | Broadcast |
+|---|---:|---:|
+| TPD12S016 ×2 | $3 | $3 |
+| LT8619C ×1 | $2 | $2 |
+| ADV7280 ×1 | $19 | $19 |
+| ADV7393 ×1 | $16 | $16 |
+| Output buffers (mix OPA2350 + LMH6643) | ~$12 | ~$12 |
+| GS3470 ×1 | — | $15 |
+| GS2962 ×1 | — | $17 |
+| **Signal-path silicon** | **~$52** | **~$84** |
+
+---
+
+## 2. Sync Subsystem
+
+Per `signal-flow.md` diagram 2 — genlock + dual SYNC OUT.
+
+### Reference Input (Genlock Front-End)
+- **Chip 1:** `LTC6912CGN-2#PBF` — 2-channel programmable gain amplifier; AGC loop driven by classifier — Analog Devices (Linear Tech) — ~$8 — ✅
+- **Chip 2:** `AD9204BCPZ-20` — dual 10-bit 20 MSPS ADC; pin-compatible upgrade path to AD9231/9251/9258/9268 for 12/14/14/16-bit if future need — Analog Devices — ~$16 — ✅
+- **Eval boards:** **MIKROE-2555** ×2 (LTC6912 GainAMP click, ~$25 ea) + **AD9204-80EBZ** (AD9204 eval, ~$278, 80 MSPS bench variant) — 🔬
+- **Connectors:** 2× BNC 75 Ω panel-mount (REF IN + REF LOOP) — ❓ production part
+- **Passives:** clamp diodes, switchable 75 Ω term, AC-coupling, switchable analog LPF — schematic-phase
+
+### Slow Control + Clock Generation
+- **Chip 1:** RP2040 — microcontroller for autosense slow-control, PGA gain commands, Si5351 register writes, status reporting to Zynq PS — Raspberry Pi — ~$1 — 📋 (verify on-hand from prior projects)
+- **Chip 2:** **Si5351A-B-GT** (or similar) — 3-channel programmable clock generator; ch0 → FPGA master, ch1+ch2 reserved — Skyworks/Silicon Labs — ~$2 — 📋 production
+- **Eval boards:** **Adafruit 2045** Si5351 breakout ×2 — 🔬
+
+### Genlock Loop Core
+All in FPGA fabric — no discrete chips. Listed for completeness.
+- Autosense classifier (LTC biphase / BB 15.734 kHz / tri-level signature)
+- Per-format decoders: LTC frame decoder, BB sync separator, tri-level decoder, SDI recovered clock+VITC (from GS3470)
+- Reference selector mux (operator override + autosense priority)
+- Digital PLL: phase/frequency detector, loop filter (~0.5 Hz default), NCO/integrator, lock detector (state machine + quality metric)
+
+### Dual SYNC OUT Generation
+- **Chip 1 (×2, one per OUT):** 12-bit DAC — `AD9744` class or PWM+LPF — Analog Devices — ❓ specific part pending evaluation
+- **Chip 2 (×2, one per OUT):** 75 Ω cable driver — `ADV3000` / `EL5170` / `THS6212` class — ❓ specific part pending
+- **Connectors:** 2× BNC 75 Ω panel-mount (SYNC OUT 1 + SYNC OUT 2) — ❓ production part
+- **Per-OUT phase accumulator + waveform gen:** FPGA fabric, no discrete chip
+
+### Section subtotal
+
+| Item | Per unit |
+|---|---:|
+| LTC6912 ×1 | $8 |
+| AD9204-20 ×1 | $16 |
+| RP2040 ×1 | ~$1 |
+| Si5351 ×1 | ~$2 |
+| 12-bit DAC ×2 | ~$8 (est.) |
+| 75 Ω cable driver ×2 | ~$6 (est.) |
+| **Sync-subsystem silicon** | **~$41** |
+
+---
+
+## 3. Power
+
+Per `01-spec.md` Power & safety section.
+
+### AC Entry
+- **Connector:** Schaffner **FN9260B-6-06** — IEC C14 + 6 A rating + integrated fuse holder + 1-stage EMI filter, panel-mount — ~$18 — ✅ (2 on order)
+- **Fuse:** 2 A T (time-lag), 5×20 mm cartridge — generic — ~$1 — 📋
+
+### PSU Module
+- **Module (primary):** TDK-Lambda **HWS50A-12/A** — 50 W / 12 V single output, 85–264 VAC universal, enclosed metal case, UL 62368-1, EN 55032 Class B — ~$50 — 📋 (Mean Well alternate on order)
+- **Module (alternate):** Mean Well **LRS-50-12** — drop-in alternate, 50 W / 12 V — ~$15–20 — ✅
+- **PSU → Carrier connector:** Molex **Mini-Fit Jr.** 2-pin locking, 9 A rated — ~$0.80 — ❓ production part
+
+### Carrier 12 V Input Protection Chain
+- **Q1 (reverse-polarity FET):** Diodes Inc **DMP3098L-7** — P-channel, −30 V, R<sub>DS(on)</sub> 31 mΩ, SO-8 — ~$0.60 — 📋
+- **Gate pulldown:** 100 kΩ standard resistor
+- **F1 (polyfuse):** Bourns **MF-MSMF200-2** — I<sub>hold</sub> 2 A / I<sub>trip</sub> 4 A, 16 V, SMD — ~$0.40 — 📋
+- **D1 (TVS):** Littelfuse **SMBJ12A** — unidirectional, V<sub>WM</sub> 12 V, V<sub>C</sub> 19.9 V peak, 600 W, SMB — ~$0.30 — 📋
+- **U1 (power monitor):** TI **INA226** — I²C 16-bit current+voltage monitor — ~$1.50 — 📋
+- **Sense resistor:** 5 mΩ, 1 % — generic — ~$0.20 — 📋
+- **C bulk:** 3× Murata **GRM32** 22 µF 25 V X7R MLCC in parallel (~66 µF total) — ~$2.40 — 📋
+
+### Per-Rail Regulators (Downstream of 12 V)
+Selected at carrier-schematic time. Placeholders:
+- **5 V buck** (~3 A) — TBD (USB host power, fan, analog op-amps) — ❓
+- **3.3 V buck** (~2 A) — TBD (most digital I/O, LEDs, low-power analog) — ❓
+- **1.8 V buck** (~3 A) — TBD (FPGA bank Vcco, DDR3L Vddq) — ❓
+- **1.35 V buck** (~1 A) — TBD (DDR3L Vdd) — ❓
+- **1.0 V buck** (~3 A) — TBD (FPGA Vccint) — ❓
+- **VAUX LDOs** — TBD (AD9204 1.8 V analog, ADV7280 analog, op-amp ±supplies) — ❓
+
+### Section subtotal
+
+| Item | Per unit |
+|---|---:|
+| FN9260B-6-06 ×1 | $18 |
+| Fuse | $1 |
+| PSU module (HWS50A or LRS-50) | $20–50 |
+| Carrier protection chain | ~$6 |
+| Per-rail regulators (est.) | ~$15 |
+| **Power subsystem total** | **~$60–90** |
+
+---
+
+## 4. UX / Panel I/O
+
+### Front Panel
+- **TFT display:** 2.8" or 3.5" color TFT, ILI9341 SPI (prototype) → LTDC parallel (production) — ❓ specific module
+- **Encoders:** 2× Alps **EC11E18244AU** — 36 detents / 18 PPR, integrated push switch, -40 to +85°C industrial — ~$3 ea — ✅ (5 on order)
+- **Encoder alternates for UX testing:** **3315Y-025-016L** ×2, **EC111012010H** ×1 — ✅
+- **Knob options for evaluation:** CP34501, FC7229NML, CL178883, FC1611, 1202CY (production knob selection deferred) — ✅
+- **Buttons:** 4× tactile (Home, Back, Menu, Confirm) + 2–3 quick-select (Output Mode, EDID Profile, Genlock Source) — ❓ specific tactile switch
+- **Front status LED column:** mirrors rear per-connector LED state — driven by UI MCU GPIO via same TLC59116F state pushed from Zynq
+- **Power button:** lighted soft button, lower-left — ❓
+- **UI MCU:** STM32 **STM32H735IGT6** — LQFP176, 480 MHz Cortex-M7 — ~$8 — 📋 production
+- **UI MCU eval board:** **STM32H735G-DK** ~$70 — 🔬
+- **Knob shroud / guard:** mechanical, recessed encoder pocket (HARD REQUIREMENT — must survive face-down drop in road case) — schematic+chassis phase
+
+### Rear Panel — Status Display
+- **LCD:** 2.4" 16:9 IPS TFT, ~50 × 30 mm bezel-to-bezel, SPI driver — ❓ specific module (ILI9341 / ST7789 class)
+- **Mounting:** recessed bezel cutout with anti-glare film
+- **Owner:** Zynq PS via dedicated SPI port, ~1 s refresh, read-only status grid
+
+### Per-Connector Status LEDs
+- **LED:** Tricolor R/A/G, 3 mm body, recessed bezel — qty ~21 (one per rear connector) — ~$0.20 ea — ❓ specific part
+- **Driver chips:** 3× TI **TLC59116F** — 16-channel constant-current with per-channel PWM dimming — ~$1.50 ea — 📋
+- **Bus:** I²C from Zynq PS
+
+### Section subtotal
+
+| Item | Per unit |
+|---|---:|
+| Front TFT | ~$15 (est.) |
+| 2× Alps EC11 encoder | $6 |
+| 4 tactile + 3 quick-select buttons | ~$3 |
+| Power button | ~$3 |
+| STM32H735IGT6 | $8 |
+| Rear LCD 2.4" | ~$15 (est.) |
+| 21× tricolor LEDs | ~$4 |
+| 3× TLC59116F | $4.50 |
+| Knob hardware | ~$10 (est.) |
+| **UX/Panel subsystem total** | **~$70** |
+
+---
+
+## 5. Control + Networking
+
+### Wired Control
+- **GbE PHY:** integrated on TE0720 SOM (no external PHY needed) — 📋
+- **RJ45 jack with magnetics:** chassis-mount — ❓
+- **USB-C service port:** USB Type-C panel-mount + protection (ESD + overcurrent) — ❓
+
+### Wireless
+- **WiFi/BT module:** Laird Sterling **LWB5+** — pre-certified, 88W8997 chipset, dual-band a/b/g/n/ac + BT5.0, SDIO interface to Zynq PS — ~$30 — 📋
+- **Antennas:** 2× RP-SMA panel-mount + stub antennas — ❓ specific part — ~$5 ea
+
+### Compute (Linux Side)
+- **Zynq PS** — dual Cortex-A9 on TE0720 SOM under PetaLinux; hosts web UI, REST API, EDID, mDNS, OTA, config persistence, color pipeline runtime (Screenie port), I/O state aggregator. Listed under Signal Path; no separate silicon.
+
+### Section subtotal
+
+| Item | Per unit |
+|---|---:|
+| LWB5+ WiFi/BT module | $30 |
+| RJ45 mag jack | ~$3 |
+| USB-C connector + ESD | ~$3 |
+| 2× RP-SMA + antennas | ~$10 |
+| **Control/networking total** | **~$46** |
+
+---
+
+## 6. Chassis + Mechanical
+
+### Enclosure
+- **Chassis:** 1RU full-rack 19" extruded aluminum body — Hammond or similar — ~$50–80 — ❓
+- **Front panel:** Front Panel Express milled aluminum, anodised, silkscreened — per playbook Ch. 10 pattern — ~$40 — ❓
+- **Rear panel:** Front Panel Express milled aluminum, panel cutouts for all rear I/O — ~$60 — ❓
+- **Rack ears:** integrated with chassis or aftermarket — ~$10 — ❓
+
+### Thermal
+- **Fan:** Noctua **NF-A4x20 PWM** — 40 mm, ~14 dB low RPM, conditional/silent (only spins on SOM temp threshold) — ~$15 — 📋
+- **SOM thermal pad:** silicone gap pad between Zynq SOM and chassis top cover (top acts as primary heatsink for fanless operation at typical 14–16 W load) — ~$2 — 📋
+
+### Hardware
+- **M3 standoffs** for PSU mounting (×4) and carrier PCB mounting (×6–8) — generic — ~$3 total — ❓
+- **Earth bonding stud** for chassis ground — M4 brass stud — ~$1 — ❓
+- **Mounting screws** (mix of M3 panhead + M2.5 for board mounts) — generic — ~$3 — ❓
+
+### Mechanical Reservations
+- **Knob shroud / encoder guard** on front panel (HARD REQUIREMENT) — milled into front panel or separate bezel piece — schematic+chassis phase
+- **Spare panel space** ~67 mm on right side of rear panel — reserved for V1.x expansion (potential XLR return, 10 MHz GPSDO BNCs, or vented airflow grille)
+
+### Section subtotal
+
+| Item | Per unit |
+|---|---:|
+| Chassis | ~$70 (est.) |
+| Front panel | ~$40 |
+| Rear panel | ~$60 |
+| Rack ears | ~$10 |
+| Noctua fan | $15 |
+| Thermal pad | $2 |
+| Hardware (standoffs/screws/stud) | ~$7 |
+| **Chassis/mechanical total** | **~$200** |
+
+---
+
+## V1 Pro Full BOM Roll-Up (typical)
+
+| Section | Base unit | Broadcast unit |
+|---|---:|---:|
+| 1. Signal Path silicon | ~$52 | ~$84 |
+| 2. Sync Subsystem silicon | ~$41 | ~$41 |
+| 3. Power | ~$75 | ~$75 |
+| 4. UX / Panel I/O | ~$70 | ~$70 |
+| 5. Control + Networking | ~$46 | ~$46 |
+| 6. Chassis + Mechanical | ~$200 | ~$200 |
+| **Subtotal (parts only)** | **~$484** | **~$516** |
+| TE0720 SOM (production grade) | $300 | $300 |
+| **V1 unit total (parts)** | **~$784** | **~$816** |
+
+**Excluded from this BOM:** carrier PCB fabrication + assembly cost (~$80–150 per board at qty 100 per playbook Ch. 10), labor / test / packaging / shipping, NRTL end-product certification cost amortization, software development, marketing — these all sit outside the parts roll-up.
+
+**At Schindler's expected ~$2,500 retail / pro market positioning, parts cost of ~$800 = ~32 % BOM-to-retail ratio**, which is healthy for niche broadcast hardware (industry norm 25–40 %).
+
+---
+
+## Cross-references
+
+- Architecture rationale + decision history: [`01-spec.md`](01-spec.md) + [`01-spec-changelog.md`](01-spec-changelog.md)
+- Block-level signal flow: [`signal-flow.md`](signal-flow.md)
+- Rear-panel physical layout: [`panel-layout.md`](panel-layout.md)
+- Procurement tracker (authoritative for state, supplier links, lot codes): `Parts List.xlsx`
+
+## Open BOM questions
+
+- **Production BNC part** (75 Ω panel-mount) — current prototype uses Molex `0731711900` / `0731010401`. Pick a production-volume part once carrier mech is set.
+- **HDMI panel-mount connector** — specific part TBD.
+- **Per-rail buck converter family** — TI TPS / ADI LTC family TBD per carrier schematic.
+- **12-bit DACs for SYNC OUT generation** — AD9744 class identified, specific part pending evaluation.
+- **75 Ω cable drivers for SYNC OUT** — ADV3000 / EL5170 / THS6212 candidates, pick one at schematic phase.
+- **Front TFT module** — 2.8" or 3.5" specific module TBD.
+- **Rear LCD module** — 2.4" 16:9 SPI specific module TBD.
+- **Power button** — lighted soft pushbutton, specific part TBD.
+- **Tactile switches** for 4 fixed + 2-3 quick-select buttons — specific part TBD.
+- **Rear status LED part** — tricolor R/A/G 3 mm, specific manufacturer TBD.
+- **RJ45 mag jack** — specific part TBD (consider Pulse / Bel Fuse).
+- **USB-C connector** — specific part TBD (consider Amphenol or Wurth).
+- **Chassis vendor** — Hammond / Bud / Italtronic class — final selection TBD.
+- **Si5351 production variant** vs `Si5351A-B-GT` placeholder — confirm at schematic phase.
+- **RP2040 board form factor** — bare chip on carrier vs YD-RP2040 / SparkFun / Adafruit feather module — TBD.
