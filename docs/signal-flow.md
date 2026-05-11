@@ -20,12 +20,13 @@ Mermaid block diagrams render natively in GitHub. To edit: change the source bet
 flowchart LR
     classDef in fill:#d9eaff,stroke:#3a6ea5,color:#000
     classDef decode fill:#fff4d9,stroke:#a58634,color:#000
+    classDef sdi fill:#ffeed9,stroke:#a56234,color:#000
     classDef fpga fill:#e6f6e6,stroke:#3a8e3a,color:#000
     classDef out fill:#ffe2e2,stroke:#a54040,color:#000
 
     subgraph IN[Inputs - rear panel BNCs/HDMI]
         HDMI_IN[HDMI IN]:::in
-        SDI_IN[SDI IN]:::in
+        SDI_IN[SDI IN BNC]:::in
         CVBS_IN[Composite IN]:::in
         YPBPR_IN[Component IN, YPbPr]:::in
     end
@@ -33,8 +34,12 @@ flowchart LR
     subgraph DECODE[Front-end decoders]
         TPD_IN[TPD12S016 ESD]:::decode
         LT8619C[LT8619C HDMI RX<br/>parallel RGB to FPGA]:::decode
-        GS3470[GS3470 SDI RX]:::decode
         ADV7280[ADV7280 analog decoder<br/>BT.656 YCbCr 4:2:2]:::decode
+    end
+
+    subgraph SDI_SUB[SDI subsystem - broadcast tier, factory-populated option]
+        GS3470[GS3470 SDI RX<br/>recovers SDI clock + VITC]:::sdi
+        GS2962[GS2962 SDI TX<br/>3G-SDI processed output]:::sdi
     end
 
     subgraph FPGA[Zynq-7020 FPGA fabric]
@@ -54,6 +59,7 @@ flowchart LR
         TPD_OUT[TPD12S016 ESD]:::out
         CVBS_OUT[Composite OUT BNC]:::out
         YPBPR_OUT[Component OUT BNCs]:::out
+        SDI_OUT[SDI OUT BNC]:::out
         HDMI_OUT[HDMI OUT]:::out
     end
 
@@ -71,14 +77,19 @@ flowchart LR
     MIX --> ADV7393
     ADV7393 --> CVBS_OUT
     ADV7393 --> YPBPR_OUT
+    MIX --> GS2962 --> SDI_OUT
     MIX --> HDMI_TX --> TPD_OUT --> HDMI_OUT
+
+    style SDI_SUB stroke-dasharray: 5 5
 ```
 
 **Notes**
 
-- During Phase 2 bring-up the path in use is only **TIMING → TPG → CHROMA → MIX → R2R DAC on Pmod JC** (Zybo Z7-20). The blocks shown for VDMA / scaler / color / geometry / ADV7393 / HDMI TX are designed-in but not yet implemented.
+- During Phase 2 bring-up the path in use is only **TIMING → TPG → CHROMA → MIX → R2R DAC on Pmod JC** (Zybo Z7-20). The blocks shown for VDMA / scaler / color / geometry / ADV7393 / HDMI TX / SDI are designed-in but not yet implemented.
 - ADV7393 composite/S-Video and component output are **mutually exclusive at runtime** (I²C-switched). Both rear-panel BNC groups exist but only one is live at any moment.
 - HDMI OUT is monitoring/analysis only (waveform/vectorscope visualization, signal lock dashboard, test pattern output, color analysis) — no HDCP encryption on output, per the legal positioning in changelog 9th update.
+- **SDI subsystem (dashed outline)** is a **factory-populated hardware option** per the broadcast tier — every V1 carrier has the footprints; broadcast units have GS3470 + GS2962 + 2× SDI BNCs populated, base units do not. Daughter-card delivery on headers is a candidate field-upgrade path (see `01-spec.md` SDI daughter card section). GS3470 also feeds the genlock subsystem (SDI ref + VITC extraction) — see diagram 2.
+- **SDI OUT is processed**, not a passive loop-through. The signal goes through the full FPGA color / geometry pipeline and is re-serialized by GS2962. Passive loop-through was dropped from V1 in the 2026-05-11 connector simplification.
 
 ---
 
