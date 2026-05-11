@@ -77,15 +77,34 @@ This is the SSOT for the current spec. Items marked **[PROPOSED]** are awaiting 
 - ADV7280-class decoder feeds analog inputs to FPGA via ITU-R BT.656 8-bit YCbCr 4:2:2 over parallel bus → existing VDMA path
 - SDI video input (broadcast-tier units, 1 BNC) — Semtech GS3470 receiver (confirmed over prior GS2971-class candidate). Serves dual duty: video data into the FPGA pipeline (see `signal-flow.md` diagram 1) **and** provides a recovered SDI clock + VITC into the genlock subsystem as one possible reference source (see `signal-flow.md` diagram 2 and the Genlock section below). There is no dedicated "SDI reference input" connector — the SDI video input is the SDI reference path. The 2×2 input mux on GS3470 is unused in V1 (passive loop-through dropped in the 2026-05-11 connector simplification).
 
+### Pipeline architecture (confirmed 2026-05-11)
+- **The FPGA pipeline is HD-bandwidth throughout** — RGB or YCbCr 4:2:2 at up to 1080p60 (148.5 MHz pixel clock) carried from input decoder all the way through scaler, color, and geometry to a shared HD signal bus. Downconversion to SD or rate-conversion happens **only inside the per-output terminal encoder** that needs it (composite, S-Video, SD component).
+- **Outputs are independent and concurrent.** The HD signal bus fans out to one terminal encoder per output. All terminals can run simultaneously at their own format and rate. Example: 1080p60 HDMI source can drive 1080p60 HDMI OUT (passthrough) + NTSC composite OUT (downconvert + 5:2 cadence + composite encode) + HD component OUT (YPbPr) all live from the same source.
+- **Terminal encoders (independent FPGA blocks):**
+  - **HDMI passthrough terminal** — format-match or rate-convert + HDMI 1.4 TX (FPGA-internal, no chip). HDCP-protected content gated by UI consent dialog (see HDCP architecture below).
+  - **NTSC/PAL composite encoder terminal** — HD-to-SD downconvert + cadence convert + luma+chroma encode + sync gen. HDL: `hdl/vid_timing.v` + `hdl/vbi_gen.v` + `hdl/chroma_gen.v` + `hdl/sample_gen.v` (Phase 2 first-light validated).
+  - **Component YPbPr encoder terminal** — HD passthrough or SD downconvert, feeds ADV7393 in component mode.
+  - **SDI passthrough terminal** — HD re-serialize, feeds GS2962 (broadcast tier only).
+- **Test pattern generator** is one selectable source feeding the pipeline (alongside HDMI / SDI / composite / component inputs), default at power-on before any source is connected. See `signal-flow.md` diagram 1.
+
 ### Outputs
-- **One ADV7393 chip serves both output modes via runtime selection** (I²C-switched, mutually exclusive): composite/S-Video mode (DAC_A=CVBS, DAC_B=Y, DAC_C=C) OR component mode (DAC_A=Y, DAC_B=Pb, DAC_C=Pr). Operator chooses output mode in the UI; the unused output BNC/mini-DIN goes to 0 V / blanking (analog mux or buffer-disable on carrier handles physical routing). Composite and component are never both live; confirmed 2026-05-10 PM 7th update.
-- Composite out (1 BNC) — NTSC, NTSC-J, PAL, PAL-M
-- Component out (3 BNCs, YPbPr)
-- S-Video out (1 mini-DIN 4-pin) — generated free from ADV7393, just adds connector
-- HDMI out (1 connector) — loop-through confidence monitoring; FPGA pipeline drives a TMDS retimer on the carrier; same DAC-fed pipeline mirrored to digital output
+- **One ADV7393 chip serves both analog output modes via runtime selection** (I²C-switched, mutually exclusive): composite/S-Video mode (DAC_A=CVBS, DAC_B=Y, DAC_C=C) OR component mode (DAC_A=Y, DAC_B=Pb, DAC_C=Pr). Operator chooses analog output mode in the UI; the unused output BNC/mini-DIN goes to 0 V / blanking (analog mux or buffer-disable on carrier handles physical routing). Composite and component are never both live on the analog BNCs; confirmed 2026-05-10 PM 7th update.
+- **Composite out** (1 BNC) — NTSC, NTSC-J, PAL, PAL-M. Driven by composite encoder terminal.
+- **Component out** (3 BNCs, YPbPr) — HD or SD rate selectable. Driven by component encoder terminal.
+- **S-Video out** (1 mini-DIN 4-pin) — generated free from ADV7393 in composite mode; mini-DIN connector dropped from V1 panel per 2026-05-11 connector simplification but the silicon path remains.
+- **HDMI out** (1 connector) — **full-quality HD passthrough**, up to 1080p60, driven by HDMI passthrough terminal. Not a degraded monitoring view. Same source video as the other outputs, independently rate/format-configured per the operator's choice (e.g. HDMI passthrough at source rate, while composite OUT does cadence conversion to 24 p NTSC for CRT-driving).
+- **SDI out** (1 BNC, broadcast tier only) — processed HD re-serialize via GS2962. Not a passive loop-through.
+
+### HDCP architecture (confirmed 2026-05-11)
+- **Default-safe behavior:** HDCP-protected content (detected on HDMI / SDI input via the source's HDCP authentication state) is **blocked from full-quality HDMI OUT** by the HDMI passthrough terminal. Protected content can still flow to the analog outputs (composite / component / S-Video — these don't carry HDCP) and to SDI OUT (broadcast workflow assumption).
+- **UI consent gate (operator override):** the operator can manually unlock full-quality HDMI passthrough of protected content via a UI dialog requiring explicit attestation ("I attest this is a non-violating use"). Once attested, the HDMI passthrough terminal permits HDCP-protected content through to HDMI OUT for the session. Pattern is attorney-advised: keeps the device's default behavior compliant with DMCA §1201 / DCP Compliance Rules, and shifts compliance responsibility to the operator for any override.
+- **Non-protected content** flows through HDMI OUT without any gate — no dialog, no degradation, no friction.
+- **No HDCP encryption on HDMI OUT** — protected content that flows through (post-consent) reaches HDMI OUT unencrypted. Saves the Xilinx HDCP IP license + DCP Adopter Agreement cost path explicitly avoided in the 9th update HDMI subsystem decision. Documented user-facing language: "HDMI output is provided for broadcast / production use. Users are responsible for compliance with content licensing and applicable laws regarding downstream signal use. Protected content from HDCP-authenticated sources is blocked by default; the override is provided for non-violating professional workflows including production preview of owned content, internal monitoring of licensed material, and signal analysis."
 
 ### Frame rates
-- 23.976, 24.000, 25.000, 29.97, 30.000
+- **Pipeline throughput rates** (HD path): 1080p23.98 / 1080p24 / 1080p25 / 1080p29.97 / 1080p30 / 1080p50 / 1080p59.94 / 1080p60 / 1080i50 / 1080i59.94 / 720p50 / 720p59.94 / 720p60.
+- **CRT-driving rates** (composite / component encoder output): 23.976 / 24.000 / 25.000 / 29.97 / 30.000 fps.
+- **Per-output rate selection:** each terminal encoder targets its own output rate. Cadence-convert logic in each terminal handles input-to-output rate translation when they differ (e.g. 60 → 24 via 5:2 pulldown + crossfade, 60 → 25 via 6:5, 23.98 → 24 via slip).
 
 ### Genlock / reference inputs
 - Auto-sensing front-end across LTC / black burst / tri-level sync (Architecture A confirmed 2026-05-10 PM 7th update). Each input passes through clamp diodes, switchable 75 Ω termination, AC-coupled buffer, **LTC6912 programmable-gain amplifier** (confirmed 2026-05-11; MIKROE-2555 click board inbound for bench evaluation), switchable analog LPF, then **Analog Devices AD9204-20** (dual-channel 10-bit 20 MSPS ADC, 1.8 V analog supply, 1.8-3.3 V output drive — single chip handles both BNC inputs; pin-compatible upgrade path to AD9231/AD9251/AD9258/AD9268 for 12/14/14/16-bit if future need) to FPGA. FPGA runs detection logic in parallel and identifies signal type by characteristic signature (LTC biphase mark + 0xBFFC sync, black burst 15.734 kHz line rate + 3.58 MHz burst, tri-level pulse pattern). PGA-driven AGC loop solves input level frustration — no front-panel padding/gain needed.

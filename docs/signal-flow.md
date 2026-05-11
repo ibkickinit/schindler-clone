@@ -21,10 +21,11 @@ flowchart TB
     classDef in fill:#d9eaff,stroke:#3a6ea5,color:#000
     classDef decode fill:#fff4d9,stroke:#a58634,color:#000
     classDef sdi fill:#ffeed9,stroke:#a56234,color:#000
-    classDef fpga fill:#e6f6e6,stroke:#3a8e3a,color:#000
+    classDef pipe fill:#e6f6e6,stroke:#3a8e3a,color:#000
+    classDef term fill:#d9efe6,stroke:#2d7e64,color:#000
     classDef out fill:#ffe2e2,stroke:#a54040,color:#000
 
-    subgraph IN[Inputs - rear panel BNCs/HDMI]
+    subgraph IN[Inputs - rear panel]
         HDMI_IN[HDMI IN]:::in
         SDI_IN[SDI IN BNC]:::in
         CVBS_IN[Composite IN]:::in
@@ -35,24 +36,30 @@ flowchart TB
         TPD_IN[TPD12S016 ESD]:::decode
         LT8619C[LT8619C HDMI RX<br/>parallel RGB to FPGA]:::decode
         GS3470[GS3470 SDI RX<br/>recovers SDI clock + VITC<br/>broadcast tier only]:::sdi
-        ADV7280[ADV7280 analog decoder<br/>BT.656 YCbCr 4:2:2]:::decode
+        ADV7280[ADV7280 analog decoder<br/>SD inputs to BT.656 YCbCr 4:2:2]:::decode
     end
 
-    subgraph FPGA[Zynq-7020 FPGA fabric]
-        VDMA[AXI VDMA<br/>DDR3 frame buffer]:::fpga
-        SCALE[Polyphase scaler<br/>8-tap H / 4-tap V]:::fpga
-        COLOR[Color pipeline<br/>1D LUT then 3x3 matrix then trim]:::fpga
-        GEOM[Geometry<br/>pincushion / keystone / 4-corner warp]:::fpga
-        TPG[Test pattern generator<br/>sample_gen.v]:::fpga
-        TIMING[NTSC raster<br/>vid_timing.v + vbi_gen.v]:::fpga
-        CHROMA[NTSC chroma<br/>chroma_gen.v]:::fpga
-        MIX[Luma plus chroma combiner<br/>with saturation clamp]:::fpga
+    subgraph PIPE[Zynq-7020 HD pipeline - RGB or YCbCr 4:2:2, up to 1080p60]
+        SOURCE_MUX{{Source selector<br/>HDMI / SDI / Composite / Component / TPG}}:::pipe
+        VDMA[AXI VDMA<br/>DDR3 HD frame buffer]:::pipe
+        SCALE[Polyphase scaler<br/>8-tap H / 4-tap V<br/>HD-to-SD downscale or pass-through]:::pipe
+        COLOR[Color pipeline<br/>1D LUT then 3x3 matrix then trim]:::pipe
+        GEOM[Geometry warp<br/>pincushion / keystone / 4-corner]:::pipe
+        TPG[Test pattern generator<br/>SMPTE bars / PLUGE / grid / ramps<br/>sample_gen.v]:::pipe
+        HD_BUS([HD signal bus<br/>processed video, master rate]):::pipe
+    end
+
+    subgraph TERM[Output terminal encoders - independent and concurrent]
+        HDMI_TERM[HDMI passthrough terminal<br/>format match or rate convert<br/>HDCP gate via UI consent]:::term
+        COMP_TERM[NTSC/PAL composite encoder<br/>HD-to-SD downconvert + cadence convert<br/>luma + chroma encode + sync<br/>vid_timing.v + vbi_gen.v + chroma_gen.v]:::term
+        YPBPR_TERM[Component YPbPr encoder<br/>HD pass-through or SD downconvert]:::term
+        SDI_TERM[SDI TX terminal<br/>HD re-serialize<br/>broadcast tier]:::term
     end
 
     subgraph OUT[Outputs - rear panel]
-        ADV7393[ADV7393 DAC<br/>composite / S-Video / component<br/>runtime-selectable]:::out
-        GS2962[GS2962 SDI TX<br/>3G-SDI processed output<br/>broadcast tier only]:::sdi
-        HDMI_TX[HDMI 1.4 TX direct FPGA]:::out
+        ADV7393[ADV7393 DAC<br/>composite / S-Video OR component<br/>I2C runtime mode select]:::out
+        GS2962[GS2962 SDI TX<br/>3G-SDI<br/>broadcast tier only]:::sdi
+        HDMI_TX[HDMI 1.4 TX<br/>FPGA-internal, no chip]:::out
         TPD_OUT[TPD12S016 ESD]:::out
         CVBS_OUT[Composite OUT BNC]:::out
         YPBPR_OUT[Component OUT BNCs]:::out
@@ -60,31 +67,38 @@ flowchart TB
         HDMI_OUT[HDMI OUT]:::out
     end
 
-    HDMI_IN --> TPD_IN --> LT8619C --> VDMA
-    SDI_IN --> GS3470 --> VDMA
+    HDMI_IN --> TPD_IN --> LT8619C --> SOURCE_MUX
+    SDI_IN --> GS3470 --> SOURCE_MUX
     CVBS_IN --> ADV7280
-    YPBPR_IN --> ADV7280 --> VDMA
+    YPBPR_IN --> ADV7280 --> SOURCE_MUX
+    TPG --> SOURCE_MUX
 
-    VDMA --> SCALE --> COLOR --> GEOM --> MIX
-    TPG --> MIX
-    CHROMA --> MIX
-    TIMING --> TPG
-    TIMING --> CHROMA
+    SOURCE_MUX --> VDMA --> SCALE --> COLOR --> GEOM --> HD_BUS
 
-    MIX --> ADV7393
+    HD_BUS --> HDMI_TERM
+    HD_BUS --> COMP_TERM
+    HD_BUS --> YPBPR_TERM
+    HD_BUS --> SDI_TERM
+
+    HDMI_TERM --> HDMI_TX --> TPD_OUT --> HDMI_OUT
+    COMP_TERM --> ADV7393
+    YPBPR_TERM --> ADV7393
     ADV7393 --> CVBS_OUT
     ADV7393 --> YPBPR_OUT
-    MIX --> GS2962 --> SDI_OUT
-    MIX --> HDMI_TX --> TPD_OUT --> HDMI_OUT
+    SDI_TERM --> GS2962 --> SDI_OUT
 ```
 
 **Notes**
 
-- During Phase 2 bring-up the path in use is only **TIMING → TPG → CHROMA → MIX → R2R DAC on Pmod JC** (Zybo Z7-20). The blocks shown for VDMA / scaler / color / geometry / ADV7393 / HDMI TX / SDI are designed-in but not yet implemented.
-- ADV7393 composite/S-Video and component output are **mutually exclusive at runtime** (I²C-switched). Both rear-panel BNC groups exist but only one is live at any moment.
-- HDMI OUT is monitoring/analysis only (waveform/vectorscope visualization, signal lock dashboard, test pattern output, color analysis) — no HDCP encryption on output, per the legal positioning in changelog 9th update.
-- **SDI chips (GS3470, GS2962) are broadcast-tier only** — colored orange in the diagram to distinguish them. Every V1 carrier has the footprints; broadcast units have GS3470 + GS2962 + 2× SDI BNCs populated, base units do not. Daughter-card delivery on headers is a candidate field-upgrade path (see `01-spec.md` SDI daughter card section). GS3470 also feeds the genlock subsystem (SDI ref + VITC extraction) — see diagram 2.
-- **SDI OUT is processed**, not a passive loop-through. The signal goes through the full FPGA color / geometry pipeline and is re-serialized by GS2962. Passive loop-through was dropped from V1 in the 2026-05-11 connector simplification.
+- **The pipeline carries HD-bandwidth video throughout** (RGB or YCbCr 4:2:2, up to 1080p60 / 148.5 MHz pixel clock). Source resolution and rate are preserved through scaler / color / geometry; downconversion to SD or rate-conversion happens only inside the terminal encoder for outputs that demand it (composite, S-Video, SD component).
+- **Outputs are independent and concurrent.** Same source video → multiple terminal encoders running simultaneously, each at its own format and rate. Example: 1080p60 HDMI source → 1080p60 HDMI OUT (passthrough) + NTSC composite OUT (downconvert + 5:2 cadence + encode) + HD component OUT (YPbPr) live simultaneously.
+- **Terminal encoders are independent FPGA pipelines** consuming a shared HD signal bus. The composite encoder block contains the HDL we have today (`vid_timing.v`, `vbi_gen.v`, `chroma_gen.v`, `sample_gen.v`); HDMI / YPbPr / SDI terminals haven't been written yet.
+- **HDMI OUT is full-quality HD passthrough** (1080p60 / 1080p24 / etc) — NOT a degraded monitoring view. **HDCP-protected content is blocked from HDMI OUT by default** at the HDMI passthrough terminal. Operator can override via a UI consent dialog ("I attest this is a non-violating use") which unlocks full-quality HDMI passthrough for protected content. Attorney-advised posture — keeps liability with the operator. Non-protected content flows through HDMI OUT without any gate.
+- **`SOURCE_MUX`** picks one input (HDMI / SDI / composite / component) OR the internal test pattern generator. Operator selects via UI; TPG is the default at power-on before any source is connected.
+- **ADV7393 composite/S-Video and component output are mutually exclusive at runtime** (I²C-switched). The COMP_TERM and YPBPR_TERM blocks feed into the DAC, but only the one matching the selected output mode is active on the analog BNCs at any moment.
+- **SDI chips (GS3470, GS2962) are broadcast-tier only** — colored orange. Every V1 carrier has the footprints; broadcast units have them populated, base units do not. Daughter-card delivery on headers is the field-upgrade vector (see `01-spec.md` SDI daughter card section).
+- **GS3470 also feeds the genlock subsystem** (SDI recovered clock + VITC extraction) — see diagram 2.
+- **Phase 2 bring-up uses a degenerate version of this pipeline:** TPG → COMP_TERM directly (no scaler/color/geometry, no real source mux, no HD bus), driving the Zybo R2R DAC for first-light NTSC composite. The full HD pipeline is built incrementally after first-light.
 
 ---
 
