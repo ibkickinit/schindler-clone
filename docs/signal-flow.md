@@ -17,7 +17,7 @@ Mermaid block diagrams render natively in GitHub. To edit: change the source bet
 ## 1. Video signal path
 
 ```mermaid
-flowchart LR
+flowchart TB
     classDef in fill:#d9eaff,stroke:#3a6ea5,color:#000
     classDef decode fill:#fff4d9,stroke:#a58634,color:#000
     classDef sdi fill:#ffeed9,stroke:#a56234,color:#000
@@ -96,7 +96,7 @@ flowchart LR
 ## 2. Sync / genlock subsystem
 
 ```mermaid
-flowchart LR
+flowchart TB
     classDef in fill:#d9eaff,stroke:#3a6ea5,color:#000
     classDef analog fill:#fff4d9,stroke:#a58634,color:#000
     classDef digital fill:#e6f6e6,stroke:#3a8e3a,color:#000
