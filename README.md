@@ -4,14 +4,15 @@ A modern FPGA-based replacement for the Cal Media **Schindler MVPHD-24** — a 2
 
 ## Scope
 
-- **Input:** HDMI + DisplayPort + Composite + Component + SDI reference (with optional broadcast-tier SDI video IN/OUT/loop-through)
-- **Output:** Composite + Component (YPbPr) + S-Video, driving 1970s consumer CRTs and broadcast monitors (Sony PVM/BVM); HDMI loop-through for confidence monitoring
-- **Genlock:** to film camera reference (LTC, tri-level, black burst); SDI ref with VITC extraction
-- **Frame rates:** 23.976, 24.000, 25.000, 29.97, 30.000 fps (with 60 Hz → 50 Hz cadence conversion for cross-region content)
+- **Input:** HDMI + Composite + Component (with optional broadcast-tier SDI video IN/OUT/loop-through)
+- **Output:** Composite + Component (YPbPr) + S-Video, driving 1970s consumer CRTs and broadcast monitors (Sony PVM/BVM); HDMI out for confidence monitoring or live output
+- **Genlock:** to film camera reference (LTC, tri-level, black burst, word clock); SDI ref with VITC extraction
+- **Frame rates:** 23.976, 24.000, 25.000, 29.97, 30.000, 47.95, 48.000, 50, 59.94, 60 fps (with 60 Hz → 50 Hz cadence conversion for cross-region content)
 - **Color pipeline:** ported from the Screenie/NovaTool codebase
 - **Control:** dual-band WiFi (concurrent AP + STA) + BLE setup pairing + GbE; web UI hosted on the Zynq PS under PetaLinux
 - **Front panel:** 2.8-3.5" color TFT + rotary encoders + hardware buttons + status LEDs (no touchscreen)
-
+- **Rear panel:** 2.2" color TFT (port status, 1Hz refresh) + port status LEDs (no touchscreen)
+- 
 ## Why
 
 The Schindler is unobtainable, expensive when found, and lacks modern color/EDID/web workflows. The market is small but underserved: rental houses, DPs shooting on CRTs, and music-video / period productions.
