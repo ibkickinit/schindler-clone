@@ -40,6 +40,12 @@ foreach f [glob [file join $project_root hdl *.v]] {
     puts "ADD HDL: $f"
 }
 
+# Memory init files ($readmemh targets — e.g. chroma_lut_cos.hex)
+foreach f [glob -nocomplain [file join $project_root hdl *.hex]] {
+    add_files -norecurse $f
+    puts "ADD MEM: $f"
+}
+
 # Constraints
 foreach f [glob [file join $project_root constraints *.xdc]] {
     add_files -fileset constrs_1 -norecurse $f

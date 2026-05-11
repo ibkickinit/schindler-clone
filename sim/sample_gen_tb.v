@@ -37,7 +37,7 @@ module sample_gen_tb;
 
     reg         clk = 0;
     reg         rst = 1;
-    reg  [1:0]  pattern_sel = 2'd0;
+    reg  [2:0]  pattern_sel = 3'd0;
     wire [11:0] pixel_count;
     wire [9:0]  line_count;
     wire        hsync, vsync, active, sof, sol;
@@ -90,11 +90,11 @@ module sample_gen_tb;
         else if (sync_combined)  expected = CODE_SYNC_TIP;
         else if (active) begin
             case (pattern_sel)
-                2'd0: expected = CODE_GRAY_50;
-                2'd1: expected = (({2'b00, (pixel_count - ACTIVE_START[11:0]) >> 2} + CODE_BLACK_SETUP) > CODE_WHITE_100)
+                3'd0: expected = CODE_GRAY_50;
+                3'd1: expected = (({2'b00, (pixel_count - ACTIVE_START[11:0]) >> 2} + CODE_BLACK_SETUP) > CODE_WHITE_100)
                                   ? CODE_WHITE_100
                                   : ({2'b00, (pixel_count - ACTIVE_START[11:0]) >> 2} + CODE_BLACK_SETUP);
-                2'd2: expected = expected_bar(pixel_count - ACTIVE_START[11:0]);
+                3'd2: expected = expected_bar(pixel_count - ACTIVE_START[11:0]);
                 default: expected = CODE_GRAY_50;
             endcase
         end
@@ -132,17 +132,17 @@ module sample_gen_tb;
         rst = 0;
 
         // Pattern 0 (gray) — wait for first SOF then run a frame
-        pattern_sel = 2'd0;
+        pattern_sel = 3'd0;
         @(posedge clk);
         @(posedge sof);                          // first SOF
         $display("[%0t] Frame: pattern=GRAY", $time);
         @(posedge sof);                          // second SOF (one full frame)
 
-        pattern_sel = 2'd1;
+        pattern_sel = 3'd1;
         $display("[%0t] Frame: pattern=RAMP", $time);
         @(posedge sof);
 
-        pattern_sel = 2'd2;
+        pattern_sel = 3'd2;
         $display("[%0t] Frame: pattern=BARS", $time);
         @(posedge sof);
 

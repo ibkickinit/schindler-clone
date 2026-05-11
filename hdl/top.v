@@ -18,7 +18,7 @@
 module top (
     input  wire        sys_clk,
     input  wire        btn_rst,
-    input  wire [1:0]  pattern_sel,
+    input  wire [2:0]  pattern_sel,
     output wire [7:0]  dac_pmod,
     output wire        mmcm_locked_led,
 
@@ -128,9 +128,32 @@ module top (
         .dac         (dac)
     );
 
-    // 10-bit DAC code → 8-bit Pmod (drop 2 LSBs; coarser steps but full range).
+    // ------------------------------------------------------------
+    // Chroma subcarrier — produces 3.58 MHz burst on back porch
+    // and (placeholder) active-video chroma offsets per pattern_sel.
+    // ------------------------------------------------------------
+    wire signed [10:0] chroma_offset;
+
+    chroma_gen chroma_inst (
+        .clk           (pixel_clk),
+        .rst           (pixel_rst),
+        .pixel_count   (pixel_count),
+        .line_count    (line_count),
+        .active        (active),
+        .pattern_sel   (pattern_sel),
+        .chroma_offset (chroma_offset)
+    );
+
+    // Sum luma + chroma with saturation, then truncate for 8-bit Pmod.
     // Bit ordering: dac_pmod[7] is MSB → JC1; dac_pmod[0] is LSB → JC10.
-    assign dac_pmod = dac[9:2];
+    // During sync, sample_gen drives dac=CODE_SYNC_TIP (0) and chroma_gen
+    // outputs 0 (not in burst window, active=0), so sum=0=sync tip.
+    // Clamping protects against overflow once active-video chroma is added.
+    wire signed [11:0] dac_sum   = $signed({2'b00, dac}) + $signed({chroma_offset[10], chroma_offset});
+    wire        [9:0]  dac_final = (dac_sum < 0)          ? 10'd0
+                                 : (dac_sum > 12'sd1023)  ? 10'd1023
+                                 : dac_sum[9:0];
+    assign dac_pmod = dac_final[9:2];
 
     // Visible health indicator: LD0 lit means clock + reset are alive.
     assign mmcm_locked_led = mmcm_locked;

@@ -8,9 +8,11 @@ create_clock -add -name sys_clk_pin -period 8.000 -waveform {0 4} [get_ports { s
 ## ---------- BTN0 = reset ----------
 set_property -dict { PACKAGE_PIN K18 IOSTANDARD LVCMOS33 } [get_ports { btn_rst }]
 
-## ---------- SW0, SW1 = pattern select (gray / ramp / bars) ----------
+## ---------- SW0, SW1, SW2 = pattern select (3 bits) ----------
+##   000=gray, 001=ramp, 010=luma-bars, 011..=reserved for chroma patterns
 set_property -dict { PACKAGE_PIN G15 IOSTANDARD LVCMOS33 } [get_ports { pattern_sel[0] }]
 set_property -dict { PACKAGE_PIN P15 IOSTANDARD LVCMOS33 } [get_ports { pattern_sel[1] }]
+set_property -dict { PACKAGE_PIN W13 IOSTANDARD LVCMOS33 } [get_ports { pattern_sel[2] }]
 
 ## ---------- LD0 = MMCM lock indicator ----------
 set_property -dict { PACKAGE_PIN M14 IOSTANDARD LVCMOS33 } [get_ports { mmcm_locked_led }]

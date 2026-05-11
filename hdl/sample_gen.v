@@ -31,8 +31,9 @@ module sample_gen #(
     input  wire        active,       // HIGH during active video region
     input  wire [11:0] pixel_count,  // 0 .. PIXELS_PER_LINE-1
 
-    // Pattern select: 0=gray, 1=ramp, 2=bars
-    input  wire [1:0]  pattern_sel,
+    // Pattern select: 0=gray, 1=ramp, 2=bars (luma only).
+    // Values 3-7 currently fall through to gray (reserved for chroma patterns).
+    input  wire [2:0]  pattern_sel,
 
     // 10-bit DAC code
     output reg  [9:0]  dac
@@ -88,9 +89,9 @@ module sample_gen #(
     reg [9:0] pattern_value;
     always @(*) begin
         case (pattern_sel)
-            2'd0: pattern_value = CODE_GRAY_50;
-            2'd1: pattern_value = ramp_value;
-            2'd2: pattern_value = bars_value;
+            3'd0:    pattern_value = CODE_GRAY_50;
+            3'd1:    pattern_value = ramp_value;
+            3'd2:    pattern_value = bars_value;
             default: pattern_value = CODE_GRAY_50;
         endcase
     end
