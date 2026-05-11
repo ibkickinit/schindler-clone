@@ -123,8 +123,8 @@ Per `01-spec.md` Power & safety section.
 - **Fuse:** 2 A T (time-lag), 5×20 mm cartridge — generic — ~$1 — 📋
 
 ### PSU Module
-- **Module (primary):** TDK-Lambda **HWS50A-12/A** — 50 W / 12 V single output, 85–264 VAC universal, enclosed metal case, UL 62368-1, EN 55032 Class B — ~$50 — 📋 (Mean Well alternate on order)
-- **Module (alternate):** Mean Well **LRS-50-12** — drop-in alternate, 50 W / 12 V — ~$15–20 — ✅
+- **Module (primary):** Mean Well **LRS-50-12** — 50 W / 12 V single output, 85–264 VAC universal, enclosed aluminum case, convection-cooled, UL 62368-1, EN 55032 Class B — ~$15–20 — ✅
+- **Module (alternate / lower-noise swap-in):** TDK-Lambda **HWS50A-12/A** — same form factor, lower switching noise for pro-audio-adjacent applications if bench characterization shows the Mean Well noise floor as audible — ~$50 — 📋
 - **PSU → Carrier connector:** Molex **Mini-Fit Jr.** 2-pin locking, 9 A rated — ~$0.80 — ❓ production part
 
 ### Carrier 12 V Input Protection Chain
@@ -151,7 +151,7 @@ Selected at carrier-schematic time. Placeholders:
 |---|---:|
 | FN9260B-6-06 ×1 | $18 |
 | Fuse | $1 |
-| PSU module (HWS50A or LRS-50) | $20–50 |
+| PSU module (LRS-50-12 primary / HWS50A-12/A alternate) | $15–50 |
 | Carrier protection chain | ~$6 |
 | Per-rail regulators (est.) | ~$15 |
 | **Power subsystem total** | **~$60–90** |

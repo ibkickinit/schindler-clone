@@ -25,46 +25,48 @@ flowchart TB
     classDef term fill:#d9efe6,stroke:#2d7e64,color:#000
     classDef out fill:#ffe2e2,stroke:#a54040,color:#000
 
-    subgraph IN[Inputs - rear panel]
-        HDMI_IN[HDMI IN]:::in
-        SDI_IN[SDI IN BNC]:::in
-        CVBS_IN[Composite IN]:::in
-        YPBPR_IN[Component IN, YPbPr]:::in
+    subgraph IN[Inputs - rear panel connectors]
+        HDMI_IN[HDMI IN<br/>Type A panel-mount]:::in
+        SDI_IN[SDI IN BNC<br/>75 ohm]:::in
+        CVBS_IN[Composite IN BNC<br/>75 ohm]:::in
+        YPBPR_IN[Component IN BNCs<br/>3x 75 ohm YPbPr]:::in
     end
 
-    subgraph DECODE[Front-end decoders]
-        TPD_IN[TPD12S016 ESD]:::decode
-        LT8619C[LT8619C HDMI RX<br/>parallel RGB to FPGA]:::decode
-        GS3470[GS3470 SDI RX<br/>recovers SDI clock + VITC<br/>broadcast tier only]:::sdi
-        ADV7280[ADV7280 analog decoder<br/>SD inputs to BT.656 YCbCr 4:2:2]:::decode
+    subgraph DECODE[Front-end decoder chips]
+        TPD_IN[ESD plus level shift<br/>TI TPD12S016PWR]:::decode
+        LT8619C[HDMI 1.4 RX<br/>parallel RGB to FPGA<br/>Lontium LT8619C]:::decode
+        GS3470[SDI RX<br/>recovers clock + VITC<br/>Semtech GS3470<br/>broadcast tier only]:::sdi
+        ADV7280[Analog video decoder<br/>SD to BT.656 YCbCr 4:2:2<br/>ADI ADV7280AWBCPZ-M-RL]:::decode
     end
 
-    subgraph PIPE[Zynq-7020 HD pipeline - RGB or YCbCr 4:2:2, up to 1080p60]
-        SOURCE_MUX{{Source selector<br/>HDMI / SDI / Composite / Component / TPG}}:::pipe
-        VDMA[AXI VDMA<br/>DDR3 HD frame buffer]:::pipe
-        SCALE[Polyphase scaler<br/>8-tap H / 4-tap V<br/>HD-to-SD downscale or pass-through]:::pipe
-        COLOR[Color pipeline<br/>1D LUT then 3x3 matrix then trim]:::pipe
-        GEOM[Geometry warp<br/>pincushion / keystone / 4-corner]:::pipe
-        TPG[Test pattern generator<br/>SMPTE bars / PLUGE / grid / ramps<br/>sample_gen.v]:::pipe
-        HD_BUS([HD signal bus<br/>processed video, master rate]):::pipe
+    subgraph FPGA[Zynq-7020 FPGA fabric on Trenz TE0720 SOM]
+        subgraph PIPE[HD pipeline - RGB or YCbCr 4:2:2, up to 1080p60]
+            SOURCE_MUX{{Source selector<br/>HDMI / SDI / Composite / Component / TPG}}:::pipe
+            VDMA[AXI VDMA<br/>DDR3L HD frame buffer<br/>Xilinx IP]:::pipe
+            SCALE[Polyphase scaler<br/>8-tap H / 4-tap V<br/>HD-to-SD or pass-through<br/>custom HDL]:::pipe
+            COLOR[Color pipeline<br/>1D LUT then 3x3 matrix then trim<br/>custom HDL - Screenie port]:::pipe
+            GEOM[Geometry warp<br/>pincushion / keystone / 4-corner<br/>custom HDL]:::pipe
+            TPG[Test pattern generator<br/>SMPTE bars / PLUGE / grid / ramps<br/>hdl/sample_gen.v]:::pipe
+            HD_BUS([HD signal bus<br/>processed video at master rate]):::pipe
+        end
+
+        subgraph TERM[Output terminal encoders - independent, concurrent]
+            HDMI_TERM[HDMI passthrough terminal<br/>format match + rate convert<br/>HDCP gate via UI consent<br/>HDMI 1.4 TX TMDS serialize<br/>Xilinx free HDMI IP]:::term
+            COMP_TERM[NTSC/PAL composite encoder<br/>HD-to-SD downconvert + cadence<br/>luma + chroma + sync<br/>hdl/vid_timing.v + vbi_gen.v +<br/>chroma_gen.v]:::term
+            YPBPR_TERM[Component YPbPr encoder<br/>HD pass-through or SD downconvert<br/>custom HDL]:::term
+            SDI_TERM[SDI TX terminal<br/>parallel HD video + clock<br/>to GS2962<br/>custom HDL]:::term
+        end
     end
 
-    subgraph TERM[Output terminal encoders - independent and concurrent]
-        HDMI_TERM[HDMI passthrough terminal<br/>format match or rate convert<br/>HDCP gate via UI consent]:::term
-        COMP_TERM[NTSC/PAL composite encoder<br/>HD-to-SD downconvert + cadence convert<br/>luma + chroma encode + sync<br/>vid_timing.v + vbi_gen.v + chroma_gen.v]:::term
-        YPBPR_TERM[Component YPbPr encoder<br/>HD pass-through or SD downconvert]:::term
-        SDI_TERM[SDI TX terminal<br/>HD re-serialize<br/>broadcast tier]:::term
-    end
-
-    subgraph OUT[Outputs - rear panel]
-        ADV7393[ADV7393 DAC<br/>composite / S-Video OR component<br/>I2C runtime mode select]:::out
-        GS2962[GS2962 SDI TX<br/>3G-SDI<br/>broadcast tier only]:::sdi
-        HDMI_TX[HDMI 1.4 TX<br/>FPGA-internal, no chip]:::out
-        TPD_OUT[TPD12S016 ESD]:::out
-        CVBS_OUT[Composite OUT BNC]:::out
-        YPBPR_OUT[Component OUT BNCs]:::out
-        SDI_OUT[SDI OUT BNC]:::out
-        HDMI_OUT[HDMI OUT]:::out
+    subgraph OUT[Output chips + rear panel connectors]
+        ADV7393[Output DAC<br/>composite/S-Video OR component<br/>I2C runtime mode select<br/>ADI ADV7393BCPZ-REEL]:::out
+        OPAMPS[Output buffer op-amps<br/>OPA2350 SDTV + LMH6643 HD<br/>TI]:::out
+        GS2962[SDI TX serializer<br/>3G-SDI<br/>Semtech GS2962<br/>broadcast tier only]:::sdi
+        TPD_OUT[ESD plus level shift<br/>TI TPD12S016PWR]:::out
+        CVBS_OUT[Composite OUT BNC<br/>75 ohm]:::out
+        YPBPR_OUT[Component OUT BNCs<br/>3x 75 ohm YPbPr]:::out
+        SDI_OUT[SDI OUT BNC<br/>75 ohm]:::out
+        HDMI_OUT[HDMI OUT<br/>Type A panel-mount]:::out
     end
 
     HDMI_IN --> TPD_IN --> LT8619C --> SOURCE_MUX
@@ -80,11 +82,12 @@ flowchart TB
     HD_BUS --> YPBPR_TERM
     HD_BUS --> SDI_TERM
 
-    HDMI_TERM --> HDMI_TX --> TPD_OUT --> HDMI_OUT
+    HDMI_TERM --> TPD_OUT --> HDMI_OUT
     COMP_TERM --> ADV7393
     YPBPR_TERM --> ADV7393
-    ADV7393 --> CVBS_OUT
-    ADV7393 --> YPBPR_OUT
+    ADV7393 --> OPAMPS
+    OPAMPS --> CVBS_OUT
+    OPAMPS --> YPBPR_OUT
     SDI_TERM --> GS2962 --> SDI_OUT
 ```
 
@@ -114,24 +117,23 @@ flowchart TB
     classDef sdi fill:#ffeed9,stroke:#a56234,color:#000
     classDef out fill:#ffd9c9,stroke:#a55a2c,color:#000
 
-    subgraph REFIN[Reference inputs - rear panel]
-        REF_IN[REF IN BNC<br/>autosense - LTC / BB / tri-level]:::in
-        REF_LOOP[REF LOOP BNC<br/>passive loop-through]:::in
-        SDI_VID_X[SDI VIDEO IN<br/>cross-ref from diagram 1<br/>broadcast tier only]:::sdi
+    subgraph REFIN[Reference inputs]
+        REF_IN[REF IN BNC<br/>autosense - LTC / BB / tri-level<br/>75 ohm panel-mount]:::in
+        REF_LOOP[REF LOOP BNC<br/>passive loop-through<br/>75 ohm panel-mount]:::in
+        GS3470_REF[GS3470 SDI recovered clock + VITC<br/>same chip as diagram 1<br/>Semtech GS3470<br/>broadcast tier only]:::sdi
     end
 
     subgraph FE[Analog front-end - autosense path]
         CLAMP[Input conditioning<br/>clamp diodes + 75 ohm term +<br/>AC-coupled buffer +<br/>switchable analog LPF]:::analog
-        PGA[LTC6912 PGA<br/>2-channel programmable gain<br/>AGC loop driven by classifier]:::analog
-        ADC[AD9204-20<br/>dual 10-bit 20 MSPS ADC]:::analog
+        PGA[2-channel PGA<br/>AGC loop driven by classifier<br/>ADI/LTC LTC6912CGN-2#PBF]:::analog
+        ADC[Dual 10-bit 20 MSPS ADC<br/>ADI AD9204BCPZ-20]:::analog
     end
 
-    subgraph CLASSIFY[Reference recovery - FPGA fabric]
-        AUTOSENSE[Autosense classifier<br/>LTC biphase mark +<br/>BB 15.734 kHz line rate +<br/>tri-level pulse signature]:::digital
-        LTC_DEC[LTC frame decoder<br/>biphase demod + 0xBFFC sync<br/>+ frame edge + TC parser]:::digital
-        BB_DEC[BB sync separator<br/>line + field + colorburst<br/>phase extract]:::digital
-        TRI_DEC[Tri-level decoder<br/>HD sync edge extractor]:::digital
-        SDI_DEC[SDI recovered clock + VITC<br/>derived from GS3470<br/>not a separate ref input]:::sdi
+    subgraph CLASSIFY[Reference recovery - FPGA fabric on TE0720 SOM]
+        AUTOSENSE[Autosense classifier<br/>LTC biphase mark +<br/>BB 15.734 kHz line rate +<br/>tri-level pulse signature<br/>custom HDL]:::digital
+        LTC_DEC[LTC frame decoder<br/>biphase demod + 0xBFFC sync<br/>+ frame edge + TC parser<br/>custom HDL]:::digital
+        BB_DEC[BB sync separator<br/>line + field + colorburst<br/>phase extract<br/>custom HDL]:::digital
+        TRI_DEC[Tri-level decoder<br/>HD sync edge extractor<br/>custom HDL]:::digital
     end
 
     REF_MUX{{Reference selector mux<br/>operator override OR autosense priority<br/>LTC -> tri-level -> BB -> SDI -> free-run}}:::digital
@@ -172,13 +174,12 @@ flowchart TB
     AUTOSENSE --> LTC_DEC
     AUTOSENSE --> BB_DEC
     AUTOSENSE --> TRI_DEC
-    SDI_VID_X --> SDI_DEC
 
     %% Reference selection
     LTC_DEC --> REF_MUX
     BB_DEC --> REF_MUX
     TRI_DEC --> REF_MUX
-    SDI_DEC --> REF_MUX
+    GS3470_REF --> REF_MUX
 
     %% Closed PLL loop
     REF_MUX --> PHASE_DET
@@ -205,20 +206,18 @@ flowchart TB
     DRV --> OUT1
     DRV --> OUT2
 
-    style SDI_VID_X stroke-dasharray: 5 5
-    style SDI_DEC stroke-dasharray: 5 5
 ```
 
 **Notes**
 
 - **The genlock loop is fully digital** — FPGA fabric implements the phase/frequency detector, loop filter, NCO/integrator, and lock detector. Si5351 is the only physical clock generator; the integrator's accumulated correction is pushed to Si5351 via RP2040 over I²C as slow-control updates.
-- **No dedicated "SDI ref" input.** SDI reference is derived from the SDI VIDEO IN via GS3470's recovered clock + VITC extraction, on broadcast-tier units only. This unifies the SDI path: one input connector serves video data + reference. The earlier scoping treating SDI as its own ref-input channel is obsolete. SDI-related elements in the diagram are dashed to indicate broadcast-tier conditional population.
+- **No dedicated "SDI ref" input.** SDI reference is derived from the SDI VIDEO IN via GS3470's recovered clock + VITC extraction, on broadcast-tier units only. This unifies the SDI path: one input connector serves video data + reference. The earlier scoping treating SDI as its own ref-input channel is obsolete. The GS3470 block appears in both diagrams 1 and 2 — same chip, two roles — colored orange in both to indicate it's the broadcast-tier-only SDI silicon.
 - **Autosense classifier** runs continuously on the 20 MSPS ADC stream; identifies signal type by characteristic signature (LTC biphase pattern, BB 15.734 kHz line rate + 3.58 MHz burst, tri-level pulse pattern) and routes the corresponding decoder output into the reference selector mux.
 - **Per-format decoders** sit between the classifier and the mux:
   - `LTC_DEC` — biphase mark demod, sync word 0xBFFC detection, frame edge extraction, timecode parser
   - `BB_DEC` — sync separator (H/V/colorburst), line/field extraction
   - `TRI_DEC` — HD sync edge extractor for tri-level
-  - `SDI_DEC` — recovered clock + VITC from GS3470 (broadcast tier only, dashed)
+  - `GS3470_REF` — recovered clock + VITC from GS3470 (broadcast tier only, orange); shown in REFIN as a separate "input" since conceptually it's a reference source even though physically it's the same chip handling SDI video data in diagram 1.
 - **Reference selector mux** is operator-controlled via Zynq PS (front panel or web UI) with an autosense-priority fallback (LTC > tri-level > BB > SDI > free-run). Operator can pin a specific source or let autosense pick.
 - **Loop filter bandwidth default 0.5 Hz** — slow enough to ignore reference jitter, fast enough to track drift (playbook Ch. 8). Configurable via UI for tighter tracking when needed.
 - **NCO holds last value on reference loss** — produces free-run / hold behavior so the output stays clean while the operator reconnects or switches sources. Lock detector reports "Lost" state; UI flags the missing reference.

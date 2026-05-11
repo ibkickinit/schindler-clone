@@ -15,7 +15,7 @@ This is the SSOT for the current spec. Items marked **[PROPOSED]** are awaiting 
 - **Carrier:** custom 6-8 layer PCB, accepts TE0720 SOM, hosts all input/output, control, and power circuitry
 - **Genlock subsystem:** RP2040 + Si5351 generates pixel clock from selected reference; FPGA locks output timing to it. **RP2040 confirmed in V1** — owns sync slow-control (autosense decision, PGA gain commands, Si5351 register writes, status reporting); FPGA does high-rate signal classification of the 20 MSPS ADC stream.
 - **UI MCU:** STM32H735IGT6 (LQFP176, 480 MHz Cortex-M7) on carrier — owns front panel (TFT, encoders, buttons, LEDs); communicates with Zynq PS over UART or SPI
-- **Output DAC:** Analog Devices ADV7393 — triple 11-bit DAC with composite/S-Video/Component encoding, I²C-configured
+- **Output DAC:** Analog Devices ADV7393 — triple 11-bit DAC with composite / S-Video / component encoding, I²C-configured. S-Video output is silicon-capable but no dedicated rear-panel connector in V1 (mini-DIN dropped in 2026-05-11 connector simplification).
 - **Input video decoder:** ADV7280-class multi-format decoder for composite/component analog inputs
 
 ### Development hardware
@@ -27,7 +27,7 @@ This is the SSOT for the current spec. Items marked **[PROPOSED]** are awaiting 
 - Oscilloscope — signal analysis
 
 ### Resolution ceiling
-- v1: 1080p60 max input. HDMI 1.4 input handled in Z-7020 IOLOGIC TMDS deserialization; DisplayPort handled via DP-to-HDMI level-shifter chip on carrier (Z-7020 has no MGTs).
+- v1: 1080p60 max input. HDMI 1.4 input handled by **Lontium LT8619C** HDMI RX, which produces parallel RGB into the FPGA (Z-7020 has no MGTs so no direct TMDS deserialize). DisplayPort IN dropped from V1 in the 2026-05-11 connector simplification — not in spec.
 - 4K input deferred to v2 — would require SOM upgrade (Z-7030 with GTPs) or external 4K receiver chip feeding Zynq at 1080p.
 
 ### Power & safety (confirmed 2026-05-11)
@@ -39,8 +39,8 @@ This is the SSOT for the current spec. Items marked **[PROPOSED]** are awaiting 
 - **IEC inlet:** Schaffner **FN9260B-6-06** — C14 connector + 6 A rating + integrated fuse holder + 1-stage EMI filter, panel-mount. ~$18 BOM.
 - **Mains fuse:** 2 A T (time-lag), 5×20 mm cartridge in the FN9260B fuse holder. Sized for 120 VAC worst-case operation (Schindler is universal-input but spec'd for low-line because RMS current and inrush are both higher there). At 120 VAC: 7–10× steady-state headroom (steady state ≈ 0.21 A RMS), comfortably absorbs ~25 A / 5 ms cold-start inrush of the PSU module's bulk-cap charge.
 - **No rocker switch.** IEC cord = service disconnect; front-panel soft power button handles daily on/off. Matches modern broadcast convention.
-- **PSU module — primary:** TDK-Lambda **HWS50A-12/A** — 50 W / 12 V single output, 85–264 VAC universal input, enclosed metal case, screw-terminal AC input, UL 62368-1 listed, EN 55032 Class B emissions. ~$50 BOM. DigiKey-stocked.
-- **PSU module — alternate (drop-in):** Mean Well **LRS-50-12** — same 50 W / 12 V / enclosed / universal-input form factor, ~$15–20 BOM. Industrial-grade (not medical). Higher availability across distributors. Lower cost; slightly higher switching noise but still well within EN 55032 Class B with proper chassis layout.
+- **PSU module — primary:** Mean Well **LRS-50-12** — 50 W / 12 V single output, 85–264 VAC universal input, enclosed aluminum case, convection-cooled (no fan), screw-terminal AC input, UL 62368-1 listed, EN 55032 Class B emissions. ~$15–20 BOM. Industrial-grade workhorse with very wide distributor availability (DigiKey / Mouser / TRC / Jameco / Bravo Electro / Amazon). Lower cost; slightly higher switching noise than the TDK-Lambda alternate but still well within EN 55032 Class B with proper chassis layout.
+- **PSU module — alternate (drop-in):** TDK-Lambda **HWS50A-12/A** — same 50 W / 12 V / enclosed / universal-input form factor, ~$50 BOM. Lower noise (preferred for pro-audio-adjacent applications), tighter availability concentrated at DigiKey. Reserved as the swap-in if Mean Well noise levels show up as audible artifact during bench characterization.
 - **Mains wiring inside chassis:** UL 1015 stranded, 18–20 AWG, three-conductor (live + neutral + earth), short captive run from FN9260B output terminals to PSU module input terminals.
 - **Earth bonding:** chassis ground stud as the single bond point. IEC earth pin → stud, PSU module earth → stud, chassis enclosure bonded → stud. Carrier digital ground tied to chassis earth at one point only (single-point earth — prevents ground loops through the analog signal chain).
 
@@ -51,7 +51,7 @@ This is the SSOT for the current spec. Items marked **[PROPOSED]** are awaiting 
 | Reverse-polarity FET | Diodes Inc **DMP3098L-7** | P-channel, −30 V, −6.7 A, R<sub>DS(on)</sub> 31 mΩ, SO-8 | Source to PSU 12 V, drain to downstream, gate to GND via 100 kΩ. ~60 mV continuous drop at 2 A. Continuous loss ≈ 0.12 W. |
 | Polyfuse (self-resetting) | Bourns **MF-MSMF200-2** | I<sub>hold</sub> 2 A, I<sub>trip</sub> 4 A, 16 V, SMD | Self-resetting — transient fault doesn't require service trip. |
 | TVS clamp | Littelfuse **SMBJ12A** | Unidirectional, V<sub>WM</sub> 12 V, V<sub>BR</sub> 13.3 V, V<sub>C</sub> 19.9 V peak, 600 W, SMB | Unidirectional because the FET catches reverse. Sustained over-voltage → TVS conducts → polyfuse trips → graceful fault isolation. |
-| Current/voltage monitor | TI **INA226** + 5 mΩ shunt | I²C 16-bit power monitor on 12 V rail | Reports actual current draw + rail voltage to Zynq PS. Telemetered to rear LCD + web UI. Doubles as a "PSU healthy" check (HWS50A-12/A has no DC-OK signal). |
+| Current/voltage monitor | TI **INA226** + 5 mΩ shunt | I²C 16-bit power monitor on 12 V rail | Reports actual current draw + rail voltage to Zynq PS. Telemetered to rear LCD + web UI. Doubles as a "PSU healthy" check (LRS-50-12 and HWS50A-12/A both lack a DC-OK signal pin). |
 | Bulk input cap | 3× Murata **GRM32** 22 µF 25 V X7R MLCC in parallel | ~66 µF total bulk | MLCC over electrolytic for service life. Pro broadcast gear should outlast 10+ years; electrolytics dry out. |
 | PSU → carrier connector | Molex **Mini-Fit Jr.** 2-pin, locking | 12 V + GND, 9 A rating with derating | Locking mate prevents transit shake-out. |
 
@@ -70,8 +70,7 @@ This is the SSOT for the current spec. Items marked **[PROPOSED]** are awaiting 
 ## V1 base unit — In scope
 
 ### Inputs
-- HDMI in (TI TMDS141 retimer → FPGA AXI VDMA)
-- DisplayPort in (via DP-to-HDMI level shifter on carrier)
+- HDMI in (Lontium LT8619C HDMI 1.4 RX → parallel RGB → FPGA → AXI VDMA)
 - Composite in (1 BNC)
 - Component in (3 BNCs, YPbPr)
 - ADV7280-class decoder feeds analog inputs to FPGA via ITU-R BT.656 8-bit YCbCr 4:2:2 over parallel bus → existing VDMA path
@@ -91,7 +90,7 @@ This is the SSOT for the current spec. Items marked **[PROPOSED]** are awaiting 
 - **One ADV7393 chip serves both analog output modes via runtime selection** (I²C-switched, mutually exclusive): composite/S-Video mode (DAC_A=CVBS, DAC_B=Y, DAC_C=C) OR component mode (DAC_A=Y, DAC_B=Pb, DAC_C=Pr). Operator chooses analog output mode in the UI; the unused output BNC/mini-DIN goes to 0 V / blanking (analog mux or buffer-disable on carrier handles physical routing). Composite and component are never both live on the analog BNCs; confirmed 2026-05-10 PM 7th update.
 - **Composite out** (1 BNC) — NTSC, NTSC-J, PAL, PAL-M. Driven by composite encoder terminal.
 - **Component out** (3 BNCs, YPbPr) — HD or SD rate selectable. Driven by component encoder terminal.
-- **S-Video out** (1 mini-DIN 4-pin) — generated free from ADV7393 in composite mode; mini-DIN connector dropped from V1 panel per 2026-05-11 connector simplification but the silicon path remains.
+- **S-Video out** (silicon-capable, no V1 rear-panel connector) — generated free from ADV7393 in composite mode (Y on one DAC channel, C on another). Mini-DIN connector dropped from V1 panel in 2026-05-11 simplification. The silicon path is preserved so a future panel revision can add the connector without carrier changes.
 - **HDMI out** (1 connector) — **full-quality HD passthrough**, up to 1080p60, driven by HDMI passthrough terminal. Not a degraded monitoring view. Same source video as the other outputs, independently rate/format-configured per the operator's choice (e.g. HDMI passthrough at source rate, while composite OUT does cadence conversion to 24 p NTSC for CRT-driving).
 - **SDI out** (1 BNC, broadcast tier only) — processed HD re-serialize via GS2962. Not a passive loop-through.
 
@@ -149,6 +148,7 @@ This is the SSOT for the current spec. Items marked **[PROPOSED]** are awaiting 
 
 ### CRT-specific signal controls
 - Sync structure parameters — front porch, back porch, equalizing pulse count, serration pulse width. Per-profile.
+  - **Wide-back-porch default for 24p camera shoots** (2026-05-11 — wisdom from a 24-frame production veteran): back porch should default broader than SMPTE 170M nominal (~4.7 µs) when the output is going to a CRT being filmed at 24p. A wider back porch gives the camera shutter a larger target window to land its capture inside the active video region without straddling the V-blank — which is what produces the visible "sync bar" stripe on filmed CRT footage. Default recommendation: 1.5–2× nominal (≈7–10 µs) for the "24p camera shoot" profile. Tunable per-CRT-profile so DPs can adjust to their shutter angle.
 - Alternating 90° colorburst phase offset between fields. Toggle. (Playbook Ch. 5)
 - Subcarrier coherent vs non-coherent toggle. (Playbook Ch. 4)
 - Sync tip voltage trim — saves service calls on oddball AGCs. (Playbook Ch. 3 — the Zenith)
@@ -186,16 +186,6 @@ This is the SSOT for the current spec. Items marked **[PROPOSED]** are awaiting 
 - Dual external antennas: 2× RP-SMA stubs on rear panel
 - BLE for initial pairing/setup: companion app discovers Schindler boxes via BLE, sends WiFi credentials over encrypted GATT characteristic
 - USB on rear panel for service / firmware update / debug
-
-### Front panel
-- Power button (lower-left)
-- Status LED column: genlock lock, signal present per input, network link, fault — multi-color, visible at a glance from across the rack
-- Center: 2.8" or 3.5" color TFT (ILI9341 SPI for prototyping, LTDC parallel for production polish) — driven by dedicated UI MCU, shows menu and parameter context
-- Two rotary encoders: **ALPS EC11E18244AU** — 11mm metal D-shaft (6 mm × 20 mm), 36 detents / 18 PPR (half-step quadrature; firmware decoder counts edges, not full cycles), integrated push switch, sealed, -40 to +85°C industrial range, 15k-cycle rotational life. ~$2-3.50 in singles at DigiKey / Mouser / LCSC. Navigation (CW/CCW + push to select), value adjustment (CW/CCW + push to confirm). Software acceleration on long scrolls advised given fine 36-detent click pitch (~10° per click).
-- Four hardware-fixed buttons: Home, Back, Menu, Confirm
-- 2-3 quick-select buttons for common functions (Output Mode toggle, EDID profile, Genlock source)
-- **HARD REQUIREMENT: Physical knob guard / shroud preventing lateral torque on encoder shafts during transit and rack handling.** Recessed encoder pocket, side rail bars, or equivalent. Must survive being dropped face-down in a road case.
-- Front-panel preset recall
 
 ### Rear panel — status display
 - **Read-only status LCD on rear panel (confirmed 2026-05-11).** 2.4" 16:9 IPS TFT, ~50 × 30 mm bezel-to-bezel, mounted in a recessed bezel cutout for ESD/dust protection. Driver: SPI ILI9341 or ST7789 class. Owned by Zynq PS over a dedicated SPI port (does not load the UI MCU). ~1 s refresh.
@@ -263,34 +253,25 @@ This is the SSOT for the current spec. Items marked **[PROPOSED]** are awaiting 
 
 ---
 
-## V1.5 / proposed sync conversion expansion [PROPOSED]
+## Sync conversion capability (V1 — absorbed)
 
-**Status:** [PROPOSED] 2026-05-10 PM 7th update. Idea raised this session; architectural feasibility confirmed but not committed to V1. Recommended path: design V1 to preserve the option, build the feature as V1.5 / sibling product after V1 ships.
+**Status:** banked in V1 as of 2026-05-11. Originally scoped as a V1.5 follow-on; absorbed into V1 via the dual SYNC OUT BNCs (SYNC OUT 1 + SYNC OUT 2 on the output side of the sync zone) and per-output independent format / rate selection in the FPGA.
 
-**Capability:** Cross-rate sync conversion with timecode translation. Accept genlock + LTC IN at one frame rate (e.g., 29.97), output genlock reference + LTC OUT at a different frame rate (e.g., 24.000), with output domain phase-locked to input via the appropriate rational ratio and timecode math preserved across the boundary (drop-frame rules, jam-sync behavior).
+**What it does.** Cross-rate sync conversion with timecode translation. Accepts an incoming reference (LTC / BB / tri-level / SDI VITC) at one frame rate, generates reference signals at independent rates and formats on each of the two SYNC OUTs. Output domains are phase-locked to the input via rational ratios; timecode math (drop-frame, jam-sync) is preserved across the boundary. Example: 29.97 LTC IN → SYNC OUT 1 = 24.000 black burst + LTC, SYNC OUT 2 = 25.000 tri-level + LTC, both live simultaneously.
 
-**Why it matters:** Mixed-rate productions currently need a separate broadcast-grade sync converter (Evertz 5600, AJA OG-Frame, BMD Sync Generator family) alongside the CRT prop driver. Adding this in-box turns Schindler from "a CRT prop driver" into "a broadcast-grade rate-domain bridge that happens to drive period CRTs" — a meaningfully bigger market.
+**Why it matters.** Mixed-rate productions otherwise need a separate broadcast-grade sync converter (Evertz 5600, AJA OG-Frame, BMD Sync Generator family) alongside the CRT prop driver. With this in-box, Schindler is a broadcast-grade rate-domain bridge that happens to drive period CRTs.
 
-**Hardware additions** (relative to V1 carrier):
-- 1× LTC OUT, balanced XLR (600 Ω drive) — op-amp driver + connector
-- 1× reference OUT, BNC (tri-level or black burst, runtime-selectable) — reuses one ADV7393 DAC channel (potentially a second ADV7393 needed if all three DACs are already committed to video output)
-- Optionally 1× LTC OUT, unbalanced BNC, for redundancy
+**Hardware (already in V1 — see Reference outputs section):**
+- 2× BNC SYNC OUT (SYNC OUT 1 + SYNC OUT 2). Each driven by its own FPGA phase accumulator + waveform gen + 12-bit DAC + 75 Ω cable driver, format-selectable across BB / tri-level / LTC. Driver chain hardware-ready for DARS / Word Clock as firmware-only future addition.
 
-**FPGA additions:**
-- LTC decoder (bit-sync + biphase decode + frame assembler) — likely partially in RP2040 PIO and partially in FPGA fabric
-- LTC encoder (frame builder + biphase modulator + XLR drive waveform shaping)
-- Timecode math module (rational rate converter, drop-frame logic, jam-sync behavior on input loss)
-- Output-domain phase accumulator, locked to input PLL via Si5351
-- Tri-level / black burst sample generator at output rate (parameterized variant of `vid_timing.v` + `vbi_gen.v`)
+**HDL building blocks (to be authored as V1 development progresses):**
+- LTC decoder (bit-sync + biphase decode + frame assembler) — `LTC_DEC` in signal-flow diagram 2. Already required for genlock; doubles as timecode source for the conversion math.
+- LTC encoder (frame builder + biphase modulator + DAC waveform shaping) — sits in the per-OUT waveform gen blocks when an output is LTC-format.
+- Timecode math module (rational rate converter, drop-frame logic, jam-sync behavior on input loss) — feeds the per-OUT LTC encoder.
+- Per-OUT phase accumulators locked to the master clock via rational ratios — `ACC` block in diagram 2.
+- Tri-level / black burst sample generator at output rate (parameterized variant of `vid_timing.v` + `vbi_gen.v`) — sits in the per-OUT waveform gen blocks for BB / tri-level outputs.
 
-**Effort estimate:** 2–3 weeks dedicated FPGA + RP2040 work for first-light across common rate pairs (24, 25, 29.97, 30). Possibly 1–2 months for all corner cases (full drop-frame jam-sync correctness, freewheel behavior on input loss, all input×output rate combinations).
-
-**Architectural design hooks to preserve in V1** (so V1.5 retrofit is small):
-- Clock-domain separation discipline in HDL (input ref clock and output pixel clock as separate domains, with proper CDC primitives) — already natural given the genlock design
-- Reserve unused Si5351 output ports for future reference OUT generation
-- Provision rear-panel layout for future XLR + BNC outputs (could be a faceplate-only change in V1.5)
-
-**Decision pending:** committed to V1 (extends schedule ·1 month, adds 2–3 rear connectors to already-tight 1RU panel) vs V1.5 / sibling (V1 ships on schedule, feature lands as a follow-up product or upgrade).
+**Effort estimate:** 2–3 weeks dedicated FPGA + RP2040 work for first-light across common rate pairs (24, 25, 29.97, 30). Possibly 1–2 months for all corner cases (full drop-frame jam-sync correctness, freewheel behavior on input loss, all input × output rate combinations).
 
 ---
 
@@ -298,7 +279,7 @@ This is the SSOT for the current spec. Items marked **[PROPOSED]** are awaiting 
 
 - **4K video support** — DEFERRED to a separate future product (Schindler 4K / Schindler 3.0). Significant architecture change touching most subsystems, so V1 ships HD-only without 4K-readiness headroom. Summary of what 4K would require:
   - **SoC upgrade:** Zynq-7020 → Zynq UltraScale+ (ZU3EG/ZU4EV/ZU5EV class) via TE0820/TE0822 SoM (~pin-compatible carrier upgrade, but signal integrity must be designed for higher rates). SoM cost $230 → $480–750.
-  - **HDMI:** TMDS141 (HDMI 1.4-class) → TMDS181 or direct GTH transceivers for HDMI 2.0/2.1. HDCP 2.2/2.3 licensing required ($15K/yr DCP fee).
+  - **HDMI:** LT8619C (HDMI 1.4-class, V1 baseline) → HDMI 2.0/2.1 receiver chip or direct GTH transceivers on UltraScale+. HDCP 2.2/2.3 licensing required ($15K/yr DCP fee).
   - **SDI:** GS3470/GS2962 (3G-SDI) → GS12281/GS12141 (12G-SDI), +$30–50 per unit.
   - **Memory:** Zynq UltraScale+ DDR4 (25–50 GB/s) needed for 4K60 frame buffer (~4–8 GB/s). Zynq-7020 DDR3 (12.8 GB/s) marginal for 4K30.
   - **Color pipeline DSP scaling:** linear with pixel rate — 4× for 4K30, 8× for 4K60 vs 1080p30. UltraScale+ has 360–1248 DSPs vs Zynq-7020's 220.
@@ -306,8 +287,8 @@ This is the SSOT for the current spec. Items marked **[PROPOSED]** are awaiting 
   - **PCB:** 6–8 layer → 8–10 layer with low-loss dielectric (Megtron 6, I-Tera MT). 12G-SDI BNCs need 75Ω high-grade parts. PCB cost +$50–80 per unit.
   - **Schedule:** +6–10 months dev time (HDL for 4K HDMI + 12G-SDI: 2–4 mo; color pipeline optimization: 1–2 mo; bench validation with 12G scopes: 1 mo; HDCP cert: 3 mo).
   - **BOM impact:** +$410–475 per unit at qty 100 across all variants.
-  - **What does NOT change:** analog video pipeline (composite/component/S-Video are SD/HD-only), genlock / LTC / sync conversion front-end, UI MCU, WiFi, chassis dimensions, power topology, sync conversion (V1.5 feature). CRT-driving use case is unaffected by 4K — CRTs cap at 1080i.
-  - **Decision rationale:** Schindler Pro's core use case (CRT driving) never needs 4K. 4K matters mostly for Mini/HDMI variant, which is already deferred to higher-volume future. Building 4K-ready signal integrity headroom into V1 carrier costs +$50–80 BOM headroom that may never be populated. Cleaner to ship V1 focused on HD, validate the platform, then design Schindler 3.0 / 4K Pro as a deliberate follow-on with the right silicon selected at that point (chip landscape will have evolved by then).
+  - **What does NOT change:** analog video pipeline (composite stays SD; component stays HD-or-SD per ADV7393 capability), genlock / LTC / sync conversion front-end, dual SYNC OUT, UI MCU, rear LCD, per-connector LEDs, WiFi, chassis dimensions, power topology. CRT-driving use case is unaffected by 4K — CRTs cap at 1080i.
+  - **Decision rationale:** Schindler V1 already serves multiple use cases (CRT driving + general broadcast HD signal processor + sync conversion); 4K isn't required for any of those — CRTs cap at 1080i, broadcast routing at this tier is largely 3G-SDI, and sync conversion is rate-agnostic. 4K matters mostly for a future Mini/HDMI consumer variant. Building 4K-ready signal integrity headroom into V1 carrier costs +$50–80 BOM headroom that may never be populated. Cleaner to ship V1 focused on HD, validate the platform, then design Schindler 3.0 / 4K Pro as a deliberate follow-on with the right silicon selected at that point (chip landscape will have evolved by then).
 - Original V2/future items continue below.
 - 4K input support — superseded by the 4K analysis above
 - Pre-distortion warp for CRT geometry — different problem from content warp. Requires per-CRT measurement workflow (camera + grid + solver).
@@ -322,7 +303,7 @@ This is the SSOT for the current spec. Items marked **[PROPOSED]** are awaiting 
 |---|---|
 | NDI / SRT / RTMP input | Market wants deterministic frame-locked playback, not streaming. |
 | ST 2110 | Wrong market entirely. |
-| HDR processing | Output is composite to a CRT. |
+| HDR processing | HDMI 1.4 doesn't carry HDR metadata; CRTs and analog outputs can't display HDR; HDR pipeline DSP cost not justified for the target market. |
 | Multiviewer | Single output by design. |
 | Recording / capture | Downstream concern. |
 | Logo / lower-third / CC overlay | Out of mission. |
@@ -333,8 +314,6 @@ This is the SSOT for the current spec. Items marked **[PROPOSED]** are awaiting 
 ## Open questions / parked decisions
 
 - **S-Video input** to ADV7280 path: free in silicon (decoder supports it natively), costs one mini-DIN connector + 2 traces. Common on consumer retro source gear (VHS, S-VHS decks, Hi8). **Pending decision.**
-- **Rear-panel layout on 1RU:** total connector count from the 2026-05-11 connector list fits in full-rack 19" panel with ~179 mm of slack. Physical placement (input/output spatial grouping, sync zone, power/control cluster) **pending Justin's I/O layout discussion.**
-- **PSU style** (internal vs external brick vs internal + DC backup): see changelog 2026-05-11 10th update for trade-off analysis. **Pending Justin's call.**
 - **SDI daughter-card connector choice** (Samtec QStrip class vs alternative high-density mezzanine connectors) and BNC routing (on-daughter-card vs ribbon-back-to-carrier) — see [SDI daughter card](#sdi-daughter-card-option) for the open sub-questions.
 
 ---
