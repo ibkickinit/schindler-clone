@@ -125,3 +125,14 @@
     - HDL effort: ~2–3 weeks for MVPHD set + Tier 1 CRT effects post-first-light; blur deferred if needed.
   - **Skipped (per Justin's call):** Y/C Delay input control. Analog composite isn't the headline feature; silicon supports it for V1.x firmware add if a niche customer asks.
   - **UI menu doc restructure:** new § 8 Effects inserted; § 8-12 renumbered to § 9-13 (Profiles / Behavior / Test+Maint / System / Compliance). Cross-references updated.
+- 2026-05-11 (PM, still buffers detail) — **Still image buffer + microSD slot specifics banked.** Following the MVPHD-bank entry above, detail-pass through the still image buffer feature:
+  - **Format:** PNG, up to 1920×1080 (downscaled on the fly to active output rate).
+  - **Storage tier 1: TE0720 eMMC** (4 slots, ~25 MB of 8 GB used). Always present, fast.
+  - **Storage tier 2: front-panel microSD slot** (resolves prior `panel-layout.md` open question — now confirmed). Push-push panel-mount socket, ~$2 BOM. Dual-purpose: (a) firmware updates without rear-panel access (MVPHD-familiar workflow), (b) extended still-image library — operator loads images from card into one of the 4 active buffers.
+  - **Load time:** < 1 s cold (Zynq A9 dual-core PNG decode ~250–500 ms dominates), < 10 ms cached in DDR3 after first load.
+  - **First-boot state:** Buffer 1 pre-populated at factory with Schindler splash (logo + IP + firmware version, identifiable before any config). Buffers 2–4 ship empty.
+  - **Burn-in ghost source:** EFX § 8.4 burn-in ghost overlay sources its image from one of the 4 still buffers (no separate upload mechanism).
+  - **Static only in V1** — no animated buffer support; static-image is sufficient for the planned use cases.
+  - **Thumbnails:** front-panel TFT shows 2×2 grid (~220 × 128 px each at production 480 × 272 panel resolution); web UI shows full-quality thumbnails.
+  - **Front-panel TFT resolution decision:** production target confirmed as **480 × 272 WQVGA on 2.8" 16:9 LTDC** parallel panel (sweet spot for 1 RU panel height + thumbnail readability). Prototype path stays on 320 × 240 ILI9341 SPI.
+  - Updated `01-spec.md` Still image buffers + Front panel sections, `ui-menu.md` § 1.7, and `panel-layout.md` front-panel inventory + ASCII sketch + open-question resolution.

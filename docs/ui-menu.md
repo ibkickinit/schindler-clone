@@ -94,7 +94,7 @@ Default: `Auto`
 
 ### 1.7 Still image buffers
 
-Four FLASH-backed image buffers on the TE0720 eMMC, selectable as input source via § 1.1. Image content persists across power cycles. Used for: power-on splash, idle-state reference frame, custom brand ident, quick-recall reference for QC.
+Four image buffers on the TE0720 eMMC, selectable as input source via § 1.1. **Format:** PNG, up to 1920×1080. **Storage:** eMMC primary (4 slots, ~25 MB), with front-panel **microSD** for extended libraries and cross-unit transfer. **Load time:** < 1 s cold, < 10 ms cached. Buffer 1 ships pre-populated at factory with a Schindler splash image (logo + IP + firmware version); buffers 2–4 ship empty. Used for: power-on splash, idle-state reference frame, custom brand ident, quick-recall reference for QC, source for EFX burn-in ghost overlay (§ 8.4).
 
 **1.7.1 Buffer slot status** — `ro`, front+web
 - Per slot: `Empty` / `Loaded: <name>` / resolution + rate of stored image
@@ -102,8 +102,11 @@ Four FLASH-backed image buffers on the TE0720 eMMC, selectable as input source v
 **1.7.2 Capture output to buffer** — `action`, front+web
 - Captures current pipeline output to selected buffer (1–4). Operator-edited name (8-char default).
 
-**1.7.3 Load image into buffer** — `action`, web only
-- Upload PNG / TIFF (or similar) into selected buffer. Web only — file upload not practical on front panel.
+**1.7.3 Load image into buffer** — `action`, both
+- Upload PNG into selected buffer. Web UI: drag-and-drop. Front panel: pick a file from the inserted microSD card.
+
+**1.7.3a Load from microSD** — `action`, front+web
+- Browse images on the front-panel microSD card; pick one to load into the chosen buffer. Source for extended image libraries.
 
 **1.7.4 Save buffer image to file** — `action`, web only
 - Download the stored image as a file for archival or transfer to another Schindler.

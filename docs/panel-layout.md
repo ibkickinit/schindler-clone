@@ -77,12 +77,13 @@ Two-row BNC stacking:
 | Section | Element | Qty | Notes |
 |---|---|---|---|
 | Power | Lighted soft pushbutton | 1 | ~15 mm dia, illuminates on power |
+| **microSD slot** | Push-push panel-mount socket | 1 | **Confirmed 2026-05-11.** Front-accessible. Dual purpose: (a) firmware updates without rear-panel access, (b) extended still-image library load for the 4 still buffers. ~$2 BOM (Hirose DM3 class or similar) |
 | Status LEDs | Tricolor R/A/G LED column | ~6 | Mirrors rear per-connector LED state (genlock / signal / link / fault / IN / OUT roll-ups) |
 | Branding | Silkscreen / etched logo | — | "Schindler 2.0" or similar |
-| Display | Front TFT, 2.8" 16:9 color | 1 | LTDC parallel for production polish; ILI9341 SPI for prototype. Drives the main menu (`ui-menu.md`) |
+| Display | Front TFT, 2.8" 16:9 color | 1 | **480 × 272 WQVGA** target for production (LTDC parallel); 320 × 240 ILI9341 SPI for prototype. Drives the main menu (`ui-menu.md`) and the buffer-thumbnail 2×2 grid for still buffer management |
 | Encoders | ALPS EC11E18244AU rotary, 11 mm metal D-shaft | 2 | Encoder A (navigate), Encoder B (adjust); each with integrated push-switch and **knob shroud / guard** (HARD REQUIREMENT — must survive face-down drop in road case) |
 | Fixed buttons | Tactile illuminated | 4 | Home / Back / Menu / Confirm |
-| Quick-select buttons | Tactile illuminated, user-bindable | 2–3 | Defaults: Output Mode toggle, Profile recall, Genlock source |
+| Quick-select buttons | Tactile illuminated, user-bindable | 2–3 | **Defaults (post MVPHD review):** Q1 = `BLACK` (fade-to-black), Q2 = `MONO`, Q3 = `Proc Amp bypass`. Operator can rebind. |
 | Cooling vents | Side intake slots | — | For the Noctua NF-A4x20 fan behind |
 
 **Front panel total:** 1 power button + 6 status LEDs + 1 TFT + 2 encoders + 4 fixed + 3 quick-select buttons = clean minimal pro-broadcast aesthetic. No unlabeled buttons, no buttons that do nothing in a context.
@@ -96,19 +97,19 @@ FRONT PANEL — 1RU full-rack 19"   (432 mm × 44 mm)
 
 ┌──────────────────────────────────────────────────────────────────────────────────────────────────────────┐
 │                                                                                                          │
-│  ┌─PWR + LEDs─┐  ┌─── BRANDING ────┐  ┌──── FRONT TFT ────┐  ┌─ ENCODERS ─┐  ┌─ FIXED ──┐  ┌─ QUICK ──┐ │
-│  │  [⏻ PWR]   │  │                 │  │                   │  │            │  │          │  │          │ │
-│  │             │  │                 │  │                   │  │   ⊙    ⊙    │  │  ⌂   ⮜   │  │ Q1  Q2   │ │
-│  │  ● GENLOCK │  │   SCHINDLER 2.0 │  │   2.8" 16:9       │  │   A    B    │  │  ≡   ✓   │  │   Q3     │ │
-│  │  ● SIGNAL  │  │                 │  │   color TFT       │  │             │  │          │  │          │ │
-│  │  ● LINK    │  │                 │  │   menu + status   │  │  [shroud]  │  │          │  │          │ │
-│  │  ● ALARM   │  │                 │  │                   │  │             │  │          │  │          │ │
-│  │  ● IN      │  │                 │  │                   │  │             │  │          │  │          │ │
-│  │  ● OUT     │  │                 │  │                   │  │             │  │          │  │          │ │
-│  └────────────┘  └─────────────────┘  └───────────────────┘  └────────────┘  └──────────┘  └──────────┘ │
+│  ┌─PWR+SD+LEDs─┐  ┌── BRANDING ──┐  ┌──── FRONT TFT ────┐  ┌─ ENCODERS ─┐  ┌─ FIXED ──┐  ┌─ QUICK ──┐  │
+│  │  [⏻ PWR]    │  │              │  │                   │  │            │  │          │  │          │  │
+│  │  [▭ SD]    │  │              │  │ 2.8" 16:9 LTDC    │  │   ⊙    ⊙    │  │ ⌂   ⮜    │  │ BLK MONO │  │
+│  │  ● GENLOCK │  │ SCHINDLER 2.0│  │ 480×272 WQVGA     │  │  ENC A ENC B│  │ ≡   ✓    │  │  BYP     │  │
+│  │  ● SIGNAL  │  │              │  │ menu + status +   │  │             │  │          │  │          │  │
+│  │  ● LINK    │  │              │  │ buffer thumbnails │  │  [shroud]  │  │          │  │          │  │
+│  │  ● ALARM   │  │              │  │ (2×2 grid)        │  │             │  │          │  │          │  │
+│  │  ● IN      │  │              │  │                   │  │             │  │          │  │          │  │
+│  │  ● OUT     │  │              │  │                   │  │             │  │          │  │          │  │
+│  └─────────────┘  └──────────────┘  └───────────────────┘  └────────────┘  └──────────┘  └──────────┘  │
 │                                                                                                          │
 └──────────────────────────────────────────────────────────────────────────────────────────────────────────┘
-    ~35 mm           ~80 mm                  ~75 mm                 ~60 mm        ~55 mm       ~45 mm
+   ~40 mm            ~70 mm              ~75 mm               ~60 mm         ~55 mm       ~50 mm
 
   Width budget:
     PWR + LED column         ~35 mm
@@ -152,7 +153,7 @@ FRONT PANEL — 1RU full-rack 19"   (432 mm × 44 mm)
 - **Power button on rear:** none in current design. Front-panel soft power button is the only switch; rear has IEC inlet only. Some gear adds a hard rocker switch behind the IEC for service. **Pending Justin's call** — common pattern, ~$2 BOM.
 
 **Front panel:**
-- **Front SD card slot:** the MVPHD-24 has a front-panel SD/MMC slot used for firmware updates and still-image storage. Schindler currently has only rear USB-C for service. Adding a front SD slot would: (a) speed up firmware updates without rear access, (b) enable still-image-buffer profile import (if we add that feature), (c) match the MVPHD pattern operators will be familiar with. Cost: ~$2 connector + a few mm panel width + microSD slot + Linux mount logic on Zynq PS. **Pending decision.**
+- ~~**Front SD card slot:**~~ **RESOLVED 2026-05-11 — added as front-panel microSD.** Confirmed as part of the still-image-buffers banking. Uses: firmware updates (no rear access needed) + extended buffer image library load. ~$2 BOM. See inventory table above.
 - **Branding zone width:** ~80 mm allocated to logo / silkscreen. Could be tighter to free up panel space for a front-panel USB-C service port (alongside rear USB-C, or instead of it) or for additional quick-select buttons. **Pending mechanical mock review.**
 - **TFT size confirmation:** spec mentions 2.8" or 3.5". A 2.8" 16:9 (62 × 35 mm) just fits 1RU height with bezel margin; a 3.5" 4:3 (71 × 53 mm) would not fit a 44 mm panel. Recommend confirming 2.8" 16:9 as the V1 commitment before carrier traces go to the LTDC parallel bus.
 - **Quick-select count: 2 or 3?** Spec says 2–3 buttons. With Output Mode + Profile + Genlock source as defaults, 3 is the natural number. Confirm.

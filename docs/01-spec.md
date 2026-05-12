@@ -185,10 +185,15 @@ This is the SSOT for the current spec. Items marked **[PROPOSED]** are awaiting 
 - **Custom user-loaded test signals** (8 slots, confirmed 2026-05-11) — operator uploads PNG / TIFF full-frame patterns via web UI; stored on TE0720 eMMC, persist across power cycles. Slots selectable via test pattern menu. Use cases: focus charts, custom alignment grids, brand idents, production-specific calibration cards.
 
 ### Still image buffers (confirmed 2026-05-11)
-- **Four FLASH-backed image buffers** on the TE0720 eMMC, selectable as input source via the source mux. Image content persists across power cycles.
-- **Use cases:** power-on splash, idle-state reference frame, custom brand ident, quick-recall reference for QC, "blank to a known image" behavior on signal loss.
-- **Workflow:** capture current pipeline output to buffer (with operator-edited name); load PNG/TIFF via web UI; save buffer image to file; clear buffer; auto-load on boot.
-- **Storage budget:** 4 × 1080p × 24-bit RGB ≈ 24 MB total. Negligible against the 8 GB eMMC on TE0720.
+- **Four image buffers** on the TE0720 eMMC, selectable as input source via the source mux. Image content persists across power cycles.
+- **Format:** PNG, up to 1920×1080. Downscaled on the fly to whichever output rate is active. Typical PNG size ~1–5 MB per slot.
+- **Primary storage: TE0720 eMMC** (8 GB total; ~25 MB used for 4 slots). Always present, fast.
+- **Optional extended storage: front-panel microSD slot** (confirmed 2026-05-11). Operator can hold a card with extended image libraries — load any image from the card into one of the 4 active buffers. Same slot doubles as the firmware-update vehicle (MVPHD-familiar pattern).
+- **Load time:** cold load from eMMC < 1 s (PNG decode on Zynq A9 dual-core dominates ~250–500 ms); from microSD adds ~50–200 ms; once cached in DDR3, subsequent loads of the same slot are < 10 ms (effectively instant).
+- **Use cases:** power-on splash, idle-state reference frame, custom brand ident, quick-recall reference for QC, "blank to a known image" behavior on signal loss, source for the EFX burn-in ghost overlay (§ 8.4).
+- **First-boot state:** Buffer 1 pre-populated at factory with a Schindler splash image (logo + IP + firmware version, identifiable even before any config). Buffers 2–4 ship empty.
+- **Static only in V1.** Animated buffers (looped sequences) are not planned; would add complexity without strong demand.
+- **Thumbnails:** front-panel TFT shows a 2×2 grid of buffer thumbnails (~220×128 px each at the production 480×272 panel) in the buffer-management screen. Web UI shows full-quality thumbnails.
 
 ### Effects library (confirmed 2026-05-11)
 - **EFX menu — 13 effects + modifiers** for signal-transformation looks. See `ui-menu.md` § 8 for the full menu structure.
@@ -221,6 +226,7 @@ This is the SSOT for the current spec. Items marked **[PROPOSED]** are awaiting 
 
 ### Front panel
 - Power button (lower-left)
+- **microSD card slot (confirmed 2026-05-11)** — front-accessible push-push microSD socket. Dual purpose: (a) firmware updates without rear-panel access (MVPHD-familiar pattern), (b) extended still-image library for the 4 still buffers (operator loads any image from card into an active buffer). Resolves the prior `panel-layout.md` open question.
 - Status LED column: genlock lock, signal present per input, network link, fault — multi-color, visible at a glance from across the rack. Mirrors the per-connector LED state on the rear panel.
 - Center: 2.8" or 3.5" color TFT (ILI9341 SPI for prototyping, LTDC parallel for production polish) — driven by dedicated UI MCU, shows menu and parameter context
 - Two rotary encoders: **ALPS EC11E18244AU** — 11mm metal D-shaft (6 mm × 20 mm), 36 detents / 18 PPR (half-step quadrature; firmware decoder counts edges, not full cycles), integrated push switch, sealed, -40 to +85°C industrial range, 15k-cycle rotational life. ~$2-3.50 in singles at DigiKey / Mouser / LCSC. Navigation (CW/CCW + push to select), value adjustment (CW/CCW + push to confirm). Software acceleration on long scrolls advised given fine 36-detent click pitch (~10° per click).
