@@ -32,7 +32,7 @@ This doc holds the spatial arrangement. The connector inventory and electrical s
 | Video IN | BNC composite | 1 | CVBS, ADV7280 decoder |
 | Video IN | BNC component | 3 | Y / Pb / Pr, ADV7280 decoder |
 | Sync IN | BNC | 2 | REF IN + REF LOOP (passive loop-through) |
-| Status | LCD | 1 | 2.4" 16:9 SPI, rear-only, read-only |
+| Status | **Newhaven NHD-1.5-240240AF-CSXP** LCD | 1 | 1.5" 240×240 IPS square, ST7789VI, 8-bit 8080-II parallel OR 3/4-wire SPI. Module outline 32.52 × 35.32 mm; active-area cutout **~28 × 28 mm**; recessed pocket ~33 × 36 × ~3 mm. Rear-only, read-only, paginated summary view. |
 | Sync OUT | BNC | 2 | SYNC OUT 1 + SYNC OUT 2, format-selectable |
 | Video OUT | BNC component | 3 | Y / Pb / Pr, ADV7393 DAC |
 | Video OUT | BNC composite | 1 | CVBS, ADV7393 DAC |
@@ -80,7 +80,7 @@ Two-row BNC stacking:
 | **microSD slot** | Push-push panel-mount socket | 1 | **Confirmed 2026-05-11.** Front-accessible. Dual purpose: (a) firmware updates without rear-panel access, (b) extended still-image library load for the 4 still buffers. ~$2 BOM (Hirose DM3 class or similar) |
 | Status LEDs | Tricolor R/A/G LED column | ~6 | Mirrors rear per-connector LED state (genlock / signal / link / fault / IN / OUT roll-ups) |
 | Branding | Silkscreen / etched logo | — | "Schindler 2.0" or similar |
-| Display | Front TFT, 2.8" 16:9 color | 1 | **480 × 272 WQVGA** target for production (LTDC parallel); 320 × 240 ILI9341 SPI for prototype. Drives the main menu (`ui-menu.md`) and the buffer-thumbnail 2×2 grid for still buffer management |
+| Display | **Newhaven NHD-2.9-376960AF-ASXP** front TFT, 2.9" mounted landscape | 1 | 376×960 native, **rotated to 960 × 376 landscape**, IPS, ST7701SN, 190 PPI. 24-bit parallel RGB OR 4-wire SPI (SPI is the prototype path off the STM32H735). Module outline 78.7 × 32.6 mm; bezel-opening cutout **~69 × 28 mm**; recessed pocket ~80 × 33 × ~3 mm. Drives the main menu (`ui-menu.md`) and the 4-wide horizontal strip of still-buffer thumbnails. |
 | Encoders | ALPS EC11E18244AU rotary, 11 mm metal D-shaft | 2 | Encoder A (navigate), Encoder B (adjust); each with integrated push-switch and **knob shroud / guard** (HARD REQUIREMENT — must survive face-down drop in road case) |
 | Fixed buttons | Tactile illuminated | 4 | Home / Back / Menu / Confirm |
 | Quick-select buttons | Tactile illuminated, user-bindable | 2–3 | **Defaults (post MVPHD review):** Q1 = `BLACK` (fade-to-black), Q2 = `MONO`, Q3 = `Proc Amp bypass`. Operator can rebind. |
@@ -164,7 +164,8 @@ FRONT PANEL — 1RU full-rack 19"   (432 mm × 44 mm)
 ## Mechanical TODO (for chassis design phase)
 
 - Front Panel Express style milled aluminium panel; same vendor as planned for front panel in `schindler-playbook.md` Ch. 10.
-- LCD bezel: recessed cutout with anti-glare film, ~52 × 32 mm aperture for the 2.4" 16:9 module.
+- **Front TFT bezel (NHD-2.9-376960AF-ASXP):** ~69 × 28 mm bezel-opening cutout, recessed pocket ~80 × 33 × 3 mm deep, foam-gasket seat, anti-glare film optional
+- **Rear LCD bezel (NHD-1.5-240240AF-CSXP):** ~28 × 28 mm active-area cutout, recessed pocket ~33 × 36 × 3 mm deep, foam gasket
 - BNC mounting: front-mount nut + lockwasher, panel cutout ø10 mm, ~5 mm thread length needed behind panel.
 - XLR mounting (reserved, V1 dropped): D-shape Neutrik-style cutout, ~24 × 19 mm, in case panel space lets the XLR pair return.
 - SMA: panel-mount RP-SMA bulkhead, ø6.35 mm cutout + flats.

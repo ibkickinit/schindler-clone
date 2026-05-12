@@ -29,9 +29,9 @@ This doc is the structural intent. Wireframes, exact widget choices, and field v
 
 | Surface | Owner | Role |
 |---|---|---|
-| Front-panel TFT (~2.8–3.5" color, LTDC parallel) | UI MCU (STM32H735) | Operator navigates via 2 rotary encoders + 4 fixed buttons + 2–3 quick-select buttons |
+| Front-panel TFT — Newhaven NHD-2.9-376960AF-ASXP (2.9" 376×960 IPS, rotated to 960×376 landscape, ST7701SN) | UI MCU (STM32H735) | Operator navigates via 2 rotary encoders + 4 fixed buttons + 2–3 quick-select buttons. 4-wire SPI (prototype) or 24-bit parallel RGB (production). 190 PPI. |
 | Web UI (Node.js on Zynq PS) | Zynq PS | Same hierarchy, richer widgets. Accessible at `http://schindler-<serial>.local` |
-| Rear-panel status LCD (2.4" 16:9 SPI) | Zynq PS | Read-only status grid; no navigation |
+| Rear-panel status LCD — Newhaven NHD-1.5-240240AF-CSXP (1.5" 240×240 IPS square, ST7789VI, SPI) | Zynq PS | Read-only paginated summary view; no navigation |
 | Front-panel status LED column | UI MCU | Mirrors rear per-connector LEDs |
 
 ### Persistent status bar
@@ -1010,7 +1010,7 @@ Status grid only — no menu. Auto-refreshes every ~1 s. Header bar matches the 
 - **Profile autoload behavior.** Should connecting a known CRT (identified by EDID or measured colorimetry) auto-load its profile? Or always start with the last-active profile?
 - **Quick-select button defaults.** Three buttons, three defaults — revisit after operator testing on real hardware.
 - **HDCP consent persistence default.** Per-session auto-disable is defensive. Some operators may want persist-across-restart for legitimate sustained workflows. Default to per-session; let the operator opt-in.
-- **Front-panel TFT bus.** Currently spec says ILI9341 SPI for prototyping → LTDC parallel for production. Front-panel menu depth supports either; LTDC parallel just renders faster. Confirm SPI ILI9341 prototype path is adequate before committing carrier traces to the parallel bus.
+- **Front-panel TFT bus.** Now committed to **Newhaven NHD-2.9-376960AF-ASXP**, which supports both 4-wire SPI (prototype) and 24-bit parallel RGB (production). SPI prototype path uses one STM32H735 SPI peripheral; production may stay on SPI or move to parallel RGB depending on frame-rate requirements. Either works on this module.
 - **Resolution × rate combination validation.** With resolution and rate selected independently per output, some combinations are invalid (e.g. 1080p120 is outside HDMI 1.4 bandwidth). UI should gray out invalid pairs at the moment of selection, with a tooltip explaining why.
 
 ---

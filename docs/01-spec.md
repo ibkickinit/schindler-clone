@@ -193,7 +193,7 @@ This is the SSOT for the current spec. Items marked **[PROPOSED]** are awaiting 
 - **Use cases:** power-on splash, idle-state reference frame, custom brand ident, quick-recall reference for QC, "blank to a known image" behavior on signal loss, source for the EFX burn-in ghost overlay (§ 8.4).
 - **First-boot state:** Buffer 1 pre-populated at factory with a Schindler splash image (logo + IP + firmware version, identifiable even before any config). Buffers 2–4 ship empty.
 - **Static only in V1.** Animated buffers (looped sequences) are not planned; would add complexity without strong demand.
-- **Thumbnails:** front-panel TFT shows a 2×2 grid of buffer thumbnails (~220×128 px each at the production 480×272 panel) in the buffer-management screen. Web UI shows full-quality thumbnails.
+- **Thumbnails:** front-panel TFT shows a **4-wide horizontal strip of buffer thumbnails (~240 × 180 px each at the 960×376 landscape panel)** in the buffer-management screen. Each thumbnail has its buffer name + slot number labeled below. Web UI shows full-quality thumbnails.
 
 ### Effects library (confirmed 2026-05-11)
 - **EFX menu — 13 effects + modifiers** for signal-transformation looks. See `ui-menu.md` § 8 for the full menu structure.
@@ -212,7 +212,7 @@ This is the SSOT for the current spec. Items marked **[PROPOSED]** are awaiting 
 - USB on rear panel for service / firmware update / debug
 
 ### Rear panel — status display
-- **Read-only status LCD on rear panel (confirmed 2026-05-11).** 2.4" 16:9 IPS TFT, ~50 × 30 mm bezel-to-bezel, mounted in a recessed bezel cutout for ESD/dust protection. Driver: SPI ILI9341 or ST7789 class. Owned by Zynq PS over a dedicated SPI port (does not load the UI MCU). ~1 s refresh.
+- **Read-only status LCD on rear panel (confirmed 2026-05-11).** **Newhaven NHD-1.5-240240AF-CSXP** — 1.5" 240×240 IPS square TFT, ST7789VI controller, 32.52 × 35.32 mm module outline (~28 × 28 mm active area cutout). Interface: 8-bit 8080-II parallel OR 3/4-wire SPI (4-wire SPI preferred — uses one SPI peripheral on the Zynq PS). ~1 s refresh.
 - **Content:** fixed status grid — one row per I/O connector with name | status icon | detail (rate, format, lock state). Header bar shows IP address, hostname, firmware version, current reference source. No buttons; pure status display for at-rack patching from behind the rack.
 - **Rationale:** standard pro practice (Evertz, Imagine, some Ross openGear cards have it). When patching from behind the rack, the engineer sees connection state, lock status, and rate of every port without walking around to the front panel.
 
@@ -228,7 +228,7 @@ This is the SSOT for the current spec. Items marked **[PROPOSED]** are awaiting 
 - Power button (lower-left)
 - **microSD card slot (confirmed 2026-05-11)** — front-accessible push-push microSD socket. Dual purpose: (a) firmware updates without rear-panel access (MVPHD-familiar pattern), (b) extended still-image library for the 4 still buffers (operator loads any image from card into an active buffer). Resolves the prior `panel-layout.md` open question.
 - Status LED column: genlock lock, signal present per input, network link, fault — multi-color, visible at a glance from across the rack. Mirrors the per-connector LED state on the rear panel.
-- Center: 2.8" or 3.5" color TFT (ILI9341 SPI for prototyping, LTDC parallel for production polish) — driven by dedicated UI MCU, shows menu and parameter context
+- Center: **Newhaven NHD-2.9-376960AF-ASXP** — 2.9" 376×960 IPS TFT mounted **rotated 90° to landscape (effective 960 × 376)**, ST7701SN controller, 32.6 × 78.7 mm module outline (~69 × 28 mm bezel-opening cutout in landscape orientation). Interface: 24-bit parallel RGB OR **4-wire SPI** — the SPI option lets the STM32H735 drive it directly from a standard SPI peripheral on the prototype path (no LTDC routing needed); production path can switch to parallel RGB on the same module if frame-rate demands it. 190 PPI for crisp text + thumbnails (~6× the pixel count of the prior 480×272 plan).
 - Two rotary encoders: **ALPS EC11E18244AU** — 11mm metal D-shaft (6 mm × 20 mm), 36 detents / 18 PPR (half-step quadrature; firmware decoder counts edges, not full cycles), integrated push switch, sealed, -40 to +85°C industrial range, 15k-cycle rotational life. ~$2-3.50 in singles at DigiKey / Mouser / LCSC. Navigation (CW/CCW + push to select), value adjustment (CW/CCW + push to confirm). Software acceleration on long scrolls advised given fine 36-detent click pitch (~10° per click).
 - Four hardware-fixed buttons: Home, Back, Menu, Confirm
 - 2-3 quick-select buttons for common functions. **Defaults (confirmed 2026-05-11 post MVPHD review):** Q1 = `BLACK` (fade-to-black), Q2 = `MONO` (monochrome toggle), Q3 = `Proc Amp bypass`. Operator can rebind to any effect or any other action — alternate defaults: Output Mode toggle, EDID profile, Genlock source, Freeze frame, Snow burst.
@@ -284,7 +284,7 @@ This is the SSOT for the current spec. Items marked **[PROPOSED]** are awaiting 
 
 **Why this is on-mission.** The README and playbook target 1970s consumer CRTs explicitly (the 1976 Zenith and 1979 Sony console from Playbook Ch. 1 and Ch. 5). Most consumer sets in that vintage band have RF-only inputs — composite as a back-panel jack didn't become common until the early-to-mid 1980s. Without RF out, Schindler 2.0 can't fully serve the period market its own mission statement names.
 
-**Why baked in, not a daughter card.** BOM delta is ~$33 — too small to justify SKU bifurcation the way SDI's $32 of broadcast-specific silicon does. Customer segments are fuzzy (any DP hauling a Schindler to set could encounter a period CRT on a given shoot). FCC scope already covers every unit (WiFi/BT cert required regardless), so RF is incremental in cert, not bifurcating. Clean product story: every Schindler 2.0 has HDMI + SDI + one selectable analog output (composite / RF / component). SKU axis collapses to Base + Broadcast only.
+**Why baked in, not a daughter card.** BOM delta is ~$32 — too small to justify SKU bifurcation the way SDI's $32 of broadcast-specific silicon does. Customer segments are fuzzy (any DP hauling a Schindler to set could encounter a period CRT on a given shoot). FCC scope already covers every unit (WiFi/BT cert required regardless), so RF is incremental in cert, not bifurcating. Clean product story: every Schindler 2.0 has HDMI + SDI + one selectable analog output (composite / RF / component). SKU axis collapses to Base + Broadcast only.
 
 ### Operator mental model: one analog output, three modes
 
@@ -303,7 +303,7 @@ HDMI and SDI remain independently live per the pipeline architecture; they're no
 
 ### Architecture summary
 
-The RF chain consumes the same buffered composite signal that drives the composite BNC (single LMH6643 buffer, no additional channel needed). A dedicated Si5351 on the carrier (separate from the genlock Si5351 so the constantly-nudged genlock chip doesn't cross-couple into RF) generates the video carrier and pilot audio carrier. An ADL5391 analog multiplier does the AM modulation (video on Y input, RF carrier on X input, DC bias on Z input for negative modulation reference). Modulated output is combined with the silent pilot audio carrier in a resistive combiner, passed through a 56–73 MHz LC bandpass filter (covers both Ch3 and Ch4 video + audio frequencies, naturally suppresses harmonics outside the channel band), amplified by an ERA-3SM+ MMIC, matched 50→75 Ω (resistive pad or TC4-1W+ transformer — layout-phase decision), DC-blocked, ESD-protected, and routed to the panel F-connector. Shield can covers the modulator + amp + Si5351 + bandpass filter section for FCC compliance.
+The RF chain consumes the same buffered composite signal that drives the composite BNC (single LMH6643 buffer, no additional channel needed). A dedicated Si5351 on the carrier (separate from the genlock Si5351 so the constantly-nudged genlock chip doesn't cross-couple into RF) generates the video carrier and pilot audio carrier. An ADL5391 analog multiplier does the AM modulation (video on Y input, RF carrier on X input, DC bias on Z input for negative modulation reference). Modulated output is combined with the silent pilot audio carrier in a resistive combiner, passed through a 56–73 MHz LC bandpass filter (covers both Ch3 and Ch4 video + audio frequencies, naturally suppresses harmonics outside the channel band), amplified by an ERA-3SM+ MMIC, matched 50→75 Ω via a resistive minimum-loss pad (43.2 Ω series + 86.6 Ω shunt, 5.7 dB IL, ~$0.10 in passives), DC-blocked, ESD-protected, and routed to the panel F-connector. Shield can covers the modulator + amp + Si5351 + bandpass filter section for FCC compliance.
 
 ### Modulation choice — DSB-AM, no VSB filter, silent pilot audio
 
@@ -330,7 +330,7 @@ The RF chain consumes the same buffered composite signal that drives the composi
 - **Mode-mux:** ADG419BRZ SPST analog switch on composite BNC + FET switch on ERA-3 bias supply (~$1.80 total).
 - **F-connector:** Amphenol RF 82-4421 class panel-mount 75 Ω (~$1.50).
 - **Shield can:** Wurth WE-SHC or Laird small-format (~$2.50).
-- **Total RF subsystem BOM:** ~$33 per V1 unit (all SKUs).
+- **Total RF subsystem BOM:** ~$32 per V1 unit (all SKUs).
 
 ### Bench bring-up path (cheap)
 
@@ -349,7 +349,6 @@ Stay within Part 15.119 cable-output device limits: shielded RF section, output 
 
 - Final modulator chip selection (ADL5391 vs AD835) — prototype-characterization decision.
 - Output bandpass topology (Chebyshev vs Butterworth) — synthesize after measuring actual harmonic content.
-- 50→75 Ω match (resistive pad vs TC4-1W+ transformer) — defer to layout phase.
 - Channel-selection UI surface (front-panel button vs web-only) — defer to UI spec phase.
 - Audio FM modulation in V1.x (Path B) — defer until customer evidence drives speaker output need.
 
