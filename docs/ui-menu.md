@@ -90,6 +90,34 @@ Default: `Auto`
 - `Composite`
 - `Component`
 - `TPG` — internal test pattern generator
+- `Buffer 1` / `Buffer 2` / `Buffer 3` / `Buffer 4` — internal still image buffers (see § 1.7)
+
+### 1.7 Still image buffers
+
+Four FLASH-backed image buffers on the TE0720 eMMC, selectable as input source via § 1.1. Image content persists across power cycles. Used for: power-on splash, idle-state reference frame, custom brand ident, quick-recall reference for QC.
+
+**1.7.1 Buffer slot status** — `ro`, front+web
+- Per slot: `Empty` / `Loaded: <name>` / resolution + rate of stored image
+
+**1.7.2 Capture output to buffer** — `action`, front+web
+- Captures current pipeline output to selected buffer (1–4). Operator-edited name (8-char default).
+
+**1.7.3 Load image into buffer** — `action`, web only
+- Upload PNG / TIFF (or similar) into selected buffer. Web only — file upload not practical on front panel.
+
+**1.7.4 Save buffer image to file** — `action`, web only
+- Download the stored image as a file for archival or transfer to another Schindler.
+
+**1.7.5 Clear buffer** — `action`, front+web
+- Erase buffer contents (replaces with `<blank>` placeholder).
+
+**1.7.6 Auto-load on boot** — `enum`, front+web
+- `Off` (default) — boot to last-active source
+- `Buffer 1` / `2` / `3` / `4` — boot directly to a chosen buffer (splash-screen behavior)
+
+### 1.8 Proc Amp bypass — `toggle`, front+web — default `off` (= bypass off, proc-amp active)
+
+Single toggle to bypass ALL input proc-amp adjustments (color, contrast, brightness, Y/C delay) on the currently-selected source. Returns processing to unity gain. Used for quick "raw vs adjusted" comparison without resetting individual values. Bindable to a front-panel quick-select button.
 
 ### 1.2 EDID
 
@@ -150,8 +178,8 @@ Picking a preset auto-sets the resolution + rate above.
 - Values: `None (clear)`, `Authenticated HDCP 1.4`, `Authenticated HDCP 2.x`, `Authentication failed`, `Source disabled HDCP`
 
 **1.3.5 HDCP override** — `toggle` with consent flow, front+web — default `off`
-- Required to pass HDCP-protected source content through HDMI OUT (and other digital outputs as applicable). See **§ 12** for the attestation dialog.
-- Persistence and audit log live in **§ 12** Compliance.
+- Required to pass HDCP-protected source content through HDMI OUT (and other digital outputs as applicable). See **§ 13** for the attestation dialog.
+- Persistence and audit log live in **§ 13** Compliance.
 
 ### 1.4 SDI input *(broadcast tier)*
 
@@ -230,7 +258,7 @@ Each output has its own submenu. All outputs are **independent and concurrent**.
 **2.1.5 InfoFrame source name** — `text`, web only
 - Source-name string passed to downstream gear via HDMI InfoFrame
 
-(HDCP override for the HDMI OUT path is configured under **§ 1.3.5** and **§ 12** Compliance — moved out of this section.)
+(HDCP override for the HDMI OUT path is configured under **§ 1.3.5** and **§ 13** Compliance — moved out of this section.)
 
 ### 2.2 Composite OUT
 
@@ -251,6 +279,7 @@ Each output has its own submenu. All outputs are **independent and concurrent**.
 
 **2.2.4 Cadence convert** — `enum`, front+web — default `Auto`
 - `Auto` — system picks the appropriate cadence based on source rate vs output rate
+- `3:2 auto-detect` — when source is 30 / 60 fps with 3:2 cadence in the data (telecined 24p material), detect the cadence pattern and extract the original 24p sequence without motion filtering. Produces a cleaner 24p output than blind frame-rate conversion. Auto-falls-back to motion filtering if 3:2 cadence isn't detected.
 - `Off` — matched-rate only; rejects mismatched-rate sources
 - `5:2 pulldown` — 60 → 24 (classic 3:2 pulldown)
 - `6:5` — 60 → 50 / 25
@@ -258,6 +287,11 @@ Each output has its own submenu. All outputs are **independent and concurrent**.
 - `2:1` — drop every other frame (60 → 30, 50 → 25)
 - `1:2` — duplicate every frame (24 → 48, 30 → 60)
 - `Slip 23.98 → 24` — drift compensation, no cadence
+
+**2.2.5 Motion filter** — `enum`, front+web — default `Quadratic`
+- `Quadratic` — 3-frame motion filtering, highest quality, used for non-cadence frame-rate conversion
+- `Linear` — 2-frame motion filtering, lighter cost
+- `Off` — drop or repeat frames as needed (produces judder)
 
 **2.2.5 Sync structure tweaks** — link, front+web
 - Deep sync parameters (front porch, back porch, eq pulses, etc.) live in **§ 6.1 Composite OUT sync structure** so all output-sync controls are in one place.
@@ -383,7 +417,11 @@ Live preview on rear LCD + on output while adjusting. Settings are per-profile a
 - **Web UI:** drag the 9 cells
 - **Front panel:** select cell with encoder A → adjust with encoder B
 
-### 3.3 White point
+### 3.3 White point / Color temperature
+
+Two adjustment modes available — pick whichever fits your workflow:
+
+**Mode A — RGB white point (standard photographic approach)**
 
 **3.3.1 Preset** — `enum`, front+web
 - `3200 K` / `4800 K` / `5600 K` / `6500 K` / `9300 K` / `Custom`
@@ -393,6 +431,24 @@ Live preview on rear LCD + on output while adjusting. Settings are per-profile a
 
 **3.3.3 Tint** — `num`, front+web
 - ±20 (magenta ↔ green)
+
+**Mode B — YUV color-circle adjust (preserves brightness + saturation)**
+
+This mode shifts color temperature in YUV space rather than RGB. Because Y (luminance) stays untouched, the image doesn't darken when changing color temp; because chroma is added rather than RGB subtracted, saturation stays consistent. Inherited from MVPHD-24's approach (operator manual Ch. 5) — preferred by video colorists familiar with vectorscope X/Y conventions.
+
+**3.3.4 X axis** — `num`, front+web — default `0`
+- ±100 horizontal offset on the color circle. Negative = more yellow, positive = more blue.
+
+**3.3.5 Y axis** — `num`, front+web — default `0`
+- ±100 vertical offset. Negative = more cyan, positive = more red.
+
+**3.3.6 Color circle visual** — `ro`, web only
+- Vectorscope-style indicator showing where current X/Y lands on the color circle. Live preview on the rear LCD as you adjust.
+
+**3.3.7 Save as user preset** — `action`, front+web
+- Store current X/Y as user color-temp preset (4 slots: `PST1` / `PST2` / `PST3` / `PST4`, 5-char user name).
+
+**Note:** YUV color-temp adjustment only adds color to white / lighter areas — no color is added to black. Combined with § 3.6 Monochrome (or the front-panel `MONO` quick action), this enables a "security-cam B&W with color tint" period look.
 
 ### 3.4 Black point — `num` per channel, front+web
 
@@ -432,12 +488,23 @@ Download the current LUT.
 
 X/Y pixel offset trim. Playbook calls this "the early bug" — must be a UI control.
 
-### 4.2 Scaling — `enum`, front+web
+### 4.2 Aspect Ratio Conversion (ARC) — `enum`, front+web
+
+Specifies how aspect-ratio mismatches are handled in **both directions** (16:9 → 4:3 and 4:3 → 16:9). The web UI shows a small mockup of each option as you scroll through.
 
 - `Anamorphic`
-- `Letterbox`
-- `Center cut`
-- `Custom` (specify scale factor)
+  - 16:9 → 4:3 = no processing, image squashed horizontally
+  - 4:3 → 16:9 = no processing, image stretched horizontally
+- `Letter / Pillar Box`
+  - 16:9 → 4:3 = letterbox (black bars top + bottom, full source preserved)
+  - 4:3 → 16:9 = pillarbox (black bars left + right, full source preserved)
+- `14:9 Letter / Pillar Box` — compromise: small crop + small bars (broadcast convention when content has important info at very edges)
+  - 16:9 → 4:3 = slight horizontal crop + slight letterbox
+  - 4:3 → 16:9 = slight vertical crop + slight pillarbox
+- `Cut / Crop`
+  - 16:9 → 4:3 = center-cut (sides cropped, full vertical preserved)
+  - 4:3 → 16:9 = vertical-crop (top + bottom cropped, full horizontal preserved)
+- `Custom` — specify scale factor manually in 4.7
 
 ### 4.3 Pincushion — `num` H + V, front+web
 
@@ -605,6 +672,26 @@ Replaces the input source with an internal generator. Source select (§ 1.1) bec
 - `Purity (full-field R / G / B)`
 - `Focus / zone plate`
 - `Burn-in repair scroll` (white / black / gray)
+- `Shutter Phase Reference` — alternating-field two-color signal for visually phasing a film camera's shutter to the CRT. Companion to the wide-back-porch setting in § 6.1.2. Default field 1 = blue, field 2 = yellow (industry convention); operator-configurable color pair (see 7.5).
+- `Custom Signal 1` … `Custom Signal 8` — operator-loaded full-frame patterns (see 7.6)
+
+### 7.5 Shutter Phase Reference colors — `enum`, front+web — default `Blue / Yellow`
+
+Visible only when § 7.1 = Shutter Phase Reference.
+
+- `Blue / Yellow` — industry default (high contrast, MVPHD convention)
+- `Red / Cyan`
+- `Magenta / Cyan`
+- `Black / White` — extreme contrast for fine phase tuning
+- `Custom` — specify RGB for field 1 and field 2
+
+### 7.6 Custom test signals — `action`, web only
+
+Eight slots for operator-uploaded full-frame test patterns (PNG / TIFF up to 1920×1080). Use cases: focus charts specific to your production, custom alignment grids, brand idents, calibration cards.
+
+- Upload to slot 1–8 with editable name (8-char default)
+- Slots persist across power cycles (stored on TE0720 eMMC)
+- Select via § 7.1 `Custom Signal N`
 
 ### 7.2 Pattern rate — `enum`, front+web
 
@@ -620,162 +707,242 @@ Cycle through all patterns every N seconds (for QC sweeps).
 
 ---
 
-## 8. Profiles (per-CRT calibration)
+## 8. Effects
+
+A library of signal-transformation effects applied to the active source (or test pattern). Effects can be **temporarily toggled** from the front panel / web UI OR **saved into a profile** (§ 9) for permanent operation — useful for the "make this LCD look like a CRT" workflow (scanlines + slight blur + warm tint saved into a profile).
+
+Quick-action buttons on the front panel default to the two most-used effects: `BLACK` (fade-to-black) and `MONO` (monochrome). See Navigation patterns at the bottom of this doc.
+
+### 8.1 Active effect — `enum`, front+web — default `Off`
+
+One effect active at a time. The effect modifies the active source in real time.
+
+- `Off` (default)
+- `Freeze frame` — captures the current frame and holds on output until released
+- `Random noise` (snow) — full-frame TV static
+- `Block artifacts` — MPEG-style block distortion, intensity-configurable
+- `CRT power-off` — collapse to a horizontal line → center dot → bright flash → fade to black. ~1.5 s animation. Classic CRT shutdown look.
+- `CRT power-on` — paired with power-off: flash + electron-beam scan-in from top → settle to image
+- `Vertical hold loss / rolling` — picture rolls vertically with V-blank visible as a moving bar
+- `Snow burst / channel change` — brief noise blast (0.2–2 s), then return to source. "Click of the dial" effect.
+- `Color rolling` — chroma demod unsync simulation; hue rotates around the color circle
+- `VHS tracking error` — drifting noise bars across the frame (count + height + speed configurable)
+- `Hum bars` — slow horizontal dim bars (50 Hz / 60 Hz roll, classic composite-output hum)
+- `Burn-in ghost overlay` — faint pattern overlay simulating phosphor burn-in from prior content
+- `Scanline emphasis` — exaggerated horizontal scanlines (for **CRT look on a downstream LCD**)
+- `Blur` — Gaussian blur (Tier 3 HDL cost — may land later in V1)
+- `Solarize` — invert colors above a threshold (surreal partial-inverted look)
+- `Posterize` — reduce color bit depth (chunky color stepping)
+
+### 8.2 Blend / mixer — `num`, front+web — default `100`
+
+0–100 % wet/dry. At 0 % the effect is invisible (clean source); at 100 % the effect fully replaces source video. Lets the operator dial in a subtle vs heavy look.
+
+### 8.3 Transition time — `num`, front+web — default `0` frames
+
+0–240 frames fade-in / fade-out duration when the effect toggles on/off. At 0, the effect engages instantly; at 30 frames @ 24 fps the effect smoothly fades over ~1.25 s.
+
+### 8.4 Effect-specific parameters
+
+Visible parameters depend on which effect is active in § 8.1. Web UI shows contextual sliders; front panel shows parameters in a follow-on submenu.
+
+**Random noise:** density (0–100 %), grain size (1×1 ↔ 4×4 pixel blocks).
+
+**Block artifacts:** block size (4×4 ↔ 32×32 pixels), distortion intensity (0–100 %), DCT bias (mild ↔ severe).
+
+**CRT power-off / power-on:** total duration (0.5–3.0 s), flash brightness (50–200 %).
+
+**Vertical hold loss:** roll speed (0.1 ↔ 5 Hz), direction (up / down), V-blank bar visibility (subtle ↔ obvious).
+
+**Snow burst:** burst duration (0.2–2 s).
+
+**Color rolling:** rotation speed (0.1 ↔ 2 Hz), hue range (full circle / partial arc).
+
+**VHS tracking error:** bar count (1–5), bar height (1 line ↔ 10 % of frame), drift speed (slow ↔ fast), intensity (subtle ↔ severe), jitter (regular ↔ random position).
+
+**Hum bars:** bar count (1–3), bar darkness (10–80 %), roll speed (50 Hz / 60 Hz / custom), direction (up / down).
+
+**Burn-in ghost overlay:** ghost image source (one of 4 still buffers, or operator-uploaded), opacity (5–50 %), position offset (X + Y).
+
+**Scanline emphasis:** line spacing (every line / every 2nd / every 3rd), darkness (10–80 %), thickness (1 px / 2 px), color tint (true black / slight warmth / slight cool).
+
+**Blur:** intensity (light / medium / heavy — kernel size). Note: Gaussian blur is HDL-expensive; may ship later in V1.
+
+**Solarize:** threshold (0–100 %; pixels above this brightness get inverted), softness (hard cutoff vs gradient).
+
+**Posterize:** bit depth target per channel (`8` → `4` → `3` → `2` bits).
+
+### 8.5 Save effect to profile — `action`, front+web
+
+Snapshots the current effect + parameters into the active profile (§ 9) so it loads automatically next time that profile is selected. Used for the "Sony LCD shoot — scanlines + slight blur + warm tint" persistent setup.
+
+### 8.6 Quick-recall bindings — `action`, front only
+
+Bind a configured effect (with its parameters) to a front-panel quick-select button. Default bindings:
+- Quick-select 1 → `BLACK` (fade-to-black with current transition time)
+- Quick-select 2 → `MONO` (monochrome toggle — implemented as a special effect that sets saturation to 0)
+- Quick-select 3 → `Proc Amp bypass` toggle (see § 1.8)
+
+Operator can rebind any quick-select to any effect or any other action.
+
+---
+
+## 9. Profiles (per-CRT calibration)
 
 JSON profiles in the NovaTool tile-profile pattern.
 
-### 8.1 Active profile — `enum`, front+web
+### 9.1 Active profile — `enum`, front+web
 
 Pick from saved list.
 
-### 8.2 Save current as — `action`, front+web
+### 9.2 Save current as — `action`, front+web
 
 Snapshots color + geometry + sync structure + behavior settings.
 
-### 8.3 Rename — `text`, front+web
+### 9.3 Rename — `text`, front+web
 
-### 8.4 Delete — `action`, front+web
+### 9.4 Delete — `action`, front+web
 
-### 8.5 Import / Export — `action`, web only
+### 9.5 Import / Export — `action`, web only
 
 JSON file upload / download.
 
-### 8.6 Quick recall — `action` × 4, front only
+### 9.6 Quick recall — `action` × 4, front only
 
 Front-panel quick-select buttons can be bound to specific profiles.
 
 ---
 
-## 9. Behavior
+## 10. Behavior
 
-### 9.1 Signal loss behavior — `enum`, front+web
+### 10.1 Signal loss behavior — `enum`, front+web
 
 - `Black`
 - `Freeze`
 - `Last-good-frame-for-N-seconds-then-black` (timeout in 9.2)
 
-### 9.2 Signal loss timeout — `num`, front+web
+### 10.2 Signal loss timeout — `num`, front+web
 
 Seconds (1–120).
 
-### 9.3 Burn-in protection
+### 10.3 Burn-in protection
 
-**9.3.1 Auto-darken trigger** — `num`, front+web
+**10.3.1 Auto-darken trigger** — `num`, front+web
 - After N minutes of static (`0` = disabled)
 
-**9.3.2 Pixel-shift trigger** — `num`, front+web
+**10.3.2 Pixel-shift trigger** — `num`, front+web
 - After N minutes of static (`0` = disabled)
 
-**9.3.3 Pixel-shift amount** — `num`, front+web
+**10.3.3 Pixel-shift amount** — `num`, front+web
 - Pixels of shift
 
-### 9.4 Degauss trigger — `action`, front+web
+### 10.4 Degauss trigger — `action`, front+web
 
 Pulses a GPIO / relay output for pro CRTs with remote-degauss input.
 
 ---
 
-## 10. Test / Maintenance
+## 11. Test / Maintenance
 
-### 10.1 Burn-in repair scroll — `action`, front+web
+### 11.1 Burn-in repair scroll — `action`, front+web
 
 Standalone mode: runs scrolling white/black/gray at front-panel-selected speed, no input required.
 
-### 10.2 Self-test — `action`, front+web
+### 11.2 Self-test — `action`, front+web
 
 Internal loopback: TPG → all terminals → INA226 power-rail read → lock detector reports green.
 
-### 10.3 Output verification — `action`, front+web
+### 11.3 Output verification — `action`, front+web
 
 Generates known SMPTE bars on all outputs simultaneously; operator confirms each downstream display matches.
 
-### 10.4 Factory reset — `action`, front+web
+### 11.4 Factory reset — `action`, front+web
 
 Confirms via dialog before wiping all profiles and settings.
 
 ---
 
-## 11. System
+## 12. System
 
-### 11.1 Network
+### 12.1 Network
 
-**11.1.1 Mode** — `enum`, front+web
+**12.1.1 Mode** — `enum`, front+web
 - `DHCP`
 - `Static`
 
-**11.1.2 Static config** — `text`, front+web (visible when mode = Static)
+**12.1.2 Static config** — `text`, front+web (visible when mode = Static)
 - IP, Netmask, Gateway, DNS
 
-**11.1.3 Hostname** — `text`, front+web
+**12.1.3 Hostname** — `text`, front+web
 - Used for mDNS (`schindler-<name>.local`)
 
-### 11.2 WiFi
+### 12.2 WiFi
 
-**11.2.1 AP mode** — `toggle`, front+web — default `on`
+**12.2.1 AP mode** — `toggle`, front+web — default `on`
 
-**11.2.2 AP SSID** — `text`, front+web
+**12.2.2 AP SSID** — `text`, front+web
 - Default: `Schindler-<serial>`
 
-**11.2.3 AP password** — `text`, front+web
+**12.2.3 AP password** — `text`, front+web
 - Generated unique per unit, displayable on front panel for pairing
 
-**11.2.4 STA mode** — `toggle`, front+web — default `off`
+**12.2.4 STA mode** — `toggle`, front+web — default `off`
 
-**11.2.5 STA SSID list** — `action`, front+web
+**12.2.5 STA SSID list** — `action`, front+web
 - Scan + select; multiple saved networks
 
-**11.2.6 STA password** — `text`, front+web
+**12.2.6 STA password** — `text`, front+web
 
-**11.2.7 BLE pairing** — `action`, front+web
+**12.2.7 BLE pairing** — `action`, front+web
 - Enter pairing mode for companion-app credential push
 
-### 11.3 Firmware
+### 12.3 Firmware
 
-**11.3.1 Current version** — `ro`, front+web
+**12.3.1 Current version** — `ro`, front+web
 - Bitstream + PetaLinux + UI MCU + RP2040 versions
 
-**11.3.2 Check for updates** — `action`, web only
+**12.3.2 Check for updates** — `action`, web only
 
-**11.3.3 Upload firmware** — `action`, web only — `.img` file
+**12.3.3 Upload firmware** — `action`, web only — `.img` file
 
-**11.3.4 Update via USB** — `action`, front only
+**12.3.4 Update via USB** — `action`, front only
 
-**11.3.5 Rollback to previous** — `action`, front+web — A/B firmware slots
+**12.3.5 Rollback to previous** — `action`, front+web — A/B firmware slots
 
-**11.3.6 Reboot** — `action`, front+web — confirms first
+**12.3.6 Reboot** — `action`, front+web — confirms first
 
-### 11.4 Time / Date
+### 12.4 Time / Date
 
-**11.4.1 NTP server** — `text`, front+web — default `pool.ntp.org`
+**12.4.1 NTP server** — `text`, front+web — default `pool.ntp.org`
 
-**11.4.2 Timezone** — `enum`, front+web
+**12.4.2 Timezone** — `enum`, front+web
 
-**11.4.3 Manual set** — `text`, front+web
+**12.4.3 Manual set** — `text`, front+web
 
-### 11.5 System info — `ro`, front+web
+### 12.5 System info — `ro`, front+web
 
 - Serial number, hardware rev, uptime, temperatures, voltage rails (INA226 + on-SOM monitors), fan RPM
 
-### 11.6 Diagnostic logs — `action`, front+web
+### 12.6 Diagnostic logs — `action`, front+web
 
 View / download last N lines of system log.
 
-### 11.7 Status LED brightness — `num`, front+web — 0–100 %, default `10`
+### 12.7 Status LED brightness — `num`, front+web — 0–100 %, default `10`
 
 ---
 
-## 12. Compliance / Consent
+## 13. Compliance / Consent
 
 Centralized place for legal-posture toggles and audit. The HDCP override toggle itself lives in **§ 1.3.5** (input-side, where the protected content is detected); this section holds the persistence policy, audit log, and service-mode lockdown.
 
-### 12.1 HDCP override persistence — `enum`, front+web
+### 13.1 HDCP override persistence — `enum`, front+web
 
 What happens to the HDCP override on power cycle:
 - `Per-session` — auto-disable on every power cycle *(default — safer)*
 - `Persist across power cycles`
 - `Persist until manually disabled`
 
-### 12.2 HDCP override consent dialog
+### 13.2 HDCP override consent dialog
 
 Triggered when § 1.3.5 is toggled on. Dialog text:
 
@@ -789,11 +956,11 @@ To enable, user must check the box AND confirm:
 - **Front panel:** press the `Confirm` hardware button
 - **Web UI:** type `I AGREE` in a confirmation field
 
-### 12.3 Override history — `ro`, web only
+### 13.3 Override history — `ro`, web only
 
 Audit log: timestamp + web-auth user (if applicable) for each toggle event.
 
-### 12.4 Service mode — `action`, front+web
+### 13.4 Service mode — `action`, front+web
 
 Locks all outputs to test patterns AND disables HDCP override toggle entirely. Used for shipping units, loaner units, or unattended demo state.
 
@@ -813,10 +980,11 @@ The persistent status bar sits at the top; the main menu fills the rest of the s
 - **Back button:** one level up
 - **Menu button:** toggles between status overview and main menu
 - **Confirm button:** alternate confirm path for dialogs (especially HDCP consent)
-- **Quick-select buttons (2–3):** bindable to common actions
-  - Default 1: Output Mode toggle (composite ↔ component on the ADV7393)
-  - Default 2: Profile recall
-  - Default 3: Genlock source
+- **Quick-select buttons (2–3):** bindable to common actions. **Defaults (post MVPHD review, 2026-05-11):**
+  - Default 1: `BLACK` — fade-to-black (uses § 8.3 transition time)
+  - Default 2: `MONO` — monochrome toggle
+  - Default 3: `Proc Amp bypass` — toggle § 1.8 (raw-vs-adjusted compare)
+  - Alternate bindings the operator may swap to: Output Mode toggle (composite ↔ component), Profile recall, Genlock source, Freeze frame, Snow burst, any other configured effect.
 
 ### Web UI (Node.js on Zynq PS)
 

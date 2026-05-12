@@ -104,6 +104,8 @@ This is the SSOT for the current spec. Items marked **[PROPOSED]** are awaiting 
 - **Pipeline throughput rates** (HD path): 1080p23.98 / 1080p24 / 1080p25 / 1080p29.97 / 1080p30 / 1080p50 / 1080p59.94 / 1080p60 / 1080i50 / 1080i59.94 / 720p50 / 720p59.94 / 720p60.
 - **CRT-driving rates** (composite / component encoder output): 23.976 / 24.000 / 25.000 / 29.97 / 30.000 fps.
 - **Per-output rate selection:** each terminal encoder targets its own output rate. Cadence-convert logic in each terminal handles input-to-output rate translation when they differ (e.g. 60 → 24 via 5:2 pulldown + crossfade, 60 → 25 via 6:5, 23.98 → 24 via slip).
+- **3:2 cadence auto-detect (confirmed 2026-05-11)** — when source is 30 / 60 fps with 3:2 cadence in the data (telecined 24 p material), the converter detects the cadence pattern and extracts the original 24 p sequence without motion filtering. Cleaner result than blind frame-rate conversion. Auto-falls-back to motion filtering when 3:2 cadence isn't detected. Default mode is `Auto`, operator can pin to `3:2 auto-detect`, `Off` (matched-rate only), or one of the manual cadence ratios (5:2 / 6:5 / 4:5 / 2:1 / 1:2 / slip).
+- **Motion filter selection** — `Quadratic` (default, 3-frame motion filtering) / `Linear` (2-frame, lighter) / `Off` (drop or repeat frames). Trades quality vs DSP load.
 
 ### Genlock / reference inputs
 - Auto-sensing front-end across LTC / black burst / tri-level sync (Architecture A confirmed 2026-05-10 PM 7th update). Each input passes through clamp diodes, switchable 75 Ω termination, AC-coupled buffer, **LTC6912 programmable-gain amplifier** (confirmed 2026-05-11; MIKROE-2555 click board inbound for bench evaluation), switchable analog LPF, then **Analog Devices AD9204-20** (dual-channel 10-bit 20 MSPS ADC, 1.8 V analog supply, 1.8-3.3 V output drive — single chip handles both BNC inputs; pin-compatible upgrade path to AD9231/AD9251/AD9258/AD9268 for 12/14/14/16-bit if future need) to FPGA. FPGA runs detection logic in parallel and identifies signal type by characteristic signature (LTC biphase mark + 0xBFFC sync, black burst 15.734 kHz line rate + 3.58 MHz burst, tri-level pulse pattern). PGA-driven AGC loop solves input level frustration — no front-panel padding/gain needed.
@@ -132,7 +134,9 @@ This is the SSOT for the current spec. Items marked **[PROPOSED]** are awaiting 
 - Per-channel gain/offset (fine trim)
 - RGB white/black point controls
 - Color temperature presets (3200 K, 4800 K, 5600 K) + custom
+- **YUV color-circle color-temperature adjust (confirmed 2026-05-11)** — X/Y axes on the chroma plane, in addition to the RGB-based controls above. Preserves luminance and saturation when shifting color temp (unlike pure RGB subtraction which darkens and desaturates). Inherited from MVPHD-24's approach. Operator uses whichever mode fits their workflow.
 - Saturation, hue, black level
+- **Proc Amp bypass toggle** (confirmed 2026-05-11) — single per-input toggle to disable all proc-amp adjustments and return to unity gain. Used for raw-vs-adjusted quick compare. Bindable to a front-panel quick-select button (default Q3).
 
 ### Geometry
 - Anamorphic, letterbox, center cut, custom scaling
@@ -177,6 +181,21 @@ This is the SSOT for the current spec. Items marked **[PROPOSED]** are awaiting 
 - Purity (full-field R/G/B)
 - Focus / zone plate (center + corners)
 - Burn-in repair scroll patterns
+- **Shutter Phase Reference** (confirmed 2026-05-11) — alternating-field two-color signal for visually phasing a film camera's shutter to the CRT. Solid color seen in viewfinder = correctly phased; split color seen = mis-phased. Companion tool to the wide-back-porch wisdom. Default field 1 = blue, field 2 = yellow (industry convention); operator-configurable color pair.
+- **Custom user-loaded test signals** (8 slots, confirmed 2026-05-11) — operator uploads PNG / TIFF full-frame patterns via web UI; stored on TE0720 eMMC, persist across power cycles. Slots selectable via test pattern menu. Use cases: focus charts, custom alignment grids, brand idents, production-specific calibration cards.
+
+### Still image buffers (confirmed 2026-05-11)
+- **Four FLASH-backed image buffers** on the TE0720 eMMC, selectable as input source via the source mux. Image content persists across power cycles.
+- **Use cases:** power-on splash, idle-state reference frame, custom brand ident, quick-recall reference for QC, "blank to a known image" behavior on signal loss.
+- **Workflow:** capture current pipeline output to buffer (with operator-edited name); load PNG/TIFF via web UI; save buffer image to file; clear buffer; auto-load on boot.
+- **Storage budget:** 4 × 1080p × 24-bit RGB ≈ 24 MB total. Negligible against the 8 GB eMMC on TE0720.
+
+### Effects library (confirmed 2026-05-11)
+- **EFX menu — 13 effects + modifiers** for signal-transformation looks. See `ui-menu.md` § 8 for the full menu structure.
+- **Effects:** Freeze frame, Random noise (snow), Block artifacts, CRT power-off (collapse + flash + black), CRT power-on (flash + scan-in), Vertical hold loss (rolling), Snow burst (channel change), Color rolling (chroma desync), VHS tracking error (drifting noise bars), Hum bars (slow horizontal dim bars), Burn-in ghost overlay, Scanline emphasis (CRT look on downstream LCD), Blur (Gaussian — Tier 3 HDL cost, may land later in V1), Solarize, Posterize.
+- **Modifiers:** blend/mixer (0–100 % wet/dry), transition time (0–240 frames fade in/out), per-effect intensity parameters.
+- **Profile-persistent:** effects can be temporarily toggled OR saved into a per-CRT profile for permanent operation. Enables the "make this LCD look like a CRT in-shot" workflow (scanlines + slight blur + warm tint saved into a profile).
+- **HDL effort:** original MVPHD set + Tier 1 CRT effects ~2–3 weeks of HDL post-first-light; Tier 3 effects (blur, possibly chromatic aberration in V1.x) may land later in the V1 cycle.
 
 ### Networking & control
 - **Zynq PS hosts the control plane.** Pi CM4 dropped from V1 (confirmed 2026-05-11). Zynq PS (dual A9, 1 GB DDR3) runs PetaLinux + Node.js web UI, REST API, EDID negotiation, mDNS, OTA updates, config persistence. Single Linux to maintain; Screenie color pipeline JS code ports onto Node-on-Zynq. Saves ~$50 BOM, eliminates inter-processor RPC layer and CM4 supply risk.
@@ -206,7 +225,7 @@ This is the SSOT for the current spec. Items marked **[PROPOSED]** are awaiting 
 - Center: 2.8" or 3.5" color TFT (ILI9341 SPI for prototyping, LTDC parallel for production polish) — driven by dedicated UI MCU, shows menu and parameter context
 - Two rotary encoders: **ALPS EC11E18244AU** — 11mm metal D-shaft (6 mm × 20 mm), 36 detents / 18 PPR (half-step quadrature; firmware decoder counts edges, not full cycles), integrated push switch, sealed, -40 to +85°C industrial range, 15k-cycle rotational life. ~$2-3.50 in singles at DigiKey / Mouser / LCSC. Navigation (CW/CCW + push to select), value adjustment (CW/CCW + push to confirm). Software acceleration on long scrolls advised given fine 36-detent click pitch (~10° per click).
 - Four hardware-fixed buttons: Home, Back, Menu, Confirm
-- 2-3 quick-select buttons for common functions (Output Mode toggle, EDID profile, Genlock source)
+- 2-3 quick-select buttons for common functions. **Defaults (confirmed 2026-05-11 post MVPHD review):** Q1 = `BLACK` (fade-to-black), Q2 = `MONO` (monochrome toggle), Q3 = `Proc Amp bypass`. Operator can rebind to any effect or any other action — alternate defaults: Output Mode toggle, EDID profile, Genlock source, Freeze frame, Snow burst.
 - **HARD REQUIREMENT: Physical knob guard / shroud preventing lateral torque on encoder shafts during transit and rack handling.** Recessed encoder pocket, side rail bars, or equivalent. Must survive being dropped face-down in a road case.
 - Front-panel preset recall
 
@@ -250,6 +269,83 @@ This is the SSOT for the current spec. Items marked **[PROPOSED]** are awaiting 
 - BNCs on daughter card (Option A) vs carrier with pigtail (Option B) — pending chassis layout decision.
 - Daughter-card connector family selection (Samtec QStrip QSE/QSH, Molex SearchLight, Hirose FX-series). Defer until carrier signal-integrity simulation tells us the via/stub tolerance.
 - Whether to spec a single dual-purpose mezzanine connector (e.g. high-density 80-pin combining HS + LS) vs the two-connector approach proposed above. Two-connector is mechanically more robust against rocking forces; single connector is cheaper but stresses keying.
+
+---
+
+## RF modulator output (built-in)
+
+**Status:** CONFIRMED 2026-05-11 PM. Built into every V1 carrier (both Base and Broadcast SKUs); no daughter card, no SKU tier bifurcation. Adds an RF modulated output on NTSC Ch3 or Ch4 (operator-selectable) for 1970s consumer CRTs with antenna-only inputs. Full architecture, parts spec, and bench bring-up checklist in [`rf-modulator-subsystem.md`](rf-modulator-subsystem.md).
+
+**Why this is on-mission.** The README and playbook target 1970s consumer CRTs explicitly (the 1976 Zenith and 1979 Sony console from Playbook Ch. 1 and Ch. 5). Most consumer sets in that vintage band have RF-only inputs — composite as a back-panel jack didn't become common until the early-to-mid 1980s. Without RF out, Schindler 2.0 can't fully serve the period market its own mission statement names.
+
+**Why baked in, not a daughter card.** BOM delta is ~$33 — too small to justify SKU bifurcation the way SDI's $32 of broadcast-specific silicon does. Customer segments are fuzzy (any DP hauling a Schindler to set could encounter a period CRT on a given shoot). FCC scope already covers every unit (WiFi/BT cert required regardless), so RF is incremental in cert, not bifurcating. Clean product story: every Schindler 2.0 has HDMI + SDI + one selectable analog output (composite / RF / component). SKU axis collapses to Base + Broadcast only.
+
+### Operator mental model: one analog output, three modes
+
+The operator picks ONE of three analog output modes via UI. F-connector lives **beside** the composite BNC on the rear panel; both are physically present, only one is electrically live per mode:
+
+| Mode | Live connectors | ADV7393 state | RF chain |
+|---|---|---|---|
+| **Composite** | composite BNC | composite mode | disabled |
+| **RF Ch3** | F-connector | composite mode | enabled, Si5351 ch1 → 61.25 MHz |
+| **RF Ch4** | F-connector | composite mode | enabled, Si5351 ch1 → 67.25 MHz |
+| **Component** | 3× component BNC (YPbPr) | component mode | disabled |
+
+Composite mode and the two RF modes share the same ADV7393 composite encoding; they differ only in which output path is gated live. Mode-mux logic on the carrier (ADG419 SPST switch on composite BNC + FET switch on ERA-3 bias supply) handles the gating from Zynq PS GPIOs.
+
+HDMI and SDI remain independently live per the pipeline architecture; they're not part of the analog-output mode mux.
+
+### Architecture summary
+
+The RF chain consumes the same buffered composite signal that drives the composite BNC (single LMH6643 buffer, no additional channel needed). A dedicated Si5351 on the carrier (separate from the genlock Si5351 so the constantly-nudged genlock chip doesn't cross-couple into RF) generates the video carrier and pilot audio carrier. An ADL5391 analog multiplier does the AM modulation (video on Y input, RF carrier on X input, DC bias on Z input for negative modulation reference). Modulated output is combined with the silent pilot audio carrier in a resistive combiner, passed through a 56–73 MHz LC bandpass filter (covers both Ch3 and Ch4 video + audio frequencies, naturally suppresses harmonics outside the channel band), amplified by an ERA-3SM+ MMIC, matched 50→75 Ω (resistive pad or TC4-1W+ transformer — layout-phase decision), DC-blocked, ESD-protected, and routed to the panel F-connector. Shield can covers the modulator + amp + Si5351 + bandpass filter section for FCC compliance.
+
+### Modulation choice — DSB-AM, no VSB filter, silent pilot audio
+
+- **DSB-AM (not VSB):** True VSB requires per-channel SAW filters or sharp LC bandpass networks. DSB-AM uses 2× the spectrum but works fine into consumer TV receivers — they're VSB *receivers* that filter the unwanted sideband at the IF stage internally. We're not broadcasting; we're cabling 2 m into a CRT.
+- **Silent audio pilot (Path A, confirmed 2026-05-11 PM):** Unmodulated CW carrier at video_carrier + 4.5 MHz from Si5351 ch2. Satisfies the period-CRT intercarrier AGC requirement (TV detects carrier presence, no audio to demodulate, speaker stays silent). Schindler's mission is camera-captured visuals; film cameras don't record CRT speaker audio. If V1.x customer evidence drives real audible audio later, the discrete-Colpitts-VCO + FPGA-generated-1-kHz-tone path (Path B from 2026-05-11 audio analysis, ~$3 BOM, ~1 day HDL) is the documented next step.
+
+### Why Ch3/Ch4 only
+
+- US-centric customer base (film/TV production driving period US CRTs). Every period US set tunes Ch3 or Ch4 as the VCR-connect channel pair.
+- Bandpass filter centered 56–73 MHz covers both video + audio carriers for both channels; rejects everything outside the band including 2nd harmonics (which fall at 122.5–134.5 MHz, well outside passband). Eliminates need for a separate harmonic LPF.
+- Simpler UI: Ch3/Ch4 toggle.
+- PAL/NTSC-J/PAL-M expansion is firmware-only later — same hardware, different Si5351 register loads + wider bandpass filter swap if international demand ever materializes.
+
+### Output level
+
+~−40 to −30 dBm at the F-connector. Adjustable via ADL5391 GADJ pot + ERA-3 fixed gain. Designed for short-coax-into-CRT use, not broadcast. Stays inside FCC Part 15.119 cable-output device limits.
+
+### Key parts (full spec in `rf-modulator-subsystem.md`)
+
+- **AM modulator:** ADL5391ACPZ-R7 primary (Analog Devices DC–2.0 GHz multiplier, ~$15 single qty, ~$18 at qty 100, modern symmetric-core architecture); AD835ARZ fallback (250 MHz multiplier, 8-SOIC, ~$25 at qty 100, classic part). Order both for prototype bench eval.
+- **RF carrier gen:** Si5351A-B-GT local on carrier dedicated to RF subsystem + 25 MHz crystal (~$2). Decoupled from genlock Si5351 to avoid cross-coupling; genlock Si5351 ch1/ch2 stay reserved for future GPSDO.
+- **RF amp:** Mini-Circuits ERA-3SM+ MMIC (DC–3 GHz, ~22 dB gain, ~$3.50).
+- **Output bandpass:** 5th-order LC, centered ~64 MHz, passband 56–73 MHz (~$1.50 in Coilcraft 0805CS inductors + C0G ceramic caps).
+- **Mode-mux:** ADG419BRZ SPST analog switch on composite BNC + FET switch on ERA-3 bias supply (~$1.80 total).
+- **F-connector:** Amphenol RF 82-4421 class panel-mount 75 Ω (~$1.50).
+- **Shield can:** Wurth WE-SHC or Laird small-format (~$2.50).
+- **Total RF subsystem BOM:** ~$33 per V1 unit (all SKUs).
+
+### Bench bring-up path (cheap)
+
+ADI ADL5391-EVALZ is ~$300 at DigiKey — too expensive for what it provides. Cheap path confirmed 2026-05-11:
+
+- **EC Buying ADL5391 breakout board** (~$15-25 AliExpress) for primary bench eval.
+- **ADL5391ACPZ-R7** ($15 DigiKey) as known-authentic backup chip in case the Chinese-board silicon is counterfeit (verify by characterizing chip behavior against datasheet; swap bare chip in via dead-bug if needed).
+- **AD835ARZ** ($25 DigiKey) as architectural fallback.
+- Total bench-eval starter: ~$55 in silicon + ~$20 in connectors/passives = ~$75 vs $300 ADI eval board.
+
+### FCC strategy
+
+Stay within Part 15.119 cable-output device limits: shielded RF section, output limited to coaxial F-connector (no antenna driven), bandpass filter for natural harmonic suppression, bench-verify radiated emissions before commercial sale. Formal Part 15 test campaign rolls into the WiFi/BT cert already required for every unit — incremental, not separate. Estimated additional test scope: ~$2–5K beyond the WiFi/BT-only campaign.
+
+### Open questions for bench-eval phase
+
+- Final modulator chip selection (ADL5391 vs AD835) — prototype-characterization decision.
+- Output bandpass topology (Chebyshev vs Butterworth) — synthesize after measuring actual harmonic content.
+- 50→75 Ω match (resistive pad vs TC4-1W+ transformer) — defer to layout phase.
+- Channel-selection UI surface (front-panel button vs web-only) — defer to UI spec phase.
+- Audio FM modulation in V1.x (Path B) — defer until customer evidence drives speaker output need.
 
 ---
 

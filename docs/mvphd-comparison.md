@@ -1,8 +1,10 @@
 # Schindler 2.0 vs MVPHD-24 — Feature Comparison & Gap Analysis
 
-**Status:** Draft 2026-05-11
+**Status:** Updated 2026-05-11 — high-priority gaps reviewed by Justin; 10 items banked into V1, 1 skipped.
 **Source documents:** `MVPHD-24-OM-v0-9-0.pdf` (Cal Media / Schindler Imaging operator manual, Oct 2020, firmware v0.9.0), `MVPHD-24-flyer-v2.pdf`, and Schindler 2.0's own `01-spec.md` + `ui-menu.md` + `panel-layout.md` + `bom-v1.md`.
-**Purpose:** Side-by-side feature catalog, gap analysis, and priority-ranked recommendations for what to add to V1. Flagged for review — no spec changes made yet.
+**Purpose:** Side-by-side feature catalog, gap analysis, and priority-ranked recommendations for what to add to V1.
+
+**Resolution status (2026-05-11 review):** Items #1, #3, #4, #5, #6, #7, #8, #10, #11 confirmed for V1 (see § 9 below). Item #2 (EFX) expanded to 13 effects beyond MVPHD's 5. Item #9 (Y/C Delay) skipped — silicon supports it as V1.x firmware addition if niche customer demands.
 
 The MVPHD-24 is the reference target. It's the device Schindler 2.0 is being built to spiritually succeed. Anywhere we're materially worse on a feature that affects working DPs / rental houses / 24p-playback specialists, we should look hard at the gap.
 
@@ -84,7 +86,7 @@ The MVPHD-24 is the reference target. It's the device Schindler 2.0 is being bui
 
 ## 5. Features MVPHD-24 has that Schindler 2.0 doesn't (gap list)
 
-Ranked by my read of how much they matter to working operators. Open for Justin's adjustment.
+Ranked by my read of how much they matter to working operators. Reviewed by Justin 2026-05-11 — **high-priority items now banked into V1** (see § 9 status below).
 
 ### High priority — most likely worth adding
 
@@ -158,6 +160,30 @@ Items in MVPHD that we should leave behind on purpose:
 - **Raspberry Pi as separate processor domain** — adds maintenance + supply-chain complexity. Schindler folds the entire control plane onto the Zynq PS.
 - **DashBoard-only remote control** — vendor lock-in to Ross's ecosystem. Schindler has its own web UI + REST API, optionally adds Dashboard compatibility later.
 - **Ground-closure GPIO via DB-15 only** — modern broadcast control increasingly uses network protocols (NMOS IS-04/IS-05, Ember+, etc). DB-15 GPIO is useful for legacy tally but Schindler should not consider it the primary remote-control surface. Add as a v1.x option if customers ask.
+
+---
+
+## 9. Resolution status (2026-05-11 review)
+
+Justin reviewed the 11 high-priority gap items and confirmed banking for V1. Updated `01-spec.md`, `ui-menu.md`, and the changelog. Summary:
+
+| # | Item | Decision |
+|---|---|---|
+| 1 | Still image buffers | ✅ Banked V1 — 4 FLASH-backed slots on TE0720 eMMC, see `ui-menu.md` § 1.7 |
+| 2 | EFX effects | ✅ Banked V1 — **expanded to 13 effects** (MVPHD's 5 + on-brand CRT/period additions). New § 8 Effects in `ui-menu.md`. Blur deferred if HDL budget tight. |
+| 3 | BLACK quick-action button | ✅ Banked V1 — default Q1 binding |
+| 4 | MONO quick-action button | ✅ Banked V1 — default Q2 binding |
+| 5 | F1-BLU/F2-YEL shutter-phasing pattern | ✅ Banked V1 — renamed to **Shutter Phase Reference** (not proprietary, just industry-convention colors); color pair operator-selectable |
+| 6 | YUV color-circle temp adjust | ✅ Banked V1 — X/Y axes added alongside RGB white-point trim, see `ui-menu.md` § 3.3 |
+| 7 | 3:2 cadence auto-detect | ✅ Banked V1 — plus Motion Filter selection (Quadratic / Linear / Off) |
+| 8 | Proc Amp Enable bypass | ✅ Banked V1 — default Q3 binding, see `ui-menu.md` § 1.8 |
+| 9 | Y/C Delay input | ❌ Skipped V1 — analog input isn't the headline feature. Silicon supports it for V1.x firmware addition if niche customer demands. |
+| 10 | Custom user test signals | ✅ Banked V1 — 8 web-uploaded slots, eMMC-persistent |
+| 11 | Explicit ARC modes | ✅ Banked V1 — added 14:9 Letter/Pillar + reworded § 4.2 to show both directions |
+
+**Net effect:** Schindler 2.0 V1 now matches or exceeds MVPHD-24's user-facing capabilities. The EFX library extension (Tier 1 CRT-period effects) is a meaningful differentiator over the original.
+
+Next conversation: medium-priority gaps (#12–20 in § 5 — Motion Filter [already added!], GPIO DB-15, Dashboard/openGear compat, active SDI loop, ppm-level free-run trim, Universal Lock, front SD slot, hours counter, CBVS Vert Filter).
 
 ---
 
