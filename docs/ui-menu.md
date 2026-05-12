@@ -29,7 +29,7 @@ This doc is the structural intent. Wireframes, exact widget choices, and field v
 
 | Surface | Owner | Role |
 |---|---|---|
-| Front-panel TFT — Newhaven NHD-2.9-376960AF-ASXP (2.9" 376×960 IPS, rotated to 960×376 landscape, ST7701SN) | UI MCU (STM32H735) | Operator navigates via 2 rotary encoders + 4 fixed buttons + 2–3 quick-select buttons. 4-wire SPI (prototype) or 24-bit parallel RGB (production). 190 PPI. |
+| Front-panel TFT — Newhaven NHD-2.9-376960AF-ASXP (2.9" 376×960 IPS, rotated to 960×376 landscape, ST7701SN) | Front-panel mezzanine: **RP2040** (UI MCU) + **BridgeTek BT817Q EVE 4** graphics controller | Operator navigates via 2 rotary encoders + 4 fixed buttons + 2–3 quick-select buttons. RP2040 reads inputs + sends EVE command lists over SPI; BT817Q drives the panel over 24-bit parallel RGB and holds the frame in its 1 MB RAM_G. 190 PPI. |
 | Web UI (Node.js on Zynq PS) | Zynq PS | Same hierarchy, richer widgets. Accessible at `http://schindler-<serial>.local` |
 | Rear-panel status LCD — Newhaven NHD-1.5-240240AF-CSXP (1.5" 240×240 IPS square, ST7789VI, SPI) | Zynq PS | Read-only paginated summary view; no navigation |
 | Front-panel status LED column | UI MCU | Mirrors rear per-connector LEDs |
@@ -1010,7 +1010,7 @@ Status grid only — no menu. Auto-refreshes every ~1 s. Header bar matches the 
 - **Profile autoload behavior.** Should connecting a known CRT (identified by EDID or measured colorimetry) auto-load its profile? Or always start with the last-active profile?
 - **Quick-select button defaults.** Three buttons, three defaults — revisit after operator testing on real hardware.
 - **HDCP consent persistence default.** Per-session auto-disable is defensive. Some operators may want persist-across-restart for legitimate sustained workflows. Default to per-session; let the operator opt-in.
-- **Front-panel TFT bus.** Now committed to **Newhaven NHD-2.9-376960AF-ASXP**, which supports both 4-wire SPI (prototype) and 24-bit parallel RGB (production). SPI prototype path uses one STM32H735 SPI peripheral; production may stay on SPI or move to parallel RGB depending on frame-rate requirements. Either works on this module.
+- **Front-panel TFT drive path resolved (2026-05-11):** RP2040 → BridgeTek BT817Q EVE 4 (SPI command list) → 24-bit parallel RGB → NHD-2.9. EVE chip holds the frame in 1 MB internal RAM_G. The earlier "SPI prototype path off STM32H735" idea is obsolete — the NHD-2.9's 4-wire SPI is for initialization only, not pixel data. STM32H735 retires from V1.
 - **Resolution × rate combination validation.** With resolution and rate selected independently per output, some combinations are invalid (e.g. 1080p120 is outside HDMI 1.4 bandwidth). UI should gray out invalid pairs at the moment of selection, with a tooltip explaining why.
 
 ---

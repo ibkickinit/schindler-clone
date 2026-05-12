@@ -14,7 +14,11 @@ This is the SSOT for the current spec. Items marked **[PROPOSED]** are awaiting 
 - **SoC:** Trenz TE0720 SOM — Xilinx Zynq-7020. **Production: TE0720-04-62I33MA** (XC7Z020-2I speed grade, industrial -40°C to +85°C, 1 GB DDR3L, 32 MB QSPI flash, 8 GB eMMC, GbE PHY). **Bench/prototype: TE0720-04-31C33MA** (-1 speed grade, commercial 0°C to +70°C, same memory config) — cheaper, better DigiKey stock, identical pinout/footprint so dev work ports directly to production silicon. **Explicitly ruled out: -61C530A and similar 256 MB DDR3 / no-eMMC variants** — insufficient memory for Linux-hosted video pipeline (need 1 GB DDR3 for frame buffers + PetaLinux footprint + Node.js heap + working memory; need eMMC for Linux rootfs). 152 FPGA I/O via Samtec Razor Beam connectors.
 - **Carrier:** custom 6-8 layer PCB, accepts TE0720 SOM, hosts all input/output, control, and power circuitry
 - **Genlock subsystem:** RP2040 + Si5351 generates pixel clock from selected reference; FPGA locks output timing to it. **RP2040 confirmed in V1** — owns sync slow-control (autosense decision, PGA gain commands, Si5351 register writes, status reporting); FPGA does high-rate signal classification of the 20 MSPS ADC stream.
-- **UI MCU:** STM32H735IGT6 (LQFP176, 480 MHz Cortex-M7) on carrier — owns front panel (TFT, encoders, buttons, LEDs); communicates with Zynq PS over UART or SPI
+- **Front-panel architecture (revised 2026-05-11):** Front panel is its own mezzanine board, mounted behind the front-panel aluminium and connected to the main carrier via a small mezzanine cable (UART + power). The mezzanine board carries:
+  - **RP2040** (separate from the genlock RP2040 on the main carrier) — UI MCU; reads encoders + buttons via PIO/GPIO, talks to the EVE graphics controller over SPI, syncs UI state to the Zynq PS over UART. ~$1 chip + QSPI boot flash + crystal.
+  - **BridgeTek/FTDI BT817Q EVE 4 graphics controller** — drives the NHD-2.9 over 24-bit parallel RGB, holds the frame in its internal 1 MB RAM_G, renders from high-level command lists sent by RP2040 over SPI. Drives panels up to 1280×800; covers our 960×376 with bandwidth headroom. ~$10–13 single qty / ~$8 at qty 100.
+  - Front-panel TFT + status LEDs + power button live on this same mezzanine.
+- **STM32H735IGT6 retires from V1 production spec.** Was previously the planned UI MCU on the carrier. Replaced by RP2040 + BT817Q on the front-panel mezzanine. The STM32H735G-DK already procured stays in inventory as a spare / educational asset, not a production-path tool. Drops one chip + one toolchain (no STM32CubeIDE / TouchGFX / LVGL) — the EVE chip handles graphics rendering natively from a simple command list.
 - **Output DAC:** Analog Devices ADV7393 — triple 11-bit DAC with composite / S-Video / component encoding, I²C-configured. S-Video output is silicon-capable but no dedicated rear-panel connector in V1 (mini-DIN dropped in 2026-05-11 connector simplification).
 - **Input video decoder:** ADV7280-class multi-format decoder for composite/component analog inputs
 
@@ -23,7 +27,9 @@ This is the SSOT for the current spec. Items marked **[PROPOSED]** are awaiting 
 - Trenz TE0720-04-31C33MA + TE0703-07 carrier — production SOM (commercial-grade variant for bench) on Trenz dev carrier for porting FPGA design to production silicon before custom carrier rev
 - 33337 springloaded heatsink for TE0720 — passive thermal dissipation under continuous video pipeline load
 - EVAL-ADV7393EBZ — output DAC eval board (replaces R2R perfboard after first-light)
-- STM32H735G-DK (~$70) — UI MCU + TFT bench development; produces production-quality UI in TouchGFX or LVGL, ports to STM32H735IGT6 on production carrier
+- STM32H735G-DK (~$70) — already procured; **retained as bench spare / educational asset only** (no longer in V1 production path after the 2026-05-11 front-panel mezzanine architecture revision)
+- **Raspberry Pi Pico** (RP2040 dev board, ~$4) — front-panel mezzanine UI MCU prototyping platform
+- **BT817Q dev board** — Crystalfontz CFA10110 or Riverdi RVT-EVE-eval, ~$80–150 — EVE 4 graphics controller bench eval
 - Oscilloscope — signal analysis
 
 ### Resolution ceiling
@@ -212,7 +218,7 @@ This is the SSOT for the current spec. Items marked **[PROPOSED]** are awaiting 
 - USB on rear panel for service / firmware update / debug
 
 ### Rear panel — status display
-- **Read-only status LCD on rear panel (confirmed 2026-05-11).** **Newhaven NHD-1.5-240240AF-CSXP** — 1.5" 240×240 IPS square TFT, ST7789VI controller, 32.52 × 35.32 mm module outline (~28 × 28 mm active area cutout). Interface: 8-bit 8080-II parallel OR 3/4-wire SPI (4-wire SPI preferred — uses one SPI peripheral on the Zynq PS). ~1 s refresh.
+- **Read-only status LCD on rear panel (confirmed 2026-05-11).** **Newhaven NHD-1.5-240240AF-CSXP** — 1.5" 240×240 IPS square TFT, ST7789VI **with internal controller + frame RAM** (write-once, hold-forever — ideal for 1 Hz status updates), 32.52 × 35.32 mm module outline (~28 × 28 mm active-area cutout). Interface: 8-bit 8080-II parallel OR 3/4-wire SPI; **4-wire SPI hardwired via strap pins** IM0=0, IM1=1, IM2=1. 1200 cd/m² brightness, anti-glare polarizer, built-in EMI shielding. **Backlight: 3.0 V / 100 mA** — driven by a small regulator (LDO from 3.3 V is sufficient, ~$0.20). 28-pin 0.5 mm pitch FFC (Molex 5051102891). Owned by Zynq PS over one dedicated SPI port. ~1 s refresh.
 - **Content:** fixed status grid — one row per I/O connector with name | status icon | detail (rate, format, lock state). Header bar shows IP address, hostname, firmware version, current reference source. No buttons; pure status display for at-rack patching from behind the rack.
 - **Rationale:** standard pro practice (Evertz, Imagine, some Ross openGear cards have it). When patching from behind the rack, the engineer sees connection state, lock status, and rate of every port without walking around to the front panel.
 
@@ -228,7 +234,7 @@ This is the SSOT for the current spec. Items marked **[PROPOSED]** are awaiting 
 - Power button (lower-left)
 - **microSD card slot (confirmed 2026-05-11)** — front-accessible push-push microSD socket. Dual purpose: (a) firmware updates without rear-panel access (MVPHD-familiar pattern), (b) extended still-image library for the 4 still buffers (operator loads any image from card into an active buffer). Resolves the prior `panel-layout.md` open question.
 - Status LED column: genlock lock, signal present per input, network link, fault — multi-color, visible at a glance from across the rack. Mirrors the per-connector LED state on the rear panel.
-- Center: **Newhaven NHD-2.9-376960AF-ASXP** — 2.9" 376×960 IPS TFT mounted **rotated 90° to landscape (effective 960 × 376)**, ST7701SN controller, 32.6 × 78.7 mm module outline (~69 × 28 mm bezel-opening cutout in landscape orientation). Interface: 24-bit parallel RGB OR **4-wire SPI** — the SPI option lets the STM32H735 drive it directly from a standard SPI peripheral on the prototype path (no LTDC routing needed); production path can switch to parallel RGB on the same module if frame-rate demands it. 190 PPI for crisp text + thumbnails (~6× the pixel count of the prior 480×272 plan).
+- Center: **Newhaven NHD-2.9-376960AF-ASXP** — 2.9" 376×960 IPS TFT mounted **rotated 90° to landscape (effective 960 × 376)**, ST7701SN driver (no internal frame buffer — needs continuous parallel RGB feed), 32.6 × 78.7 mm module outline (~69 × 28 mm bezel-opening cutout in landscape orientation). **Driven by the BT817Q EVE 4 graphics controller** on the front-panel mezzanine over 24-bit parallel RGB (EVE chip holds the frame in 1 MB internal RAM_G and refreshes the panel autonomously). 1050 cd/m² (sunlight-readable territory), anti-glare polarizer, built-in EMI shielding. **Backlight is non-standard: 6.0 V / 100 mA** — driven by a small boost regulator (TI TPS61040 class) on the mezzanine board from the 5 V or 12 V rail. 40-pin 0.5 mm pitch FFC (Molex 54104-4031). The 4-wire SPI option on the panel is for initialization commands only; pixel data must come over parallel RGB. 190 PPI for crisp text + thumbnails.
 - Two rotary encoders: **ALPS EC11E18244AU** — 11mm metal D-shaft (6 mm × 20 mm), 36 detents / 18 PPR (half-step quadrature; firmware decoder counts edges, not full cycles), integrated push switch, sealed, -40 to +85°C industrial range, 15k-cycle rotational life. ~$2-3.50 in singles at DigiKey / Mouser / LCSC. Navigation (CW/CCW + push to select), value adjustment (CW/CCW + push to confirm). Software acceleration on long scrolls advised given fine 36-detent click pitch (~10° per click).
 - Four hardware-fixed buttons: Home, Back, Menu, Confirm
 - 2-3 quick-select buttons for common functions. **Defaults (confirmed 2026-05-11 post MVPHD review):** Q1 = `BLACK` (fade-to-black), Q2 = `MONO` (monochrome toggle), Q3 = `Proc Amp bypass`. Operator can rebind to any effect or any other action — alternate defaults: Output Mode toggle, EDID profile, Genlock source, Freeze frame, Snow burst.
@@ -236,13 +242,15 @@ This is the SSOT for the current spec. Items marked **[PROPOSED]** are awaiting 
 - Front-panel preset recall
 
 ### UI architecture
-- Dedicated UI MCU on carrier owns front panel — TFT, encoders, buttons, front-panel LED column
-- Zynq PS owns rear-panel LCD + per-connector LEDs (state authority) and pushes mirror updates to UI MCU
+- **Front-panel mezzanine** owns its own subsystem: RP2040 UI MCU + BT817Q EVE graphics controller + NHD-2.9 TFT + encoders + buttons + front-panel LED column. Self-contained board, connects to main carrier via a small mezzanine cable carrying UART + power only.
+- Zynq PS owns rear-panel LCD + per-connector LEDs (state authority) and pushes mirror updates to the front-panel RP2040 over UART.
 - UI alive in <1 second from cold boot; main system can take 15-30 s to boot Linux behind the scenes with progress bar shown
-- UI MCU ↔ Zynq PS: UART or SPI for state sync
+- RP2040 ↔ Zynq PS: UART over the front-panel mezzanine cable for state sync (replaces prior STM32H735 ↔ Zynq PS path)
+- RP2040 ↔ BT817Q: SPI at ~30 MHz for graphics command-list streaming
 - Pattern B for v1: single TFT + 2 encoders + buttons. Pattern A (per-encoder OLEDs, DiGiCo-style) reserved for v2 if menu surface area justifies it.
-- Bench dev: STM32H735G-DK (~$70) → production silicon STM32H735IGT6 (LQFP176, ~$8)
-- UI framework: TouchGFX (visual designer, ST-supported) or LVGL (open-source, more code-driven)
+- Bench dev: Raspberry Pi Pico (RP2040 dev board) + BT817Q dev board (Crystalfontz CFA10110 or Riverdi RVT-EVE-eval) → production: bare RP2040 + BT817Q on the front-panel mezzanine PCB
+- UI framework: **BridgeTek EVE Asset Builder / EVE Screen Editor** + the FT8xx command set — no TouchGFX, no LVGL, no LTDC. Higher-level paradigm (display lists + co-processor commands) than the lower-level pixel-blit-and-DMA approach the STM32H735 path required.
+- **Backlight power on mezzanine:** dedicated boost regulator from 5 V or 12 V rail to 6.0 V for the NHD-2.9 backlight (TI TPS61040 class, ~$0.50).
 
 ---
 

@@ -252,16 +252,17 @@ flowchart TB
     end
 
     subgraph REAR[Rear-panel display and LEDs]
-        REAR_LCD[Rear status LCD<br/>2.4-inch 16:9 SPI ILI9341 or ST7789<br/>1 s refresh, read-only status grid]:::mcu
+        REAR_LCD[Rear status LCD<br/>NHD-1.5 240x240 IPS square<br/>ST7789VI controller, SPI<br/>1 s refresh, paginated summary]:::mcu
         TLC_LEDS[3x TLC59116F<br/>I2C LED drivers, 48 channels<br/>per-connector R/A/G + dimming]:::mcu
     end
 
-    subgraph UIMCU[STM32H735IGT6 - dedicated UI MCU, front panel]
-        TFT_DRV[Front TFT driver<br/>~2.8-inch color, LTDC parallel]:::mcu
+    subgraph UIMEZ[Front-panel mezzanine board]
+        RP2040_UI[RP2040 UI MCU<br/>reads inputs + sends EVE commands<br/>UART to Zynq PS]:::mcu
+        BT817Q[BridgeTek BT817Q EVE 4<br/>graphics controller<br/>1 MB RAM_G frame buffer]:::mcu
+        TFT_DRV[Front TFT<br/>NHD-2.9 960x376 IPS<br/>24-bit parallel RGB]:::mcu
         ENC[ALPS EC11 encoders<br/>x2 plus pushbuttons]:::mcu
         BTN[4 fixed buttons +<br/>2-3 quick-select]:::mcu
         FP_LED[Front status LED column<br/>mirrors rear LED state]:::mcu
-        UI_FW[Front-panel firmware<br/>TouchGFX or LVGL]:::mcu
     end
 
     subgraph EXTERNAL[External]
@@ -283,22 +284,24 @@ flowchart TB
 
     STATE -->|SPI| REAR_LCD
     STATE -->|I2C| TLC_LEDS
-    STATE <-->|UART or SPI<br/>state sync| UI_FW
+    STATE <-->|UART<br/>state sync| RP2040_UI
     EDID --> STATE
     PL_BRIDGE --> STATE
 
-    UI_FW --> TFT_DRV
-    UI_FW --> ENC
-    UI_FW --> BTN
-    UI_FW --> FP_LED
+    RP2040_UI <--> ENC
+    RP2040_UI <--> BTN
+    RP2040_UI --> FP_LED
+    RP2040_UI -->|SPI command list| BT817Q
+    BT817Q -->|24-bit parallel RGB| TFT_DRV
 ```
 
 **Notes**
 
-- Pi CM4 is **not** in V1 (dropped 2026-05-11). Zynq PS hosts everything Linux-side; UI MCU owns front panel.
-- UI alive in <1 s from cold boot via UI MCU; Linux takes 15–30 s to boot behind the scenes with progress bar shown.
+- Pi CM4 is **not** in V1 (dropped 2026-05-11). Zynq PS hosts everything Linux-side; front-panel mezzanine owns the front panel.
+- **Front panel is its own mezzanine board** (revised 2026-05-11). RP2040 reads encoders + buttons + drives the front-panel LED column. EVE 4 (BT817Q) handles all graphics — RP2040 sends high-level draw commands; EVE holds the frame in 1 MB internal RAM_G and refreshes the NHD-2.9 over 24-bit parallel RGB autonomously. STM32H735 retires from V1. Mezzanine ↔ main carrier link is UART + power only.
+- UI alive in <1 s from cold boot via RP2040 (no Linux dependency). Main system can take 15–30 s to boot Linux behind the scenes with progress bar shown on the front TFT.
 - All AXI traffic from PS to FPGA fabric (color matrix loads, EDID writes, mode changes, register pokes) goes through `PL_BRIDGE` — a single memory-mapped region with sequence numbers for atomic updates, same pattern as NovaTool / Screenie config systems.
-- **`STATE` is the single source of truth for per-I/O status** (lock, rate, format, fault). It feeds three sinks: rear-panel LCD (SPI), per-connector LED drivers (I²C), and the front-panel UI MCU (UART or SPI state-sync). Front-panel LEDs mirror rear-panel LEDs so the operator sees identical state from front or back of the rack.
+- **`STATE` is the single source of truth for per-I/O status** (lock, rate, format, fault). It feeds three sinks: rear-panel LCD (SPI), per-connector LED drivers (I²C), and the front-panel mezzanine RP2040 (UART state-sync). Front-panel LEDs mirror rear-panel LEDs so the operator sees identical state from front or back of the rack.
 
 ---
 
