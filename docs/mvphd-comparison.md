@@ -1,8 +1,9 @@
 # Schindler 2.0 vs MVPHD-24 — Feature Comparison & Gap Analysis
 
-**Status:** Updated 2026-05-11 — high-priority gaps reviewed by Justin; 10 items banked into V1, 1 skipped.
-**Source documents:** `MVPHD-24-OM-v0-9-0.pdf` (Cal Media / Schindler Imaging operator manual, Oct 2020, firmware v0.9.0), `MVPHD-24-flyer-v2.pdf`, and Schindler 2.0's own `01-spec.md` + `ui-menu.md` + `panel-layout.md` + `bom-v1.md`.
-**Purpose:** Side-by-side feature catalog, gap analysis, and priority-ranked recommendations for what to add to V1.
+**Status:** Updated 2026-05-13 — high-priority gaps reviewed by Justin; 10 items banked, 1 skipped.
+**SKU scope:** the "Schindler 2.0" feature set in this comparison refers to **Pro v2** (the full feature set). Mini v1 ships with a subset of these features — Mini matches MVPHD-24's core feature set (NTSC composite drive at film cadences) and inherits some Pro features that come free with the shared HDL and PetaLinux control plane (HDCP consent gate, custom test signals, color pipeline, EFX library). Mini-specific subsetting decisions are made when the Mini UI menu is authored — see [`packaging-skus.md`](packaging-skus.md) for SKU differences.
+**Source documents:** `MVPHD-24-OM-v0-9-0.pdf` (Cal Media / Schindler Imaging operator manual, Oct 2020, firmware v0.9.0), `MVPHD-24-flyer-v2.pdf`, and Schindler 2.0's own [`01-spec.md`](01-spec.md) + [`ui-menu.md`](ui-menu.md) + [`panel-layout.md`](panel-layout.md) + [`bom-v1.md`](bom-v1.md).
+**Purpose:** Side-by-side feature catalog, gap analysis, and priority-ranked recommendations.
 
 **Resolution status (2026-05-11 review):** Items #1, #3, #4, #5, #6, #7, #8, #10, #11 confirmed for V1 (see § 9 below). Item #2 (EFX) expanded to 13 effects beyond MVPHD's 5. Item #9 (Y/C Delay) skipped — silicon supports it as V1.x firmware addition if niche customer demands.
 

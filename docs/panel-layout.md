@@ -1,10 +1,9 @@
 # Schindler 2.0 — Panel Layout
 
-**Status:** Draft 2026-05-11 (rev 2 — adds front-panel sketch)
-**Scope:** rear AND front panel arrangement for V1 Pro Full / Broadcast Digital.
-**Form factor:** 1RU full-rack 19" — usable panel area ≈ 432 mm × 44 mm (both panels).
+**Status:** Draft 2026-05-13
+**SKU scope:** this doc describes the **Pro v2** panel layout (full-rack 1RU 19" × 44 mm, full I/O complement, full mezzanine front panel). **Mini v1** has its own panel layout (half-rack 1RU, smaller I/O complement, mono OLED + tactile buttons front panel) — documented in [`packaging-skus.md`](packaging-skus.md).
 
-This doc holds the spatial arrangement. The connector inventory and electrical spec live in [`01-spec.md`](01-spec.md); the menu hierarchy displayed on the front TFT lives in [`ui-menu.md`](ui-menu.md).
+This doc holds the spatial arrangement. The connector inventory and electrical spec live in [`01-spec.md`](01-spec.md); the menu hierarchy displayed on the front TFT lives in [`ui-menu.md`](ui-menu.md); SKU packaging variants in [`packaging-skus.md`](packaging-skus.md).
 
 ---
 

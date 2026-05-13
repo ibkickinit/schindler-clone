@@ -1,8 +1,10 @@
 # Schindler 2.0 — Signal Flow
 
-**Status:** Draft 2026-05-11
-**Sources:** `docs/01-spec.md`, `hdl/*.v`, hardware architecture decisions through 2026-05-11
+**Status:** Draft 2026-05-13
+**Sources:** [`01-spec.md`](01-spec.md), [`packaging-skus.md`](packaging-skus.md), `hdl/*.v`
 **Working level:** functional block diagram, not schematic. Wire-level connectivity belongs in the KiCad carrier schematic (later).
+
+**SKU scope:** the three diagrams describe the **Pro v2** architecture (full silicon stuffing). Mini v1 is a subset — same diagrams, with the SDI subsystem unpopulated, no dual SYNC OUT driver chain, no per-connector LED drivers, no rear-LCD wiring, and a simpler control plane (PetaLinux on Zynq drives a mono OLED + buttons directly instead of the RP2040 + BT817Q mezzanine). Mini-specific differences called out per-diagram. See [`packaging-skus.md`](packaging-skus.md) for SKU stuffing matrix.
 
 This doc captures three views:
 

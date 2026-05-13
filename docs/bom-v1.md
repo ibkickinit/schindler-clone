@@ -1,8 +1,8 @@
-# Schindler 2.0 — V1 Bill of Materials
+# Schindler 2.0 — Bill of Materials
 
-**Status:** Draft 2026-05-11
-**Scope:** all silicon, modules, connectors, mechanical, and bench-eval boards for V1 Pro Full / Broadcast Digital.
-**Detailed tracker:** `Parts List.xlsx` (authoritative for procurement state, notes, supplier links). This doc is the markdown-readable summary mapping parts onto the architecture in `signal-flow.md` + `panel-layout.md`.
+**Status:** Draft 2026-05-13
+**Scope:** all silicon, modules, connectors, mechanical, and bench-eval boards. **One BOM covers both SKUs** — Pro v2 is the full stuffing; Mini v1 omits the Pro-tier silicon (SDI, RF modulator, dual SYNC OUT driver chain, per-connector LED drivers, rear LCD circuitry, Pro front-panel mezzanine). SKU stuffing matrix lives in [`packaging-skus.md`](packaging-skus.md).
+**Detailed tracker:** `Parts List.xlsx` (authoritative for procurement state, notes, supplier links). This doc is the markdown-readable summary mapping parts onto the architecture in [`signal-flow.md`](signal-flow.md) + [`panel-layout.md`](panel-layout.md) + [`01-spec.md`](01-spec.md).
 
 ## Status legend
 
@@ -261,6 +261,76 @@ Selected at carrier-schematic time. Placeholders:
 
 ---
 
+## 7. RF Modulator Output *(built-in, all V1 SKUs)*
+
+Built into every V1 carrier as a standard subsystem. Adds an RF modulated output on NTSC Ch3 or Ch4 (operator-selectable) for 1970s consumer CRTs with antenna-only inputs. Replaces the earlier daughter-card framing per 2026-05-11 PM commit. Full architecture spec in [`rf-modulator-subsystem.md`](rf-modulator-subsystem.md); spec entry in [`01-spec.md`](01-spec.md) under "RF modulator output (built-in)".
+
+**Operator picks one of three analog output modes** via UI: composite (BNC live), RF Ch3 / RF Ch4 (F-connector live, ADV7393 stays in composite mode), or component (3× component BNC live, ADV7393 in component mode). HDMI and SDI remain independently live. F-connector lives beside the composite BNC on the rear panel.
+
+### Modulator + carrier generation
+- **AM modulator (primary):** `ADL5391ACPZ-R7` — Analog Devices, DC–2.0 GHz analog multiplier, modern symmetric-core architecture, 16-LFCSP, 7" reel cut for single qty — ~$15 single qty / ~$18 at qty 100 — 📋
+- **AM modulator (fallback):** `AD835ARZ` — Analog Devices, 250 MHz four-quadrant multiplier, 8-SOIC, classic part with abundant reference designs — ~$25 at qty 100 — 📋 (order one of each for bench eval)
+- **RF carrier gen:** `Si5351A-B-GT` — dedicated to RF subsystem (separate from genlock Si5351 to avoid cross-coupling) + 25 MHz crystal — Skyworks/Silicon Labs — ~$2 — 📋
+- **Si5351 channel allocation:** ch1 = video carrier (Ch3 61.25 MHz / Ch4 67.25 MHz), ch2 = audio pilot CW (Ch3 65.75 MHz / Ch4 71.75 MHz), ch0 free.
+
+### RF chain
+- **RF amp:** Mini-Circuits **ERA-3SM+** — MMIC, DC–3 GHz, ~22 dB gain, SOT-89, 50 Ω native — ~$3.50 — 📋
+- **Output bandpass filter:** 5th-order LC, centered ~64 MHz, passband 56–73 MHz (covers Ch3 + Ch4 video + audio carriers; naturally suppresses 2nd harmonics at 122.5–134.5 MHz) — Coilcraft 0805CS class inductors + C0G ceramic caps, ~9 parts — ~$1.50 — ❓ final topology (Chebyshev vs Butterworth) TBD bench-eval phase
+- **50→75 Ω MLP (minimum-loss pad):** 43.2 Ω series + 86.6 Ω shunt resistors (off-the-shelf 43 Ω + 82 Ω 1% is close enough). Two 1% resistors total. 5.7 dB insertion loss — mathematically optimal for resistive 50↔75 Ω conversion. Broadband DC-to-GHz, no tuning, no drift. ERA-3SM+ has 22 dB gain headroom so pad loss is rounding error. **Replaces prior transformer option** (TC4-1W+/MABAES0061 are 1:4 ratio = 50↔200 Ω, NOT 50↔75 — confirmed by datasheet 2026-05-11 PM). — ~$0.10 — 📋
+- **Audio combiner:** 3-resistor resistive combiner that sums Si5351 ch2 audio pilot CW with ADL5391 output before bandpass filter — generic resistors — ~$0.50 — 📋
+
+### Mode-mux silicon (composite/RF/component selection)
+- **Composite BNC gate:** `ADG419BRZ` — Analog Devices SPST analog switch, ~50 ns switching, ~30 Ω on-resistance — ~$1.50 — 📋 (driven by Zynq PS GPIO; open in RF mode + component mode, closed in composite mode)
+- **RF amp gate:** small-signal FET on ERA-3 bias-inductor supply — ~$0.30 — 📋 (driven by separate Zynq PS GPIO; active in RF mode, off otherwise)
+- **ADV7393 mode:** I²C-switched between composite mode (serves composite BNC + RF) and component mode (serves 3× component BNC) — no additional silicon, configuration only
+
+### Output protection + connector
+- **DC block on RF output:** C0G 0.1 µF 50 V MLCC — generic — ~$0.10 — 📋
+- **ESD on F-conn:** `PESD3V3L1BA` low-cap TVS or equivalent — NXP — ~$0.20 — 📋
+- **F-connector:** Amphenol RF **82-4421** class panel-mount 75 Ω, threaded — ~$1.50 — 📋
+
+### Shielding
+- **Shield can:** Wurth WE-SHC or Laird small-format (~25×25 mm) with frame, over modulator + amp + dedicated Si5351 + bandpass filter section — ~$2.50 — 📋 (required for FCC Part 15.119 compliance — not optional)
+
+### Bypass / decoupling
+- Generic 0.1 µF + 10 µF per power rail — ~$1 — 📋
+
+### Bench eval parts (separate from production BOM)
+- **EC Buying ADL5391 breakout board** — AliExpress / Amazon — ~$15–25 — 🔬 primary bench-eval platform
+- **ADL5391ACPZ-R7** × 1 — DigiKey — $15 — 🔬 known-authentic backup against potential counterfeit silicon on Chinese board
+- **AD835ARZ** × 1 — DigiKey — $25 — 🔬 architectural fallback
+- **ERA-3SM+** × 5 — Mini-Circuits direct — ~$20 — 🔬
+- **43 Ω + 82 Ω 1% resistors** — DigiKey — cents — 🔬 (the 50→75 Ω MLP)
+- **F-connectors + F-to-BNC adapters** — DigiKey — ~$10 — 🔬
+- **ADI ADL5391-EVALZ explicitly NOT ordered** — $300 at DigiKey, not worth the price premium vs Chinese-board + spare-chip approach.
+- Bench eval starter total: **~$65–70**.
+
+### Section subtotal (per V1 unit, all SKUs)
+
+| Item | Per unit |
+|---|---:|
+| ADL5391ACPZ-R7 (primary modulator) | $18 |
+| Si5351A-B-GT + 25 MHz crystal (RF-dedicated) | $2 |
+| ERA-3SM+ RF amp | $3.50 |
+| Output bandpass filter (LC passives) | $1.50 |
+| 50→75 Ω MLP (2 resistors) | $0.10 |
+| Audio combiner passives | $0.50 |
+| Mode-mux (ADG419 + bias FET) | $1.80 |
+| F-connector + ESD + DC block | $1.80 |
+| Shield can + frame | $2.50 |
+| Bypass / decoupling passives | $1 |
+| **RF subsystem total** | **~$32** |
+
+Built into every V1 unit (Base + Broadcast). No daughter card, no mezzanine connector, no separate PCB.
+
+### Open BOM questions
+- **Final modulator chip:** ADL5391 vs AD835 — prototype-characterization decision after bench eval.
+- **Output bandpass topology:** Chebyshev (steeper rolloff, more passband ripple) vs Butterworth (flat passband, gentler rolloff) — synthesize after measuring actual harmonic content from the prototype modulator.
+- **Audio FM modulation in V1.x:** if customer evidence drives audible audio (Path B from 2026-05-11 audio analysis: discrete Colpitts VCO + FPGA-generated 1 kHz tone via PWM + LPF, ~$3 BOM, ~1 day HDL), it's documented as the next step. 2-channel BTSC stereo explicitly rejected for V1 (period sets are mono).
+- **Channel-selection UI surface:** front-panel Ch3/Ch4 toggle button vs web-only — defer to UI spec phase.
+
+---
+
 ## V1 Pro Full BOM Roll-Up (typical)
 
 | Section | Base unit | Broadcast unit |
@@ -271,9 +341,10 @@ Selected at carrier-schematic time. Placeholders:
 | 4. UX / Panel I/O | ~$70 | ~$70 |
 | 5. Control + Networking | ~$46 | ~$46 |
 | 6. Chassis + Mechanical | ~$200 | ~$200 |
-| **Subtotal (parts only)** | **~$484** | **~$516** |
+| 7. RF Modulator Output *(built-in)* | ~$32 | ~$32 |
+| **Subtotal (parts only)** | **~$516** | **~$548** |
 | TE0720 SOM (production grade) | $300 | $300 |
-| **V1 unit total (parts)** | **~$784** | **~$816** |
+| **V1 unit total (parts)** | **~$816** | **~$848** |
 
 **Excluded from this BOM:** carrier PCB fabrication + assembly cost (~$80–150 per board at qty 100 per playbook Ch. 10), labor / test / packaging / shipping, NRTL end-product certification cost amortization, software development, marketing — these all sit outside the parts roll-up.
 

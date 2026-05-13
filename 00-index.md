@@ -1,51 +1,92 @@
 # Schindler 2.0 — 00 Index
 
-**Status:** ACTIVE — early prototype phase, hardware ordered
+**Status:** ACTIVE — HD pipeline development on Zybo Z7-20
 **Type:** Personal venture
 **Code location:** `_PROJECTS/Schindler-2.0/` (this folder, repo at root)
-**GitHub:** `ibkickinit/schindler-clone` *(rename to `schindler-2` planned in Phase 3)*
+**GitHub:** `ibkickinit/schindler-clone` *(rename to `schindler-2` planned later)*
 
 ## What this is
 
-FPGA-based hardware project to drive 24fps content to legacy monitors. The "2.0" name reflects that this is a modern reimplementation/spiritual successor to a Schindler-branded device (whose original behavior is being replicated and improved with current FPGA tech).
+FPGA-based hardware project to drive video to legacy CRTs at film cadences (24/30 fps), with the broader scope of acting as a general broadcast-grade HD signal processor. Spiritual successor to the Cal Media MVPHD-24 device — replicating that workflow with modern FPGA tech, and extending to HD pipeline + sync conversion + per-CRT color profiles + RF modulator (Pro) for period sets.
 
-The mission: keep heritage display gear functional and useful in modern production workflows, where 24fps cinema cadence needs to drive into displays designed for older signal standards.
+The mission: keep heritage display gear functional in modern production workflows, where 24fps cinema cadence needs to drive into displays designed for older signal standards.
 
-## Hardware ordered
+## Two SKUs, one electronics design
 
-- FPGA development kit
-- Oscilloscope (for signal analysis during bring-up)
-- (more to be added as procurement progresses)
+**One internal electronics design — two packaging variants.** Mini and Pro share the same carrier PCB, the same TE0720 SOM, the same FPGA HDL, the same PetaLinux control plane. They differ in chassis form factor, front-panel hardware, rear-panel I/O complement, and carrier stuffing.
 
-## Folder structure
+- **Mini v1** — first shipping SKU. Half-rack 1RU chassis. Mono OLED + tactile switches front panel. Subset of stuffing (no SDI, no RF modulator, no dual SYNC OUT, no per-connector LEDs, no rear LCD). Indicative retail $1,500–2,500; parts cost ~$572.
+- **Pro v2** — full-rack 1RU chassis. NHD-2.9 color TFT + RP2040 + BT817Q EVE mezzanine front panel. Full silicon stuffing. Indicative retail $2,500+; parts cost ~$816. Gated on Mini selling.
 
-- `00-index.md` — this file (vault MOC)
-- `README.md` — repo README (canonical for clone-and-build context)
-- `docs/` — development playbook, design notes
-- `.git/` — git repo (synced via Dropbox; do not delete from cloud)
+See [`docs/packaging-skus.md`](docs/packaging-skus.md) for SKU stuffing matrix + chassis detail.
 
-This project keeps the repo flat at the project root rather than under `code/`, since the project is small and the README + docs are the main content currently.
+## Doc structure
+
+- [`docs/01-spec.md`](docs/01-spec.md) — SSOT for internal electronics architecture and feature set. Applies to both SKUs.
+- [`docs/packaging-skus.md`](docs/packaging-skus.md) — Mini vs Pro packaging differences (chassis, front panel, rear panel I/O, stuffing variants).
+- [`docs/dev-roadmap.md`](docs/dev-roadmap.md) — SSOT for active development arc and deferred work. **Read this first** to know what's being built right now.
+- [`docs/01-spec-changelog.md`](docs/01-spec-changelog.md) — dated decision history.
+- [`docs/signal-flow.md`](docs/signal-flow.md) — Mermaid block diagrams (video signal path, sync subsystem, control plane).
+- [`docs/panel-layout.md`](docs/panel-layout.md) — Pro panel layout. Mini layout in `packaging-skus.md`.
+- [`docs/bom-v1.md`](docs/bom-v1.md) — BOM with Mini/Pro stuffing variants.
+- [`docs/ui-menu.md`](docs/ui-menu.md) — Pro UI menu hierarchy. Mini UI hierarchy authored when Mini PetaLinux UI work activates.
+- [`docs/mvphd-comparison.md`](docs/mvphd-comparison.md) — MVPHD-24 feature comparison + gap analysis.
+- [`docs/rf-modulator-subsystem.md`](docs/rf-modulator-subsystem.md) — RF modulator detail (Pro feature).
+- [`docs/opamp-stage.md`](docs/opamp-stage.md) — output op-amp design.
+- [`docs/r2r-dac.md`](docs/r2r-dac.md) — R-2R DAC perfboard reference (Zybo bench).
+- [`docs/schindler-playbook.md`](docs/schindler-playbook.md) — development narrative.
+- [`docs/Hardware/`](docs/Hardware/) — archived future-evaluation hardware (Smart Artix, Smart Zynq SL, TE0712, TinyZynq) — **NOT** on the active dev path. Preserved for archival reference.
+
+## Active development arc
+
+Building **HD pipeline top-down** on Zybo Z7-20:
+
+```
+Phase A: HDMI passthrough        (next up)
+Phase B: VDMA frame buffer
+Phase C: Polyphase scaler
+Phase D: Frame rate conversion
+Phase E: Color pipeline
+Phase F: Geometry warp
+Phase G: Re-attach analog terminal encoders (Phase 2 HDL plugs back in here)
+```
+
+Migration from Zybo to TE0720 production target comes after the HD pipeline validates. See [`docs/dev-roadmap.md`](docs/dev-roadmap.md) for current status, deferred work, and forward-looking work.
+
+## Recently completed
+
+**Phase 2 first-light** on Zybo Z7-20 + R2R DAC perfboard:
+- Monochrome NTSC composite at 24.000 fps exact — scope-validated
+- `hdl/vid_timing.v` + `hdl/vbi_gen.v` + `hdl/sample_gen.v` validated
+- `hdl/chroma_gen.v` written + integrated + builds clean; chroma burst bench verification deferred per HD-pipeline-first priority shift
+
+## Hardware status
+
+- ✅ **Digilent Zybo Z7-20** — active dev platform
+- ✅ R-2R DAC perfboard + op-amp output stage
+- ✅ Phase 2 NTSC composite HDL on bench, scope-validated through monochrome
+
+**Future-evaluation hardware** (procured but NOT the active dev plan — bench eval / parts inventory only):
+- Trenz TE0720-04-31C33MA SOM, TE0703-07 dev carrier, EVAL-ADV7393EBZ, LT8619C-EVB, ADV7280, ADV7393, LTC6912, AD9204, encoders, op-amps, BNCs (various 2026-05-10 / 11 procurements)
+- Digilent Arty S7-25 — toolchain learning + Spartan-7 comparison only
+- Smart Artix V1.3 / Smart Zynq SL V1.3 / TE0712-02 / TinyZynq — evaluation archive (`docs/Hardware/`)
+
+The TE0720 is the **production-target SOM**; bench dev happens on Zybo Z7-20 (same Z-7020 silicon family). Production migration after HD pipeline validates.
 
 ## Operating principle (code in vault)
 
 `.git/` syncs to Dropbox cloud. NEVER delete `.git/` from cloud — propagates to local and destroys repo. See `_PROJECTS/NovaTool/00-index.md` for full rationale on code-in-vault.
 
-## Active workstreams
-
-- README and development playbook (initial commit complete)
-- Hardware bring-up (pending FPGA dev kit + oscilloscope arrival)
-- VHDL/Verilog architecture design (pending)
-- Signal characterization vs original Schindler device (pending hardware)
-
 ## Migration status
 
 - [x] Migrated from `~/schindler-clone/` to `_PROJECTS/Schindler-2.0/` (2026-05-06)
 - [x] Remote URL cleaned (no embedded PAT)
-- [x] Renamed locally during migration (`schindler-clone` → `Schindler-2.0`)
-- [ ] Rename GitHub repo: `schindler-clone` → `schindler-2` (Phase 3, batch with other renames)
+- [x] Two-SKU strategy banked (Mini v1 / Pro v2) (2026-05-12)
+- [x] Doc tree consolidated: mini-spec + carrier-board absorbed into 01-spec; packaging-skus + dev-roadmap created (2026-05-13)
+- [ ] Rename GitHub repo: `schindler-clone` → `schindler-2`
 - [ ] Document FPGA-specific `.dropboxignore` patterns once active build artifacts appear
 
 ## Naming history
 
 - Working title: `schindler-clone` (placeholder during initial setup)
-- Final name: **Schindler 2.0** (chosen 2026-05-06 from candidate list; emphasizes spiritual successor framing rather than direct clone)
+- Final name: **Schindler 2.0** (chosen 2026-05-06; emphasizes spiritual successor framing rather than direct clone)

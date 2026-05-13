@@ -1,8 +1,8 @@
 # Schindler 2.0 — UI Menu Structure
 
-**Status:** Draft 2026-05-11 (rev 3)
-**Scope:** complete hierarchical menu structure covering all V1 settings, surfaced on the front-panel TFT + web UI. Rear-panel LCD is read-only and shows the status grid only (no navigation).
-**Sources:** `01-spec.md` (feature set), `panel-layout.md` (physical controls), `signal-flow.md` (architecture for which settings apply where).
+**Status:** Draft 2026-05-13
+**SKU scope:** this menu structure assumes the **Pro v2** front panel hardware (NHD-2.9 color TFT + RP2040 + BT817Q EVE). **Mini v1** has a simpler subset menu fitting a 1.3" mono OLED + 5-way nav + 4 preset buttons — Mini menu hierarchy will be authored when Mini PetaLinux UI work activates (see [`dev-roadmap.md`](dev-roadmap.md) § 5.1). Web UI hierarchy is shared between SKUs (same content, same Node.js code on the Zynq PS).
+**Sources:** [`01-spec.md`](01-spec.md) (feature set), [`panel-layout.md`](panel-layout.md) (Pro physical controls), [`signal-flow.md`](signal-flow.md) (architecture for which settings apply where), [`packaging-skus.md`](packaging-skus.md) (SKU differences).
 
 This doc is the structural intent. Wireframes, exact widget choices, and field validation rules belong in a later UX-design pass.
 
