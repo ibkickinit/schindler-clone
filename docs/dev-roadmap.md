@@ -46,6 +46,21 @@ Pre-priority-shift work, validated and banked. Currently on hold per the HD-pipe
 
 ---
 
+## 2.5. Side-arcs — silicon bench bring-up (parallel to Phase A–G)
+
+Bench bring-up of each production silicon piece on its EVAL board, **standalone**, before the production carrier exists. Independent of the Phase A–G ordering — each side-arc can land any time its EVAL board is on the bench.
+
+Naming convention: `Side-arc N` to keep distinct from `Phase A–G` (HD pipeline) and the historical `Phase 1/2` (R-2R composite first-light).
+
+| Side-arc | Goal | Status | Doc |
+|---|---|---|---|
+| **Side-arc 1** | ADV7393 EVAL composite bench bring-up. Zybo PMODs → BT.656 8-bit → EVAL board → CVBS BNC → scope shows NTSC color bars from FPGA HDL. Also locks in **day-1 split bus** (HDMI bus + analog bus, independent). | Planned | [`side-arc-1-adv7393-bench.md`](side-arc-1-adv7393-bench.md) |
+| Side-arc 2 | ADV7511 EVAL HDMI TX bench bring-up | Future | — |
+| Side-arc 3 | ADV7280 EVAL multi-format decoder bench bring-up | Future | — |
+| Side-arc 4 | LT8619C-EVB HDMI RX bench bring-up | Future | — |
+
+---
+
 ## 3. Deferred until HD pipeline validates
 
 Resumed after Phase G re-attaches the analog terminal. **Not abandoned — just out of order with current priority.**
