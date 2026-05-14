@@ -1,6 +1,10 @@
 # Phase C — Polyphase Scaler (HD-to-HD, configurable ratio)
 
-**Status (2026-05-14):** ✅ **Phase C.1 done** at **1080p → 720p**. Build #6 (`scaler_v` 1-cycle pipeline rewrite, WNS +0.294 ns) brings up a recognizable Mac desktop on the bench monitor — geometry correct, colors clean, menu bar readable. Residual cross-clock-domain tearing (visible as two stacked copies of the frame with a salt-and-pepper mid-band) is **Phase D scope**: input runs on dvi2rgb-recovered PixelClk (148.5 MHz), output on PS-derived `clk_wiz_pixclk_out` (74.25 MHz), both nominally 60 Hz but un-genlocked. Victory image: `build/ila-capture/phase-c-victory/scaler-720p-monitor.jpg`. See "C.1 first-light debug" below for the build #5→#6 debug arc.
+**Status (2026-05-14):** ✅ **Phase C.1 done** at **1080p → 720p**. Build #6 (`scaler_v` 1-cycle pipeline rewrite, WNS +0.294 ns) brings up a recognizable Mac desktop on the bench monitor — geometry correct, colors clean, menu bar readable. Victory image: `build/ila-capture/phase-c-victory/scaler-720p-monitor.jpg`. See "C.1 first-light debug" below for the build #5→#6 debug arc.
+
+C.1 had a residual cross-clock-domain tearing seam (input on dvi2rgb-recovered 148.5 MHz vs output on PS-FCLK-derived 74.25 MHz — both nominally 60 Hz but un-genlocked). **Phase D iter 1 (2026-05-14) eliminated it** by re-sourcing `clk_wiz_pixclk_out/clk_in1` from `dvi2rgb_0/PixelClk` so both clocks come from the same recovered HDMI source. See `dev-roadmap.md` Phase D row.
+
+**C.2 status (2026-05-14):** HDL parametric ratio plumb-through done — `scaler_top` and `scaler_h`/`scaler_v` driven by `IN_W`/`IN_H`/`OUT_W`/`OUT_H` generics; phase-multiplier constants became elaboration-time localparams. Testbench (`sim/scaler_top_tb.v`) overrides via `xelab -generic_top`. Sim PASS at the C.1 default and at a new 1920×1080 → 960×540 ratio. Bench rebuild at a non-720p ratio still needs BD/clk_wiz/VTC/firmware plumb-through — deferred.
 
 **Goal:** add a polyphase scaler block to the Phase B DDR3 pipeline. First-light target was 1080p → 480p; pivoted to **1080p → 720p (3:2 H and V)** mid-session. Reusable inside Phase G's composite encoder terminal (which needs HD→SD downconvert) per spec §2.1.
 

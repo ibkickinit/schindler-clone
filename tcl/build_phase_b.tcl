@@ -107,24 +107,34 @@ set_property -dict [list \
 puts "STAGE_OK: Zynq PS configured"
 
 # =============================================================================
-# Clocking Wizard — output-side 148.5 MHz pixel clock (dual-clock refactor)
+# Clocking Wizard — output pixel clock, GENLOCKED to recovered HDMI source
 # =============================================================================
-# Output-side video pipeline (VDMA MM2S → adapter → VTC → rgb2dvi) runs on
-# its own 148.5 MHz clock derived from PS FCLK_CLK2 (200 MHz). Independent of
-# the dvi2rgb-recovered PixelClk so the output can keep running when the
-# HDMI source disconnects (test-pattern generators, scaler outputs).
-# MMCM: 200 MHz × 5.94 / 8 = 148.5 MHz (VCO 1188 MHz, in spec for -1).
+# Phase D entry: clk_in1 sourced from dvi2rgb_0/PixelClk (recovered from
+# incoming HDMI TMDS, 148.5 MHz for 1080p60). MMCM produces 74.25 MHz for
+# 720p output, perfectly phase-locked to the source — eliminates the
+# cross-clock-domain tearing from Phase C.1 (no more crystal drift between
+# S2MM-write rate and MM2S-read rate).
+#
+# Tradeoff: output dies when the HDMI source disconnects (MMCM loses lock
+# → axis_to_vid_io_0/enable drops → rgb2dvi has no pixel clock). The
+# previous design ran on PS FCLK_CLK2 (200 MHz) and was source-independent;
+# we don't currently use that robustness (no internal test-pattern
+# generator), so the trade is free today. Future Phase G test-pattern
+# work can add a BUFGCTRL-selected fallback clock.
+#
+# Hardcoded to 1080p input → 720p output. If the source changes
+# resolution, the MMCM's M/D ratio is wrong and lock either fails or
+# produces the wrong frequency. Dynamic-reconfig clk_wiz comes later.
 create_bd_cell -type ip -vlnv xilinx.com:ip:clk_wiz clk_wiz_pixclk_out
-# Phase C.1 pivot: output is 720p — pixel clock 74.25 MHz (CEA-861).
-# rgb2dvi can't go below 40 MHz so 480p was infeasible.
 set_property -dict [list \
     CONFIG.PRIMITIVE {MMCM} \
-    CONFIG.PRIM_IN_FREQ {200.000} \
+    CONFIG.PRIM_IN_FREQ {148.500} \
     CONFIG.CLKOUT1_REQUESTED_OUT_FREQ {74.250} \
     CONFIG.USE_LOCKED {true} \
     CONFIG.USE_RESET {true} \
 ] [get_bd_cells clk_wiz_pixclk_out]
-connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK2] [get_bd_pins clk_wiz_pixclk_out/clk_in1]
+# clk_in1 ← dvi2rgb_0/PixelClk is wired AFTER dvi2rgb_0 is created
+# (search for "GENLOCK_WIRE" below).
 # clk_wiz exposes 'reset' (active-high) when USE_RESET=true. Derive from
 # btn_rst which is the PL-side reset button (also active-high).
 connect_bd_net [get_bd_ports btn_rst] [get_bd_pins clk_wiz_pixclk_out/reset]
@@ -174,6 +184,17 @@ connect_bd_intf_net [get_bd_intf_ports hdmi_rx_tmds] [get_bd_intf_pins dvi2rgb_0
 connect_bd_intf_net [get_bd_intf_ports hdmi_rx_ddc]  [get_bd_intf_pins dvi2rgb_0/DDC]
 connect_bd_net [get_bd_pins clk_wiz_ref/clk_out1] [get_bd_pins dvi2rgb_0/RefClk]
 connect_bd_net [get_bd_ports btn_rst]             [get_bd_pins dvi2rgb_0/aRst]
+
+# dvi2rgb's PixelClk output advertises 100 MHz in BD metadata by default
+# (IP-package default for kClkRange=2). With kClkRange=1 set above, the
+# actual recovered clock is 148.5 MHz at 1080p60. Override the metadata
+# so downstream clk_wiz_pixclk_out's clk_in1 FREQ_HZ check passes.
+set_property CONFIG.FREQ_HZ 148500000 [get_bd_pins dvi2rgb_0/PixelClk]
+
+# GENLOCK_WIRE — Phase D: clk_wiz_pixclk_out's input is the recovered HDMI
+# PixelClk so output is phase-locked to source. See the clk_wiz_pixclk_out
+# block above for rationale and tradeoffs.
+connect_bd_net [get_bd_pins dvi2rgb_0/PixelClk] [get_bd_pins clk_wiz_pixclk_out/clk_in1]
 
 # =============================================================================
 # Video In to AXI4-Stream — parallel video → AXIS
