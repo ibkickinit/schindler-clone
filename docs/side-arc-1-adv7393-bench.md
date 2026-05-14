@@ -67,6 +67,8 @@ Each rail goes through an EMC filter on-board before reaching the chip's pins. T
 
 Other options considered: single 3.3 V supply + on-board 1.8 V LDO mezzanine (cleaner long-term, but adds hardware build); piggybacking on the FEZ (requires the $1k FEZ, ruled out).
 
+**Bench verification:** P1 pinout (P1-1/3 = 3.3 V rails, P1-5/7 = 1.8 V rails) confirmed via continuity check on the board — 2026-05-14.
+
 ### Phase 0 — chip alive (no FPGA data)
 
 1. PetaLinux on Zybo writes I²C config: NTSC composite mode + **internal test pattern enabled** (ADV7393 register-driven feature).
