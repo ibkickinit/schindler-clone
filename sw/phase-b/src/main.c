@@ -208,7 +208,51 @@ int main(void)
     UINTPTR vdma_base = XPAR_AXI_VDMA_0_BASEADDR;
     volatile u32 *fb0 = (volatile u32 *)FRAME_BUF_BASE;
     int tick = 0;
+
+    /* Phase D source-event tracking (informational only).
+     *
+     * Phase D's input-clock-sourced output MMCM means a source
+     * disconnect stops both input and output PixelClk. The output-side
+     * proc_sys_reset hard-resets VTC, clearing its CTL; VDMA S2MM also
+     * appears to get stuck and doesn't auto-resume on replug. Auto-
+     * recovery via VTC re-init + S2MM Stop/Start was tried 2026-05-14
+     * and DOES NOT WORK — S2MM needs a deeper reset than the standard
+     * driver helpers provide, and PARK-based "source dead" detection
+     * gave false positives after btn_rst (PARK stuck for unrelated
+     * reasons). Picking the hammer back up requires either a BD-side
+     * change (route dvi2rgb_0/pLocked to an AXI GPIO so PS can detect
+     * source events) or a deeper VDMA reset dance.
+     *
+     * Until then, recovery from a source disconnect is manual:
+     *   xsct tcl/program_phase_b_full.tcl
+     * which reloads the ELF and re-inits VTC + VDMA cleanly.
+     *
+     * The PARK-delta logging here is purely informational — useful in
+     * UART for confirming whether S2MM is actively writing frames. */
+    u32 prev_park       = Xil_In32(vdma_base + 0x28);
+    int src_quiet_ticks = 0;
+    int first_tick      = 1;
+
     while (1) {
+        u32 park_now      = Xil_In32(vdma_base + 0x28);
+        int s2mm_advanced = (((park_now >> 16) & 0xFF) !=
+                             ((prev_park >> 16) & 0xFF));
+        prev_park = park_now;
+        if (first_tick) { s2mm_advanced = 1; first_tick = 0; }
+
+        if (s2mm_advanced) {
+            if (src_quiet_ticks > 0) {
+                xil_printf("[t=%ds] ** Source restored — PARK advancing after %d quiet ticks **\r\n",
+                           tick, src_quiet_ticks);
+            }
+            src_quiet_ticks = 0;
+        } else {
+            src_quiet_ticks++;
+            if (src_quiet_ticks == 1) {
+                xil_printf("[t=%ds] ** Source quiet (S2MM PARK static) — reload ELF to recover **\r\n", tick);
+            }
+        }
+
         u32 mm2s_sr  = Xil_In32(vdma_base + 0x04);   /* MM2S_DMASR */
         u32 s2mm_sr  = Xil_In32(vdma_base + 0x34);   /* S2MM_DMASR */
         u32 mm2s_cr  = Xil_In32(vdma_base + 0x00);   /* MM2S_DMACR */
