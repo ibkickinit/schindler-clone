@@ -74,11 +74,14 @@ Each sub-arc is independently scope-checkable. Land them in order; later ones de
 
 ### Sub-arc 2a — Si5351 standalone bring-up
 
+**Status (2026-05-14):** Unblocked. Si5351A breakout board with 3× BNC outputs and RP2040 dev board both on bench. Can start immediately, no other prerequisites.
+
 **Goal:** Si5351 outputs a commanded frequency, scope-verified.
 
-- RP2040 dev board + Si5351 breakout (Adafruit or similar) on the bench.
+- RP2040 dev board + Si5351 breakout (3× BNC: CLK0/CLK1/CLK2) on the bench.
 - Firmware: I²C register writes per Skyworks AN619.
 - Scope CLK0 output → verify commanded frequency (27 MHz, 74.25 MHz, 148.5 MHz target set).
+- 3× BNC is a gift for bench work: scope multiple outputs simultaneously to confirm commanded frequencies across all CLKx.
 - Tune fractional-N divider live, verify smooth frequency steps.
 
 **Effort:** ~1 day.
@@ -102,6 +105,8 @@ Each sub-arc is independently scope-checkable. Land them in order; later ones de
 - FPGA HDL: sync separator (slicer + edge detector + line/field counter), autosense classifier (LTC biphase / BB / TLS signature).
 - Validate on captured ADC stream first; then live-feed from a function generator playing the BB waveform; then a real broadcast sync generator if available.
 - Extend to tri-level (1080i/p reference) and LTC (audio-band timecode).
+
+**Bench test gear — Teensy 4.0 as BB synthesizer:** real broadcast sync generators are $500+. Cheap alternative: Teensy 4.0 (Cortex-M7 @ 600 MHz, plenty of headroom for waveform synthesis) driving the existing Phase 2 R-2R DAC perfboard, or driving PWM through an LPF, to produce NTSC black burst at the ~5 MHz bandwidth needed to feed the AD9204 chain. Validate the FPGA sync separator against a known-good source before scaling to a real broadcast reference. Teensy is bench-only; not on production carrier.
 
 **Effort:** ~1 week.
 

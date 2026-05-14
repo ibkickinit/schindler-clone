@@ -62,16 +62,25 @@ Migration from Zybo to TE0720 production target comes after the HD pipeline vali
 
 ## Hardware status
 
-- ✅ **Digilent Zybo Z7-20** — active dev platform
-- ✅ R-2R DAC perfboard + op-amp output stage
+**Active bench platforms:**
+- ✅ **Digilent Zybo Z7-20** — primary HD-pipeline dev platform (Phase A–G)
+- ✅ **Trenz TE0720-04-31C33MA + TE0703-07 carrier** — production-target silicon stack, now on bench for Side-arc 6 (TE0720 bring-up, PetaLinux + portability validation). Same Z-7020 family as Zybo; HDL ports 1:1. Does not yet have HDMI hardware — Zybo remains the HDMI-pipeline dev platform.
+- ✅ R-2R DAC perfboard + op-amp output stage (Phase 2 first-light validated)
+- ✅ **EVAL-ADV7392/93EBZ** — Side-arc 1 bench target (composite output via ADV7393)
+- ✅ **Si5351A breakout with 3× BNC outputs** — Side-arc 2a bench target (clock-gen standalone bring-up)
+- ✅ **AD9204-80EBZ** — Side-arc 2b bench target (ADC chain)
+
+**Bench tools / MCUs:**
+- ✅ **RP2040 dev board** — production-spec'd genlock slow-control MCU, bench prototype
+- ✅ **Teensy 4.0** — bench utility, candidate BB / tri-level / LTC waveform synthesis source for Side-arc 2c testing (Cortex-M7 @ 600 MHz; intentionally not on production carrier)
 - ✅ Phase 2 NTSC composite HDL on bench, scope-validated through monochrome
 
-**Future-evaluation hardware** (procured but NOT the active dev plan — bench eval / parts inventory only):
-- Trenz TE0720-04-31C33MA SOM, TE0703-07 dev carrier, EVAL-ADV7393EBZ, LT8619C-EVB, ADV7280, ADV7393, LTC6912, AD9204, encoders, op-amps, BNCs (various 2026-05-10 / 11 procurements)
+**Future-evaluation / parts inventory** (procured but NOT on the active arc):
+- LT8619C-EVB, ADV7280 EVAL, LTC6912 EVAL — pending Side-arcs 3/4/5 + 2b finish
 - Digilent Arty S7-25 — toolchain learning + Spartan-7 comparison only
 - Smart Artix V1.3 / Smart Zynq SL V1.3 / TE0712-02 / TinyZynq — evaluation archive (`docs/Hardware/`)
 
-The TE0720 is the **production-target SOM**; bench dev happens on Zybo Z7-20 (same Z-7020 silicon family). Production migration after HD pipeline validates.
+The TE0720 is the **production-target SOM**; bench dev for HD pipeline continues on Zybo Z7-20 (same Z-7020 silicon family). Production migration after HD pipeline validates.
 
 ## Operating principle (code in vault)
 
