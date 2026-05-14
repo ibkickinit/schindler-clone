@@ -42,8 +42,30 @@ HDMI in → decoder → VDMA framebuffer (DDR3)
 
 ### Power and ground
 
-- EVAL board on its own wall wart. **Do not** power off Zybo.
-- Common ground via PMOD ribbon GND pin only.
+The EVAL-ADV7392/93EBZ back-end board has **no on-board power source** — no wall-wart jack, no LDOs. Per ADI eval-board doc Rev. B Dec. 2006: *"These back-end boards do not have an independent power source and rely on the supplies coming across on J5."* In normal use it draws all four rails from the EVAL-ADV739xFEZ front-end board (~$1k, not on the bench here).
+
+Standalone bench powering injects the four rails directly into the back-end board's 40-pin interface connector (labeled **P1** on back-end, mates to **J5** on the FEZ).
+
+**Rails required at the P1 connector:**
+
+| Pin | Net | Voltage | Purpose |
+|---|---|---|---|
+| P1-1 | `VAA_3.3V_IN` | **3.3 V** | ADV7393 analog (DACs) |
+| P1-3 | `VDD_IO_IN` | **3.3 V** (selectable 1.8/2.5/3.3 — pick 3.3 to match Zybo PMOD signaling) | ADV7393 I/O pins |
+| P1-5 | `VDD_1.8_IN` | **1.8 V** | ADV7393 digital core |
+| P1-7 | `PVDD_1.8V_IN` | **1.8 V** | ADV7393 internal PLL |
+| Even-numbered pins | GND | — | Returns (verify silkscreen on the board before clipping) |
+
+Each rail goes through an EMC filter on-board before reaching the chip's pins. Total current draw is well under 100 mA across all four rails.
+
+**Bench config — dual benchtop supply (Option 1):**
+
+- **Channel 1** set to **3.3 V** → wire to P1-1 (VAA) and P1-3 (VDD_IO).
+- **Channel 2** set to **1.8 V** → wire to P1-5 (VDD) and P1-7 (PVDD).
+- **Common GND** tied to a P1 ground pin **and** to the Zybo via one PMOD ribbon GND pin only — single ground reference between the three pieces of equipment (Zybo, EVAL board, bench supply).
+- Bring up 1.8 V *before* 3.3 V is fine for ADV7393 (no documented sequencing requirement) — use current-limit protection during first power-up.
+
+Other options considered: single 3.3 V supply + on-board 1.8 V LDO mezzanine (cleaner long-term, but adds hardware build); piggybacking on the FEZ (requires the $1k FEZ, ruled out).
 
 ### Phase 0 — chip alive (no FPGA data)
 
