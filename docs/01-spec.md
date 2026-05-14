@@ -173,6 +173,15 @@ Auto-sensing reference input across LTC / black burst / tri-level sync.
 
 **VITC:** extracted from SDI video input (Pro only) when SDI is selected as reference — removes need for separate LTC cable when SDI video is already connected.
 
+**Master clock always routes through Si5351 — both regimes.** Even when locked to a digital input (HDMI RX recovered clock from LT8619C, or SDI recovered clock from GS3470), the recovered clock is used as a *reference* into the FPGA digital PLL → Si5351 → fabric master clock. The recovered clock is not used directly. This buys:
+- **Free-run hold on input loss** — no glitched output mid-frame.
+- **Jitter cleaning** — output spectrum is Si5351's clean ~50 ps RMS, not whatever the input source delivered.
+- **Architectural uniformity** — sync generators and downstream encoders never care which regime the genlock is in.
+
+Cost: a few frames of lock acquisition time when input changes. Acceptable in all target workflows.
+
+**Camera phase/offset trim** — H phase and V phase trim are *FPGA-side, post-Si5351-lock*. Operator-facing offset registers shift the start-of-frame position of each output sync generator by N pixel clocks (H) and M lines (V). Si5351 itself is not wiggled for trim — it stays locked to the reference. Resolution: one pixel-clock period (≈18 ns at 54 MHz SD, ≈6.7 ns at 148.5 MHz HD). Sub-pixel resolution (if ever needed for SC/H phase on composite) is provided by MMCM phase-tap muxing and the existing 32-bit chroma NCO.
+
 ### 3.8 Reference outputs — dual SYNC OUT [Pro only]
 
 - 2× BNC 75 Ω panel-mount (SYNC OUT 1 + SYNC OUT 2).

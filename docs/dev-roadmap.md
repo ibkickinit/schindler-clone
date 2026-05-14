@@ -55,9 +55,10 @@ Naming convention: `Side-arc N` to keep distinct from `Phase A–G` (HD pipeline
 | Side-arc | Goal | Status | Doc |
 |---|---|---|---|
 | **Side-arc 1** | ADV7393 EVAL composite bench bring-up. Zybo PMODs → BT.656 8-bit → EVAL board → CVBS BNC → scope shows NTSC color bars from FPGA HDL. Also locks in **day-1 split bus** (HDMI bus + analog bus, independent). | Planned | [`side-arc-1-adv7393-bench.md`](side-arc-1-adv7393-bench.md) |
-| Side-arc 2 | ADV7511 EVAL HDMI TX bench bring-up | Future | — |
-| Side-arc 3 | ADV7280 EVAL multi-format decoder bench bring-up | Future | — |
-| Side-arc 4 | LT8619C-EVB HDMI RX bench bring-up | Future | — |
+| **Side-arc 2** | Genlock / sync subsystem bench bring-up. Five sub-arcs (2a–2e): Si5351 standalone → ADC+PGA → BB sync separator → closed-loop digital PLL → H/V phase trim. Locks in **Si5351-routes-master-clock-in-both-regimes** architecture. ~3–5 weeks of focused work. | Planned | [`side-arc-2-genlock-bench.md`](side-arc-2-genlock-bench.md) |
+| Side-arc 3 | ADV7511 EVAL HDMI TX bench bring-up | Future | — |
+| Side-arc 4 | ADV7280 EVAL multi-format decoder bench bring-up | Future | — |
+| Side-arc 5 | LT8619C-EVB HDMI RX bench bring-up | Future | — |
 
 ---
 
