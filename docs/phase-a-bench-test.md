@@ -13,8 +13,14 @@
 
 - Vivado 2025.2 + Digilent vivado-library `dvi2rgb` v2.0 + `rgb2dvi` v1.4
 - Synthesis: ✅ clean
-- Implementation: ✅ clean (2 IP-Flow critical warnings about ILA debug-core packaging — harmless, `kDebug=false` means no ILAs are actually in the netlist)
-- Timing: **WNS +1.36 ns, WHS +0.12 ns** — met. Hold is tight but positive; worth monitoring in Phase B+.
+- Implementation: ✅ clean
+- Timing: **WNS +0.23 ns, WHS +0.06 ns** — met. Hold is close; worth eyeing as Phase B layers on AXI VDMA traffic.
+- **Bench result:** passthrough working end-to-end. Validated stable at 1920×1080@60p (laptop source → Zybo → external monitor). Note that 1080p60 (148.5 MHz pixel clock, 742.5 MHz BUFIO / MMCM VCO) runs above the conservative Artix-7 -1 grade datasheet maxes (BUFIO 600 MHz, MMCM VCO 1200 MHz) — the -1 Z-7020 silicon has margin in practice but production should still target within-spec rates on -1, or step up to -2 (production TE0720 module's speed grade is faster).
+
+### Key gotchas resolved during bringup
+
+- **rgb2dvi `kClkPrimitive` must be MMCM, not PLL, on Zybo Z7-20 for ≤120 MHz pixel clocks.** With kClkRange=2 (MULT_F=10) at 74.25 MHz pixel clock, VCO lands at 742.5 MHz. PLLE2 min VCO on Artix-7 -1 grade is 800 MHz — PLL refuses to lock, rgb2dvi has no 5× serial clock, monitor sees no TMDS. MMCME2 min VCO is 600 MHz so the same MULT_F works. Documented in `tcl/build_phase_a.tcl`.
+- **`CLOCK_DEDICATED_ROUTE BACKBONE` on `sys_clk_IBUF`** is required once a third MMCM (rgb2dvi's) joins the design — placer can no longer keep `sys_clk`'s IBUF and the top-level MMCM in the same clock region. Documented in the XDC.
 
 ## To rebuild
 

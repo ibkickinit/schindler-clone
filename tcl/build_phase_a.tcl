@@ -70,13 +70,20 @@ puts "ADD XDC: zybo_z7_20_phase_a.xdc"
 # Vivado pulls in the IP's bundled constraints, scripts, and OOC synthesis.
 create_ip -name dvi2rgb -vendor digilentinc.com -library ip -version 2.0 \
     -module_name dvi2rgb_0
+# Phase A iteration 3 (2026-05-13): target 1080p30 specifically.
+# 1080p30 has TMDS clock 74.25 MHz (same as 720p60!) — fits comfortably in
+# Zybo Z7-20 -1 speed grade (BUFIO max 600 MHz; we need 371.25 MHz).
+# kClkRange=2 → MULT_F=10 → VCO=742.5 MHz ✓ in 600-1200 range.
+# EDID advertises 1080p (CEA-861 SVD list includes 30/60 Hz). Source set to
+# 1080p30 manually in display settings.
+# kDebug=true keeps the ILA cores baked in for Hardware Manager visibility.
 set_property -dict [list \
     CONFIG.kEmulateDDC      {true} \
     CONFIG.kRstActiveHigh   {true} \
     CONFIG.kAddBUFG         {true} \
-    CONFIG.kClkRange        {2} \
-    CONFIG.kEdidFileName    {dgl_720p_cea.data} \
-    CONFIG.kDebug           {false} \
+    CONFIG.kClkRange        {1} \
+    CONFIG.kEdidFileName    {dgl_1080p_cea.data} \
+    CONFIG.kDebug           {true} \
 ] [get_ips dvi2rgb_0]
 puts "IP: dvi2rgb_0 instantiated"
 
@@ -89,10 +96,15 @@ create_ip -name rgb2dvi -vendor digilentinc.com -library ip -version 1.4 \
 # matching with the IP wrappers.
 set_property -dict [list \
     CONFIG.kGenerateSerialClk {true} \
-    CONFIG.kClkPrimitive      {PLL} \
-    CONFIG.kClkRange          {2} \
+    CONFIG.kClkPrimitive      {MMCM} \
+    CONFIG.kClkRange          {1} \
     CONFIG.kRstActiveHigh     {true} \
 ] [get_ips rgb2dvi_0]
+# kClkPrimitive=MMCM (not PLL): at 74.25 MHz pixel clock with kClkRange=2
+# (MULT_F=10), VCO = 742.5 MHz. PLLE2 min VCO on Artix-7 -1 grade is 800 MHz
+# — the PLL would refuse to lock, leaving rgb2dvi without a 5× serial clock
+# and the TMDS output silent. MMCME2 min VCO is 600 MHz so the same MULT_F
+# lands in range. Costs one MMCM resource (we now use 3 of Zybo's 4).
 puts "IP: rgb2dvi_0 instantiated"
 
 # Lock top + compile order

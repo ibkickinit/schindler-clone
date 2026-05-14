@@ -1,0 +1,484 @@
+# build_phase_b.tcl — Phase B HDMI passthrough through DDR3 frame buffer.
+#
+# Replaces the direct pixel wire from Phase A with an AXI4-Stream Video pipeline:
+#   HDMI RX → dvi2rgb → Video In to AXI4-Stream → AXI VDMA (S2MM) → DDR3
+#   DDR3 → AXI VDMA (MM2S) → AXI4-Stream to Video Out → rgb2dvi → HDMI TX
+#
+# Brings up the Zynq PS for DDR3 controller + VDMA register control. PS firmware
+# (bare-metal app) lives separately in sw/phase-b/ — built and programmed via
+# XSCT after the bitstream lands. This script only produces .bit + .xsa.
+#
+# Run from anywhere:
+#   source /tools/Xilinx/2025.2/Vivado/settings64.sh
+#   export BOARD_PARTS_REPO_PATHS=$HOME/fpga/vivado-boards/new/board_files
+#   export DIGILENT_IP_REPO_PATH=$HOME/fpga/vivado-library/ip
+#   vivado -mode batch -nojournal -log build_phase_b.log -source <repo>/tcl/build_phase_b.tcl
+
+set project_name "phase-b-vdma-passthrough"
+set bd_name      "phase_b_bd"
+set script_dir   [file dirname [file normalize [info script]]]
+set project_root [file normalize [file join $script_dir ..]]
+set build_dir    [file join $project_root build]
+set vivado_dir   [file join $build_dir $project_name]
+
+file delete -force $vivado_dir
+file mkdir $build_dir
+
+if {[info exists ::env(BOARD_PARTS_REPO_PATHS)]} {
+    set_param board.repoPaths $::env(BOARD_PARTS_REPO_PATHS)
+}
+# For Phase B we register the *parent* of ip/ + if/ so Vivado discovers both
+# the IP cores (dvi2rgb, rgb2dvi) AND the Digilent interface definitions
+# (digilentinc.com:interface:tmds_rtl:1.0). Phase A only needed the IPs because
+# raw port pins were used; Phase B uses interface ports on the BD top.
+if {[info exists ::env(DIGILENT_IP_REPO_PATH)]} {
+    set digilent_ip_path $::env(DIGILENT_IP_REPO_PATH)
+    set digilent_lib_path [file dirname $digilent_ip_path]
+} else {
+    set digilent_lib_path [file join $::env(HOME) fpga vivado-library]
+    set digilent_ip_path  [file join $digilent_lib_path ip]
+}
+if {![file isdirectory $digilent_ip_path]} {
+    puts "ERROR: Digilent IP repo not found at $digilent_ip_path"
+    exit 1
+}
+
+create_project $project_name $vivado_dir -part xc7z020clg400-1
+set board [lindex [get_board_parts -filter {NAME =~ "*zybo-z7-20*"}] 0]
+if {$board eq ""} { puts "ERROR: Zybo Z7-20 board file not found"; exit 1 }
+set_property board_part $board [current_project]
+set_property ip_repo_paths $digilent_lib_path [current_project]
+update_ip_catalog
+
+# Add custom HDL sources used as module references inside the BD.
+add_files -norecurse [file join $project_root hdl axis_to_vid_io.v]
+add_files -norecurse [file join $project_root hdl scaler_passthrough.v]
+add_files -norecurse [file join $project_root hdl scaler_top.v]
+add_files -norecurse [file join $project_root hdl scaler_h.v]
+add_files -norecurse [file join $project_root hdl scaler_v.v]
+add_files -norecurse [file join $project_root hdl scaler_coeffs_h.v]
+add_files -norecurse [file join $project_root hdl scaler_coeffs_v.v]
+# Coefficient hex files for $readmemh — Vivado adds them to source list so
+# they're visible from the OOC synth working directory.
+add_files -norecurse [file join $project_root hdl scaler_coeffs_h.hex]
+add_files -norecurse [file join $project_root hdl scaler_coeffs_v.hex]
+set_property FILE_TYPE "Memory Initialization Files" [get_files -all scaler_coeffs_h.hex]
+set_property FILE_TYPE "Memory Initialization Files" [get_files -all scaler_coeffs_v.hex]
+puts "ADD HDL: scaler_top.v + scaler_h.v + scaler_v.v + scaler_coeffs_{h,v}.v/.hex"
+
+puts "STAGE_OK: project + board + IP catalog"
+
+# =============================================================================
+# Block Design
+# =============================================================================
+create_bd_design $bd_name
+current_bd_design $bd_name
+
+# ---- External ports on the BD top --------------------------------------------
+create_bd_port -dir I -type clk -freq_hz 125000000 sys_clk
+create_bd_port -dir I -type rst btn_rst
+set_property CONFIG.POLARITY ACTIVE_HIGH [get_bd_ports btn_rst]
+
+create_bd_intf_port -mode Slave  -vlnv digilentinc.com:interface:tmds_rtl:1.0 hdmi_rx_tmds
+create_bd_intf_port -mode Master -vlnv digilentinc.com:interface:tmds_rtl:1.0 hdmi_tx_tmds
+create_bd_intf_port -mode Master -vlnv xilinx.com:interface:iic_rtl:1.0 hdmi_rx_ddc
+create_bd_port -dir O hdmi_rx_hpd
+create_bd_port -dir I hdmi_tx_hpd
+
+# 4 status LEDs composed inside the BD (see xlconcat below)
+create_bd_port -dir O -from 3 -to 0 leds
+
+# =============================================================================
+# Zynq PS — Zybo Z7-20 board preset wires DDR + FIXED_IO + standard clocks
+# =============================================================================
+create_bd_cell -type ip -vlnv xilinx.com:ip:processing_system7 zynq_ps
+apply_bd_automation -rule xilinx.com:bd_rule:processing_system7 \
+    -config { make_external "FIXED_IO, DDR" apply_board_preset "1" Master "Disable" Slave "Disable" } \
+    [get_bd_cells zynq_ps]
+set_property -dict [list \
+    CONFIG.PCW_USE_S_AXI_HP0 {1} \
+    CONFIG.PCW_S_AXI_HP0_DATA_WIDTH {64} \
+    CONFIG.PCW_FPGA0_PERIPHERAL_FREQMHZ {100} \
+    CONFIG.PCW_FPGA1_PERIPHERAL_FREQMHZ {150} \
+    CONFIG.PCW_FPGA2_PERIPHERAL_FREQMHZ {200} \
+    CONFIG.PCW_EN_CLK1_PORT {1} \
+    CONFIG.PCW_EN_CLK2_PORT {1} \
+] [get_bd_cells zynq_ps]
+puts "STAGE_OK: Zynq PS configured"
+
+# =============================================================================
+# Clocking Wizard — output-side 148.5 MHz pixel clock (dual-clock refactor)
+# =============================================================================
+# Output-side video pipeline (VDMA MM2S → adapter → VTC → rgb2dvi) runs on
+# its own 148.5 MHz clock derived from PS FCLK_CLK2 (200 MHz). Independent of
+# the dvi2rgb-recovered PixelClk so the output can keep running when the
+# HDMI source disconnects (test-pattern generators, scaler outputs).
+# MMCM: 200 MHz × 5.94 / 8 = 148.5 MHz (VCO 1188 MHz, in spec for -1).
+create_bd_cell -type ip -vlnv xilinx.com:ip:clk_wiz clk_wiz_pixclk_out
+# Phase C.1 pivot: output is 720p — pixel clock 74.25 MHz (CEA-861).
+# rgb2dvi can't go below 40 MHz so 480p was infeasible.
+set_property -dict [list \
+    CONFIG.PRIMITIVE {MMCM} \
+    CONFIG.PRIM_IN_FREQ {200.000} \
+    CONFIG.CLKOUT1_REQUESTED_OUT_FREQ {74.250} \
+    CONFIG.USE_LOCKED {true} \
+    CONFIG.USE_RESET {true} \
+] [get_bd_cells clk_wiz_pixclk_out]
+connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK2] [get_bd_pins clk_wiz_pixclk_out/clk_in1]
+# clk_wiz exposes 'reset' (active-high) when USE_RESET=true. Derive from
+# btn_rst which is the PL-side reset button (also active-high).
+connect_bd_net [get_bd_ports btn_rst] [get_bd_pins clk_wiz_pixclk_out/reset]
+
+# =============================================================================
+# Clocking Wizard — 125 MHz sys_clk → 200 MHz refclk for dvi2rgb's IDELAYCTRL
+# =============================================================================
+# Reverted to PL clk_wiz (PLL) for IDELAYCTRL refclk. Tried PS FCLK_CLK2 at
+# 200 MHz — counterintuitively had MORE jitter than the PL PLL (PS FCLK
+# goes through multiple division stages from IO_PLL), making dvi2rgb's
+# pLocked even more intermittent than with the PL clk_wiz.
+create_bd_cell -type ip -vlnv xilinx.com:ip:clk_wiz clk_wiz_ref
+set_property -dict [list \
+    CONFIG.PRIMITIVE {PLL} \
+    CONFIG.PRIM_IN_FREQ {125.000} \
+    CONFIG.CLKOUT1_REQUESTED_OUT_FREQ {200.000} \
+    CONFIG.USE_LOCKED {true} \
+    CONFIG.USE_RESET {true} \
+    CONFIG.RESET_TYPE {ACTIVE_HIGH} \
+    CONFIG.RESET_PORT {reset} \
+] [get_bd_cells clk_wiz_ref]
+connect_bd_net [get_bd_ports sys_clk]  [get_bd_pins clk_wiz_ref/clk_in1]
+connect_bd_net [get_bd_ports btn_rst]  [get_bd_pins clk_wiz_ref/reset]
+connect_bd_net [get_bd_pins clk_wiz_ref/locked] [get_bd_ports hdmi_rx_hpd]
+
+# =============================================================================
+# dvi2rgb (HDMI RX)
+# =============================================================================
+create_bd_cell -type ip -vlnv digilentinc.com:ip:dvi2rgb dvi2rgb_0
+set_property -dict [list \
+    CONFIG.kEmulateDDC      {true} \
+    CONFIG.kRstActiveHigh   {true} \
+    CONFIG.kAddBUFG         {true} \
+    CONFIG.kClkRange        {1} \
+    CONFIG.kEdidFileName    {dgl_1080p_cea.data} \
+] [get_bd_cells dvi2rgb_0]
+# Re-enable kDebug=true here when ILA capture of dvi2rgb internals is needed
+# (see tcl/capture_dvi2rgb_lock.tcl). The 2026-05-13 source-side flicker
+# investigation used that feature to confirm pLocked was dropping because of
+# upstream TMDS clock loss, not anything inside the FPGA.
+# kClkRange=1 for 1080p60 (148.5 MHz pixel clock) — MMCM VCO = 742.5 MHz in
+# spec. Was kClkRange=2 (VCO 1485 MHz) → over Artix-7 -1's 1200 MHz max →
+# marginal recovered PixelClk → downstream rgb2dvi sees jittery input clock
+# regardless of its own settings.
+
+connect_bd_intf_net [get_bd_intf_ports hdmi_rx_tmds] [get_bd_intf_pins dvi2rgb_0/TMDS]
+connect_bd_intf_net [get_bd_intf_ports hdmi_rx_ddc]  [get_bd_intf_pins dvi2rgb_0/DDC]
+connect_bd_net [get_bd_pins clk_wiz_ref/clk_out1] [get_bd_pins dvi2rgb_0/RefClk]
+connect_bd_net [get_bd_ports btn_rst]             [get_bd_pins dvi2rgb_0/aRst]
+
+# =============================================================================
+# Video In to AXI4-Stream — parallel video → AXIS
+# =============================================================================
+create_bd_cell -type ip -vlnv xilinx.com:ip:v_vid_in_axi4s v_vid_in_axi4s_0
+set_property -dict [list CONFIG.C_HAS_ASYNC_CLK {0}] [get_bd_cells v_vid_in_axi4s_0]
+# Connect dvi2rgb → v_vid_in_axi4s signals individually. The connect_bd_intf_net
+# version (dvi2rgb_0/RGB ↔ v_vid_in_axi4s_0/vid_io_in) only auto-wires vid_data;
+# dvi2rgb's RGB interface bundle doesn't include the sync signals, so the
+# vid_active_video / vid_hsync / vid_vsync inputs on v_vid_in_axi4s default to
+# 0. Without sync, v_vid_in_axi4s never generates TLAST/TUSER → VDMA S2MM never
+# advances its frame pointer → only slot 0 ever sees fresh data, stale data
+# rotates on the output. (2026-05-14 — caught after Phase B "worked" but the
+# image drifted visibly across slots.)
+connect_bd_net [get_bd_pins dvi2rgb_0/vid_pData]  [get_bd_pins v_vid_in_axi4s_0/vid_data]
+connect_bd_net [get_bd_pins dvi2rgb_0/vid_pVDE]   [get_bd_pins v_vid_in_axi4s_0/vid_active_video]
+connect_bd_net [get_bd_pins dvi2rgb_0/vid_pHSync] [get_bd_pins v_vid_in_axi4s_0/vid_hsync]
+connect_bd_net [get_bd_pins dvi2rgb_0/vid_pVSync] [get_bd_pins v_vid_in_axi4s_0/vid_vsync]
+
+# =============================================================================
+# AXI VDMA — frame buffer through DDR3
+# =============================================================================
+create_bd_cell -type ip -vlnv xilinx.com:ip:axi_vdma axi_vdma_0
+set_property -dict [list \
+    CONFIG.c_include_s2mm {1} \
+    CONFIG.c_include_mm2s {1} \
+    CONFIG.c_num_fstores {3} \
+    CONFIG.c_m_axi_s2mm_data_width {64} \
+    CONFIG.c_m_axi_mm2s_data_width {64} \
+    CONFIG.c_s_axis_s2mm_tdata_width {24} \
+    CONFIG.c_m_axis_mm2s_tdata_width {24} \
+    CONFIG.c_include_sg {0} \
+    CONFIG.c_s2mm_genlock_mode {0} \
+    CONFIG.c_mm2s_genlock_mode {1} \
+    CONFIG.c_mm2s_genlock_src {0} \
+    CONFIG.c_include_internal_genlock {1} \
+    CONFIG.c_mm2s_genlock_repeat_en {1} \
+    CONFIG.c_use_mm2s_fsync {1} \
+    CONFIG.c_use_s2mm_fsync {0} \
+] [get_bd_cells axi_vdma_0]
+# C.1.5 genlock (2026-05-14): MM2S slaved to S2MM via internal frame_ptr wiring.
+# S2MM is master (mode 0) and exports frame_ptr_out; MM2S is slave (mode 1) and
+# imports frame_ptr_in internally (src=0, include_internal_genlock=1). Without
+# this, MM2S read pointer can land on the same frame buffer S2MM is mid-writing
+# — visible as two stacked copies of the frame with a salt-and-pepper seam.
+# repeat_en=1 makes MM2S repeat the last good frame if it catches up to S2MM,
+# rather than tearing across the seam. With S2MM input (60 Hz) and MM2S output
+# (60 Hz) both nominally identical, this is a corner case; sustained drift
+# eventually needs proper Phase D FRC, but for first-light this kills the
+# visible tearing.
+# AXIS widths set to 24 bits to match v_vid_in_axi4s (RGB888, 1 pixel/clock)
+# and the adapter. Without these, MM2S defaults to 32-bit AXIS and you get
+# TDATA_NUM_BYTES mismatch at the adapter — colors get scrambled via
+# Vivado's auto pad/truncate.
+# c_use_mm2s_fsync=1 exposes the mm2s_fsync input port. Wire VTC's fsync_out
+# to it so MM2S's SOF aligns with VTC's frame start — this is what
+# v_axi4s_vid_out's lock state machine needs: AXIS SOF arriving during VTC
+# vblank. (S2MM stays free-running on the dvi2rgb side.)
+# fsync wiring moved below — needs v_tc_tx cell to exist first
+# =============================================================================
+# Phase C.1 — polyphase scaler (8-tap H × 4-tap V, 1920×1080 → 1280×720)
+# =============================================================================
+# Replaces the C.0 scaler_passthrough placeholder. Sits between v_vid_in_axi4s_0
+# and VDMA S2MM. Downscales 1080p to 720p before storage. DDR3 stores 1280×720
+# frames; MM2S reads them at the 74.25 MHz output pixel clock.
+create_bd_cell -type module -reference scaler_top scaler_0
+connect_bd_intf_net [get_bd_intf_pins v_vid_in_axi4s_0/video_out] [get_bd_intf_pins scaler_0/s_axis]
+connect_bd_intf_net [get_bd_intf_pins scaler_0/m_axis]            [get_bd_intf_pins axi_vdma_0/S_AXIS_S2MM]
+
+# =============================================================================
+# Video Timing Controller — generates output sync timing
+# =============================================================================
+create_bd_cell -type ip -vlnv xilinx.com:ip:v_tc v_tc_tx
+# Phase C.1 pivot — output is 720p (CEA-861 1280×720 progressive, 1650×750 frame).
+set_property -dict [list \
+    CONFIG.enable_detection {false} \
+    CONFIG.enable_generation {true} \
+    CONFIG.VIDEO_MODE {720p} \
+    CONFIG.MAX_CLOCKS_PER_LINE {4096} \
+    CONFIG.MAX_LINES_PER_FRAME {4096} \
+    CONFIG.GEN_HACTIVE_SIZE {1280} \
+    CONFIG.GEN_VACTIVE_SIZE {720} \
+    CONFIG.GEN_HFRAME_SIZE {1650} \
+    CONFIG.GEN_F0_VFRAME_SIZE {750} \
+] [get_bd_cells v_tc_tx]
+
+# =============================================================================
+# Custom AXIS → vid_io adapter (replaces v_axi4s_vid_out)
+# =============================================================================
+# v_axi4s_vid_out wouldn't reach LOCKED in our pipeline despite the AXIS and
+# VTC vtiming both being valid. The custom adapter (hdl/axis_to_vid_io.v) is
+# stateless — outputs an AXIS pixel during VTC active-video, zero otherwise,
+# passing VTC's sync through unchanged. enable=pLocked gates the whole thing.
+create_bd_cell -type module -reference axis_to_vid_io axis_to_vid_io_0
+# Dual-clock refactor 2026-05-14: adapter is on the OUTPUT clock (clk_wiz_pixclk_out).
+# Sync comes from VTC (also on output clock — no CDC needed for vtg_* inputs).
+# enable comes from the output-clock MMCM's locked signal (output-clock-domain ready).
+# The mm2s_fsync_pulse output is unused now; MM2S takes fsync from VTC's fsync_out
+# (both on output clock domain).
+connect_bd_net [get_bd_pins clk_wiz_pixclk_out/locked] [get_bd_pins axis_to_vid_io_0/enable]
+connect_bd_net [get_bd_pins v_tc_tx/active_video_out] [get_bd_pins axis_to_vid_io_0/vtg_active_video]
+connect_bd_net [get_bd_pins v_tc_tx/hsync_out]        [get_bd_pins axis_to_vid_io_0/vtg_hsync]
+connect_bd_net [get_bd_pins v_tc_tx/vsync_out]        [get_bd_pins axis_to_vid_io_0/vtg_vsync]
+connect_bd_net [get_bd_pins v_tc_tx/hblank_out]       [get_bd_pins axis_to_vid_io_0/vtg_hblank]
+connect_bd_net [get_bd_pins v_tc_tx/vblank_out]       [get_bd_pins axis_to_vid_io_0/vtg_vblank]
+# AXIS in from VDMA MM2S → adapter (both on output clock)
+connect_bd_intf_net [get_bd_intf_pins axi_vdma_0/M_AXIS_MM2S] [get_bd_intf_pins axis_to_vid_io_0/s_axis]
+# fsync: VTC's frame-start pulse → VDMA MM2S so MM2S SOF aligns with VTC frame.
+# VTC is free-running on output clock — output frame rate is exactly
+# clk_wiz_pixclk_out/(2200*1125) = 60.000 Hz. Slow walk vs source is
+# acceptable; Phase D (FRC) will handle proper rate-matching.
+connect_bd_net [get_bd_pins v_tc_tx/fsync_out] [get_bd_pins axi_vdma_0/mm2s_fsync]
+
+# =============================================================================
+# rgb2dvi (HDMI TX) — same MMCM/kClkRange=2 lessons as Phase A
+# =============================================================================
+create_bd_cell -type ip -vlnv digilentinc.com:ip:rgb2dvi rgb2dvi_0
+set_property -dict [list \
+    CONFIG.kGenerateSerialClk {true} \
+    CONFIG.kClkPrimitive      {MMCM} \
+    CONFIG.kClkRange          {2} \
+    CONFIG.kRstActiveHigh     {true} \
+] [get_bd_cells rgb2dvi_0]
+# Phase C.1 pivoted to 720p output (74.25 MHz). rgb2dvi only accepts
+# kClkRange = 1, 2, 3 — 480p (27 MHz) is below its supported pixel-clock
+# range. kClkRange=2 → MULT_F=10 → VCO=742.5 MHz ✓ for 74.25 MHz pixel clock.
+# Proper Phase B pipeline: dvi2rgb → v_vid_in_axi4s → VDMA S2MM → DDR3 →
+# VDMA MM2S → axis_to_vid_io adapter → rgb2dvi. Both data and sync come from
+# the adapter, which gates AXIS data on VTC's active_video and registers all
+# outputs on PixelClk.
+connect_bd_net [get_bd_pins axis_to_vid_io_0/vid_data]         [get_bd_pins rgb2dvi_0/vid_pData]
+connect_bd_net [get_bd_pins axis_to_vid_io_0/vid_active_video] [get_bd_pins rgb2dvi_0/vid_pVDE]
+connect_bd_net [get_bd_pins axis_to_vid_io_0/vid_hsync]        [get_bd_pins rgb2dvi_0/vid_pHSync]
+connect_bd_net [get_bd_pins axis_to_vid_io_0/vid_vsync]        [get_bd_pins rgb2dvi_0/vid_pVSync]
+connect_bd_intf_net [get_bd_intf_pins rgb2dvi_0/TMDS] [get_bd_intf_ports hdmi_tx_tmds]
+connect_bd_net [get_bd_ports btn_rst] [get_bd_pins rgb2dvi_0/aRst]
+
+# =============================================================================
+# Clock domain wiring — single PixelClk domain for the entire video pipeline.
+#
+# Earlier we split AXIS to FCLK_CLK1 to avoid a VDMA-reset hang at boot when
+# PixelClk wasn't yet running. That fixed VDMA init, but the resulting AXIS
+# (150 MHz) vs vid_io_out (148.5 MHz) rate mismatch prevented v_axi4s_vid_out
+# from reaching a stable lock — the FIFO drift breaks the IP's expected timing
+# alignment between AXIS SOF and vtiming_in SOF.
+#
+# Single-clock alternative: everything on the recovered PixelClk. Resolves the
+# rate mismatch. The VDMA-reset-hang issue is sidestepped by gating PS-side
+# init until dvi2rgb has reported pLocked (PS app sleeps before VDMA init).
+# =============================================================================
+# Dual-clock video pipeline:
+#   INPUT side  (dvi2rgb_0/PixelClk, source-recovered ~148.5 MHz, locked to source):
+#       dvi2rgb → v_vid_in_axi4s → VDMA S2MM AXIS → [VDMA CDC] → DDR3
+#   OUTPUT side (clk_wiz_pixclk_out/clk_out1 = 148.5 MHz, PS-derived, source-independent):
+#       DDR3 → [VDMA CDC] → VDMA MM2S AXIS → axis_to_vid_io → rgb2dvi
+#       VTC also on output clock, free-running at 60 Hz exact
+# VDMA handles the AXIS CDC internally (S2MM and MM2S AXIS clocks may differ
+# from each other and from M_AXI clock — VDMA's frame buffer mediates).
+set pclk_in  [get_bd_pins dvi2rgb_0/PixelClk]
+set pclk_out [get_bd_pins clk_wiz_pixclk_out/clk_out1]
+# Input side
+connect_bd_net $pclk_in  [get_bd_pins v_vid_in_axi4s_0/aclk]
+connect_bd_net $pclk_in  [get_bd_pins axi_vdma_0/s_axis_s2mm_aclk]
+connect_bd_net $pclk_in  [get_bd_pins scaler_0/aclk]
+# Output side
+connect_bd_net $pclk_out [get_bd_pins axi_vdma_0/m_axis_mm2s_aclk]
+connect_bd_net $pclk_out [get_bd_pins axis_to_vid_io_0/clk]
+connect_bd_net $pclk_out [get_bd_pins v_tc_tx/clk]
+connect_bd_net $pclk_out [get_bd_pins rgb2dvi_0/PixelClk]
+
+# =============================================================================
+# Reset infrastructure
+# =============================================================================
+create_bd_cell -type ip -vlnv xilinx.com:ip:proc_sys_reset rst_axi
+create_bd_cell -type ip -vlnv xilinx.com:ip:proc_sys_reset rst_mem
+# proc_sys_reset for output clock domain (148.5 MHz from clk_wiz_pixclk_out).
+# Used by VTC's resetn (gen-clock side) and any other output-clock-domain
+# components that need a sync'd reset.
+create_bd_cell -type ip -vlnv xilinx.com:ip:proc_sys_reset rst_pixclk_out
+connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]     [get_bd_pins rst_axi/slowest_sync_clk]
+connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK1]     [get_bd_pins rst_mem/slowest_sync_clk]
+connect_bd_net [get_bd_pins clk_wiz_pixclk_out/clk_out1] [get_bd_pins rst_pixclk_out/slowest_sync_clk]
+connect_bd_net [get_bd_pins zynq_ps/FCLK_RESET0_N] [get_bd_pins rst_axi/ext_reset_in]
+connect_bd_net [get_bd_pins zynq_ps/FCLK_RESET0_N] [get_bd_pins rst_mem/ext_reset_in]
+connect_bd_net [get_bd_pins clk_wiz_pixclk_out/locked] [get_bd_pins rst_pixclk_out/dcm_locked]
+connect_bd_net [get_bd_pins zynq_ps/FCLK_RESET0_N]     [get_bd_pins rst_pixclk_out/ext_reset_in]
+
+# =============================================================================
+# AXI-Lite control path: PS GP0 → 1×2 Interconnect → VDMA, VTC
+# =============================================================================
+create_bd_cell -type ip -vlnv xilinx.com:ip:axi_interconnect axi_ic_lite
+set_property -dict [list CONFIG.NUM_SI {1} CONFIG.NUM_MI {2}] [get_bd_cells axi_ic_lite]
+connect_bd_intf_net [get_bd_intf_pins zynq_ps/M_AXI_GP0]     [get_bd_intf_pins axi_ic_lite/S00_AXI]
+connect_bd_intf_net [get_bd_intf_pins axi_ic_lite/M00_AXI]   [get_bd_intf_pins axi_vdma_0/S_AXI_LITE]
+connect_bd_intf_net [get_bd_intf_pins axi_ic_lite/M01_AXI]   [get_bd_intf_pins v_tc_tx/ctrl]
+connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins zynq_ps/M_AXI_GP0_ACLK]
+connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/ACLK]
+connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/S00_ACLK]
+connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/M00_ACLK]
+connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/M01_ACLK]
+connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_vdma_0/s_axi_lite_aclk]
+connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins v_tc_tx/s_axi_aclk]
+connect_bd_net [get_bd_pins rst_axi/interconnect_aresetn] [get_bd_pins axi_ic_lite/ARESETN]
+connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_lite/S00_ARESETN]
+connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_lite/M00_ARESETN]
+connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_lite/M01_ARESETN]
+connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_vdma_0/axi_resetn]
+connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins v_tc_tx/s_axi_aresetn]
+# Pixel-side reset wiring.
+# VTC's gen-clk side now runs on the OUTPUT clock — use the output-clock
+# proc_sys_reset so the reset is synchronous to VTC's clk.
+# v_vid_in_axi4s is on the input (dvi2rgb) PixelClk; rst_axi (FCLK_CLK0) is
+# async to it but the IP handles its own internal reset synchronization.
+connect_bd_net [get_bd_pins rst_pixclk_out/peripheral_aresetn] [get_bd_pins v_tc_tx/resetn]
+connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]        [get_bd_pins v_vid_in_axi4s_0/aresetn]
+connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]        [get_bd_pins scaler_0/aresetn]
+
+# =============================================================================
+# Memory path: VDMA M_AXI ports → SmartConnect → PS S_AXI_HP0
+# =============================================================================
+create_bd_cell -type ip -vlnv xilinx.com:ip:smartconnect axi_sc_mem
+set_property -dict [list CONFIG.NUM_SI {2} CONFIG.NUM_MI {1}] [get_bd_cells axi_sc_mem]
+connect_bd_intf_net [get_bd_intf_pins axi_vdma_0/M_AXI_S2MM] [get_bd_intf_pins axi_sc_mem/S00_AXI]
+connect_bd_intf_net [get_bd_intf_pins axi_vdma_0/M_AXI_MM2S] [get_bd_intf_pins axi_sc_mem/S01_AXI]
+connect_bd_intf_net [get_bd_intf_pins axi_sc_mem/M00_AXI]    [get_bd_intf_pins zynq_ps/S_AXI_HP0]
+connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK1] [get_bd_pins zynq_ps/S_AXI_HP0_ACLK]
+connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK1] [get_bd_pins axi_vdma_0/m_axi_s2mm_aclk]
+connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK1] [get_bd_pins axi_vdma_0/m_axi_mm2s_aclk]
+connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK1] [get_bd_pins axi_sc_mem/aclk]
+connect_bd_net [get_bd_pins rst_mem/peripheral_aresetn] [get_bd_pins axi_sc_mem/aresetn]
+
+# =============================================================================
+# LED composition: leds = {hdmi_tx_hpd, vid_out_locked, rx_locked, mmcm_locked}
+#
+# LD2 now shows v_axi4s_vid_out's `locked` status — high when the TX-side AXIS-
+# to-pixel adapter has aligned to both the AXIS data stream from VDMA and the
+# vtiming_in strobes from the VTC. This is the most diagnostic single signal
+# for "is the AXIS pipeline producing valid video to rgb2dvi" — without it,
+# we're blind to whether the pipeline is alive end-to-end.
+# =============================================================================
+create_bd_cell -type ip -vlnv xilinx.com:ip:xlconcat led_concat
+set_property -dict [list \
+    CONFIG.NUM_PORTS {4} \
+    CONFIG.IN0_WIDTH {1} \
+    CONFIG.IN1_WIDTH {1} \
+    CONFIG.IN2_WIDTH {1} \
+    CONFIG.IN3_WIDTH {1} \
+] [get_bd_cells led_concat]
+connect_bd_net [get_bd_pins clk_wiz_ref/locked]    [get_bd_pins led_concat/In0]
+connect_bd_net [get_bd_pins dvi2rgb_0/pLocked]    [get_bd_pins led_concat/In1]
+connect_bd_net [get_bd_pins v_tc_tx/active_video_out] [get_bd_pins led_concat/In2]
+connect_bd_net [get_bd_ports hdmi_tx_hpd]         [get_bd_pins led_concat/In3]
+connect_bd_net [get_bd_pins led_concat/dout]      [get_bd_ports leds]
+
+# =============================================================================
+# Address map + validate + wrapper
+# =============================================================================
+assign_bd_address
+validate_bd_design
+save_bd_design
+puts "STAGE_OK: Block Design validated"
+
+set bd_path [get_files $bd_name.bd]
+make_wrapper -files $bd_path -top -import
+puts "STAGE_OK: BD wrapper generated"
+
+# (Plan B wrapper was unnecessary — scaler_0 OOC issue resolved by Vivado
+# caching the .dcp from a previous build run. Plan B file kept for reference.)
+
+# =============================================================================
+# Constraints — BD wrapper is the design top, so the XDC references the BD
+# wrapper's auto-generated port names.
+# =============================================================================
+add_files -fileset constrs_1 -norecurse \
+    [file join $project_root constraints zybo_z7_20_phase_b.xdc]
+set_property top ${bd_name}_wrapper [current_fileset]
+update_compile_order -fileset sources_1
+
+# =============================================================================
+# Synth + impl + bit
+# =============================================================================
+launch_runs synth_1 -jobs 4
+wait_on_run synth_1
+if {[get_property PROGRESS [get_runs synth_1]] ne "100%"} {
+    puts "ERROR: synth_1 did not reach 100% (status=[get_property STATUS [get_runs synth_1]])"
+    exit 1
+}
+puts "STAGE_OK: synthesis complete"
+
+launch_runs impl_1 -to_step write_bitstream -jobs 4
+wait_on_run impl_1
+if {[get_property PROGRESS [get_runs impl_1]] ne "100%"} {
+    puts "ERROR: impl_1 did not reach 100% (status=[get_property STATUS [get_runs impl_1]])"
+    exit 1
+}
+puts "STAGE_OK: implementation + bitstream complete"
+
+set bit [glob -nocomplain [file join $vivado_dir $project_name.runs impl_1 *.bit]]
+if {[llength $bit] == 0} { puts "ERROR: no .bit"; exit 1 }
+puts "BITSTREAM: [lindex $bit 0]"
+puts "TIMING: WNS=[get_property STATS.WNS [get_runs impl_1]]  WHS=[get_property STATS.WHS [get_runs impl_1]]"
+
+write_hw_platform -fixed -include_bit -force \
+    -file [file join $build_dir phase_b.xsa]
+puts "XSA: [file join $build_dir phase_b.xsa]"
+exit 0
+
+# Probe section moved into build context

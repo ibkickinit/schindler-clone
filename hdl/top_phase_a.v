@@ -113,6 +113,9 @@ module top_phase_a (
 
     // IP wrapper instance — parameters are configured via create_ip in build_phase_a.tcl
     // Note: the IP wrapper drops aRst_n / pRst_n / SerialClk vs the underlying VHDL entity.
+    // With kDebug=true the IP wrapper exposes additional ILA-related ports.
+    // We use port-by-name binding and let unspecified ports stay disconnected
+    // (Vivado handles this).
     dvi2rgb_0 dvi_rx_inst (
         .TMDS_Clk_p   (TMDS_IN_clk_p),
         .TMDS_Clk_n   (TMDS_IN_clk_n),
@@ -127,7 +130,7 @@ module top_phase_a (
         .vid_pHSync   (vid_hsync),
         .vid_pVSync   (vid_vsync),
         .PixelClk     (pixel_clk),
-        .aPixelClkLckd(),            // Deprecated, unused
+        .aPixelClkLckd(),
         .pLocked      (rx_locked),
 
         .SDA_I        (ddc_sda_i),

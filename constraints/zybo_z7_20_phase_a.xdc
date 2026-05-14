@@ -9,6 +9,15 @@
 set_property -dict { PACKAGE_PIN K17 IOSTANDARD LVCMOS33 } [get_ports sys_clk]
 create_clock -period 8.000 -name sys_clk_125mhz [get_ports sys_clk]
 
+# Allow sys_clk's IBUF → top-level MMCM (mmcm_inst) to use the clock backbone.
+# With 3 MMCMs in the design (top-level refclk gen + dvi2rgb internal + rgb2dvi
+# internal), the placer can no longer keep sys_clk's IBUF and our MMCM in the
+# same clock region — dvi2rgb's MMCM needs to be near the HDMI RX IO bank, and
+# rgb2dvi's MMCM eats another region. BACKBONE adds ~hundreds of ps of clock
+# insertion delay (negligible here; the MMCM filters jitter regardless) but
+# satisfies the clock placer rule. See UG472 / Place 30-575.
+set_property CLOCK_DEDICATED_ROUTE BACKBONE [get_nets sys_clk_IBUF]
+
 # ============================================================================
 # BTN0 (reset)
 # ============================================================================

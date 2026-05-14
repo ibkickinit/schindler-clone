@@ -36,3 +36,6 @@ webtalk*
 # OS
 .DS_Store
 Thumbs.db
+
+# Reference datasheets / procurement PDFs (kept in Dropbox, not in git)
+docs/Hardware/
