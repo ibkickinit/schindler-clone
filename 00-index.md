@@ -67,8 +67,10 @@ Migration from Zybo to TE0720 production target comes after the HD pipeline vali
 - ✅ **Trenz TE0720-04-31C33MA + TE0703-07 carrier** — production-target silicon stack, now on bench for Side-arc 6 (TE0720 bring-up, PetaLinux + portability validation). Same Z-7020 family as Zybo; HDL ports 1:1. Does not yet have HDMI hardware — Zybo remains the HDMI-pipeline dev platform.
 - ✅ R-2R DAC perfboard + op-amp output stage (Phase 2 first-light validated)
 - ✅ **EVAL-ADV7392/93EBZ** — Side-arc 1 bench target (composite output via ADV7393)
-- ✅ **Si5351A breakout with 3× BNC outputs** — Side-arc 2a bench target (clock-gen standalone bring-up)
-- ✅ **AD9204-80EBZ** — Side-arc 2b bench target (ADC chain)
+- ✅ **Si5351A breakout with 3× BNC outputs** + **Adafruit Si5351 #2045 ×2** — Side-arc 2a bench targets (clock-gen standalone bring-up)
+- 🟡 **MIKROE-2555 ×2** (LTC6912 GainAMP click) — Side-arc 2b PGA bench target. **Arrives 2026-05-15.** Two boards enable parallel setups: chain-with-ADC + PGA-only characterization.
+- ⏳ **AD9204-80EBZ** — Side-arc 2b ADC bench target. **Procurement in-flight (4th attempt, 2026-05-14).** ADI flags this chip under tight export/distribution control; ships only to verified corporate addresses. Side-arc 2b cannot start in earnest until this lands.
+- ✅ **BNC 75 Ω terminators (CP-88T-75 ×4)** + **Molex BNC PCB jacks** — bench measurement + perfboard prototyping
 
 **Bench tools / MCUs:**
 - ✅ **RP2040 dev board** — production-spec'd genlock slow-control MCU, bench prototype

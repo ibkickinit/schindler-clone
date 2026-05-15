@@ -88,14 +88,19 @@ Each sub-arc is independently scope-checkable. Land them in order; later ones de
 
 ### Sub-arc 2b — AD9204 + LTC6912 bring-up
 
+**Status (2026-05-14):**
+- PGA bench path **resolved**: MIKROE-2555 ×2 (LTC6912 GainAMP click) arrives 2026-05-15. Two boards enable parallel bench setups — one chained with ADC for full-front-end characterization, one standalone for PGA-only bandwidth + gain sweep.
+- ADC bench path **pending**: AD9204-80EBZ procurement in flight (4th attempt). ADI tight-controls this chip; ships only to verified corporate addresses. **2b cannot start in earnest until the AD9204 board lands.**
+- Workaround if AD9204 procurement keeps slipping: PGA-only sub-tests can run against a function generator and scope (no FPGA capture path), validating gain ranges and bandwidth standalone on MIKROE-2555. Defers full chain validation but keeps the PGA work moving.
+
 **Goal:** Function-generator analog input → captured cleanly in FPGA fabric, gain controllable.
 
-- AD9204-80EBZ (already procured) + LTC6912 EVB on bench.
-- Function generator → PGA in → ADC in → parallel data into Zybo via PMOD.
+- AD9204-80EBZ + MIKROE-2555 LTC6912 click on bench.
+- Function generator → MIKROE-2555 PGA in → AD9204 EVB in → parallel data into Zybo via PMOD.
 - FPGA HDL: capture ADC samples into BRAM ring buffer, dump over UART/JTAG to host for inspection.
 - Verify: sine input at 1 kHz captures as clean digital sine; PGA gain command via I²C changes amplitude correctly.
 
-**Effort:** ~2–3 days.
+**Effort:** ~2–3 days once both bench boards are on hand.
 
 ### Sub-arc 2c — BB sync separator + autosense classifier
 
