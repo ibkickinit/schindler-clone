@@ -62,16 +62,33 @@ Migration from Zybo to TE0720 production target comes after the HD pipeline vali
 
 ## Hardware status
 
-- ✅ **Digilent Zybo Z7-20** — active dev platform
-- ✅ R-2R DAC perfboard + op-amp output stage
+**Active bench platforms:**
+- ✅ **Digilent Zybo Z7-20** — primary HD-pipeline dev platform (Phase A–G)
+- ✅ **Trenz TE0720-04-31C33MA + TE0703-07 carrier** — production-target silicon stack, now on bench for Side-arc 6 (TE0720 bring-up, PetaLinux + portability validation). Same Z-7020 family as Zybo; HDL ports 1:1. Does not yet have HDMI hardware — Zybo remains the HDMI-pipeline dev platform.
+- ✅ R-2R DAC perfboard + op-amp output stage (Phase 2 first-light validated)
+- ✅ **EVAL-ADV7392/93EBZ** — Side-arc 1 bench target (composite output via ADV7393)
+- ✅ **Si5351A breakout with 3× BNC outputs** + **Adafruit Si5351 #2045 ×2** — Side-arc 2a bench targets (clock-gen standalone bring-up)
+- 🟡 **MIKROE-2555 ×2** (LTC6912 GainAMP click) — Side-arc 2b PGA bench target. **Arrives 2026-05-15.** Two boards enable parallel setups: chain-with-ADC + PGA-only characterization.
+- ⏳ **AD9204-80EBZ** — Side-arc 2b ADC bench target. **Procurement in-flight (4th attempt, 2026-05-14).** ADI flags this chip under tight export/distribution control; ships only to verified corporate addresses. Side-arc 2b cannot start in earnest until this lands.
+- ✅ **BNC 75 Ω terminators (CP-88T-75 ×4)** + **Molex BNC PCB jacks** — bench measurement + perfboard prototyping
+
+**Bench tools / MCUs:**
+- ✅ **RP2040 dev board** — production-spec'd genlock slow-control MCU, bench prototype
+- ✅ **Teensy 4.0** — bench utility, candidate BB / tri-level / LTC waveform synthesis source for Side-arc 2c testing (Cortex-M7 @ 600 MHz; intentionally not on production carrier)
+- ✅ **0.91" 128×32 I²C OLED ×5** (SSD1306-class) — Mini SKU front-panel driver-stack bring-up target. Smaller than spec'd 1.3"/128×64 but same controller family → driver code ports 1:1 when the 1.3" arrives. Used as the early-validate target in Side-arc 6e.
+- ✅ **1.5" 128×128 SPI OLED** (SH1107 controller, GME128128-01-SPI) — Pro SKU rear status display driver-stack bring-up target. Different exact part than the spec'd NHD-1.5, but same role (rear status window). 128×128 = square, so chassis-rotation 90° is free (controller register flag). Used as the rear-status leg of Side-arc 6e.
 - ✅ Phase 2 NTSC composite HDL on bench, scope-validated through monochrome
 
-**Future-evaluation hardware** (procured but NOT the active dev plan — bench eval / parts inventory only):
-- Trenz TE0720-04-31C33MA SOM, TE0703-07 dev carrier, EVAL-ADV7393EBZ, LT8619C-EVB, ADV7280, ADV7393, LTC6912, AD9204, encoders, op-amps, BNCs (various 2026-05-10 / 11 procurements)
+**Component selection status:**
+- ✅ **EC11E18244AU encoders** — bench-validated, locked in as the Pro mezzanine choice (spec § 5.2).
+- 🟡 **Knob selection** — narrowed to 3 candidates from the 7 ordered (CP34501 / FC7229NML / CL178883 / FC1611 / CL1730 / 1202CY / SPK-023A). Final pick pending bench evaluation.
+
+**Future-evaluation / parts inventory** (procured but NOT on the active arc):
+- LT8619C-EVB, ADV7280 EVAL, LTC6912 EVAL — pending Side-arcs 3/4/5 + 2b finish
 - Digilent Arty S7-25 — toolchain learning + Spartan-7 comparison only
 - Smart Artix V1.3 / Smart Zynq SL V1.3 / TE0712-02 / TinyZynq — evaluation archive (`docs/Hardware/`)
 
-The TE0720 is the **production-target SOM**; bench dev happens on Zybo Z7-20 (same Z-7020 silicon family). Production migration after HD pipeline validates.
+The TE0720 is the **production-target SOM**; bench dev for HD pipeline continues on Zybo Z7-20 (same Z-7020 silicon family). Production migration after HD pipeline validates.
 
 ## Operating principle (code in vault)
 

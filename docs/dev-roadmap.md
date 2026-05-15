@@ -40,6 +40,23 @@ Pre-priority-shift work, validated and banked. Currently on hold per the HD-pipe
 
 ---
 
+## 2.5. Side-arcs — silicon bench bring-up (parallel to Phase A–G)
+
+Bench bring-up of each production silicon piece on its EVAL board, **standalone**, before the production carrier exists. Independent of the Phase A–G ordering — each side-arc can land any time its EVAL board is on the bench.
+
+Naming convention: `Side-arc N` to keep distinct from `Phase A–G` (HD pipeline) and the historical `Phase 1/2` (R-2R composite first-light).
+
+| Side-arc | Goal | Status | Doc |
+|---|---|---|---|
+| **Side-arc 1** | ADV7393 EVAL composite bench bring-up. Zybo PMODs → BT.656 8-bit → EVAL board → CVBS BNC → scope shows NTSC color bars from FPGA HDL. Also locks in **day-1 split bus** (HDMI bus + analog bus, independent). | Planned | [`side-arc-1-adv7393-bench.md`](side-arc-1-adv7393-bench.md) |
+| **Side-arc 2** | Genlock / sync subsystem bench bring-up. Five sub-arcs (2a–2e): Si5351 standalone → ADC+PGA → BB sync separator → closed-loop digital PLL → H/V phase trim. Locks in **Si5351-routes-master-clock-in-both-regimes** architecture. ~3–5 weeks of focused work. **2a unblocked** (Si5351 board + RP2040 on bench). | Sub-arc 2a ready to start | [`side-arc-2-genlock-bench.md`](side-arc-2-genlock-bench.md) |
+| Side-arc 3 | ADV7511 EVAL HDMI TX bench bring-up | Future | — |
+| Side-arc 4 | ADV7280 EVAL multi-format decoder bench bring-up | Future | — |
+| Side-arc 5 | LT8619C-EVB HDMI RX bench bring-up | Future | — |
+| **Side-arc 6** | TE0720 + TE0703-07 production-target silicon bring-up. Four sub-arcs (6a–6d): power+JTAG → Trenz toolchain → PetaLinux boot → Zybo HDL portability check. De-risks production migration. ~1 week of focused work. **Hardware on bench (2026-05-14).** | Ready to start | [`side-arc-6-te0720-bringup.md`](side-arc-6-te0720-bringup.md) |
+
+---
+
 ## 3. Deferred until HD pipeline validates
 
 Resumed after Phase G re-attaches the analog terminal. **Not abandoned — just out of order with current priority.**
