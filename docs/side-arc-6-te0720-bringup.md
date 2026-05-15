@@ -78,6 +78,21 @@ Now that the TE0720 SOM and TE0703-07 carrier are physically on the bench, the *
 
 **Effort:** ~½ day per spec § 4.1's estimate.
 
+### Sub-arc 6e — Mini front-panel driver-stack early-validate via 0.91" OLED
+
+**Goal:** PetaLinux userspace renders text on an I²C OLED — validates the Mini SKU front-panel driver stack months before the spec'd 1.3"/128×64 OLED + 5-way nav + buttons hardware lands.
+
+- Hardware: 0.91" 128×32 SSD1306-class I²C OLED (×5 on hand) wired to one of TE0703's exposed I²C buses. 4 wires: GND/3V3/SCL/SDA.
+- Device tree: add the OLED node under the I²C controller, confirm `/dev/i2c-N` enumerates after boot.
+- Userspace test: simple Python or C against `i2c-dev` — clear screen, render "Schindler 2.0 / TE0720 alive" text.
+- Stretch: render dynamic content (uptime, IP, lock state) — proves the full Mini front-panel `schindler-ui` driver path.
+
+**Validates:** Mini SKU front-panel architecture per spec § 5.1 (PetaLinux user-space app drives OLED via `/dev/i2c-N`). The 0.91" is smaller than the spec'd 1.3" but uses the same SSD1306 controller family → driver code ports 1:1 when the 1.3" arrives.
+
+**Why this is in Side-arc 6, not its own side-arc:** the binding hardware dependency is PetaLinux on the TE0720 (Sub-arc 6c). Once that's up, this is a ~½-day extension that retires meaningful Mini SKU dev risk early.
+
+**Effort:** ~½ day.
+
 ## Success criteria
 
 | Sub-arc | Pass condition |
@@ -86,6 +101,7 @@ Now that the TE0720 SOM and TE0703-07 carrier are physically on the bench, the *
 | 6b | Hello-world bitstream built via Trenz toolchain, runs on hardware. |
 | 6c | PetaLinux boots, SSH/serial console works, kernel sees full silicon. |
 | 6d | Phase 2 HDL produces identical scope-validated waveforms on TE0720 + R-2R DAC as on Zybo + R-2R DAC. |
+| 6e | 0.91" OLED displays static + dynamic text rendered from PetaLinux userspace via `/dev/i2c-N`. |
 
 ## Effort estimate (total)
 
@@ -95,6 +111,7 @@ Now that the TE0720 SOM and TE0703-07 carrier are physically on the bench, the *
 | 6b | ~1–2 days |
 | 6c | ~2–3 days |
 | 6d | ~½ day |
+| 6e | ~½ day |
 | **Total** | **~1 week of focused work** |
 
 ## What this enables
