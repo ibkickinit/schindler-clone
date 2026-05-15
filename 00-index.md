@@ -76,6 +76,7 @@ Migration from Zybo to TE0720 production target comes after the HD pipeline vali
 - ✅ **RP2040 dev board** — production-spec'd genlock slow-control MCU, bench prototype
 - ✅ **Teensy 4.0** — bench utility, candidate BB / tri-level / LTC waveform synthesis source for Side-arc 2c testing (Cortex-M7 @ 600 MHz; intentionally not on production carrier)
 - ✅ **0.91" 128×32 I²C OLED ×5** (SSD1306-class) — Mini SKU front-panel driver-stack bring-up target. Smaller than spec'd 1.3"/128×64 but same controller family → driver code ports 1:1 when the 1.3" arrives. Used as the early-validate target in Side-arc 6e.
+- ✅ **1.5" 128×128 SPI OLED** (SH1107 controller, GME128128-01-SPI) — Pro SKU rear status display driver-stack bring-up target. Different exact part than the spec'd NHD-1.5, but same role (rear status window). 128×128 = square, so chassis-rotation 90° is free (controller register flag). Used as the rear-status leg of Side-arc 6e.
 - ✅ Phase 2 NTSC composite HDL on bench, scope-validated through monochrome
 
 **Component selection status:**

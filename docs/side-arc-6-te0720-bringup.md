@@ -78,20 +78,34 @@ Now that the TE0720 SOM and TE0703-07 carrier are physically on the bench, the *
 
 **Effort:** ~½ day per spec § 4.1's estimate.
 
-### Sub-arc 6e — Mini front-panel driver-stack early-validate via 0.91" OLED
+### Sub-arc 6e — Front + rear status display driver-stack early-validate
 
-**Goal:** PetaLinux userspace renders text on an I²C OLED — validates the Mini SKU front-panel driver stack months before the spec'd 1.3"/128×64 OLED + 5-way nav + buttons hardware lands.
+**Goal:** PetaLinux userspace renders text on **both** the Mini front-panel I²C OLED and the Pro rear-status SPI OLED — validates both driver paths months before the spec'd hardware lands.
 
+Two parallel legs sharing the same Linux userspace pattern (different buses):
+
+**Leg 6e-i — Front-panel via 0.91" I²C OLED**
 - Hardware: 0.91" 128×32 SSD1306-class I²C OLED (×5 on hand) wired to one of TE0703's exposed I²C buses. 4 wires: GND/3V3/SCL/SDA.
 - Device tree: add the OLED node under the I²C controller, confirm `/dev/i2c-N` enumerates after boot.
 - Userspace test: simple Python or C against `i2c-dev` — clear screen, render "Schindler 2.0 / TE0720 alive" text.
 - Stretch: render dynamic content (uptime, IP, lock state) — proves the full Mini front-panel `schindler-ui` driver path.
 
-**Validates:** Mini SKU front-panel architecture per spec § 5.1 (PetaLinux user-space app drives OLED via `/dev/i2c-N`). The 0.91" is smaller than the spec'd 1.3" but uses the same SSD1306 controller family → driver code ports 1:1 when the 1.3" arrives.
+**Validates:** Mini SKU front-panel architecture per spec § 5.1 (PetaLinux userspace app drives OLED via `/dev/i2c-N`). The 0.91" is smaller than the spec'd 1.3" but uses the same SSD1306 controller family → driver code ports 1:1 when the 1.3" arrives.
 
-**Why this is in Side-arc 6, not its own side-arc:** the binding hardware dependency is PetaLinux on the TE0720 (Sub-arc 6c). Once that's up, this is a ~½-day extension that retires meaningful Mini SKU dev risk early.
+**Leg 6e-ii — Rear status via 1.5" SPI OLED**
+- Hardware: 1.5" 128×128 SH1107 SPI OLED (GME128128-01-SPI) on bench. 7 wires: VCC/GND/SCL(SCK)/SDA(MOSI)/DC/CS/RST.
+- Device tree: add SPI node under a spidev / fbdev-compatible binding, or use linux-fbtft for full framebuffer access.
+- Userspace test: same render-text pattern as 6e-i but over SPI. Confirm CS / DC / RST GPIOs route correctly through PetaLinux.
+- **Rotation note:** 128×128 is square, so chassis-rotation 90° is free — set the SH1107 segment-remap + COM-scan-direction registers in init script, no rendering-side accommodation needed.
+- Stretch: same dynamic content render (uptime / IP / lock state / signal mode) — proves the Pro SKU rear status `schindler-ui` driver path.
 
-**Effort:** ~½ day.
+**Validates:** Pro SKU rear status display architecture. The 1.5" SH1107 is a different exact part than the spec'd NHD-1.5 (Newhaven), but same role and same Linux SPI userspace pattern → driver scaffolding ports 1:1 when the NHD-1.5 arrives, even if the controller-specific init code needs swapping.
+
+**Open spec question** (parked for later): rear status final part may end up being I²C-based instead of NHD-1.5 SPI/parallel if bus sharing wins on wire count. Bench-validating the SPI path now keeps the option open in either direction.
+
+**Why this is in Side-arc 6, not its own side-arc:** the binding hardware dependency is PetaLinux on the TE0720 (Sub-arc 6c). Once that's up, both legs are parallel ~½-day extensions that retire Mini + Pro UI dev risk early.
+
+**Effort:** ~½ day per leg (~1 day total if run together).
 
 ## Success criteria
 
@@ -101,7 +115,8 @@ Now that the TE0720 SOM and TE0703-07 carrier are physically on the bench, the *
 | 6b | Hello-world bitstream built via Trenz toolchain, runs on hardware. |
 | 6c | PetaLinux boots, SSH/serial console works, kernel sees full silicon. |
 | 6d | Phase 2 HDL produces identical scope-validated waveforms on TE0720 + R-2R DAC as on Zybo + R-2R DAC. |
-| 6e | 0.91" OLED displays static + dynamic text rendered from PetaLinux userspace via `/dev/i2c-N`. |
+| 6e-i | 0.91" I²C OLED displays static + dynamic text rendered from PetaLinux userspace via `/dev/i2c-N`. |
+| 6e-ii | 1.5" SPI OLED displays static + dynamic text rendered from PetaLinux userspace via SPI/fbdev; chassis-rotation flag validates correctly. |
 
 ## Effort estimate (total)
 
@@ -111,7 +126,7 @@ Now that the TE0720 SOM and TE0703-07 carrier are physically on the bench, the *
 | 6b | ~1–2 days |
 | 6c | ~2–3 days |
 | 6d | ~½ day |
-| 6e | ~½ day |
+| 6e (both legs) | ~1 day |
 | **Total** | **~1 week of focused work** |
 
 ## What this enables
