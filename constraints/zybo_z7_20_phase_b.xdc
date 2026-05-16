@@ -63,3 +63,14 @@ set_property -dict { PACKAGE_PIN M14 IOSTANDARD LVCMOS33 } [get_ports {leds[0]}]
 set_property -dict { PACKAGE_PIN M15 IOSTANDARD LVCMOS33 } [get_ports {leds[1]}]
 set_property -dict { PACKAGE_PIN G14 IOSTANDARD LVCMOS33 } [get_ports {leds[2]}]
 set_property -dict { PACKAGE_PIN D18 IOSTANDARD LVCMOS33 } [get_ports {leds[3]}]
+
+# ============================================================================
+# Phase D iter-4d-1: CDC false-paths into axi_sync_inputs 2-FF synchronizers.
+# ASYNC_REG=TRUE handles metastability placement; this tells the timing
+# engine the inter-clock paths are async and shouldn't be constrained. Before
+# iter-4c the source vsync/plocked paths happened to meet timing because
+# dvi2rgb's PixelClk was related to FCLK_CLK0; now both sides are fully async.
+set_false_path -to [get_pins {phase_b_bd_i/axi_sync_inputs_0/inst/vsync_q1_reg/D}]
+set_false_path -to [get_pins {phase_b_bd_i/axi_sync_inputs_0/inst/plocked_q1_reg/D}]
+set_false_path -to [get_pins {phase_b_bd_i/axi_sync_inputs_0/inst/vsync_out_q1_reg/D}]
+set_false_path -to [get_pins {phase_b_bd_i/axi_sync_inputs_0/inst/pclk_locked_q1_reg/D}]

@@ -495,26 +495,37 @@ connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]              [get_bd_pins axi_syn
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]     [get_bd_pins axi_sync_inputs_0/axi_rstn]
 connect_bd_net [get_bd_pins dvi2rgb_0/vid_pVSync]           [get_bd_pins axi_sync_inputs_0/vsync_async]
 connect_bd_net [get_bd_pins dvi2rgb_0/pLocked]              [get_bd_pins axi_sync_inputs_0/plocked_async]
+# Phase D iter-4d-1: output-side observability for FRC cadence engine
+connect_bd_net [get_bd_pins v_tc_tx/vsync_out]              [get_bd_pins axi_sync_inputs_0/vsync_out_async]
+connect_bd_net [get_bd_pins clk_wiz_pixclk_out/locked]      [get_bd_pins axi_sync_inputs_0/pclk_locked_async]
 
-# AXI GPIO — input-only, 2 bits. bit 0 = plocked_sync, bit 1 = vsync_sync.
+# AXI GPIO — input-only, 4 bits:
+#   bit 0 = plocked_sync       (dvi2rgb source HDMI lock)
+#   bit 1 = vsync_sync         (dvi2rgb source vsync)
+#   bit 2 = vsync_out_sync     (VTC output vsync — new in iter-4d-1)
+#   bit 3 = pclk_locked_sync   (clk_wiz_pixclk_out MMCM lock — new in iter-4d-1)
 create_bd_cell -type ip -vlnv xilinx.com:ip:axi_gpio axi_gpio_0
 set_property -dict [list \
-    CONFIG.C_GPIO_WIDTH    {2} \
+    CONFIG.C_GPIO_WIDTH    {4} \
     CONFIG.C_ALL_INPUTS    {1} \
     CONFIG.C_IS_DUAL       {0} \
     CONFIG.C_INTERRUPT_PRESENT {0} \
 ] [get_bd_cells axi_gpio_0]
 
-# Pack {vsync_sync, plocked_sync} into the 2-bit GPIO input
+# Pack {pclk_locked, vsync_out, vsync, plocked} into the 4-bit GPIO input
 create_bd_cell -type ip -vlnv xilinx.com:ip:xlconcat gpio_in_concat
 set_property -dict [list \
-    CONFIG.NUM_PORTS {2} \
+    CONFIG.NUM_PORTS {4} \
     CONFIG.IN0_WIDTH {1} \
     CONFIG.IN1_WIDTH {1} \
+    CONFIG.IN2_WIDTH {1} \
+    CONFIG.IN3_WIDTH {1} \
 ] [get_bd_cells gpio_in_concat]
-connect_bd_net [get_bd_pins axi_sync_inputs_0/plocked_sync] [get_bd_pins gpio_in_concat/In0]
-connect_bd_net [get_bd_pins axi_sync_inputs_0/vsync_sync]   [get_bd_pins gpio_in_concat/In1]
-connect_bd_net [get_bd_pins gpio_in_concat/dout]            [get_bd_pins axi_gpio_0/gpio_io_i]
+connect_bd_net [get_bd_pins axi_sync_inputs_0/plocked_sync]     [get_bd_pins gpio_in_concat/In0]
+connect_bd_net [get_bd_pins axi_sync_inputs_0/vsync_sync]       [get_bd_pins gpio_in_concat/In1]
+connect_bd_net [get_bd_pins axi_sync_inputs_0/vsync_out_sync]   [get_bd_pins gpio_in_concat/In2]
+connect_bd_net [get_bd_pins axi_sync_inputs_0/pclk_locked_sync] [get_bd_pins gpio_in_concat/In3]
+connect_bd_net [get_bd_pins gpio_in_concat/dout]                [get_bd_pins axi_gpio_0/gpio_io_i]
 
 # AXI-Lite connection to the GPIO via the expanded interconnect
 connect_bd_intf_net [get_bd_intf_pins axi_ic_lite/M02_AXI] [get_bd_intf_pins axi_gpio_0/S_AXI]

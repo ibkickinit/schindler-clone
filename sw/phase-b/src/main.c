@@ -91,8 +91,10 @@ static int vdma_setup_channel(int direction, UINTPTR *frame_addrs)
  * of source events. Calling vtc_setup_720p immediately after this returns
  * aligns the generator's first frame to within ~1 µs of source vsync.
  */
-#define VSYNC_GPIO_PLOCKED_MASK  0x1
-#define VSYNC_GPIO_VSYNC_MASK    0x2
+#define VSYNC_GPIO_PLOCKED_MASK      0x1   /* dvi2rgb source HDMI lock        */
+#define VSYNC_GPIO_VSYNC_MASK        0x2   /* dvi2rgb source vsync             */
+#define VSYNC_GPIO_VSYNC_OUT_MASK    0x4   /* VTC output vsync (iter-4d-1)     */
+#define VSYNC_GPIO_PCLK_LOCKED_MASK  0x8   /* clk_wiz_pixclk_out MMCM lock     */
 
 /* Vitis names this macro inconsistently across versions / BD hierarchies.
  * Match whichever one the generated xparameters.h actually emits. */
@@ -184,6 +186,32 @@ static u32 measure_source_rate_mhz(int target_edges)
     u64 ticks = (u64)(t_end - t_start);
     if (ticks == 0) return 0;
     /* rate_mHz = (edges * 1000 * COUNTS_PER_SECOND) / ticks  (all u64 math). */
+    u64 rate = ((u64)edges * 1000ULL * COUNTS_PER_SECOND) / ticks;
+    return (u32)rate;
+}
+
+/* Phase D iter-4d-1 — analog of measure_source_rate_mhz for OUTPUT vsync.
+ * Drains the VTC's vsync_out edges (CDC-synced via axi_sync_inputs) so we can
+ * confirm the free-running output PixelClk is actually at the expected
+ * frequency (~59.97 Hz for 720p60). Returns 0 if pclk_locked drops. */
+static u32 measure_output_rate_mhz(int target_edges)
+{
+    int prev    = !!(vsync_gpio_read() & VSYNC_GPIO_VSYNC_OUT_MASK);
+    int edges   = 0;
+    int timeout = 200000000;
+    XTime t_start, t_end;
+    XTime_GetTime(&t_start);
+    while (edges < target_edges) {
+        u32 g = vsync_gpio_read();
+        if (!(g & VSYNC_GPIO_PCLK_LOCKED_MASK)) return 0;
+        int cur = !!(g & VSYNC_GPIO_VSYNC_OUT_MASK);
+        if (cur && !prev) edges++;
+        prev = cur;
+        if (--timeout < 0) return 0;
+    }
+    XTime_GetTime(&t_end);
+    u64 ticks = (u64)(t_end - t_start);
+    if (ticks == 0) return 0;
     u64 rate = ((u64)edges * 1000ULL * COUNTS_PER_SECOND) / ticks;
     return (u32)rate;
 }
@@ -441,6 +469,19 @@ int main(void)
         } else {
             xil_printf("  SRC RATE: %u.%03u Hz\r\n",
                        (unsigned)(rate_mHz / 1000), (unsigned)(rate_mHz % 1000));
+        }
+
+        /* Phase D iter-4d-1 — measure FREE-RUNNING output vsync rate.
+         * Expected ~59.97 Hz with iter4c clock topology (74.21875 MHz /
+         * (1650*750)). Confirms output is genuinely decoupled from source.
+         * Returns 0 if clk_wiz_pixclk_out lost lock. */
+        u32 out_rate_mHz = measure_output_rate_mhz(60);
+        if (out_rate_mHz == 0) {
+            xil_printf("  OUT RATE: -- (pclk_out MMCM not locked)\r\n");
+        } else {
+            xil_printf("  OUT RATE: %u.%03u Hz\r\n",
+                       (unsigned)(out_rate_mHz / 1000),
+                       (unsigned)(out_rate_mHz % 1000));
         }
         xil_printf("\r\n");
         tick++;
