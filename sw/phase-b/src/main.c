@@ -53,7 +53,13 @@ static int vdma_setup_channel(int direction, UINTPTR *frame_addrs)
     cfg.Stride            = STRIDE;
     cfg.FrameDelay        = 0;
     cfg.EnableCircularBuf = 1;
-    cfg.EnableSync        = 0;
+    /* Phase D iter-4d-2: MM2S in genlock-slave mode (EnableSync=1) so that
+     * VDMA latches PARK_PTR_REG updates atomically at fsync_in boundaries
+     * (driven by v_tc_tx/fsync_out, wired in BD). Without this, PARK writes
+     * apply mid-frame and we get horizontal tearing as MM2S switches FBs
+     * during active read. S2MM stays free-running (EnableSync=0) — it's
+     * driven by source-side AXIS SOF naturally. */
+    cfg.EnableSync        = (direction == XAXIVDMA_READ) ? 1 : 0;
     cfg.PointNum          = 0;
     cfg.EnableFrameCounter = 0;
     cfg.FixedFrameStoreAddr = 0;
@@ -214,6 +220,155 @@ static u32 measure_output_rate_mhz(int target_edges)
     if (ticks == 0) return 0;
     u64 rate = ((u64)edges * 1000ULL * COUNTS_PER_SECOND) / ticks;
     return (u32)rate;
+}
+
+/* ====================================================================
+ * Phase D iter-4d-2 — Frame Rate Conversion (FRC) cadence engine.
+ *
+ * Classifies the measured source rate into a REGIME, picks the matching
+ * cadence pattern, and runs a tight polling loop that writes VDMA MM2S
+ * PARK at each output vsync. S2MM stays in circular mode (auto-rotates
+ * through the FB ring at source rate). Pattern semantics:
+ *   sum(pattern) = output frames per cadence cycle
+ *   len(pattern) = source frames per cadence cycle (= FB advances)
+ *   pattern[i]   = how many output frames to show source frame i for
+ *
+ * Examples:
+ *   60p→60p:  pattern={1}      → 1 out / 1 src, advance each output vsync
+ *   30p→60p:  pattern={2}      → 2 out / 1 src, advance every 2nd vsync
+ *   24p→60p:  pattern={3,2}    → 5 out / 2 src, 3:2 pulldown
+ * ==================================================================== */
+typedef enum {
+    REGIME_60P,
+    REGIME_30P,
+    REGIME_24P,
+    REGIME_UNKNOWN,
+    REGIME_COUNT
+} src_regime_t;
+
+#define MAX_PATTERN 4
+typedef struct {
+    int           len;
+    int           pattern[MAX_PATTERN];
+    const char   *name;
+} cadence_t;
+
+static const cadence_t CADENCES[REGIME_COUNT] = {
+    [REGIME_60P]     = { 1, {1, 0, 0, 0}, "60p->60p (1:1 pass-through)" },
+    [REGIME_30P]     = { 1, {2, 0, 0, 0}, "30p->60p (2:1 repeat)"       },
+    [REGIME_24P]     = { 2, {3, 2, 0, 0}, "24p->60p (3:2 pulldown)"     },
+    [REGIME_UNKNOWN] = { 1, {1, 0, 0, 0}, "passthrough (unknown rate)"  },
+};
+
+static int abs_i(int x) { return x < 0 ? -x : x; }
+
+static src_regime_t classify_rate(u32 rate_mHz)
+{
+    if (rate_mHz == 0) return REGIME_UNKNOWN;
+    /* ±1500 mHz tolerance covers crystal drift + 23.976 vs 24.000 etc. */
+    if (abs_i((int)rate_mHz - 60000) < 1500) return REGIME_60P;
+    if (abs_i((int)rate_mHz - 30000) < 1500) return REGIME_30P;
+    if (abs_i((int)rate_mHz - 24000) < 1500) return REGIME_24P;
+    return REGIME_UNKNOWN;
+}
+
+/* VDMA PARK_PTR_REG (0x28) layout (PG020):
+ *   [4:0]   RDFRMPTRREF — MM2S park frame index (this is what we drive)
+ *   [12:8]  WRFRMPTRREF — S2MM park frame index (left alone; S2MM circular)
+ *   [20:16] RDFRMSTORE  — RO, current MM2S frame
+ *   [28:24] WRFRMSTORE  — RO, current S2MM frame
+ */
+static inline void vdma_set_mm2s_park(UINTPTR vdma_base, int fb_idx)
+{
+    u32 v = Xil_In32(vdma_base + 0x28);
+    v = (v & ~0x1Fu) | ((u32)fb_idx & 0x1Fu);
+    Xil_Out32(vdma_base + 0x28, v);
+}
+
+/* Switch MM2S from circular to park mode. CR bit 1 (Circular_Park) cleared. */
+static inline void vdma_mm2s_set_park_mode(UINTPTR vdma_base)
+{
+    u32 cr = Xil_In32(vdma_base + 0x00);
+    Xil_Out32(vdma_base + 0x00, cr & ~0x2u);
+}
+
+/* Tight cadence-driven loop. Exits on source loss so caller can re-classify. */
+static void cadence_loop(UINTPTR vdma_base)
+{
+    /* Re-measure source rate and classify. This blocks ~1 sec. */
+    u32 rate_mHz = measure_source_rate_mhz(60);
+    src_regime_t regime = classify_rate(rate_mHz);
+    const cadence_t *cad = &CADENCES[regime];
+
+    xil_printf("\r\nCADENCE INIT: src=%u.%03u Hz -> regime %d [%s]\r\n",
+               (unsigned)(rate_mHz / 1000), (unsigned)(rate_mHz % 1000),
+               (int)regime, cad->name);
+
+    /* Drive MM2S via firmware-controlled park mode for ALL regimes. Even
+     * 60p→60p needs this: with free-running output (iter-4c) and circular
+     * mode, MM2S races against S2MM in the same FB ring at slightly
+     * different rates and lands on partially-written FBs → vertical roll
+     * artifact visible on bench (~250 px shift per 1 sec at 0.2% rate
+     * delta). Park-mode + firmware drive keeps MM2S exactly one FB behind
+     * S2MM's current write target, eliminating mid-FB tears. */
+    vdma_mm2s_set_park_mode(vdma_base);
+    vdma_set_mm2s_park(vdma_base, 0);
+    xil_printf("CADENCE: MM2S in park mode, starting at FB0\r\n");
+
+    int phase_idx        = 0;
+    int count_in_phase   = 0;
+    int s2mm_fb          = 0;  /* firmware mirror of S2MM's current FB target */
+    int mm2s_fb          = 0;  /* what we display next output vsync          */
+    int src_prev = !!(vsync_gpio_read() & VSYNC_GPIO_VSYNC_MASK);
+    int out_prev = !!(vsync_gpio_read() & VSYNC_GPIO_VSYNC_OUT_MASK);
+    int src_count = 0, out_count = 0;
+    int status_every = 60;
+
+    while (1) {
+        u32 g = vsync_gpio_read();
+        if (!(g & VSYNC_GPIO_PLOCKED_MASK)) {
+            xil_printf("CADENCE: source dropped (pLocked=0), re-classifying...\r\n");
+            while (!(vsync_gpio_read() & VSYNC_GPIO_PLOCKED_MASK)) { /* spin */ }
+            return;
+        }
+
+        int src_cur = !!(g & VSYNC_GPIO_VSYNC_MASK);
+        int out_cur = !!(g & VSYNC_GPIO_VSYNC_OUT_MASK);
+
+        /* Source vsync edge — S2MM is about to start writing a new FB.
+         * Advance our mirror so we know which FB is being written. The
+         * FB that was JUST completed is (s2mm_fb - 1) mod NUM_FRAMES;
+         * that's what's safe for MM2S to display. */
+        if (src_cur && !src_prev) {
+            src_count++;
+            s2mm_fb = (s2mm_fb + 1) % NUM_FRAMES;
+        }
+
+        /* Output vsync edge — push the cadence forward and write MM2S
+         * PARK with the FB to display this output frame. */
+        if (out_cur && !out_prev) {
+            out_count++;
+            vdma_set_mm2s_park(vdma_base, mm2s_fb);
+            count_in_phase++;
+            if (count_in_phase >= cad->pattern[phase_idx]) {
+                count_in_phase = 0;
+                phase_idx = (phase_idx + 1) % cad->len;
+                /* Advance to the next source frame in the ring. The
+                 * "current displayable" FB is one behind S2MM's write
+                 * target to avoid catching it mid-write. */
+                mm2s_fb = (s2mm_fb + NUM_FRAMES - 1) % NUM_FRAMES;
+            }
+            if (out_count >= status_every) {
+                xil_printf("CADENCE: src=%d out=%d s2mm_fb=%d mm2s_fb=%d phase=%d/%d\r\n",
+                           src_count, out_count, s2mm_fb, mm2s_fb,
+                           phase_idx, cad->len);
+                src_count = 0;
+                out_count = 0;
+            }
+        }
+        src_prev = src_cur;
+        out_prev = out_cur;
+    }
 }
 
 static int vtc_setup_720p(void)
@@ -386,105 +541,13 @@ int main(void)
      * data, whether MM2S is reading continuously, and whether either channel
      * is reporting AXIS framing errors. */
     UINTPTR vdma_base = XPAR_AXI_VDMA_0_BASEADDR;
-    volatile u32 *fb0 = (volatile u32 *)FRAME_BUF_BASE;
-    int tick = 0;
 
-    /* Phase D source-event tracking (informational only).
-     *
-     * Phase D's input-clock-sourced output MMCM means a source
-     * disconnect stops both input and output PixelClk. The output-side
-     * proc_sys_reset hard-resets VTC, clearing its CTL; VDMA S2MM also
-     * appears to get stuck and doesn't auto-resume on replug. Auto-
-     * recovery via VTC re-init + S2MM Stop/Start was tried 2026-05-14
-     * and DOES NOT WORK — S2MM needs a deeper reset than the standard
-     * driver helpers provide, and PARK-based "source dead" detection
-     * gave false positives after btn_rst (PARK stuck for unrelated
-     * reasons). Picking the hammer back up requires either a BD-side
-     * change (route dvi2rgb_0/pLocked to an AXI GPIO so PS can detect
-     * source events) or a deeper VDMA reset dance.
-     *
-     * Until then, recovery from a source disconnect is manual:
-     *   xsct tcl/program_phase_b_full.tcl
-     * which reloads the ELF and re-inits VTC + VDMA cleanly.
-     *
-     * The PARK-delta logging here is purely informational — useful in
-     * UART for confirming whether S2MM is actively writing frames. */
-    u32 prev_park       = Xil_In32(vdma_base + 0x28);
-    int src_quiet_ticks = 0;
-    int first_tick      = 1;
-
+    /* Phase D iter-4d-2 — engage cadence engine. cadence_loop returns only
+     * if the source drops; the outer while(1) re-classifies and re-engages
+     * after a reconnect. The cadence loop replaces the per-second blocking
+     * diag dump from iter-4a; CADENCE status lines come out every ~1 sec. */
     while (1) {
-        u32 park_now      = Xil_In32(vdma_base + 0x28);
-        int s2mm_advanced = (((park_now >> 16) & 0xFF) !=
-                             ((prev_park >> 16) & 0xFF));
-        prev_park = park_now;
-        if (first_tick) { s2mm_advanced = 1; first_tick = 0; }
-
-        if (s2mm_advanced) {
-            if (src_quiet_ticks > 0) {
-                xil_printf("[t=%ds] ** Source restored — PARK advancing after %d quiet ticks **\r\n",
-                           tick, src_quiet_ticks);
-            }
-            src_quiet_ticks = 0;
-        } else {
-            src_quiet_ticks++;
-            if (src_quiet_ticks == 1) {
-                xil_printf("[t=%ds] ** Source quiet (S2MM PARK static) — reload ELF to recover **\r\n", tick);
-            }
-        }
-
-        u32 mm2s_sr  = Xil_In32(vdma_base + 0x04);   /* MM2S_DMASR */
-        u32 s2mm_sr  = Xil_In32(vdma_base + 0x34);   /* S2MM_DMASR */
-        u32 mm2s_cr  = Xil_In32(vdma_base + 0x00);   /* MM2S_DMACR */
-        u32 s2mm_cr  = Xil_In32(vdma_base + 0x30);   /* S2MM_DMACR */
-        /* Park pointers — show which frame buffer each channel is touching */
-        u32 park     = Xil_In32(vdma_base + 0x28);   /* PARK_PTR_REG */
-        u32 vdmavers = Xil_In32(vdma_base + 0x2C);   /* VDMA_VERSION */
-
-        xil_printf("[t=%ds]\r\n", tick);
-        xil_printf("  MM2S CR=%08x SR=%08x   err{slv=%d dec=%d sof_e=%d eol_e=%d sof_l=%d eol_l=%d}\r\n",
-                   (unsigned)mm2s_cr, (unsigned)mm2s_sr,
-                   (int)((mm2s_sr >> 5) & 1), (int)((mm2s_sr >> 6) & 1),
-                   (int)((mm2s_sr >> 7) & 1), (int)((mm2s_sr >> 8) & 1),
-                   (int)((mm2s_sr >> 11) & 1), (int)((mm2s_sr >> 12) & 1));
-        xil_printf("  S2MM CR=%08x SR=%08x   err{slv=%d dec=%d sof_e=%d eol_e=%d sof_l=%d eol_l=%d}\r\n",
-                   (unsigned)s2mm_cr, (unsigned)s2mm_sr,
-                   (int)((s2mm_sr >> 5) & 1), (int)((s2mm_sr >> 6) & 1),
-                   (int)((s2mm_sr >> 7) & 1), (int)((s2mm_sr >> 8) & 1),
-                   (int)((s2mm_sr >> 11) & 1), (int)((s2mm_sr >> 12) & 1));
-        xil_printf("  PARK=%08x VERS=%08x\r\n",
-                   (unsigned)park, (unsigned)vdmavers);
-        /* Frame buffer contents (S2MM should be writing here) */
-        xil_printf("  FB0 first 4 pixels: %08x %08x %08x %08x\r\n",
-                   (unsigned)fb0[0], (unsigned)fb0[1],
-                   (unsigned)fb0[2], (unsigned)fb0[3]);
-
-        /* Phase D iter-4a — passive source rate detection.
-         * measure_source_rate_mhz blocks for ~1 second (60 vsync edges) so
-         * it both takes the place of the old sleep(1) AND yields useful data
-         * each tick. Reports rate in milli-Hz (60000 = 60.000 Hz). */
-        u32 rate_mHz = measure_source_rate_mhz(60);
-        if (rate_mHz == 0) {
-            xil_printf("  SRC RATE: -- (source not locked)\r\n");
-        } else {
-            xil_printf("  SRC RATE: %u.%03u Hz\r\n",
-                       (unsigned)(rate_mHz / 1000), (unsigned)(rate_mHz % 1000));
-        }
-
-        /* Phase D iter-4d-1 — measure FREE-RUNNING output vsync rate.
-         * Expected ~59.97 Hz with iter4c clock topology (74.21875 MHz /
-         * (1650*750)). Confirms output is genuinely decoupled from source.
-         * Returns 0 if clk_wiz_pixclk_out lost lock. */
-        u32 out_rate_mHz = measure_output_rate_mhz(60);
-        if (out_rate_mHz == 0) {
-            xil_printf("  OUT RATE: -- (pclk_out MMCM not locked)\r\n");
-        } else {
-            xil_printf("  OUT RATE: %u.%03u Hz\r\n",
-                       (unsigned)(out_rate_mHz / 1000),
-                       (unsigned)(out_rate_mHz % 1000));
-        }
-        xil_printf("\r\n");
-        tick++;
+        cadence_loop(vdma_base);
     }
 
     return 0;
