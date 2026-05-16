@@ -370,25 +370,51 @@ static void telemetry_loop(UINTPTR vdma_base)
     }
 }
 
-static int vtc_setup_720p(void)
+/* VTC mode tables — CEA-861 timings for the 720p variants we care about.
+ * Pixel clock is 74.25 MHz for all 720p modes; the rate difference is in
+ * HTOTAL (longer blanking at 50p / 30p / 24p). 24p/30p are listed but
+ * require an rgb2dvi kClkRange patch (40 MHz floor blocks pixel clocks
+ * below ~29.7 MHz at 24p / ~37.1 MHz at 30p — currently the IP would
+ * refuse the configuration). For 720p50 the same 74.25 MHz pixel clock
+ * works with stock IP — only the V-frame-rate math changes via wider H. */
+typedef struct {
+    const char *name;
+    u32 h_active;
+    u32 v_active;
+    u32 h_total;
+    u32 v_total;
+    u32 h_front;   /* HFront porch  */
+    u32 h_sync;    /* HSync width   */
+    u32 v_front;   /* VFront porch  */
+    u32 v_sync;    /* VSync width   */
+} vtc_mode_t;
+
+static const vtc_mode_t MODE_720P60 = {
+    "720p60", 1280, 720, 1650, 750,  110, 40,  5, 5
+};
+static const vtc_mode_t MODE_720P50 = {
+    "720p50", 1280, 720, 1980, 750,  440, 40,  5, 5
+};
+
+static int vtc_setup(const vtc_mode_t *m)
 {
     /* Direct register writes to the VTC. We bypass the Xilinx XVtc driver here
      * because its XVtc_SetGenerator implementation does an internal GFENC
      * read-modify-write and writes that have caused Data Aborts on this config.
      *
-     * 1280x720p60 CEA-861 timing (720p, pivot target from 480p):
-     *   HActive=1280, HFront=110, HSync=40, HBack=220 → HTotal=1650
-     *   VActive=720,  VFront=5,   VSync=5,  VBack=20  → VTotal=750
-     *   Pixel clock = 74.25 MHz (clk_wiz_pixclk_out outputs ~74.25 MHz).
-     *   HSync + VSync polarity: POSITIVE per CEA-861 720p spec.
+     * Pixel clock = 74.25 MHz from clk_wiz_pixclk_out (unchanged across modes).
+     * HSync + VSync polarity: POSITIVE per CEA-861 720p spec.
      */
     UINTPTR base = XPAR_VTC_0_BASEADDR;
-    const u32 H_ACTIVE = 1280, V_ACTIVE = 720;
-    const u32 H_TOTAL  = 1650, V_TOTAL  = 750;
-    const u32 H_SYNC_START   = 1390;          /* 1280 + 110 */
-    const u32 H_BACK_START   = 1430;          /* 1390 + 40  */
-    const u32 V_SYNC_START   = 725;           /* 720 + 5    */
-    const u32 V_BACK_START   = 730;           /* 725 + 5    */
+    const u32 H_ACTIVE = m->h_active, V_ACTIVE = m->v_active;
+    const u32 H_TOTAL  = m->h_total,  V_TOTAL  = m->v_total;
+    const u32 H_SYNC_START   = H_ACTIVE + m->h_front;
+    const u32 H_BACK_START   = H_SYNC_START + m->h_sync;
+    const u32 V_SYNC_START   = V_ACTIVE + m->v_front;
+    const u32 V_BACK_START   = V_SYNC_START + m->v_sync;
+
+    xil_printf("VTC: configuring %s (HTOTAL=%u VTOTAL=%u)\r\n",
+               m->name, (unsigned)H_TOTAL, (unsigned)V_TOTAL);
 
     /* Generator Active Size (active sizes, F0)         offset 0x60 */
     Xil_Out32(base + 0x60, (V_ACTIVE << 16) | H_ACTIVE);
@@ -511,9 +537,14 @@ int main(void)
      * which mysteriously corrupted the B channel in synthesis.) */
 
     /* --- VTC first --- so fsync_out is pulsing when VDMA inits (its reset
-     * state machine waits for fsync activity with c_use_mm2s_fsync=1). */
-    if (vtc_setup_720p() != XST_SUCCESS) return -1;
-    xil_printf("VTC aligned to source vsync, generating 1280x720@60p timing\r\n");
+     * state machine waits for fsync activity with c_use_mm2s_fsync=1).
+     *
+     * iter-4d-3-FRC-test: select 720p50 to drive Dynamic Master's down-FRC
+     * skip behavior. Source stays 60p (ImagePro RGB), output is 50p, ratio
+     * 6:5 means master drops one source frame every 6 to keep ahead of slave.
+     * Switch to MODE_720P60 to revert. */
+    if (vtc_setup(&MODE_720P50) != XST_SUCCESS) return -1;
+    xil_printf("VTC aligned to source vsync\r\n");
     sleep(1);  /* give VTC time to start pulsing fsync before VDMA reset */
 
     /* --- VDMA ------------------------------------------------------------- */
