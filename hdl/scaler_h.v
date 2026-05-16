@@ -27,7 +27,8 @@
 `timescale 1ns / 1ps
 
 module scaler_h #(
-    parameter integer IN_W   = 1920,
+    parameter integer IN_W_MAX = 4096,  // sizing/sanity only; runtime IN_W from in_w_runtime
+    parameter integer IN_W_DEFAULT = 1920,  // used pre-firmware-write (latched reset value)
     parameter integer OUT_W  = 720,
     parameter integer PHASES = 64,
     parameter integer TAPS   = 8
@@ -45,7 +46,13 @@ module scaler_h #(
     output reg         m_axis_tvalid,
     input  wire        m_axis_tready,
     output reg         m_axis_tlast,
-    output reg         m_axis_tuser
+    output reg         m_axis_tuser,
+
+    /* Runtime source-horizontal-active count, driven by firmware from VTC
+     * detector's DASIZE register via AXI GPIO (CDC'd into clk domain in
+     * scaler_top). Latched into in_w_active at each input TUSER so the
+     * value used for emit_now/excess is frame-atomic. */
+    input  wire [11:0] in_w_runtime
 );
     // Window: 8 pixels, [0] = newest, [7] = oldest
     reg [23:0] window [0:TAPS-1];
@@ -53,11 +60,15 @@ module scaler_h #(
     // Pending TUSER — latched from input until the next emit consumes it
     reg pending_tuser;
 
+    // Runtime IN_W, latched at TUSER for frame-atomic commit. Default value
+    // covers boot before firmware programs it.
+    reg [11:0] in_w_active;
+
     // Accumulator
     reg  [11:0] accum;
     wire [11:0] accum_next = accum + OUT_W[11:0];
-    wire        emit_now   = accum_next >= IN_W[11:0];
-    wire [11:0] excess     = accum_next - IN_W[11:0];   // valid when emit_now=1
+    wire        emit_now   = accum_next >= in_w_active;
+    wire [11:0] excess     = accum_next - in_w_active;   // valid when emit_now=1
 
     // Phase = excess * PHASES / OUT_W. Precomputed at elaboration as a
     // Q10 multiplier, rounded to nearest:
@@ -144,6 +155,7 @@ module scaler_h #(
             m_axis_tdata  <= 24'h0;
             m_axis_tlast  <= 1'b0;
             m_axis_tuser  <= 1'b0;
+            in_w_active   <= IN_W_DEFAULT[11:0];
         end else begin
             // Output side: clear valid when downstream takes
             if (m_axis_tvalid && m_axis_tready) begin
@@ -169,6 +181,9 @@ module scaler_h #(
                     // Start of frame: reset accum and latch TUSER for next emit.
                     accum         <= OUT_W[11:0];
                     pending_tuser <= 1'b1;
+                    // Frame-atomic commit of runtime IN_W (any AXI-Lite
+                    // change between frames takes effect here, not mid-frame).
+                    in_w_active   <= in_w_runtime;
                 end else if (emit_now) begin
                     accum <= excess;
                 end else begin

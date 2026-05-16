@@ -300,6 +300,29 @@ set_property -dict [list \
 ] [get_bd_cells v_tc_tx]
 
 # =============================================================================
+# iter4e: Video Timing Controller — DETECTOR — measures source dimensions
+# =============================================================================
+# Reads timing signals out of v_vid_in_axi4s_0/vtiming_out (which is itself
+# driven by dvi2rgb's vid_p{VSync,HSync,VDE}) and exposes detected
+# HACTIVE/VACTIVE/HTOTAL/VTOTAL via AXI-Lite registers (DASIZE @ 0x020,
+# DVSIZE @ 0x034, DPOL @ 0x02C, DTSTAT @ 0x024). Firmware reads these to
+# program scaler_0's runtime IN_W/IN_H via axi_gpio_1 below — eliminates
+# hardcoded IN_W=1920/IN_H=1080 assumption.
+#
+# Detector clock = pclk_in (148.5 MHz) — same clock as v_vid_in_axi4s_0.
+create_bd_cell -type ip -vlnv xilinx.com:ip:v_tc v_tc_rx
+set_property -dict [list \
+    CONFIG.enable_detection {true} \
+    CONFIG.enable_generation {false} \
+    CONFIG.MAX_CLOCKS_PER_LINE {4096} \
+    CONFIG.MAX_LINES_PER_FRAME {4096} \
+] [get_bd_cells v_tc_rx]
+connect_bd_intf_net [get_bd_intf_pins v_vid_in_axi4s_0/vtiming_out] \
+                    [get_bd_intf_pins v_tc_rx/vtiming_in]
+# Detector clk wired to pclk_in alongside v_vid_in_axi4s_0/aclk below
+# (s_axi_aclk + resetn also wired below alongside the other AXI-Lite cells)
+
+# =============================================================================
 # Custom AXIS → vid_io adapter (replaces v_axi4s_vid_out)
 # =============================================================================
 # v_axi4s_vid_out wouldn't reach LOCKED in our pipeline despite the AXIS and
@@ -378,6 +401,7 @@ set pclk_out [get_bd_pins clk_wiz_pixclk_out/clk_out1]
 connect_bd_net $pclk_in  [get_bd_pins v_vid_in_axi4s_0/aclk]
 connect_bd_net $pclk_in  [get_bd_pins axi_vdma_0/s_axis_s2mm_aclk]
 connect_bd_net $pclk_in  [get_bd_pins scaler_0/aclk]
+connect_bd_net $pclk_in  [get_bd_pins v_tc_rx/clk]  ;# iter4e: detector on pclk_in
 # Output side
 connect_bd_net $pclk_out [get_bd_pins axi_vdma_0/m_axis_mm2s_aclk]
 connect_bd_net $pclk_out [get_bd_pins axis_to_vid_io_0/clk]
@@ -416,32 +440,44 @@ connect_bd_net [get_bd_pins rst_pixclk_out/peripheral_reset] [get_bd_pins rgb2dv
 # AXI-Lite control path: PS GP0 → 1×2 Interconnect → VDMA, VTC
 # =============================================================================
 create_bd_cell -type ip -vlnv xilinx.com:ip:axi_interconnect axi_ic_lite
-# 3 master ports: VDMA, VTC, and new GPIO for firmware-side vsync alignment.
-set_property -dict [list CONFIG.NUM_SI {1} CONFIG.NUM_MI {3}] [get_bd_cells axi_ic_lite]
+# 5 master ports (iter4e expanded 3->5):
+#   M00 = VDMA, M01 = VTC tx (generator), M02 = GPIO 0 (status inputs)
+#   M03 = VTC rx (detector, new)
+#   M04 = GPIO 1 (scaler dim outputs, new)
+set_property -dict [list CONFIG.NUM_SI {1} CONFIG.NUM_MI {5}] [get_bd_cells axi_ic_lite]
 connect_bd_intf_net [get_bd_intf_pins zynq_ps/M_AXI_GP0]     [get_bd_intf_pins axi_ic_lite/S00_AXI]
 connect_bd_intf_net [get_bd_intf_pins axi_ic_lite/M00_AXI]   [get_bd_intf_pins axi_vdma_0/S_AXI_LITE]
 connect_bd_intf_net [get_bd_intf_pins axi_ic_lite/M01_AXI]   [get_bd_intf_pins v_tc_tx/ctrl]
+connect_bd_intf_net [get_bd_intf_pins axi_ic_lite/M03_AXI]   [get_bd_intf_pins v_tc_rx/ctrl]
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins zynq_ps/M_AXI_GP0_ACLK]
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/ACLK]
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/S00_ACLK]
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/M00_ACLK]
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/M01_ACLK]
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/M02_ACLK]
+connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/M03_ACLK]
+connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/M04_ACLK]
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_vdma_0/s_axi_lite_aclk]
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins v_tc_tx/s_axi_aclk]
+connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins v_tc_rx/s_axi_aclk]
 connect_bd_net [get_bd_pins rst_axi/interconnect_aresetn] [get_bd_pins axi_ic_lite/ARESETN]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_lite/S00_ARESETN]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_lite/M00_ARESETN]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_lite/M01_ARESETN]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_lite/M02_ARESETN]
+connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_lite/M03_ARESETN]
+connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_lite/M04_ARESETN]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_vdma_0/axi_resetn]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins v_tc_tx/s_axi_aresetn]
+connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins v_tc_rx/s_axi_aresetn]
 # Pixel-side reset wiring.
 # VTC's gen-clk side now runs on the OUTPUT clock — use the output-clock
 # proc_sys_reset so the reset is synchronous to VTC's clk.
 # v_vid_in_axi4s is on the input (dvi2rgb) PixelClk; rst_axi (FCLK_CLK0) is
 # async to it but the IP handles its own internal reset synchronization.
 connect_bd_net [get_bd_pins rst_pixclk_out/peripheral_aresetn] [get_bd_pins v_tc_tx/resetn]
+# VTC_rx detector also on pclk_in — reset comes from axi (input-side IP)
+connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]        [get_bd_pins v_tc_rx/resetn]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]        [get_bd_pins v_vid_in_axi4s_0/aresetn]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]        [get_bd_pins scaler_0/aresetn]
 
@@ -536,6 +572,53 @@ connect_bd_net [get_bd_pins gpio_in_concat/dout]                [get_bd_pins axi
 connect_bd_intf_net [get_bd_intf_pins axi_ic_lite/M02_AXI] [get_bd_intf_pins axi_gpio_0/S_AXI]
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]             [get_bd_pins axi_gpio_0/s_axi_aclk]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]    [get_bd_pins axi_gpio_0/s_axi_aresetn]
+
+# =============================================================================
+# iter4e: AXI GPIO 1 — output-only, 32 bits, drives scaler_0/in_w_async +
+# in_h_async. Firmware writes detected source dimensions from v_tc_rx detector.
+#   bits [15:0]  = IN_W (source active H)
+#   bits [31:16] = IN_H (source active V)
+# Output goes through xlslice cells to split into two 16-bit fields for
+# scaler_0's two 16-bit input ports.
+# =============================================================================
+create_bd_cell -type ip -vlnv xilinx.com:ip:axi_gpio axi_gpio_1
+# Default to 1920x1080 packed (0x0438 << 16 | 0x0780 = 0x04380780) so the
+# scaler has valid dimensions from the first source TUSER, even before
+# firmware programs the detected source value. Without this, in_w_runtime
+# stays at 0 until firmware writes, scaler's emit_now = (accum >= 0) is
+# always true, scaler hangs in emit-storm and HDMI output dies before
+# firmware can recover.
+set_property -dict [list \
+    CONFIG.C_GPIO_WIDTH    {32} \
+    CONFIG.C_ALL_OUTPUTS   {1} \
+    CONFIG.C_IS_DUAL       {0} \
+    CONFIG.C_INTERRUPT_PRESENT {0} \
+    CONFIG.C_DOUT_DEFAULT  {0x04380780} \
+] [get_bd_cells axi_gpio_1]
+
+create_bd_cell -type ip -vlnv xilinx.com:ip:xlslice slice_in_w
+set_property -dict [list \
+    CONFIG.DIN_WIDTH {32} \
+    CONFIG.DIN_FROM  {15} \
+    CONFIG.DIN_TO    {0} \
+    CONFIG.DOUT_WIDTH {16} \
+] [get_bd_cells slice_in_w]
+create_bd_cell -type ip -vlnv xilinx.com:ip:xlslice slice_in_h
+set_property -dict [list \
+    CONFIG.DIN_WIDTH {32} \
+    CONFIG.DIN_FROM  {31} \
+    CONFIG.DIN_TO    {16} \
+    CONFIG.DOUT_WIDTH {16} \
+] [get_bd_cells slice_in_h]
+connect_bd_net [get_bd_pins axi_gpio_1/gpio_io_o] [get_bd_pins slice_in_w/Din]
+connect_bd_net [get_bd_pins axi_gpio_1/gpio_io_o] [get_bd_pins slice_in_h/Din]
+connect_bd_net [get_bd_pins slice_in_w/Dout]      [get_bd_pins scaler_0/in_w_async]
+connect_bd_net [get_bd_pins slice_in_h/Dout]      [get_bd_pins scaler_0/in_h_async]
+
+# AXI-Lite connection
+connect_bd_intf_net [get_bd_intf_pins axi_ic_lite/M04_AXI] [get_bd_intf_pins axi_gpio_1/S_AXI]
+connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]             [get_bd_pins axi_gpio_1/s_axi_aclk]
+connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]    [get_bd_pins axi_gpio_1/s_axi_aresetn]
 
 # =============================================================================
 # Phase D iter-3n — ILA instrumentation on scaler_top output and axis_to_vid_io

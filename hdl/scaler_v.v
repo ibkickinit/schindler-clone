@@ -26,7 +26,7 @@
 
 module scaler_v #(
     parameter integer IN_W   = 1280,
-    parameter integer IN_H   = 1080,
+    parameter integer IN_H_DEFAULT = 1080,  // latched reset value; runtime IN_H below
     parameter integer OUT_H  = 720,
     parameter integer PHASES = 64,
     parameter integer TAPS   = 4
@@ -44,7 +44,13 @@ module scaler_v #(
     output reg         m_axis_tvalid,
     input  wire        m_axis_tready,
     output reg         m_axis_tlast,
-    output reg         m_axis_tuser
+    output reg         m_axis_tuser,
+
+    /* Runtime source-vertical-active count, driven by firmware from VTC
+     * detector's DASIZE register via AXI GPIO (CDC'd into clk domain in
+     * scaler_top). Latched into in_h_active at each input TUSER so
+     * v_cross/v_excess math is frame-atomic. */
+    input  wire [11:0] in_h_runtime
 );
     // Line buffers — 4 separate arrays, Vivado infers 4 BRAMs (1 each).
     reg [23:0] lbuf0 [0:IN_W-1];
@@ -56,11 +62,14 @@ module scaler_v #(
     reg [10:0] in_col;    // 0..IN_W-1
     reg [11:0] in_row;    // 0..IN_H-1
 
+    // Runtime IN_H, latched at TUSER for frame-atomic commit.
+    reg [11:0] in_h_active;
+
     // Vertical accumulator
     reg  [11:0] v_accum;
     wire [11:0] v_accum_next = v_accum + OUT_H[11:0];
-    wire        v_cross      = v_accum_next >= IN_H[11:0];
-    wire [11:0] v_excess     = v_accum_next - IN_H[11:0];
+    wire        v_cross      = v_accum_next >= in_h_active;
+    wire [11:0] v_excess     = v_accum_next - in_h_active;
 
     // Phase = v_excess * PHASES / OUT_H. Precomputed at elaboration as a
     // Q10 multiplier, rounded to nearest:
@@ -174,6 +183,7 @@ module scaler_v #(
             m_axis_tdata    <= 24'd0;
             m_axis_tlast    <= 1'b0;
             m_axis_tuser    <= 1'b0;
+            in_h_active     <= IN_H_DEFAULT[11:0];
         end else begin
             // -----------------------------------------------------------------
             // INPUT side (lbuf write + v_accum tracking)
@@ -190,6 +200,9 @@ module scaler_v #(
                     v_accum        <= 12'd0;
                     emit_first_row <= 1'b1;
                     lbuf_fresh     <= 4'h0;  // new frame: all lbufs are now stale
+                    /* Frame-atomic commit of runtime IN_H — any AXI-Lite
+                     * change between frames takes effect here, not mid-frame. */
+                    in_h_active    <= in_h_runtime;
                 end
                 if (s_axis_tlast) begin
                     in_col <= 11'd0;

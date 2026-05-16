@@ -121,12 +121,51 @@ static int vdma_setup_channel(int direction, UINTPTR *frame_addrs)
 #elif defined(XPAR_PHASE_B_BD_AXI_GPIO_0_BASEADDR)
 #  define VSYNC_GPIO_BASEADDR XPAR_PHASE_B_BD_AXI_GPIO_0_BASEADDR
 #else
-#  error "AXI GPIO base address not found in xparameters.h"
+#  error "AXI GPIO 0 base address not found in xparameters.h"
+#endif
+
+/* iter4e: AXI GPIO 1 — 32-bit output, drives scaler runtime IN_W/IN_H.
+ *   bits [15:0]  = IN_W
+ *   bits [31:16] = IN_H
+ * Written once at startup after VTC detector reports DASIZE. */
+#if defined(XPAR_AXI_GPIO_1_BASEADDR)
+#  define SCALER_DIMS_GPIO_BASEADDR XPAR_AXI_GPIO_1_BASEADDR
+#elif defined(XPAR_AXI_GPIO_1_S_AXI_BASEADDR)
+#  define SCALER_DIMS_GPIO_BASEADDR XPAR_AXI_GPIO_1_S_AXI_BASEADDR
+#elif defined(XPAR_PHASE_B_BD_AXI_GPIO_1_BASEADDR)
+#  define SCALER_DIMS_GPIO_BASEADDR XPAR_PHASE_B_BD_AXI_GPIO_1_BASEADDR
+#else
+#  error "AXI GPIO 1 (scaler dims) base address not found in xparameters.h"
+#endif
+
+/* iter4e: v_tc_rx detector. Per PG016 register map:
+ *   0x000 CTL    bit0=SW, bit1=RU, bit3=DE (Detector Enable)
+ *   0x020 DASIZE bits[13:0]=HACTIVE, bits[29:16]=VACTIVE
+ *   0x024 DTSTAT bit0=LOCKED
+ *   0x02C DPOL   bit0=VBP, 1=HBP, 2=VSP, 3=HSP, 4=AVP, 5=ACP, 6=FIP
+ *   0x030 DHSIZE detected H total
+ *   0x034 DVSIZE detected V total */
+#if defined(XPAR_V_TC_1_BASEADDR)
+#  define VTC_RX_BASEADDR XPAR_V_TC_1_BASEADDR
+#elif defined(XPAR_PHASE_B_BD_V_TC_RX_BASEADDR)
+#  define VTC_RX_BASEADDR XPAR_PHASE_B_BD_V_TC_RX_BASEADDR
+#elif defined(XPAR_V_TC_RX_BASEADDR)
+#  define VTC_RX_BASEADDR XPAR_V_TC_RX_BASEADDR
+#else
+#  error "VTC RX (detector) base address not found in xparameters.h"
 #endif
 
 static inline u32 vsync_gpio_read(void)
 {
     return Xil_In32(VSYNC_GPIO_BASEADDR);
+}
+
+/* Write 32-bit value to scaler dims GPIO. AXI GPIO data register is at
+ * offset 0x00 from the IP base. */
+static inline void scaler_dims_write(u32 in_w, u32 in_h)
+{
+    u32 v = ((in_h & 0xFFFFu) << 16) | (in_w & 0xFFFFu);
+    Xil_Out32(SCALER_DIMS_GPIO_BASEADDR + 0x00, v);
 }
 
 static int wait_for_aligned_source_vsync(void)
@@ -370,6 +409,91 @@ static void telemetry_loop(UINTPTR vdma_base)
     }
 }
 
+/* iter4e: enable v_tc_rx detector + wait for LOCK + read source dimensions.
+ * Returns XST_SUCCESS with HACTIVE/VACTIVE filled in on success; XST_FAILURE
+ * on timeout. Caller writes detected dims into scaler via scaler_dims_write. */
+static int vtc_detector_read(u32 *hactive_out, u32 *vactive_out,
+                             u32 *htotal_out, u32 *vtotal_out)
+{
+    /* Wait for dvi2rgb pLocked first — v_tc_rx's clk is dvi2rgb's PixelClk,
+     * which only runs when source is locked. Without this, the detector's
+     * AXI-Lite reads would happen before its core clock has any cycles.
+     * Reuse the AXI GPIO 0 pLocked sync bit (already wired up in iter-3e). */
+    int stable_ms = 0;
+    int total_ms  = 0;
+    while (stable_ms < 100) {
+        if (vsync_gpio_read() & VSYNC_GPIO_PLOCKED_MASK) {
+            stable_ms++;
+        } else {
+            stable_ms = 0;
+        }
+        usleep(1000);
+        if (++total_ms > 10000) {
+            xil_printf("ERROR: pLocked never stable for 100ms (boot timeout)\r\n");
+            return XST_FAILURE;
+        }
+    }
+    xil_printf("VTC_RX: dvi2rgb pLocked stable, enabling detector\r\n");
+
+    /* Enable detector (CTL.DE = bit 3) along with SW (bit 0) and RU (bit 1).
+     * RU is required for any shadow→active register propagation, just like
+     * the generator side (see xilinx_vtc_register_update memory). */
+    Xil_Out32(VTC_RX_BASEADDR + 0x00, 0x01u | 0x02u | 0x08u);
+
+    /* Poll DTSTAT.LOCKED. Source video is 60p so DTSTAT settles within
+     * ~3-5 frames (50-100 ms). Wait up to 5 seconds — VTC detector may
+     * need more frames to converge if source has noisy sync. */
+    total_ms = 0;
+    while ((Xil_In32(VTC_RX_BASEADDR + 0x024) & 0x01u) == 0) {
+        usleep(1000);
+        if (++total_ms > 5000) {
+            xil_printf("ERROR: v_tc_rx never reported LOCKED after 5s\r\n");
+            xil_printf("  DTSTAT=0x%08x DASIZE=0x%08x DPOL=0x%08x\r\n",
+                       (unsigned)Xil_In32(VTC_RX_BASEADDR + 0x024),
+                       (unsigned)Xil_In32(VTC_RX_BASEADDR + 0x020),
+                       (unsigned)Xil_In32(VTC_RX_BASEADDR + 0x02C));
+            return XST_FAILURE;
+        }
+    }
+    /* Require LOCKED stable for an additional 50 ms (3+ frames at 60p) so
+     * DASIZE has settled to the actual source values, not transient noise. */
+    int lock_stable_ms = 0;
+    while (lock_stable_ms < 50) {
+        if (Xil_In32(VTC_RX_BASEADDR + 0x024) & 0x01u) lock_stable_ms++;
+        else lock_stable_ms = 0;
+        usleep(1000);
+    }
+
+    u32 dasize = Xil_In32(VTC_RX_BASEADDR + 0x020);
+    u32 dvsize = Xil_In32(VTC_RX_BASEADDR + 0x034);
+    u32 dhsize = Xil_In32(VTC_RX_BASEADDR + 0x030);
+    u32 dpol   = Xil_In32(VTC_RX_BASEADDR + 0x02C);
+
+    u32 hactive = dasize & 0x3FFFu;
+    u32 vactive = (dasize >> 16) & 0x3FFFu;
+    u32 htotal  = dhsize & 0x3FFFu;
+    u32 vtotal  = dvsize & 0x3FFFu;
+
+    xil_printf("\r\nVTC_RX: HACTIVE=%u VACTIVE=%u HTOTAL=%u VTOTAL=%u DPOL=0x%02x\r\n",
+               (unsigned)hactive, (unsigned)vactive,
+               (unsigned)htotal,  (unsigned)vtotal, (unsigned)(dpol & 0x7Fu));
+
+    if (hactive_out) *hactive_out = hactive;
+    if (vactive_out) *vactive_out = vactive;
+    if (htotal_out)  *htotal_out  = htotal;
+    if (vtotal_out)  *vtotal_out  = vtotal;
+
+    /* Sanity-check ranges so we don't drive garbage into the scaler if the
+     * detector spuriously reports zero or oversized values. Reject anything
+     * outside reasonable HD source bounds. */
+    if (hactive < 320 || hactive > 4096 ||
+        vactive < 200 || vactive > 2160) {
+        xil_printf("ERROR: detected dimensions out of sane range\r\n");
+        return XST_FAILURE;
+    }
+    return XST_SUCCESS;
+}
+
 /* VTC mode tables — CEA-861 timings for the 720p variants we care about.
  * Pixel clock is 74.25 MHz for all 720p modes; the rate difference is in
  * HTOTAL (longer blanking at 50p / 30p / 24p). 24p/30p are listed but
@@ -405,7 +529,18 @@ static int vtc_setup(const vtc_mode_t *m)
      * Pixel clock = 74.25 MHz from clk_wiz_pixclk_out (unchanged across modes).
      * HSync + VSync polarity: POSITIVE per CEA-861 720p spec.
      */
-    UINTPTR base = XPAR_VTC_0_BASEADDR;
+    /* iter4e: explicitly use V_TC_TX address. Adding the v_tc_rx detector
+     * caused XPAR_VTC_0_BASEADDR to alias to v_tc_rx (detector), not v_tc_tx
+     * (generator) — programming the detector with generator timing was
+     * silently ignored, leaving v_tc_tx unconfigured = no HDMI sync = MS2109
+     * fallback bars. */
+#if defined(XPAR_V_TC_TX_BASEADDR)
+    UINTPTR base = XPAR_V_TC_TX_BASEADDR;
+#elif defined(XPAR_V_TC_1_BASEADDR)
+    UINTPTR base = XPAR_V_TC_1_BASEADDR;
+#else
+#  error "v_tc_tx base address not found in xparameters.h"
+#endif
     const u32 H_ACTIVE = m->h_active, V_ACTIVE = m->v_active;
     const u32 H_TOTAL  = m->h_total,  V_TOTAL  = m->v_total;
     const u32 H_SYNC_START   = H_ACTIVE + m->h_front;
@@ -519,7 +654,33 @@ int main(void)
      * The CTL register write at the end of vtc_setup_720p is what triggers
      * the generator's first frame; landing it within microseconds of source
      * vsync gives per-boot deterministic alignment. */
-    xil_printf("Waiting for dvi2rgb lock + source vsync alignment...\r\n");
+    /* iter4e: read source dimensions from v_tc_rx detector FIRST and program
+     * scaler runtime IN_W/IN_H via axi_gpio_1 before we engage the vsync
+     * alignment path. The detector takes ~50-100 ms to lock + settle, so it
+     * MUST run before the source-vsync edge wait (otherwise the alignment
+     * window we found would be invalidated by the detector wait).
+     *
+     * The vtc_detector_read function also requires pLocked; it polls for
+     * detector LOCKED which implies pLocked + stable timing. So this
+     * subsumes the initial pLocked wait. */
+    xil_printf("Waiting for dvi2rgb lock + reading source dimensions...\r\n");
+    u32 src_hactive = 1920, src_vactive = 1080;  /* fallback defaults */
+    u32 src_htotal = 0, src_vtotal = 0;
+    if (vtc_detector_read(&src_hactive, &src_vactive,
+                          &src_htotal, &src_vtotal) != XST_SUCCESS) {
+        xil_printf("WARN: detector failed, using defaults 1920x1080\r\n");
+    }
+    /* DIAG: read GPIO initial value to verify C_DOUT_DEFAULT applied at boot. */
+    u32 gpio_initial = Xil_In32(SCALER_DIMS_GPIO_BASEADDR + 0x00);
+    xil_printf("SCALER GPIO initial value: 0x%08x (expect 0x04380780 = 1920x1080)\r\n",
+               (unsigned)gpio_initial);
+    scaler_dims_write(src_hactive, src_vactive);
+    xil_printf("SCALER: programmed IN_W=%u IN_H=%u\r\n",
+               (unsigned)src_hactive, (unsigned)src_vactive);
+
+    /* NOW align VTC generator CTL write to the next source vsync edge.
+     * Detector activity above is complete; remaining latency is just the
+     * vsync-edge spin in wait_for_aligned_source_vsync. */
     if (wait_for_aligned_source_vsync() != XST_SUCCESS) return -1;
 
     /* CRITICAL: NO printfs between wait_for_aligned_source_vsync and the CTL

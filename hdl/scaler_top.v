@@ -18,8 +18,8 @@
 `timescale 1ns / 1ps
 
 module scaler_top #(
-    parameter integer IN_W   = 1920,
-    parameter integer IN_H   = 1080,
+    parameter integer IN_W_DEFAULT = 1920,
+    parameter integer IN_H_DEFAULT = 1080,
     parameter integer OUT_W  = 1280,
     parameter integer OUT_H  =  720,
     parameter integer PHASES =   64,
@@ -39,8 +39,37 @@ module scaler_top #(
     output wire        m_axis_tvalid,
     input  wire        m_axis_tready,
     output wire        m_axis_tlast,
-    output wire        m_axis_tuser
+    output wire        m_axis_tuser,
+
+    /* Runtime source dimensions from firmware via AXI GPIO. Driven on
+     * FCLK_CLK0 (AXI clock) — CDC into aclk (PixelClk_in) below via 2-FF
+     * synchronizers. For multi-bit values this is technically racy at the
+     * instant of a write, but firmware writes once at startup (after VTC
+     * detector lock) and re-writes only at source resolution change with
+     * scaler held in soft reset — so we never sample a torn value in
+     * steady state. */
+    input  wire [15:0] in_w_async,
+    input  wire [15:0] in_h_async
 );
+    /* 2-FF synchronizers on each bit. Marked ASYNC_REG for the placer. */
+    (* ASYNC_REG = "TRUE" *) reg [15:0] in_w_q1, in_w_q2;
+    (* ASYNC_REG = "TRUE" *) reg [15:0] in_h_q1, in_h_q2;
+    always @(posedge aclk) begin
+        if (!aresetn) begin
+            in_w_q1 <= IN_W_DEFAULT[15:0]; in_w_q2 <= IN_W_DEFAULT[15:0];
+            in_h_q1 <= IN_H_DEFAULT[15:0]; in_h_q2 <= IN_H_DEFAULT[15:0];
+        end else begin
+            in_w_q1 <= in_w_async; in_w_q2 <= in_w_q1;
+            in_h_q1 <= in_h_async; in_h_q2 <= in_h_q1;
+        end
+    end
+    /* Zero-clamp: if firmware hasn't programmed valid dimensions yet (or GPIO
+     * default applied wrong), substitute IN_W_DEFAULT / IN_H_DEFAULT so the
+     * scaler's emit_now / v_cross math doesn't break. Without this, in_w==0
+     * makes emit_now always true (every input pixel emits), which locks up
+     * the AXIS pipeline and dies the HDMI output. */
+    wire [11:0] in_w_eff = (in_w_q2 == 16'd0) ? IN_W_DEFAULT[11:0] : in_w_q2[11:0];
+    wire [11:0] in_h_eff = (in_h_q2 == 16'd0) ? IN_H_DEFAULT[11:0] : in_h_q2[11:0];
     // Intermediate AXIS between H and V (OUT_W × IN_H)
     wire [23:0] mid_tdata;
     wire        mid_tvalid;
@@ -49,10 +78,10 @@ module scaler_top #(
     wire        mid_tuser;
 
     scaler_h #(
-        .IN_W   (IN_W),
-        .OUT_W  (OUT_W),
-        .PHASES (PHASES),
-        .TAPS   (TAPS_H)
+        .IN_W_DEFAULT (IN_W_DEFAULT),
+        .OUT_W        (OUT_W),
+        .PHASES       (PHASES),
+        .TAPS         (TAPS_H)
     ) u_h (
         .clk           (aclk),
         .rstn          (aresetn),
@@ -65,15 +94,16 @@ module scaler_top #(
         .m_axis_tvalid (mid_tvalid),
         .m_axis_tready (mid_tready),
         .m_axis_tlast  (mid_tlast),
-        .m_axis_tuser  (mid_tuser)
+        .m_axis_tuser  (mid_tuser),
+        .in_w_runtime  (in_w_eff)
     );
 
     scaler_v #(
-        .IN_W   (OUT_W),
-        .IN_H   (IN_H),
-        .OUT_H  (OUT_H),
-        .PHASES (PHASES),
-        .TAPS   (TAPS_V)
+        .IN_W         (OUT_W),
+        .IN_H_DEFAULT (IN_H_DEFAULT),
+        .OUT_H        (OUT_H),
+        .PHASES       (PHASES),
+        .TAPS         (TAPS_V)
     ) u_v (
         .clk           (aclk),
         .rstn          (aresetn),
@@ -86,7 +116,8 @@ module scaler_top #(
         .m_axis_tvalid (m_axis_tvalid),
         .m_axis_tready (m_axis_tready),
         .m_axis_tlast  (m_axis_tlast),
-        .m_axis_tuser  (m_axis_tuser)
+        .m_axis_tuser  (m_axis_tuser),
+        .in_h_runtime  (in_h_eff)
     );
 endmodule
 
