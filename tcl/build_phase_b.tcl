@@ -58,6 +58,8 @@ add_files -norecurse [file join $project_root hdl scaler_h.v]
 add_files -norecurse [file join $project_root hdl scaler_v.v]
 add_files -norecurse [file join $project_root hdl scaler_coeffs_h.v]
 add_files -norecurse [file join $project_root hdl scaler_coeffs_v.v]
+# Phase D iter-3 — firmware-side VTC alignment via AXI GPIO + 2-FF input sync
+add_files -norecurse [file join $project_root hdl axi_sync_inputs.v]
 # Coefficient hex files for $readmemh — Vivado adds them to source list so
 # they're visible from the OOC synth working directory.
 add_files -norecurse [file join $project_root hdl scaler_coeffs_h.hex]
@@ -386,7 +388,8 @@ connect_bd_net [get_bd_pins zynq_ps/FCLK_RESET0_N]     [get_bd_pins rst_pixclk_o
 # AXI-Lite control path: PS GP0 → 1×2 Interconnect → VDMA, VTC
 # =============================================================================
 create_bd_cell -type ip -vlnv xilinx.com:ip:axi_interconnect axi_ic_lite
-set_property -dict [list CONFIG.NUM_SI {1} CONFIG.NUM_MI {2}] [get_bd_cells axi_ic_lite]
+# 3 master ports: VDMA, VTC, and new GPIO for firmware-side vsync alignment.
+set_property -dict [list CONFIG.NUM_SI {1} CONFIG.NUM_MI {3}] [get_bd_cells axi_ic_lite]
 connect_bd_intf_net [get_bd_intf_pins zynq_ps/M_AXI_GP0]     [get_bd_intf_pins axi_ic_lite/S00_AXI]
 connect_bd_intf_net [get_bd_intf_pins axi_ic_lite/M00_AXI]   [get_bd_intf_pins axi_vdma_0/S_AXI_LITE]
 connect_bd_intf_net [get_bd_intf_pins axi_ic_lite/M01_AXI]   [get_bd_intf_pins v_tc_tx/ctrl]
@@ -395,12 +398,14 @@ connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/ACLK]
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/S00_ACLK]
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/M00_ACLK]
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/M01_ACLK]
+connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/M02_ACLK]
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_vdma_0/s_axi_lite_aclk]
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins v_tc_tx/s_axi_aclk]
 connect_bd_net [get_bd_pins rst_axi/interconnect_aresetn] [get_bd_pins axi_ic_lite/ARESETN]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_lite/S00_ARESETN]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_lite/M00_ARESETN]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_lite/M01_ARESETN]
+connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_lite/M02_ARESETN]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_vdma_0/axi_resetn]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins v_tc_tx/s_axi_aresetn]
 # Pixel-side reset wiring.
@@ -448,6 +453,50 @@ connect_bd_net [get_bd_pins dvi2rgb_0/pLocked]    [get_bd_pins led_concat/In1]
 connect_bd_net [get_bd_pins v_tc_tx/active_video_out] [get_bd_pins led_concat/In2]
 connect_bd_net [get_bd_ports hdmi_tx_hpd]         [get_bd_pins led_concat/In3]
 connect_bd_net [get_bd_pins led_concat/dout]      [get_bd_ports leds]
+
+# =============================================================================
+# Phase D iter-3 — firmware-side VTC alignment via AXI GPIO + CDC
+# =============================================================================
+# Earlier iters (3a/b/c/d) tried hardware gating of VTC's fsync_in or gen_clken.
+# Neither produced deterministic alignment because the VTC generator's counter
+# start is governed by firmware's CTL register write (SW=0->1 + RU=1 propagates
+# shadow regs), and firmware boot timing varies per power-on. Approach: expose
+# dvi2rgb's pLocked and vid_pVSync via an AXI GPIO so firmware can poll for a
+# source vsync rising edge, then immediately write CTL — aligning CTL-write
+# timing to source vsync within a few microseconds.
+#
+# 2-FF CDC of the two source-domain signals into FCLK_CLK0 domain. Pure-level
+# signals, slow-changing — 2 FFs with ASYNC_REG=TRUE on q1 is plenty.
+create_bd_cell -type module -reference axi_sync_inputs axi_sync_inputs_0
+connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]              [get_bd_pins axi_sync_inputs_0/axi_clk]
+connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]     [get_bd_pins axi_sync_inputs_0/axi_rstn]
+connect_bd_net [get_bd_pins dvi2rgb_0/vid_pVSync]           [get_bd_pins axi_sync_inputs_0/vsync_async]
+connect_bd_net [get_bd_pins dvi2rgb_0/pLocked]              [get_bd_pins axi_sync_inputs_0/plocked_async]
+
+# AXI GPIO — input-only, 2 bits. bit 0 = plocked_sync, bit 1 = vsync_sync.
+create_bd_cell -type ip -vlnv xilinx.com:ip:axi_gpio axi_gpio_0
+set_property -dict [list \
+    CONFIG.C_GPIO_WIDTH    {2} \
+    CONFIG.C_ALL_INPUTS    {1} \
+    CONFIG.C_IS_DUAL       {0} \
+    CONFIG.C_INTERRUPT_PRESENT {0} \
+] [get_bd_cells axi_gpio_0]
+
+# Pack {vsync_sync, plocked_sync} into the 2-bit GPIO input
+create_bd_cell -type ip -vlnv xilinx.com:ip:xlconcat gpio_in_concat
+set_property -dict [list \
+    CONFIG.NUM_PORTS {2} \
+    CONFIG.IN0_WIDTH {1} \
+    CONFIG.IN1_WIDTH {1} \
+] [get_bd_cells gpio_in_concat]
+connect_bd_net [get_bd_pins axi_sync_inputs_0/plocked_sync] [get_bd_pins gpio_in_concat/In0]
+connect_bd_net [get_bd_pins axi_sync_inputs_0/vsync_sync]   [get_bd_pins gpio_in_concat/In1]
+connect_bd_net [get_bd_pins gpio_in_concat/dout]            [get_bd_pins axi_gpio_0/gpio_io_i]
+
+# AXI-Lite connection to the GPIO via the expanded interconnect
+connect_bd_intf_net [get_bd_intf_pins axi_ic_lite/M02_AXI] [get_bd_intf_pins axi_gpio_0/S_AXI]
+connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]             [get_bd_pins axi_gpio_0/s_axi_aclk]
+connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]    [get_bd_pins axi_gpio_0/s_axi_aresetn]
 
 # =============================================================================
 # Address map + validate + wrapper

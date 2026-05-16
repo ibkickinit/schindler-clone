@@ -101,7 +101,9 @@ module scaler_h #(
             else if (sum > 23'sd522239)   // 255 << 11 - 1
                 mac8_sat = 8'hFF;
             else
-                mac8_sat = sum[18:11];
+                // Round-to-nearest: add 0.5 LSB (1024 in Q.11) before truncation.
+                // Removes the -0.5 LSB DC bias of straight floor(sum>>11).
+                mac8_sat = (sum + 23'sd1024) >>> 11;
         end
     endfunction
 

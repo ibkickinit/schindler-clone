@@ -76,6 +76,16 @@ module scaler_v #(
     reg [1:0]  tap0_slot;        // which lbuf is tap 0 of current emit
     reg        emit_first_row;   // 1 if this is the very first emit row of the frame
 
+    // Per-lbuf "fresh" bit: cleared on TUSER, set when the corresponding lbuf
+    // has been written with current-frame data. Stage 0 reads gate on these
+    // bits and substitute zero for unrefreshed lbufs, avoiding the carryover
+    // of previous-frame data into the first 2-3 emit rows of each frame.
+    // (Failed iter3g approach gated m_axis_tdata directly with a ternary;
+    // that broke the B channel via a hold-time violation. Gating on the input
+    // side of the tap latches is structurally cleaner — 4 simple AND-style
+    // input muxes rather than a wide output mux next to the MAC.)
+    reg [3:0]  lbuf_fresh;
+
     // Stage-0 latches (BRAM read result + metadata captured at stage 0)
     reg [23:0] tap_lbuf0_q;
     reg [23:0] tap_lbuf1_q;
@@ -121,7 +131,8 @@ module scaler_v #(
             else if (sum > 22'sd522239)
                 mac4_sat = 8'hFF;
             else
-                mac4_sat = sum[18:11];
+                // Round-to-nearest: add 0.5 LSB (1024 in Q.11) before truncation.
+                mac4_sat = (sum + 22'sd1024) >>> 11;
         end
     endfunction
 
@@ -145,6 +156,7 @@ module scaler_v #(
             v_phase_held    <= 6'd0;
             tap0_slot       <= 2'd0;
             emit_first_row  <= 1'b1;
+            lbuf_fresh      <= 4'h0;
             tap_lbuf0_q     <= 24'd0;
             tap_lbuf1_q     <= 24'd0;
             tap_lbuf2_q     <= 24'd0;
@@ -173,10 +185,22 @@ module scaler_v #(
                     in_row         <= 12'd0;
                     v_accum        <= 12'd0;
                     emit_first_row <= 1'b1;
+                    lbuf_fresh     <= 4'h0;  // new frame: all lbufs are now stale
                 end
                 if (s_axis_tlast) begin
                     in_col <= 11'd0;
                     in_row <= in_row + 12'd1;
+                    // The lbuf that just got fully written is now fresh.
+                    // Using non-blocking with the override on TUSER above:
+                    // when both TLAST and TUSER fire on the same pixel (not
+                    // expected in our pipeline), TUSER wins and clears all.
+                    // Otherwise this single-bit set propagates.
+                    case (in_row[1:0])
+                        2'd0: lbuf_fresh[0] <= 1'b1;
+                        2'd1: lbuf_fresh[1] <= 1'b1;
+                        2'd2: lbuf_fresh[2] <= 1'b1;
+                        2'd3: lbuf_fresh[3] <= 1'b1;
+                    endcase
                     if (v_cross) begin
                         emit         <= 1'b1;
                         out_col      <= 11'd0;
@@ -203,12 +227,15 @@ module scaler_v #(
                     m_axis_tdata <= {mac_r, mac_g, mac_b};
                 end
 
-                // Stage 0: issue BRAM read at out_col, latch metadata
+                // Stage 0: issue BRAM read at out_col, latch metadata.
+                // Gate each tap by its fresh bit so unrefreshed lbufs (with
+                // old-frame data leftover from the previous frame) contribute
+                // 0 to the MAC instead of mixed garbage.
                 if (emit) begin
-                    tap_lbuf0_q    <= lbuf0[out_col];
-                    tap_lbuf1_q    <= lbuf1[out_col];
-                    tap_lbuf2_q    <= lbuf2[out_col];
-                    tap_lbuf3_q    <= lbuf3[out_col];
+                    tap_lbuf0_q    <= lbuf_fresh[0] ? lbuf0[out_col] : 24'h0;
+                    tap_lbuf1_q    <= lbuf_fresh[1] ? lbuf1[out_col] : 24'h0;
+                    tap_lbuf2_q    <= lbuf_fresh[2] ? lbuf2[out_col] : 24'h0;
+                    tap_lbuf3_q    <= lbuf_fresh[3] ? lbuf3[out_col] : 24'h0;
                     tap0_slot_q    <= tap0_slot;
                     phase_q        <= v_phase_held;
                     stage0_valid_q <= 1'b1;

@@ -81,6 +81,75 @@ static int vdma_setup_channel(int direction, UINTPTR *frame_addrs)
     return XST_SUCCESS;
 }
 
+/* Phase D iter-3 — firmware-side VTC alignment.
+ *
+ * The AXI GPIO at XPAR_AXI_GPIO_0_BASEADDR exposes two synchronized inputs:
+ *   bit 0 = dvi2rgb pLocked (2-FF synced from pclk_in to FCLK_CLK0)
+ *   bit 1 = dvi2rgb vid_pVSync (2-FF synced)
+ * Polling these from the PS at ~666 MHz gives us microsecond-tight detection
+ * of source events. Calling vtc_setup_720p immediately after this returns
+ * aligns the generator's first frame to within ~1 µs of source vsync.
+ */
+#define VSYNC_GPIO_PLOCKED_MASK  0x1
+#define VSYNC_GPIO_VSYNC_MASK    0x2
+
+/* Vitis names this macro inconsistently across versions / BD hierarchies.
+ * Match whichever one the generated xparameters.h actually emits. */
+#if defined(XPAR_AXI_GPIO_0_BASEADDR)
+#  define VSYNC_GPIO_BASEADDR XPAR_AXI_GPIO_0_BASEADDR
+#elif defined(XPAR_AXI_GPIO_0_S_AXI_BASEADDR)
+#  define VSYNC_GPIO_BASEADDR XPAR_AXI_GPIO_0_S_AXI_BASEADDR
+#elif defined(XPAR_PHASE_B_BD_AXI_GPIO_0_BASEADDR)
+#  define VSYNC_GPIO_BASEADDR XPAR_PHASE_B_BD_AXI_GPIO_0_BASEADDR
+#else
+#  error "AXI GPIO base address not found in xparameters.h"
+#endif
+
+static inline u32 vsync_gpio_read(void)
+{
+    return Xil_In32(VSYNC_GPIO_BASEADDR);
+}
+
+static int wait_for_aligned_source_vsync(void)
+{
+    /* Wait for pLocked stable for ≥100 ms. Re-check every 1 ms; reset the
+     * counter if it ever drops. Times out after 10 seconds if the source
+     * never locks. */
+    int stable_ms = 0;
+    int total_ms  = 0;
+    while (stable_ms < 100) {
+        if (vsync_gpio_read() & VSYNC_GPIO_PLOCKED_MASK) {
+            stable_ms++;
+        } else {
+            stable_ms = 0;
+        }
+        usleep(1000);
+        if (++total_ms > 10000) {
+            xil_printf("ERROR: pLocked never stable after 10s\r\n");
+            return XST_FAILURE;
+        }
+    }
+
+    /* Spin to a falling edge of vsync, then to the next rising edge.
+     * Source vsync pulse is ~74 µs HIGH per frame, LOW for ~16.6 ms.
+     * Each Xil_In32 takes a few hundred ns at 666 MHz PS clock.
+     * 50M iterations ≈ 50ms × 2 = 100ms timeout — plenty for ≥3 frames.
+     *
+     * CRITICAL: no printf / function calls in this critical section. After
+     * the polling exits, latency to vtc_setup_720p's CTL write must stay
+     * under the vsync HIGH window (~74 µs) for tight alignment. */
+    int timeout = 50000000;
+    while ( vsync_gpio_read() & VSYNC_GPIO_VSYNC_MASK) {
+        if (--timeout < 0) return XST_FAILURE;
+    }
+    timeout = 50000000;
+    while (!(vsync_gpio_read() & VSYNC_GPIO_VSYNC_MASK)) {
+        if (--timeout < 0) return XST_FAILURE;
+    }
+
+    return XST_SUCCESS;
+}
+
 static int vtc_setup_720p(void)
 {
     /* Direct register writes to the VTC. We bypass the Xilinx XVtc driver here
@@ -170,16 +239,36 @@ int main(void)
     /* The video pipeline (VDMA AXIS sides + video adapters + VTC) runs on the
      * RX-recovered PixelClk from dvi2rgb. If we try to init the VDMA before
      * PixelClk is stable, the IP's reset state machine stalls waiting for
-     * its AXIS clock domain to acknowledge reset → driver times out. Wait
-     * up front for the user to plug in the source. Future revision: route
-     * pLocked through AXI GPIO and poll. */
-    xil_printf("Waiting 5s for source-side dvi2rgb lock before pipeline init...\r\n");
-    sleep(5);
+     * its AXIS clock domain to acknowledge reset → driver times out.
+     *
+     * Phase D iter-3: instead of a blind sleep(5), poll the AXI GPIO that
+     * exposes dvi2rgb's pLocked and vid_pVSync (2-FF synced into FCLK_CLK0
+     * domain). Wait for pLocked to be stable for ≥100 ms, then wait for the
+     * NEXT rising edge of source vsync, then immediately run vtc_setup_720p.
+     * The CTL register write at the end of vtc_setup_720p is what triggers
+     * the generator's first frame; landing it within microseconds of source
+     * vsync gives per-boot deterministic alignment. */
+    xil_printf("Waiting for dvi2rgb lock + source vsync alignment...\r\n");
+    if (wait_for_aligned_source_vsync() != XST_SUCCESS) return -1;
+
+    /* CRITICAL: NO printfs between wait_for_aligned_source_vsync and the CTL
+     * register write inside vtc_setup_720p. UART at 115200 baud is ~87 µs/char,
+     * and source vsync is only HIGH for ~74 µs per frame. Any inter-line print
+     * here would push the CTL write past the vsync window into a random phase.
+     *
+     * (Empirically the firmware-to-CTL latency does not shift the displayed
+     * picture because alignment is driven by VDMA frame-buffer timing rather
+     * than VTC vsync_out phase. The top-of-frame artifact iter3e showed is
+     * actually scaler_v.v's cosmetic warmup — 3 rows of mixed previous-frame
+     * data because the V-filter's tap rotation reads from BRAM lbufs that
+     * haven't yet been refreshed with the new frame. A future HDL fix should
+     * tackle this WITHOUT the iter3g-style conditional m_axis_tdata mux,
+     * which mysteriously corrupted the B channel in synthesis.) */
 
     /* --- VTC first --- so fsync_out is pulsing when VDMA inits (its reset
      * state machine waits for fsync activity with c_use_mm2s_fsync=1). */
     if (vtc_setup_720p() != XST_SUCCESS) return -1;
-    xil_printf("VTC generating 1280x720@60p timing + fsync (Phase C.1, pivoted)\r\n");
+    xil_printf("VTC aligned to source vsync, generating 1280x720@60p timing\r\n");
     sleep(1);  /* give VTC time to start pulsing fsync before VDMA reset */
 
     /* --- VDMA ------------------------------------------------------------- */
