@@ -109,28 +109,36 @@ set_property -dict [list \
 puts "STAGE_OK: Zynq PS configured"
 
 # =============================================================================
-# Clocking Wizard — output pixel clock, GENLOCKED to recovered HDMI source
+# Clocking Wizard — output pixel clock, FREE-RUNNING from PS FCLK_CLK0
 # =============================================================================
-# Phase D entry: clk_in1 sourced from dvi2rgb_0/PixelClk (recovered from
-# incoming HDMI TMDS, 148.5 MHz for 1080p60). MMCM produces 74.25 MHz for
-# 720p output, perfectly phase-locked to the source — eliminates the
-# cross-clock-domain tearing from Phase C.1 (no more crystal drift between
-# S2MM-write rate and MM2S-read rate).
+# Phase D iter-4c: REVERT iter-1 genlock. Output PixelClk now sourced from
+# PS FCLK_CLK0 (100 MHz, stable PS-derived) and multiplied to ~74.25 MHz
+# for 720p output. This is the scaffolding required for actual frame-rate
+# conversion (FRC) — output rate now INDEPENDENT of source rate, so the
+# downstream FRC engine can insert/drop frames per cadence rules.
 #
-# Tradeoff: output dies when the HDMI source disconnects (MMCM loses lock
-# → axis_to_vid_io_0/enable drops → rgb2dvi has no pixel clock). The
-# previous design ran on PS FCLK_CLK2 (200 MHz) and was source-independent;
-# we don't currently use that robustness (no internal test-pattern
-# generator), so the trade is free today. Future Phase G test-pattern
-# work can add a BUFGCTRL-selected fallback clock.
+# Visible effect WITHOUT an FRC engine yet:
+#   - Source==Output rate (60p→60Hz): ~30 ppm drift between source and
+#     output crystals → picture rolls slowly (1 line per ~1.4 sec). Will
+#     be eliminated by iter-4d's frame insert/drop logic.
+#   - Source!=Output rate (24p/30p/50p sources): wholesale tearing or
+#     stuttering. Expected — FRC engine is what handles those.
 #
-# Hardcoded to 1080p input → 720p output. If the source changes
-# resolution, the MMCM's M/D ratio is wrong and lock either fails or
-# produces the wrong frequency. Dynamic-reconfig clk_wiz comes later.
+# MMCM auto-config for 100→74.25 MHz: clk_wiz IP picks MULT_F=11.875,
+# DIVIDE=1, OUT_DIVIDE_F=16 → VCO=1187.5 MHz (in 600-1200 spec), output
+# = 1187.5/16 = 74.21875 MHz (~30 ppm off exact 74.25 — well within
+# HDMI/CEA-861 tolerance).
+#
+# Robustness benefit: output no longer dies when HDMI source disconnects
+# (clk continues from PS regardless). VTC keeps generating sync, monitor
+# stays locked (just shows whatever was last in VDMA's frame buffer).
+#
+# Hardcoded to 720p output. If we ever need to switch output resolution
+# at runtime, clk_wiz needs dynamic-reconfig wiring + firmware.
 create_bd_cell -type ip -vlnv xilinx.com:ip:clk_wiz clk_wiz_pixclk_out
 set_property -dict [list \
     CONFIG.PRIMITIVE {MMCM} \
-    CONFIG.PRIM_IN_FREQ {148.500} \
+    CONFIG.PRIM_IN_FREQ {100.000} \
     CONFIG.CLKOUT1_REQUESTED_OUT_FREQ {74.250} \
     CONFIG.USE_LOCKED {true} \
     CONFIG.USE_RESET {true} \
@@ -193,10 +201,11 @@ connect_bd_net [get_bd_ports btn_rst]             [get_bd_pins dvi2rgb_0/aRst]
 # so downstream clk_wiz_pixclk_out's clk_in1 FREQ_HZ check passes.
 set_property CONFIG.FREQ_HZ 148500000 [get_bd_pins dvi2rgb_0/PixelClk]
 
-# GENLOCK_WIRE — Phase D: clk_wiz_pixclk_out's input is the recovered HDMI
-# PixelClk so output is phase-locked to source. See the clk_wiz_pixclk_out
-# block above for rationale and tradeoffs.
-connect_bd_net [get_bd_pins dvi2rgb_0/PixelClk] [get_bd_pins clk_wiz_pixclk_out/clk_in1]
+# GENLOCK_WIRE — Phase D iter-4c: clk_wiz_pixclk_out's input is PS FCLK_CLK0
+# (100 MHz, stable PS-derived), NOT dvi2rgb's recovered HDMI PixelClk. Output
+# now free-runs at ~74.25 MHz independent of source. Scaffolding for FRC.
+# See clk_wiz_pixclk_out block above for rationale.
+connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0] [get_bd_pins clk_wiz_pixclk_out/clk_in1]
 
 # =============================================================================
 # Video In to AXI4-Stream — parallel video → AXIS
@@ -271,6 +280,8 @@ connect_bd_intf_net [get_bd_intf_pins scaler_0/m_axis]            [get_bd_intf_p
 # =============================================================================
 create_bd_cell -type ip -vlnv xilinx.com:ip:v_tc v_tc_tx
 # Phase C.1 pivot — output is 720p (CEA-861 1280×720 progressive, 1650×750 frame).
+# (iter4c-test1 tried V_TOTAL=1500 for 720p30 to test if MS2109 lock failure was
+# rate-related — confirmed it wasn't, reverted to 720p60.)
 set_property -dict [list \
     CONFIG.enable_detection {false} \
     CONFIG.enable_generation {true} \
@@ -332,7 +343,8 @@ connect_bd_net [get_bd_pins axis_to_vid_io_0/vid_active_video] [get_bd_pins rgb2
 connect_bd_net [get_bd_pins axis_to_vid_io_0/vid_hsync]        [get_bd_pins rgb2dvi_0/vid_pHSync]
 connect_bd_net [get_bd_pins axis_to_vid_io_0/vid_vsync]        [get_bd_pins rgb2dvi_0/vid_pVSync]
 connect_bd_intf_net [get_bd_intf_pins rgb2dvi_0/TMDS] [get_bd_intf_ports hdmi_tx_tmds]
-connect_bd_net [get_bd_ports btn_rst] [get_bd_pins rgb2dvi_0/aRst]
+# rgb2dvi.aRst wiring is deferred until after rst_pixclk_out is created
+# (search for "iter-4c-test2 rgb2dvi reset hookup" below).
 
 # =============================================================================
 # Clock domain wiring — single PixelClk domain for the entire video pipeline.
@@ -383,6 +395,17 @@ connect_bd_net [get_bd_pins zynq_ps/FCLK_RESET0_N] [get_bd_pins rst_axi/ext_rese
 connect_bd_net [get_bd_pins zynq_ps/FCLK_RESET0_N] [get_bd_pins rst_mem/ext_reset_in]
 connect_bd_net [get_bd_pins clk_wiz_pixclk_out/locked] [get_bd_pins rst_pixclk_out/dcm_locked]
 connect_bd_net [get_bd_pins zynq_ps/FCLK_RESET0_N]     [get_bd_pins rst_pixclk_out/ext_reset_in]
+
+# iter-4c-test2 rgb2dvi reset hookup: hold rgb2dvi in reset until
+# clk_wiz_pixclk_out has locked, so its internal MMCM doesn't race against an
+# unstable PixelClk at boot. Previous wiring (btn_rst) deasserted at PL config,
+# before the new PS-derived pixel clock had stabilized — rgb2dvi MMCM would
+# try to lock during the unstable window and stay unlocked thereafter (no
+# auto-retrigger). Output looked permanently dead to the HDMI capture stick
+# (MS2109 fell back to internal bars test pattern). peripheral_reset is the
+# active-high companion to peripheral_aresetn from the same proc_sys_reset; it
+# stays high until dcm_locked (= clk_wiz_pixclk_out/locked) goes high.
+connect_bd_net [get_bd_pins rst_pixclk_out/peripheral_reset] [get_bd_pins rgb2dvi_0/aRst]
 
 # =============================================================================
 # AXI-Lite control path: PS GP0 → 1×2 Interconnect → VDMA, VTC
