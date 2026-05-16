@@ -66,6 +66,29 @@ Migration from Zybo to TE0720 production target comes after the HD pipeline vali
 - ✅ R-2R DAC perfboard + op-amp output stage
 - ✅ Phase 2 NTSC composite HDL on bench, scope-validated through monochrome
 
+**Inbound 2026-05-13:**
+
+*Digilent order (Pmod accessories for Arty S7-25 ecosystem — FedEx 487403305746):*
+- Pmod OLED 128×32 mono (410-222) — **Mini front-panel UI prototype**, exact display class as production
+- Pmod OLEDrgb 96×64 color (410-323) — Pro UI flow / menu hierarchy prototyping at small scale
+- Pmod ENC rotary encoder ×2 (410-117) — **Pro dual-encoder firmware prototyping**
+- Pmod SWT 4 slide switches (410-083) — UI input testing
+- Pmod R2R (410-165) — backup / cleaner R-2R DAC vs perfboard
+- Pmod TPH2 test point header (410-135) — debug measurement
+- Pmod Cable Kit + 6-pin splitter (240-021-2) — Pmod fan-out wiring
+- Pmod VGA (410-345) — prototype platform for VGA OUT terminal if banked (currently in `01-spec.md` § 21 open questions)
+
+*HelloFPGA order (China — bench eval / inventory):*
+- Smart ARTIX Development Board V1.3 — inventory (archived in `docs/Hardware/SmartArtix/`)
+- Smart ZYNQ 7020 Minimum System V1.3 (Smart Zynq SL) — inventory (archived in `docs/Hardware/SmartZynq/`)
+- **LT8619C chips ×5** — production-quantity HDMI-input silicon stockpile
+- LT8619C HDMI-to-RGB demo board — second LT8619C-EVB
+
+*Pending order:*
+- **Riverdi RVT43HLBFWN00** (4.3" 480×272 EVE4 intelligent display with BT817Q + flash on board, ~$62) — Pro mezzanine EVE toolchain dev platform. Replaces earlier ME817EV consideration; cheaper, more complete, matches production BT817Q spec exactly. Stock-pending at Mouser / DigiKey; not time-critical.
+
+Net effect: enables a **parallel front-panel UI prototyping arc** on Arty S7-25 + Pmod OLED/OLEDrgb/ENC that doesn't block on Zybo HD pipeline phases A-G, and a parallel **EVE toolchain learning arc** once RVT43HLBFWN00 arrives.
+
 **Future-evaluation hardware** (procured but NOT the active dev plan — bench eval / parts inventory only):
 - Trenz TE0720-04-31C33MA SOM, TE0703-07 dev carrier, EVAL-ADV7393EBZ, LT8619C-EVB, ADV7280, ADV7393, LTC6912, AD9204, encoders, op-amps, BNCs (various 2026-05-10 / 11 procurements)
 - Digilent Arty S7-25 — toolchain learning + Spartan-7 comparison only

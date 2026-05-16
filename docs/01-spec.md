@@ -497,6 +497,7 @@ Decision history: [`01-spec-changelog.md`](01-spec-changelog.md).
 - **S-Video input** to ADV7280 path: free in silicon, costs one mini-DIN + 2 traces. Common on retro source gear (VHS, S-VHS, Hi8). **Pending decision.**
 - **SDI daughter card option (Pro):** the Pro SDI silicon is currently spec'd as factory-stuffed on Pro carriers. A daughter-card-on-headers approach was considered for field-upgrade of Mini → Pro SDI, but adds signal-integrity complexity (3G-SDI through mezzanine). Default: factory-stuff on Pro, no daughter card. **Confirm.**
 - **Field-upgrade path Mini → Pro:** since Mini and Pro share the same carrier PCB with stuffing differences, a "Pro upgrade kit" (factory-installed silicon retrofit) is theoretically possible. Need to decide whether to support it as a product offering or treat the SKUs as one-way commitments at purchase. **Defer until Mini ships.**
+- **VGA OUT [both SKUs]:** dedicated terminal encoder for driving VGA-input CRTs on camera at 24/30 fps film cadences. Architecture under consideration: ADV7125 triple 8-bit video DAC (~$6) + 74AHCT125 sync level shifter + HD-15 panel-mount + passives, ~$10/unit BOM addition each SKU. Frame-doubles source cadence to VGA-compatible refresh (24p → 48 Hz, 30p → 60 Hz) so VGA CRTs lock and camera shutter catches integer refresh cycles per camera frame. Requires new FPGA HDL block: HD bus tap → 1:2 frame doubler → VGA-rate pixel timing → RGB to DAC. Prototype path on Zybo via Pmod VGA (Digilent 410-345, on inbound) before committing carrier silicon. **Pending Justin's call to bank as confirmed feature.**
 
 ---
 
@@ -512,4 +513,4 @@ Decision history: [`01-spec-changelog.md`](01-spec-changelog.md).
 | Logo / lower-third / CC overlay | Out of mission. |
 | Touchscreen UI | Glare, smudges, no tactile, fails in production environments. Replaced by rotary encoders + dynamic TFT (Pro) or mono OLED + buttons (Mini). |
 | DisplayPort IN | Dropped 2026-05-11 connector simplification. |
-| VGA in/out (HD-15) | Killed by design. VGA lacks a standard and the auto-positioning/sample-phase machinery to make VGA reliable is significant HDL complexity for a dying connector. |
+| VGA IN (HD-15) | Significant HDL complexity (auto-positioning + sample-phase recovery) for a declining input format. Out of scope for V1. |

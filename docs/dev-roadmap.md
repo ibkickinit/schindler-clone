@@ -88,6 +88,7 @@ LTC6912 (PGA), AD9204 (ADC), Si5351 (clock gen), RP2040 (slow-control). All on t
 - Full-rack 1RU 19" chassis sourcing + custom-milled panels
 - Mezzanine board: RP2040 + BT817Q EVE + NHD-2.9 TFT + dual ALPS EC11 encoders + buttons + front LED column
 - EVE firmware development (BridgeTek EVE Asset Builder + FT8xx command set)
+- **Dev hardware:** Riverdi RVT43HLBFWN00 (4.3" EVE4 intelligent display, BT817Q + flash on board, ~$62) on order — complete EVE dev environment, matches production BT817Q exactly. Allows EVE toolchain learning + UI flow prototyping in parallel with HDL phases on Zybo, without blocking on carrier PCB fab. NHD-2.9 production panel (376×960 parallel RGB) gets validated separately via custom adapter board later in mezzanine schematic phase.
 - Rear NHD-1.5 status LCD + per-connector tricolor LED arrays (TLC59116F drivers)
 - Internal LRS-50-12 + Schaffner FN9260B-6-06 IEC inlet
 
