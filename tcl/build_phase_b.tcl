@@ -238,24 +238,29 @@ set_property -dict [list \
     CONFIG.c_s_axis_s2mm_tdata_width {24} \
     CONFIG.c_m_axis_mm2s_tdata_width {24} \
     CONFIG.c_include_sg {0} \
-    CONFIG.c_s2mm_genlock_mode {0} \
-    CONFIG.c_mm2s_genlock_mode {1} \
+    CONFIG.c_s2mm_genlock_mode {2} \
+    CONFIG.c_mm2s_genlock_mode {3} \
     CONFIG.c_mm2s_genlock_src {0} \
     CONFIG.c_include_internal_genlock {1} \
     CONFIG.c_mm2s_genlock_repeat_en {1} \
     CONFIG.c_use_mm2s_fsync {1} \
     CONFIG.c_use_s2mm_fsync {0} \
 ] [get_bd_cells axi_vdma_0]
-# C.1.5 genlock (2026-05-14): MM2S slaved to S2MM via internal frame_ptr wiring.
-# S2MM is master (mode 0) and exports frame_ptr_out; MM2S is slave (mode 1) and
-# imports frame_ptr_in internally (src=0, include_internal_genlock=1). Without
-# this, MM2S read pointer can land on the same frame buffer S2MM is mid-writing
-# — visible as two stacked copies of the frame with a salt-and-pepper seam.
-# repeat_en=1 makes MM2S repeat the last good frame if it catches up to S2MM,
-# rather than tearing across the seam. With S2MM input (60 Hz) and MM2S output
-# (60 Hz) both nominally identical, this is a corner case; sustained drift
-# eventually needs proper Phase D FRC, but for first-light this kills the
-# visible tearing.
+# Phase D iter-4d-3 step 2 (2026-05-16): upgrade from plain to Dynamic Genlock.
+#   c_s2mm_genlock_mode 0->2  (Master -> Dynamic Master)
+#   c_mm2s_genlock_mode 1->3  (Slave  -> Dynamic Slave)
+# Mapping verified in /tools/Xilinx/.../axi_vdma_v6_3/component.xml:
+#   0=Master, 1=Slave, 2=Dynamic Master, 3=Dynamic Slave.
+# IP defaults are exactly S2MM=2 / MM2S=3 — the canonical FRC pairing.
+# Dynamic Master "skips the frame buffers that Dynamic Slave is working on"
+# (PG020); Slave follows by skipping/repeating per FrameDelay. This is what
+# Xilinx's documented FRC path uses. Step 1's plain genlock (mode 0/1) left
+# the slave with a static FB offset that drifted into S2MM under the 0.2%
+# rate delta between source and free-running output, producing 1-2 tear
+# lines per frame.
+# repeat_en=1 makes the slave repeat the last good frame if it catches up
+# to the master (S2MM completed faster than MM2S consumed) rather than
+# tearing — important when output rate < source rate.
 # AXIS widths set to 24 bits to match v_vid_in_axi4s (RGB888, 1 pixel/clock)
 # and the adapter. Without these, MM2S defaults to 32-bit AXIS and you get
 # TDATA_NUM_BYTES mismatch at the adapter — colors get scrambled via

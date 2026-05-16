@@ -51,14 +51,24 @@ static int vdma_setup_channel(int direction, UINTPTR *frame_addrs)
     cfg.VertSizeInput     = FRAME_H;
     cfg.HoriSizeInput     = STRIDE;
     cfg.Stride            = STRIDE;
-    cfg.FrameDelay        = 0;
+    /* Phase D iter-4d-3: MM2S as genlock slave with FrameDelay=1 — slave
+     * trails master by 1 frame in the 3-FB ring, hardware-enforced (PG020:
+     * "Slave follows the Master by the frames set in Frame Delay register
+     * either by skipping or repeating frames"). S2MM stays at 0 since it's
+     * the master and free-runs at source rate.
+     *
+     * Replaces iter-4d-2's firmware PARK loop. That approach (PARK mode +
+     * per-vsync PARK_PTR_REG writes from firmware) was non-atomic at MM2S
+     * SOF; the writes landed mid-burst and produced 2-3 horizontal seams
+     * per frame. Xilinx never intended PARK + firmware for live video — the
+     * documented FRC path is Dynamic Genlock master/slave (iter-4d-3 step 2
+     * upgrades from plain to Dynamic), and even plain genlock + FrameDelay=1
+     * should kill the seams that PARK was hand-rolling badly. */
+    cfg.FrameDelay        = (direction == XAXIVDMA_READ) ? 1 : 0;
     cfg.EnableCircularBuf = 1;
-    /* Phase D iter-4d-2: MM2S in genlock-slave mode (EnableSync=1) so that
-     * VDMA latches PARK_PTR_REG updates atomically at fsync_in boundaries
-     * (driven by v_tc_tx/fsync_out, wired in BD). Without this, PARK writes
-     * apply mid-frame and we get horizontal tearing as MM2S switches FBs
-     * during active read. S2MM stays free-running (EnableSync=0) — it's
-     * driven by source-side AXIS SOF naturally. */
+    /* EnableSync=1 on MM2S asserts DMACR bit 3, which enables slave-mode
+     * frame-pointer following (required for FrameDelay/genlock to apply).
+     * It is NOT the per-frame fsync gate we were treating it as in iter-4d-2. */
     cfg.EnableSync        = (direction == XAXIVDMA_READ) ? 1 : 0;
     cfg.PointNum          = 0;
     cfg.EnableFrameCounter = 0;
@@ -223,12 +233,19 @@ static u32 measure_output_rate_mhz(int target_edges)
 }
 
 /* ====================================================================
- * Phase D iter-4d-2 — Frame Rate Conversion (FRC) cadence engine.
+ * Phase D iter-4d-3 — Frame Rate Conversion (FRC) regime classification.
  *
- * Classifies the measured source rate into a REGIME, picks the matching
- * cadence pattern, and runs a tight polling loop that writes VDMA MM2S
- * PARK at each output vsync. S2MM stays in circular mode (auto-rotates
- * through the FB ring at source rate). Pattern semantics:
+ * Step 1 (this commit): classify the source rate into a REGIME and print
+ * the matching cadence pattern, but DON'T act on it from firmware. The
+ * MM2S frame-pointer is now arbitrated entirely by VDMA's hardware
+ * genlock (S2MM master, MM2S slave + FrameDelay=1) — see vdma_setup_channel.
+ *
+ * The cadence table is retained for step 2/3 (where the BD is upgraded to
+ * Dynamic Genlock and firmware optionally schedules drop/repeat patterns
+ * for 30p→60p and 24p→60p). For 60p→60p, pattern={1} = pass-through, which
+ * Dynamic Genlock handles natively without any cadence logic.
+ *
+ * Pattern semantics:
  *   sum(pattern) = output frames per cadence cycle
  *   len(pattern) = source frames per cadence cycle (= FB advances)
  *   pattern[i]   = how many output frames to show source frame i for
@@ -272,12 +289,16 @@ static src_regime_t classify_rate(u32 rate_mHz)
     return REGIME_UNKNOWN;
 }
 
-/* VDMA PARK_PTR_REG (0x28) layout (PG020):
- *   [4:0]   RDFRMPTRREF — MM2S park frame index (this is what we drive)
- *   [12:8]  WRFRMPTRREF — S2MM park frame index (left alone; S2MM circular)
+/* VDMA PARK_PTR_REG (0x28) layout (PG020) — kept for reference / future A/B:
+ *   [4:0]   RDFRMPTRREF — MM2S park frame index
+ *   [12:8]  WRFRMPTRREF — S2MM park frame index
  *   [20:16] RDFRMSTORE  — RO, current MM2S frame
  *   [28:24] WRFRMSTORE  — RO, current S2MM frame
- */
+ * iter-4d-3 step 1: PARK writes removed. MM2S in circular mode under genlock
+ * slave control (DMACR bit 3 = 1, FrameDelay=1). Frame-pointer arbitration
+ * is now hardware-enforced via internal frame_ptr wiring (BD parameter
+ * c_include_internal_genlock=1). The helpers below are retained but unused. */
+__attribute__((unused))
 static inline void vdma_set_mm2s_park(UINTPTR vdma_base, int fb_idx)
 {
     u32 v = Xil_In32(vdma_base + 0x28);
@@ -285,40 +306,36 @@ static inline void vdma_set_mm2s_park(UINTPTR vdma_base, int fb_idx)
     Xil_Out32(vdma_base + 0x28, v);
 }
 
-/* Switch MM2S from circular to park mode. CR bit 1 (Circular_Park) cleared. */
+__attribute__((unused))
 static inline void vdma_mm2s_set_park_mode(UINTPTR vdma_base)
 {
     u32 cr = Xil_In32(vdma_base + 0x00);
     Xil_Out32(vdma_base + 0x00, cr & ~0x2u);
 }
 
-/* Tight cadence-driven loop. Exits on source loss so caller can re-classify. */
-static void cadence_loop(UINTPTR vdma_base)
+/* iter-4d-3 step 1: telemetry-only loop. No PARK writes — VDMA handles the
+ * MM2S frame-pointer atomically via internal genlock + FrameDelay=1. We only
+ * read GPIO to count source vs output vsync edges, classify the source rate,
+ * and print drift periodically so we can see whether the genlock alone keeps
+ * the picture clean.
+ *
+ * If 60→60 is visibly seam-free, step 1 is sufficient and we ship iter-4d-3.
+ * If seams persist, escalate to step 2 (BD reconfig to Dynamic Genlock:
+ * S2MM mode 0→2, MM2S mode 1→3 — verified mapping in axi_vdma_v6_3
+ * component.xml: 0=Master, 1=Slave, 2=Dynamic Master, 3=Dynamic Slave). */
+static void telemetry_loop(UINTPTR vdma_base)
 {
-    /* Re-measure source rate and classify. This blocks ~1 sec. */
+    (void)vdma_base;
+
     u32 rate_mHz = measure_source_rate_mhz(60);
     src_regime_t regime = classify_rate(rate_mHz);
     const cadence_t *cad = &CADENCES[regime];
 
-    xil_printf("\r\nCADENCE INIT: src=%u.%03u Hz -> regime %d [%s]\r\n",
+    xil_printf("\r\nTELEMETRY: src=%u.%03u Hz -> regime %d [%s]\r\n",
                (unsigned)(rate_mHz / 1000), (unsigned)(rate_mHz % 1000),
                (int)regime, cad->name);
+    xil_printf("TELEMETRY: MM2S in circular + genlock-slave, FrameDelay=1\r\n");
 
-    /* Drive MM2S via firmware-controlled park mode for ALL regimes. Even
-     * 60p→60p needs this: with free-running output (iter-4c) and circular
-     * mode, MM2S races against S2MM in the same FB ring at slightly
-     * different rates and lands on partially-written FBs → vertical roll
-     * artifact visible on bench (~250 px shift per 1 sec at 0.2% rate
-     * delta). Park-mode + firmware drive keeps MM2S exactly one FB behind
-     * S2MM's current write target, eliminating mid-FB tears. */
-    vdma_mm2s_set_park_mode(vdma_base);
-    vdma_set_mm2s_park(vdma_base, 0);
-    xil_printf("CADENCE: MM2S in park mode, starting at FB0\r\n");
-
-    int phase_idx        = 0;
-    int count_in_phase   = 0;
-    int s2mm_fb          = 0;  /* firmware mirror of S2MM's current FB target */
-    int mm2s_fb          = 0;  /* what we display next output vsync          */
     int src_prev = !!(vsync_gpio_read() & VSYNC_GPIO_VSYNC_MASK);
     int out_prev = !!(vsync_gpio_read() & VSYNC_GPIO_VSYNC_OUT_MASK);
     int src_count = 0, out_count = 0;
@@ -327,7 +344,7 @@ static void cadence_loop(UINTPTR vdma_base)
     while (1) {
         u32 g = vsync_gpio_read();
         if (!(g & VSYNC_GPIO_PLOCKED_MASK)) {
-            xil_printf("CADENCE: source dropped (pLocked=0), re-classifying...\r\n");
+            xil_printf("TELEMETRY: source dropped (pLocked=0), waiting...\r\n");
             while (!(vsync_gpio_read() & VSYNC_GPIO_PLOCKED_MASK)) { /* spin */ }
             return;
         }
@@ -335,33 +352,15 @@ static void cadence_loop(UINTPTR vdma_base)
         int src_cur = !!(g & VSYNC_GPIO_VSYNC_MASK);
         int out_cur = !!(g & VSYNC_GPIO_VSYNC_OUT_MASK);
 
-        /* Source vsync edge — S2MM is about to start writing a new FB.
-         * Advance our mirror so we know which FB is being written. The
-         * FB that was JUST completed is (s2mm_fb - 1) mod NUM_FRAMES;
-         * that's what's safe for MM2S to display. */
-        if (src_cur && !src_prev) {
-            src_count++;
-            s2mm_fb = (s2mm_fb + 1) % NUM_FRAMES;
-        }
-
-        /* Output vsync edge — push the cadence forward and write MM2S
-         * PARK with the FB to display this output frame. */
+        if (src_cur && !src_prev) src_count++;
         if (out_cur && !out_prev) {
             out_count++;
-            vdma_set_mm2s_park(vdma_base, mm2s_fb);
-            count_in_phase++;
-            if (count_in_phase >= cad->pattern[phase_idx]) {
-                count_in_phase = 0;
-                phase_idx = (phase_idx + 1) % cad->len;
-                /* Advance to the next source frame in the ring. The
-                 * "current displayable" FB is one behind S2MM's write
-                 * target to avoid catching it mid-write. */
-                mm2s_fb = (s2mm_fb + NUM_FRAMES - 1) % NUM_FRAMES;
-            }
             if (out_count >= status_every) {
-                xil_printf("CADENCE: src=%d out=%d s2mm_fb=%d mm2s_fb=%d phase=%d/%d\r\n",
-                           src_count, out_count, s2mm_fb, mm2s_fb,
-                           phase_idx, cad->len);
+                u32 park = Xil_In32(vdma_base + 0x28);
+                int rdstore = (int)((park >> 16) & 0x1F);
+                int wrstore = (int)((park >> 24) & 0x1F);
+                xil_printf("TELEMETRY: src=%d out=%d  RDFRMSTORE=%d WRFRMSTORE=%d\r\n",
+                           src_count, out_count, rdstore, wrstore);
                 src_count = 0;
                 out_count = 0;
             }
@@ -542,12 +541,13 @@ int main(void)
      * is reporting AXIS framing errors. */
     UINTPTR vdma_base = XPAR_AXI_VDMA_0_BASEADDR;
 
-    /* Phase D iter-4d-2 — engage cadence engine. cadence_loop returns only
-     * if the source drops; the outer while(1) re-classifies and re-engages
-     * after a reconnect. The cadence loop replaces the per-second blocking
-     * diag dump from iter-4a; CADENCE status lines come out every ~1 sec. */
+    /* Phase D iter-4d-3 step 1 — telemetry-only. PARK loop removed; MM2S is
+     * in circular mode under genlock-slave control (FrameDelay=1). The loop
+     * just reports source/output edge counts and the IP's own RD/WR frame
+     * stores so we can see whether genlock is doing the right thing without
+     * any firmware help. Returns on source loss; outer while(1) re-engages. */
     while (1) {
-        cadence_loop(vdma_base);
+        telemetry_loop(vdma_base);
     }
 
     return 0;
