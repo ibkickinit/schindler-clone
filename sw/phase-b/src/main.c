@@ -23,6 +23,7 @@
 #include "xparameters.h"
 #include "xaxivdma.h"
 #include "xvtc.h"
+#include "xtime_l.h"   /* Phase D iter-4a: SCU timer for precise rate measurement */
 
 // Phase C.1 (pivoted to 720p): output is 720p (1280×720) — scaler downscales
 // 1080p → 720p before storage. DDR3 holds 1280×720 frames. 480p was infeasible
@@ -150,6 +151,43 @@ static int wait_for_aligned_source_vsync(void)
     return XST_SUCCESS;
 }
 
+/* Phase D iter-4a — passive source frame rate detection.
+ *
+ * Polls the synchronized vid_pVSync GPIO bit (bit 1 of axi_gpio_0) and counts
+ * rising edges over a precisely-measured XTime interval. Returns the source
+ * frame rate in milli-Hz (so 60000 = 60.000 Hz, 23976 = 23.976 Hz).
+ *
+ * `target_edges` controls measurement window length and precision:
+ *   60 edges → ~1 sec window → millihertz precision is JPEG-MJPEG-stable
+ *   12 edges → ~0.2 sec → 10 mHz precision, faster
+ *
+ * Blocks for ~target_edges/source_rate seconds. Call from idle code only
+ * (not from inside the VTC-alignment critical section).
+ *
+ * Returns 0 if pLocked drops mid-measurement (source disconnected). */
+static u32 measure_source_rate_mhz(int target_edges)
+{
+    int prev    = !!(vsync_gpio_read() & VSYNC_GPIO_VSYNC_MASK);
+    int edges   = 0;
+    int timeout = 200000000;  /* ~few seconds at PS clock */
+    XTime t_start, t_end;
+    XTime_GetTime(&t_start);
+    while (edges < target_edges) {
+        u32 g = vsync_gpio_read();
+        if (!(g & VSYNC_GPIO_PLOCKED_MASK)) return 0;  /* source dropped */
+        int cur = !!(g & VSYNC_GPIO_VSYNC_MASK);
+        if (cur && !prev) edges++;
+        prev = cur;
+        if (--timeout < 0) return 0;
+    }
+    XTime_GetTime(&t_end);
+    u64 ticks = (u64)(t_end - t_start);
+    if (ticks == 0) return 0;
+    /* rate_mHz = (edges * 1000 * COUNTS_PER_SECOND) / ticks  (all u64 math). */
+    u64 rate = ((u64)edges * 1000ULL * COUNTS_PER_SECOND) / ticks;
+    return (u32)rate;
+}
+
 static int vtc_setup_720p(void)
 {
     /* Direct register writes to the VTC. We bypass the Xilinx XVtc driver here
@@ -214,17 +252,42 @@ static int vtc_setup_720p(void)
 int main(void)
 {
     XAxiVdma_Config *vdma_cfg;
-    UINTPTR          frame_addrs[NUM_FRAMES];
+    UINTPTR          s2mm_frame_addrs[NUM_FRAMES];
+    UINTPTR          mm2s_frame_addrs[NUM_FRAMES];
     int              i;
     int              status;
 
     xil_printf("\r\n=== Schindler 2.0 — Phase B.1 ===\r\n");
     xil_printf("VDMA + VTC bare-metal init\r\n");
 
-    /* Compute frame addresses in DDR3 (triple buffer) */
+    /* Compute frame addresses in DDR3 (triple buffer).
+     *
+     * MM2S read addresses are offset +STRIDE bytes so MM2S starts reading at
+     * scaler emit row 1 instead of row 0. Reason: scaler_v's first emit row
+     * still leaks 1 line of previous-frame bottom-PLUGE content into output's
+     * row 0 (iter3i's lbuf_fresh gating reduces this to ~50% intensity but
+     * doesn't fully eliminate). Shifting the MM2S window by +1 line hides
+     * emit row 0 in the previous buffer's tail.
+     *
+     * To stop MM2S's TAIL read (now 1 line past the active-data region) from
+     * scribbling into the NEXT buffer (which is either being mid-written by
+     * S2MM or holds previous-frame content — producing an intermittent
+     * flicker line at output row 719), each buffer slot is sized to
+     * FRAME_BYTES + STRIDE: the last STRIDE bytes are a GUARD region that's
+     * never written by S2MM, pre-filled with black at init. MM2S's tail
+     * lands there and outputs a solid-black row instead of stale data. */
+    const UINTPTR GUARD_BYTES = STRIDE;
+    const UINTPTR SLOT_BYTES  = FRAME_BYTES + GUARD_BYTES;
     for (i = 0; i < NUM_FRAMES; i++) {
-        frame_addrs[i] = FRAME_BUF_BASE + (UINTPTR)(i * FRAME_BYTES);
+        s2mm_frame_addrs[i] = FRAME_BUF_BASE + (UINTPTR)(i * SLOT_BYTES);
+        mm2s_frame_addrs[i] = s2mm_frame_addrs[i] + STRIDE;
+        /* Pre-fill guard (last STRIDE bytes of slot) with 0 so MM2S's tail
+         * row reads as solid black. Done by direct memory writes — cache
+         * is disabled below so the writes hit DRAM directly. */
+        volatile u8 *guard = (volatile u8 *)(s2mm_frame_addrs[i] + FRAME_BYTES);
+        for (int g = 0; g < GUARD_BYTES; g++) guard[g] = 0;
     }
+    UINTPTR *frame_addrs = s2mm_frame_addrs;  /* legacy alias for the diag loop */
     xil_printf("Frame buffers: 0x%08lx, 0x%08lx, 0x%08lx (each %d bytes)\r\n",
                (unsigned long)frame_addrs[0],
                (unsigned long)frame_addrs[1],
@@ -283,8 +346,8 @@ int main(void)
         return status;
     }
 
-    if (vdma_setup_channel(XAXIVDMA_WRITE, frame_addrs) != XST_SUCCESS) return -1;
-    if (vdma_setup_channel(XAXIVDMA_READ,  frame_addrs) != XST_SUCCESS) return -1;
+    if (vdma_setup_channel(XAXIVDMA_WRITE, s2mm_frame_addrs) != XST_SUCCESS) return -1;
+    if (vdma_setup_channel(XAXIVDMA_READ,  mm2s_frame_addrs) != XST_SUCCESS) return -1;
 
     xil_printf("VDMA running — S2MM + MM2S enabled, 3-frame ring\r\n");
 
@@ -367,8 +430,19 @@ int main(void)
         xil_printf("  FB0 first 4 pixels: %08x %08x %08x %08x\r\n",
                    (unsigned)fb0[0], (unsigned)fb0[1],
                    (unsigned)fb0[2], (unsigned)fb0[3]);
+
+        /* Phase D iter-4a — passive source rate detection.
+         * measure_source_rate_mhz blocks for ~1 second (60 vsync edges) so
+         * it both takes the place of the old sleep(1) AND yields useful data
+         * each tick. Reports rate in milli-Hz (60000 = 60.000 Hz). */
+        u32 rate_mHz = measure_source_rate_mhz(60);
+        if (rate_mHz == 0) {
+            xil_printf("  SRC RATE: -- (source not locked)\r\n");
+        } else {
+            xil_printf("  SRC RATE: %u.%03u Hz\r\n",
+                       (unsigned)(rate_mHz / 1000), (unsigned)(rate_mHz % 1000));
+        }
         xil_printf("\r\n");
-        sleep(1);
         tick++;
     }
 

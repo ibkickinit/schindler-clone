@@ -79,10 +79,20 @@ def linear(x):
     return 0.0
 
 
+def gaussian(x, sigma=0.7):
+    """Gaussian kernel — all-positive, no negative sidelobes → no ringing at
+    edges. Trade-off vs Mitchell/Lanczos: more blur, no overshoot.
+    Truncated at ±2*sigma for finite support."""
+    if abs(x) > 2.0 * sigma * 1.5:
+        return 0.0
+    return math.exp(-(x*x) / (2.0 * sigma * sigma))
+
+
 KERNELS = {
     "lanczos2": lambda x: lanczos(x, a=2),
     "lanczos3": lambda x: lanczos(x, a=3),
     "mitchell": mitchell_netravali,
+    "gaussian": gaussian,
     "linear":   linear,
     "box":      box,
 }

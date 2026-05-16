@@ -499,6 +499,51 @@ connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]             [get_bd_pins axi_gpio
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]    [get_bd_pins axi_gpio_0/s_axi_aresetn]
 
 # =============================================================================
+# Phase D iter-3n — ILA instrumentation on scaler_top output and axis_to_vid_io
+#                   input, to characterize the dynamic edge-speckle artifact.
+# =============================================================================
+# Two ILAs probe the AXIS pixel stream at two stages of the output pipeline:
+#   - ila_scaler_out  : what scaler_top emits (on pclk_in / 148.5 MHz)
+#   - ila_mm2s_out    : what VDMA MM2S delivers to axis_to_vid_io (on pclk_out)
+#
+# If captured scaler_out pixel values at a fixed column near a color-bar edge
+# are IDENTICAL across multiple ILA acquisitions, the scaler MAC is stable.
+# If mm2s_out pixel values then VARY across the same captures, VDMA / DDR3 /
+# CDC is introducing the per-frame variation.
+#
+# 2048-sample depth covers > one output row (1280 pixels) so we can trigger
+# on TUSER and capture the entire first row of an output frame.
+
+# System ILA on the scaler output AXIS interface (pclk_in domain, 148.5 MHz).
+# Monitors all standard AXIS signals (tdata, tvalid, tready, tlast, tuser) by
+# attaching to the interface bundle — no manual signal peel-off, which is the
+# pattern that caused width-mismatch / unconnected-pin errors with native ILA.
+create_bd_cell -type ip -vlnv xilinx.com:ip:system_ila ila_scaler_out
+set_property -dict [list \
+    CONFIG.C_NUM_MONITOR_SLOTS  {1} \
+    CONFIG.C_SLOT_0_INTF_TYPE   {xilinx.com:interface:axis_rtl:1.0} \
+    CONFIG.C_DATA_DEPTH         {2048} \
+    CONFIG.C_EN_STRG_QUAL       {1} \
+    CONFIG.C_ADV_TRIGGER        {true} \
+] [get_bd_cells ila_scaler_out]
+connect_bd_intf_net [get_bd_intf_pins scaler_0/m_axis] [get_bd_intf_pins ila_scaler_out/SLOT_0_AXIS]
+connect_bd_net [get_bd_pins dvi2rgb_0/PixelClk] [get_bd_pins ila_scaler_out/clk]
+connect_bd_net [get_bd_pins rst_pixclk_out/peripheral_aresetn] [get_bd_pins ila_scaler_out/resetn]
+
+# System ILA on the MM2S output AXIS (pclk_out domain, 74.25 MHz).
+create_bd_cell -type ip -vlnv xilinx.com:ip:system_ila ila_mm2s_out
+set_property -dict [list \
+    CONFIG.C_NUM_MONITOR_SLOTS  {1} \
+    CONFIG.C_SLOT_0_INTF_TYPE   {xilinx.com:interface:axis_rtl:1.0} \
+    CONFIG.C_DATA_DEPTH         {2048} \
+    CONFIG.C_EN_STRG_QUAL       {1} \
+    CONFIG.C_ADV_TRIGGER        {true} \
+] [get_bd_cells ila_mm2s_out]
+connect_bd_intf_net [get_bd_intf_pins axi_vdma_0/M_AXIS_MM2S] [get_bd_intf_pins ila_mm2s_out/SLOT_0_AXIS]
+connect_bd_net [get_bd_pins clk_wiz_pixclk_out/clk_out1] [get_bd_pins ila_mm2s_out/clk]
+connect_bd_net [get_bd_pins rst_pixclk_out/peripheral_aresetn] [get_bd_pins ila_mm2s_out/resetn]
+
+# =============================================================================
 # Address map + validate + wrapper
 # =============================================================================
 assign_bd_address

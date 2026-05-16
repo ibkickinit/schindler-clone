@@ -107,18 +107,29 @@ module scaler_h #(
         end
     endfunction
 
-    wire [7:0] out_r = mac8_sat(
-        window[0][23:16], window[1][23:16], window[2][23:16], window[3][23:16],
-        window[4][23:16], window[5][23:16], window[6][23:16], window[7][23:16],
-        c0, c1, c2, c3, c4, c5, c6, c7);
-    wire [7:0] out_g = mac8_sat(
-        window[0][15: 8], window[1][15: 8], window[2][15: 8], window[3][15: 8],
-        window[4][15: 8], window[5][15: 8], window[6][15: 8], window[7][15: 8],
-        c0, c1, c2, c3, c4, c5, c6, c7);
-    wire [7:0] out_b = mac8_sat(
-        window[0][ 7: 0], window[1][ 7: 0], window[2][ 7: 0], window[3][ 7: 0],
-        window[4][ 7: 0], window[5][ 7: 0], window[6][ 7: 0], window[7][ 7: 0],
-        c0, c1, c2, c3, c4, c5, c6, c7);
+    /* SHIPPED CONFIG (iter3o/iter3q): MAC bypassed — output = window[3]
+     * (center-tap nearest-neighbor pick). Eliminates kernel ringing AND
+     * source-noise amplification at edges. Why this instead of a kernel:
+     *   - Mitchell with -0.036 sidelobe coefficients amplified ±1 LSB
+     *     source/TMDS noise into ±35 LSB output excursions at high-contrast
+     *     edges (visible as colored specks at color-bar boundaries — see
+     *     ILA-confirmed iter3n data + memory schindler_phase_d_chroma_noise).
+     *   - All-positive kernels (Linear, Gaussian sigma=0.7) eliminated the
+     *     overshoot but produced visible interior texture from preserving
+     *     source noise with insufficient averaging.
+     *   - Nearest-neighbor: no amplification (1-to-1 source pixel pass), no
+     *     interior texture, no edge ringing. Trade-off: no anti-aliasing on
+     *     diagonals / fine text. Acceptable for current broadcast-style
+     *     content; revisit when a wider-support all-positive kernel with
+     *     enough smoothing for clean interiors gets designed.
+     * To restore MAC: replace these 3 lines with the original mac8_sat calls
+     * (still defined below; coefficient ROM still loaded with Mitchell coeffs
+     * so the math is correct the moment the MAC is wired back in). */
+    wire [7:0] out_r = window[3][23:16];
+    wire [7:0] out_g = window[3][15: 8];
+    wire [7:0] out_b = window[3][ 7: 0];
+    // Reference unused coefficient wires so synthesis doesn't drop the ROM:
+    wire _coef_keep = |{c0, c1, c2, c3, c4, c5, c6, c7};
 
     // AXIS handshake: ready when output stage is empty or being drained.
     assign s_axis_tready = !m_axis_tvalid || m_axis_tready;
