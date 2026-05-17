@@ -25,11 +25,13 @@
 #include "xvtc.h"
 #include "xtime_l.h"   /* Phase D iter-4a: SCU timer for precise rate measurement */
 
-// Phase C.1 (pivoted to 720p): output is 720p (1280×720) — scaler downscales
-// 1080p → 720p before storage. DDR3 holds 1280×720 frames. 480p was infeasible
-// because rgb2dvi IP only supports pixel clocks ≥40 MHz (480p needs 27 MHz).
-#define FRAME_W           1280
-#define FRAME_H           720
+// iter5 (2026-05-17): pivot to 1080p frames + 60→24 FRC validation. Scaler is
+// bypassed (SCALER_MODULE=scaler_bypass_1080p in BD). DDR3 holds 1920×1080
+// RGB888 frames. Output is 1080p24 at 74.25 MHz — same clk_wiz output clock as
+// the prior 720p60 mode, just different VTC TX timings (MODE_1080P24 below).
+// 5:2 FRC handled by Dynamic Genlock drop/repeat.
+#define FRAME_W           1920
+#define FRAME_H           1080
 /* AXIS data width on the VDMA is 24-bit (RGB888, one pixel-per-clock with no
  * padding). Memory stride must therefore be 3 bytes/pixel, NOT 4 — using 4
  * was the actual reason v_axi4s_vid_out couldn't lock and S2MM was reporting
@@ -37,7 +39,11 @@
 #define BYTES_PP          3
 #define STRIDE            (FRAME_W * BYTES_PP)
 #define FRAME_BYTES       (STRIDE * FRAME_H)
-#define NUM_FRAMES        3
+/* iter5: NUM_FRAMES 3 → 5 for drift headroom. Per [[xilinx-vdma-drift-limits]],
+ * FrameDelay=1 + 3 framestores is brittle under sustained drift; 5 buys ~3×
+ * margin. At 1080p RGB the slot ring is ~32 MB total, well within 1 GB DDR3.
+ * BD config c_num_fstores must match (set in tcl/build_phase_b.tcl). */
+#define NUM_FRAMES        5
 #define FRAME_BUF_BASE    0x10000000U
 
 static XAxiVdma vdma;
@@ -162,8 +168,9 @@ static int vdma_setup_channel(int direction, UINTPTR *frame_addrs)
  *     [15:0]  = scaler_v emit (v_cross) count per source frame
  *                (= scaler_top output TLAST count = rows delivered to S2MM)
  *
- * For a clean 1920x1080 source: expect 1080, 1080, 720. Any deviation
- * identifies which pipeline stage drops/adds rows. */
+ * For a clean 1920x1080 source with scaler_top (production): expect 1080,
+ * 1080, 720. With iter5 scaler_bypass_1080p: expect 0, 0, 0 (bypass ties
+ * diag_counts to zero). Use mm2s pixel counter + DMASR bits instead. */
 #if defined(XPAR_AXI_GPIO_2_BASEADDR)
 #  define DIAG_GPIO_BASEADDR XPAR_AXI_GPIO_2_BASEADDR
 #elif defined(XPAR_AXI_GPIO_2_S_AXI_BASEADDR)
@@ -425,12 +432,12 @@ static void dump_slot_bytes(u32 slot_idx, u32 row_start, u32 row_end)
     xil_printf("\r\nDDR3 DUMP: slot=%u rows=%u..%u  base=0x%08x\r\n",
                (unsigned)slot_idx, (unsigned)row_start, (unsigned)row_end,
                (unsigned)(FRAME_BUF_BASE + slot_idx * SLOT_STRIDE_BYTES));
-    /* Sample 6 cols spaced across the active 1280 px width — one within each
-     * of the first 6 SMPTE bars (assuming 240 px / bar at 1080p source).
-     * This way the dump distinguishes "top of color bars" (each col = its
-     * own bar's color) from "PLUGE area" (uniform gray-ish across cols)
-     * from "reverse bars" (different per-col colors). */
-    static const u32 SAMPLE_COLS[6] = { 0, 200, 450, 700, 950, 1200 };
+    /* Sample 6 cols spaced across the active 1920 px width — one within each
+     * of the first 6 SMPTE bars (~274 px / bar at 1080p). This distinguishes
+     * "top of color bars" (each col = its own bar's color) from "PLUGE area"
+     * (uniform gray-ish across cols) from "reverse bars" (different per-col
+     * colors). iter5 widened from 1280→1920 columns. */
+    static const u32 SAMPLE_COLS[6] = { 100, 400, 700, 1000, 1300, 1600 };
     for (u32 row = row_start; row <= row_end; row++) {
         u32 row_base = row * STRIDE;
         xil_printf("  row %3u  ", (unsigned)row);
@@ -518,17 +525,17 @@ static void telemetry_loop(UINTPTR vdma_base)
                 src_count = 0;
                 out_count = 0;
 
-                /* iter4h: one-shot DDR3 dump after the first DIAG print so
-                 * pipeline has hit steady state. Reads the artifact zone
-                 * (slot 0 rows 690..720) and the "if-frame-N+1-leaked"
-                 * reference (slot 1 rows 0..8). */
+                /* iter5: one-shot DDR3 dump after the first DIAG print so
+                 * pipeline has hit steady state. Frame layout scales with
+                 * FRAME_H (1080 here). Same iter4h +27 over-allocate pattern:
+                 *  - slot 0 rows 1050..1080 (MM2S read range tail — should be
+                 *    correct PLUGE / frame N data)
+                 *  - slot 0 rows 1080..1107 (S2MM spillover — should stay zero
+                 *    if VSIZE over-allocate has same fix effect at 1080p)
+                 *  - slot 1 rows 0..8 (reference for frame N+1's top). */
                 if (!did_ddr_dump) {
-                    /* iter4h Path 2: extended range. Dump:
-                     *  - slot 0 rows 690..720 (the previous artifact zone, now expected clean)
-                     *  - slot 0 rows 720..747 (new spillover; this is where the leak should land)
-                     *  - slot 1 rows 0..8 (reference for what frame N+1's top looks like) */
-                    dump_slot_bytes(0, 690, 720);
-                    dump_slot_bytes(0, 720, 747);
+                    dump_slot_bytes(0, FRAME_H - 30, FRAME_H);
+                    dump_slot_bytes(0, FRAME_H,      FRAME_H + 27);
                     dump_slot_bytes(1, 0, 8);
                     did_ddr_dump = 1;
                 }
@@ -648,6 +655,13 @@ static const vtc_mode_t MODE_720P60 = {
 };
 static const vtc_mode_t MODE_720P50 = {
     "720p50", 1280, 720, 1980, 750,  440, 40,  5, 5
+};
+/* iter5: 1080p24 reduced-blanking at 74.25 MHz pixel clock (CEA-861 mode 32).
+ *   2750 H × 1125 V × 24 Hz = 74.25 MHz — matches our existing clk_wiz output,
+ *   so NO clk_wiz reconfig needed vs. the 720p60 substrate. Only VTC TX
+ *   timings change. HSync/VSync polarity POSITIVE per CEA-861. */
+static const vtc_mode_t MODE_1080P24 = {
+    "1080p24", 1920, 1080, 2750, 1125,  638, 44,  4, 5
 };
 
 static int vtc_setup(const vtc_mode_t *m)
@@ -842,12 +856,12 @@ int main(void)
      * skip behavior. Source stays 60p (ImagePro RGB), output is 50p, ratio
      * 6:5 means master drops one source frame every 6 to keep ahead of slave.
      * Switch to MODE_720P60 to revert. */
-    /* iter4h debug: revert to 720p60 (matching rate, no FRC) to simplify the
-     * bottom-bars-artifact debug environment. Memory says the artifact is
-     * present at both 720p60 and 720p50, so reverting shouldn't fix it — but
-     * it gives a cleaner baseline (no Dynamic Genlock rate-mismatch dynamics)
-     * for bisection tests below. Switch back to MODE_720P50 once we ship a fix. */
-    if (vtc_setup(&MODE_720P60) != XST_SUCCESS) return -1;
+    /* iter5 (2026-05-17): 1080p24 output. Source is 1080p60 (ImagePro); ratio
+     * is exactly 5:2, handled by Dynamic Genlock drop/repeat. Scaler is
+     * bypassed in BD (scaler_bypass_1080p), so DDR3 stores native 1080p frames.
+     * VTC TX timings = MODE_1080P24 at the existing 74.25 MHz clk_wiz output;
+     * no clock-tree change vs. prior 720p60 substrate. */
+    if (vtc_setup(&MODE_1080P24) != XST_SUCCESS) return -1;
     xil_printf("VTC aligned to source vsync\r\n");
     sleep(1);  /* give VTC time to start pulsing fsync before VDMA reset */
 
@@ -866,14 +880,15 @@ int main(void)
     if (vdma_setup_channel(XAXIVDMA_WRITE, s2mm_frame_addrs) != XST_SUCCESS) return -1;
     if (vdma_setup_channel(XAXIVDMA_READ,  mm2s_frame_addrs) != XST_SUCCESS) return -1;
 
-    xil_printf("VDMA running — S2MM + MM2S enabled, 3-frame ring\r\n");
+    xil_printf("VDMA running — S2MM + MM2S enabled, %d-frame ring\r\n", NUM_FRAMES);
 
     /* iter4g DIAG: correct PG020 register offsets:
      *   MM2S: VSIZE@0x50, HSIZE@0x54, FRMDLY_STRIDE@0x58
      *   S2MM: VSIZE@0x80, HSIZE@0x84, FRMDLY_STRIDE@0x88 (= +0x30 offset)
-     * Expected for 1280x720 output, 1920x1080 input:
-     *   MM2S_VSIZE = 720 (0x2D0), MM2S_HSIZE = 3840 bytes (0xF00)
-     *   S2MM_VSIZE = 720 (0x2D0), S2MM_HSIZE = 3840 bytes (0xF00) */
+     * Expected for iter5 1920x1080 in/out, scaler bypassed:
+     *   MM2S_VSIZE = 1080  (0x438), MM2S_HSIZE = 5760 bytes (0x1680)
+     *   S2MM_VSIZE = 1107  (0x453), S2MM_HSIZE = 5760 bytes (0x1680)
+     *                 (iter4h Path 2: S2MM over-allocate FRAME_H + 27) */
     UINTPTR vbase = XPAR_AXI_VDMA_0_BASEADDR;
     /* iter4g DIAG: dump every 4-byte register in 0x00..0xFC to map the
      * actual VDMA register layout for this IP version. Skip zero values

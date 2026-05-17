@@ -54,6 +54,7 @@ update_ip_catalog
 add_files -norecurse [file join $project_root hdl axis_to_vid_io.v]
 add_files -norecurse [file join $project_root hdl scaler_passthrough.v]
 add_files -norecurse [file join $project_root hdl scaler_crop_bypass.v]  ;# iter4h bisection
+add_files -norecurse [file join $project_root hdl scaler_bypass_1080p.v] ;# iter5 1080p passthrough
 add_files -norecurse [file join $project_root hdl scaler_top.v]
 add_files -norecurse [file join $project_root hdl scaler_h.v]
 add_files -norecurse [file join $project_root hdl scaler_v.v]
@@ -233,7 +234,7 @@ create_bd_cell -type ip -vlnv xilinx.com:ip:axi_vdma axi_vdma_0
 set_property -dict [list \
     CONFIG.c_include_s2mm {1} \
     CONFIG.c_include_mm2s {1} \
-    CONFIG.c_num_fstores {3} \
+    CONFIG.c_num_fstores {5} \
     CONFIG.c_m_axi_s2mm_data_width {64} \
     CONFIG.c_m_axi_mm2s_data_width {64} \
     CONFIG.c_s_axis_s2mm_tdata_width {24} \
@@ -254,13 +255,10 @@ set_property -dict [list \
 # boundary detection (default Xilinx video pipeline pattern). Keep
 # c_use_s2mm_fsync=0 (default for axi_vdma_v6_3).
 set_property -dict [list CONFIG.c_use_s2mm_fsync {0}] [get_bd_cells axi_vdma_0]
-# iter4h Fix B (2026-05-16): enable S2MM external fsync. Wired to
-# dvi2rgb_0/vid_pVSync (= rising edge during source V-blank). When fsync
-# fires, S2MM flushes its internal address-generator queue and advances
-# its frame-store pointer, ensuring the next frame's first beats don't
-# land in the previous slot's last rows. Combined with c_flush_on_fsync=1
-# this is Xilinx's documented remedy for the "frame N+1 leaks into slot K's
-# tail" class of bugs. See memory: schindler-bottom-bars-artifact.
+# iter5 (2026-05-17): c_num_fstores 3 → 5. Drift headroom per
+# [[xilinx-vdma-drift-limits]]. At 1080p RGB this is ~14 MB extra DDR3;
+# well within Zybo's 1 GB. FrameDelay=1 + 3 framestores was brittle under
+# sustained drift; 5 buys ~3× margin without changing the genlock model.
 # Phase D iter-4d-3 step 2 (2026-05-16): upgrade from plain to Dynamic Genlock.
 #   c_s2mm_genlock_mode 0->2  (Master -> Dynamic Master)
 #   c_mm2s_genlock_mode 1->3  (Slave  -> Dynamic Slave)
@@ -291,12 +289,17 @@ set_property -dict [list CONFIG.c_use_s2mm_fsync {0}] [get_bd_cells axi_vdma_0]
 # Replaces the C.0 scaler_passthrough placeholder. Sits between v_vid_in_axi4s_0
 # and VDMA S2MM. Downscales 1080p to 720p before storage. DDR3 stores 1280×720
 # frames; MM2S reads them at the 74.25 MHz output pixel clock.
-# iter4h debug knob: SCALER_MODULE can be set to scaler_top (production) or
-# scaler_crop_bypass (diagnostic — crops 1080p to 1280x720 top-left corner,
-# bypasses all polyphase logic). Default = production. Override via env var:
-#   SCALER_MODULE=scaler_crop_bypass vivado -mode batch -source <this>
+# SCALER_MODULE selects the AXIS module instantiated as scaler_0 in the BD:
+#   - scaler_top           — production: polyphase 1080→720 downscale.
+#   - scaler_crop_bypass   — iter4h diagnostic: crops top-left 1280×720.
+#   - scaler_bypass_1080p  — iter5 substrate test: full 1080p identity
+#                            passthrough (NO scaling, NO cropping). Pairs
+#                            with firmware FRAME_W=1920 FRAME_H=1080 and
+#                            VTC TX MODE_1080P24 for 60→24 FRC validation.
+# Default is iter5's bypass — current branch is iter5-wip. Override via env:
+#   SCALER_MODULE=scaler_top vivado -mode batch -source <this>
 if {[info exists ::env(SCALER_MODULE)]} { set SCALER_MODULE $::env(SCALER_MODULE) }
-if {![info exists SCALER_MODULE]} { set SCALER_MODULE scaler_top }
+if {![info exists SCALER_MODULE]} { set SCALER_MODULE scaler_bypass_1080p }
 puts "BUILD: using SCALER_MODULE=$SCALER_MODULE"
 create_bd_cell -type module -reference $SCALER_MODULE scaler_0
 connect_bd_intf_net [get_bd_intf_pins v_vid_in_axi4s_0/video_out] [get_bd_intf_pins scaler_0/s_axis]
