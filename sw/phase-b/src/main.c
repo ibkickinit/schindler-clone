@@ -431,18 +431,36 @@ static void telemetry_loop(UINTPTR vdma_base)
                 u32 park = Xil_In32(vdma_base + 0x28);
                 int rdstore = (int)((park >> 16) & 0x1F);
                 int wrstore = (int)((park >> 24) & 0x1F);
-                /* iter4g: per-stage counters. Expected (1920x1080 -> 1280x720):
-                 *   h_in=1080  v_in=1080  v_emit=720  mm2s=720 (per output frame).
-                 * Plus VDMA SR registers for framing errors. */
                 u16 h_in, v_in, v_emit, mm2s;
                 diag_counters_read(&h_in, &v_in, &v_emit, &mm2s);
                 u32 s2mm_sr = Xil_In32(vdma_base + 0x34);
                 u32 mm2s_sr = Xil_In32(vdma_base + 0x04);
+                /* iter4g: clear error bits (W1C) so next interval's read
+                 * tells us if errors are CURRENT (re-asserted) vs SLOW
+                 * boot-transient (sticky). Bits 4-12 are W1C error flags;
+                 * bits 13-15 are IRQ flags; mask: 0xFFFF (clear all those). */
+                Xil_Out32(vdma_base + 0x34, s2mm_sr & 0x0000F000u);  /* W1C errors */
+                Xil_Out32(vdma_base + 0x04, mm2s_sr & 0x0000F000u);  /* W1C errors */
+                /* IRQFrameCount field (bits 23:16) — track increments. */
+                u32 s2mm_frmcnt = (s2mm_sr >> 16) & 0xFFu;
+                u32 mm2s_frmcnt = (mm2s_sr >> 16) & 0xFFu;
                 xil_printf("DIAG: h_in=%u v_in=%u v_emit=%u mm2s=%u  "
-                           "S2MM_SR=0x%08x MM2S_SR=0x%08x  "
+                           "S2MM_SR=0x%08x[%s%s%s%s frmcnt=%u] "
+                           "MM2S_SR=0x%08x[%s%s%s%s frmcnt=%u]  "
                            "RDSTORE=%d WRSTORE=%d  src=%d out=%d\r\n",
                            (unsigned)h_in, (unsigned)v_in, (unsigned)v_emit, (unsigned)mm2s,
-                           (unsigned)s2mm_sr, (unsigned)mm2s_sr,
+                           (unsigned)s2mm_sr,
+                           (s2mm_sr & 0x100) ? "SOFEarly " : "",
+                           (s2mm_sr & 0x200) ? "EOLEarly " : "",
+                           (s2mm_sr & 0x800) ? "SOFLate " : "",
+                           (s2mm_sr & 0x1000) ? "EOLLate " : "",
+                           (unsigned)s2mm_frmcnt,
+                           (unsigned)mm2s_sr,
+                           (mm2s_sr & 0x100) ? "SOFEarly " : "",
+                           (mm2s_sr & 0x200) ? "EOLEarly " : "",
+                           (mm2s_sr & 0x800) ? "SOFLate " : "",
+                           (mm2s_sr & 0x1000) ? "EOLLate " : "",
+                           (unsigned)mm2s_frmcnt,
                            rdstore, wrstore, src_count, out_count);
                 src_count = 0;
                 out_count = 0;
@@ -768,6 +786,22 @@ int main(void)
     if (vdma_setup_channel(XAXIVDMA_READ,  mm2s_frame_addrs) != XST_SUCCESS) return -1;
 
     xil_printf("VDMA running — S2MM + MM2S enabled, 3-frame ring\r\n");
+
+    /* iter4g DIAG: correct PG020 register offsets:
+     *   MM2S: VSIZE@0x50, HSIZE@0x54, FRMDLY_STRIDE@0x58
+     *   S2MM: VSIZE@0x80, HSIZE@0x84, FRMDLY_STRIDE@0x88 (= +0x30 offset)
+     * Expected for 1280x720 output, 1920x1080 input:
+     *   MM2S_VSIZE = 720 (0x2D0), MM2S_HSIZE = 3840 bytes (0xF00)
+     *   S2MM_VSIZE = 720 (0x2D0), S2MM_HSIZE = 3840 bytes (0xF00) */
+    UINTPTR vbase = XPAR_AXI_VDMA_0_BASEADDR;
+    /* iter4g DIAG: dump every 4-byte register in 0x00..0xFC to map the
+     * actual VDMA register layout for this IP version. Skip zero values
+     * to compress output. */
+    xil_printf("VDMA regs dump (non-zero) base=0x%08x:\r\n", (unsigned)vbase);
+    for (int off = 0; off < 0x100; off += 4) {
+        u32 v = Xil_In32(vbase + off);
+        if (v != 0) xil_printf("  +0x%02x = 0x%08x  (%u)\r\n", off, (unsigned)v, (unsigned)v);
+    }
 
     xil_printf("Pipeline live — entering diag loop (1 sec/dump)\r\n\r\n");
 
