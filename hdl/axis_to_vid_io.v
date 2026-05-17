@@ -43,7 +43,13 @@ module axis_to_vid_io (
     // source's vsync — locks the output frame to source's frame, eliminating
     // the random vertical phase seam that you get when fsync comes from a
     // VTC running independent of source.
-    output wire        mm2s_fsync_pulse
+    output wire        mm2s_fsync_pulse,
+
+    /* iter4g DIAG: count s_axis_tlast events per OUTPUT frame (between
+     * vtg_vsync rising edges = VTC output frame boundary). Tells us how
+     * many rows MM2S actually delivered per output frame. Latched snapshot
+     * for firmware read via AXI GPIO 2. */
+    output reg  [15:0] mm2s_tlast_snap
 );
 
     // Acknowledge AXIS only during VTC active-video. During blanking, hold
@@ -87,6 +93,32 @@ module axis_to_vid_io (
     reg vtg_vsync_q;
     always @(posedge clk) vtg_vsync_q <= vtg_vsync;
     assign mm2s_fsync_pulse = vtg_vsync && !vtg_vsync_q && enable;
+
+    /* iter4g DIAG: count s_axis_tlast events per output frame.
+     * mm2s_tlast_count increments on each TLAST handshake; snapshotted
+     * into mm2s_tlast_snap at vtg_vsync rising edge (= start of new
+     * output frame), then count resets. Reads after vsync return the
+     * just-completed frame's row count.
+     *
+     * Expected: 720 (one TLAST per active row of the 720p output).
+     * If <720, MM2S starved during active video.
+     * If >720, MM2S delivered extra rows (which axis_to_vid_io would
+     * still gate via vtg_active_video, so extras only "land" if VTC
+     * drives active for >720 lines — important corroborating signal). */
+    reg [15:0] mm2s_tlast_count;
+    wire vsync_rising = vtg_vsync && !vtg_vsync_q && enable;
+    wire tlast_handshake = s_axis_tvalid && s_axis_tready && s_axis_tlast;
+    always @(posedge clk) begin
+        if (!enable) begin
+            mm2s_tlast_count <= 16'd0;
+            mm2s_tlast_snap  <= 16'd0;
+        end else if (vsync_rising) begin
+            mm2s_tlast_snap  <= mm2s_tlast_count;
+            mm2s_tlast_count <= tlast_handshake ? 16'd1 : 16'd0;
+        end else if (tlast_handshake) begin
+            mm2s_tlast_count <= mm2s_tlast_count + 16'd1;
+        end
+    end
 
 endmodule
 

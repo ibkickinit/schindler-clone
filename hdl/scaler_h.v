@@ -52,7 +52,12 @@ module scaler_h #(
      * detector's DASIZE register via AXI GPIO (CDC'd into clk domain in
      * scaler_top). Latched into in_w_active at each input TUSER so the
      * value used for emit_now/excess is frame-atomic. */
-    input  wire [11:0] in_w_runtime
+    input  wire [11:0] in_w_runtime,
+
+    /* iter4g DIAG counter: count s_axis_tlast events between TUSERs.
+     * Latched at TUSER into snap output for firmware to read. Tells us
+     * how many input rows v_vid_in_axi4s actually delivered per frame. */
+    output reg  [15:0] in_tlast_count_snap
 );
     // Window: 8 pixels, [0] = newest, [7] = oldest
     reg [23:0] window [0:TAPS-1];
@@ -63,6 +68,11 @@ module scaler_h #(
     // Runtime IN_W, latched at TUSER for frame-atomic commit. Default value
     // covers boot before firmware programs it.
     reg [11:0] in_w_active;
+
+    /* iter4g DIAG: TLAST counter. Increments per s_axis_tlast event,
+     * snapshotted at TUSER (so reads after TUSER return previous frame's
+     * count). */
+    reg [15:0] in_tlast_count;
 
     // Accumulator
     reg  [11:0] accum;
@@ -156,6 +166,8 @@ module scaler_h #(
             m_axis_tlast  <= 1'b0;
             m_axis_tuser  <= 1'b0;
             in_w_active   <= IN_W_DEFAULT[11:0];
+            in_tlast_count       <= 16'd0;
+            in_tlast_count_snap  <= 16'd0;
         end else begin
             // Output side: clear valid when downstream takes
             if (m_axis_tvalid && m_axis_tready) begin
@@ -184,10 +196,23 @@ module scaler_h #(
                     // Frame-atomic commit of runtime IN_W (any AXI-Lite
                     // change between frames takes effect here, not mid-frame).
                     in_w_active   <= in_w_runtime;
+                    /* iter4g DIAG: snapshot previous frame's TLAST count
+                     * for firmware to read, then reset for new frame.
+                     * If TUSER and TLAST coincide on same pixel, count
+                     * the TLAST too (start fresh frame already at 1). */
+                    in_tlast_count_snap <= in_tlast_count;
+                    in_tlast_count      <= s_axis_tlast ? 16'd1 : 16'd0;
                 end else if (emit_now) begin
                     accum <= excess;
                 end else begin
                     accum <= accum_next;
+                end
+
+                /* iter4g DIAG: count s_axis_tlast events between TUSERs
+                 * (TUSER branch above resets/restarts count). This branch
+                 * only fires for non-TUSER pixels with TLAST. */
+                if (s_axis_tlast && !s_axis_tuser) begin
+                    in_tlast_count <= in_tlast_count + 16'd1;
                 end
 
                 // Emit output if accum crossed

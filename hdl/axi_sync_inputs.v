@@ -22,16 +22,29 @@ module axi_sync_inputs (
     input  wire vsync_out_async,        // v_tc_tx/vsync_out          (pclk_out)
     input  wire pclk_locked_async,      // clk_wiz_pixclk_out/locked  (async)
 
+    /* iter4g: 64-bit diagnostic counter bus from multiple pipeline stages,
+     * latched at frame-boundary events (so updates ~50-60 Hz). Per-bit 2-FF
+     * synchronizer is technically racy for multi-bit busses but acceptable
+     * for slow-changing snapshots that firmware reads multiple times to
+     * detect stability.
+     *   [15:0]  scaler_h input TLAST (per source frame)
+     *   [31:16] scaler_v input TLAST (per source frame)
+     *   [47:32] scaler_v emit (per source frame)
+     *   [63:48] axis_to_vid_io input TLAST (per OUTPUT frame) */
+    input  wire [63:0] diag_counts_async,
+
     output wire vsync_sync,             // axi_clk-domain levels
     output wire plocked_sync,
     output wire vsync_out_sync,
-    output wire pclk_locked_sync
+    output wire pclk_locked_sync,
+    output wire [47:0] diag_counts_sync
 );
 
     (* ASYNC_REG = "TRUE" *) reg vsync_q1, vsync_q2;
     (* ASYNC_REG = "TRUE" *) reg plocked_q1, plocked_q2;
     (* ASYNC_REG = "TRUE" *) reg vsync_out_q1, vsync_out_q2;
     (* ASYNC_REG = "TRUE" *) reg pclk_locked_q1, pclk_locked_q2;
+    (* ASYNC_REG = "TRUE" *) reg [47:0] diag_counts_q1, diag_counts_q2;
 
     always @(posedge axi_clk) begin
         if (!axi_rstn) begin
@@ -39,11 +52,13 @@ module axi_sync_inputs (
             plocked_q1      <= 1'b0; plocked_q2      <= 1'b0;
             vsync_out_q1    <= 1'b0; vsync_out_q2    <= 1'b0;
             pclk_locked_q1  <= 1'b0; pclk_locked_q2  <= 1'b0;
+            diag_counts_q1  <= 48'd0; diag_counts_q2 <= 48'd0;
         end else begin
             vsync_q1        <= vsync_async;        vsync_q2        <= vsync_q1;
             plocked_q1      <= plocked_async;      plocked_q2      <= plocked_q1;
             vsync_out_q1    <= vsync_out_async;    vsync_out_q2    <= vsync_out_q1;
             pclk_locked_q1  <= pclk_locked_async;  pclk_locked_q2  <= pclk_locked_q1;
+            diag_counts_q1  <= diag_counts_async;  diag_counts_q2  <= diag_counts_q1;
         end
     end
 
@@ -51,6 +66,7 @@ module axi_sync_inputs (
     assign plocked_sync     = plocked_q2;
     assign vsync_out_sync   = vsync_out_q2;
     assign pclk_locked_sync = pclk_locked_q2;
+    assign diag_counts_sync = diag_counts_q2;
 
 endmodule
 

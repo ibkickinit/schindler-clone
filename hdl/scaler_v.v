@@ -50,7 +50,13 @@ module scaler_v #(
      * detector's DASIZE register via AXI GPIO (CDC'd into clk domain in
      * scaler_top). Latched into in_h_active at each input TUSER so
      * v_cross/v_excess math is frame-atomic. */
-    input  wire [11:0] in_h_runtime
+    input  wire [11:0] in_h_runtime,
+
+    /* iter4g DIAG: per-frame counter snapshots, latched at TUSER.
+     *   in_tlast_count_snap  - how many TLASTs came IN from scaler_h
+     *   emit_count_snap      - how many v_cross/emits OUT to S2MM */
+    output reg  [15:0] in_tlast_count_snap,
+    output reg  [15:0] emit_count_snap
 );
     // Line buffers — 4 separate arrays, Vivado infers 4 BRAMs (1 each).
     reg [23:0] lbuf0 [0:IN_W-1];
@@ -64,6 +70,12 @@ module scaler_v #(
 
     // Runtime IN_H, latched at TUSER for frame-atomic commit.
     reg [11:0] in_h_active;
+
+    /* iter4g DIAG: running counters of input TLAST and emit (v_cross)
+     * events. Both reset on TUSER; previous frame's values latched into
+     * the *_snap outputs above. */
+    reg [15:0] in_tlast_count;
+    reg [15:0] emit_count;
 
     // Vertical accumulator
     reg  [11:0] v_accum;
@@ -184,6 +196,10 @@ module scaler_v #(
             m_axis_tlast    <= 1'b0;
             m_axis_tuser    <= 1'b0;
             in_h_active     <= IN_H_DEFAULT[11:0];
+            in_tlast_count       <= 16'd0;
+            in_tlast_count_snap  <= 16'd0;
+            emit_count           <= 16'd0;
+            emit_count_snap      <= 16'd0;
         end else begin
             // -----------------------------------------------------------------
             // INPUT side (lbuf write + v_accum tracking)
@@ -203,6 +219,17 @@ module scaler_v #(
                     /* Frame-atomic commit of runtime IN_H — any AXI-Lite
                      * change between frames takes effect here, not mid-frame. */
                     in_h_active    <= in_h_runtime;
+                    /* iter4g DIAG: snapshot + reset per-frame counters. */
+                    in_tlast_count_snap <= in_tlast_count;
+                    in_tlast_count      <= s_axis_tlast ? 16'd1 : 16'd0;
+                    emit_count_snap     <= emit_count;
+                    emit_count          <= 16'd0;
+                end
+                /* iter4g DIAG: count input TLAST events (non-TUSER cycle).
+                 * Doing this OUTSIDE the v_cross gate so we count the raw
+                 * input count regardless of whether scaler emits or not. */
+                if (s_axis_tlast && !s_axis_tuser) begin
+                    in_tlast_count <= in_tlast_count + 16'd1;
                 end
                 if (s_axis_tlast) begin
                     in_col <= 11'd0;
@@ -224,6 +251,8 @@ module scaler_v #(
                         v_phase_held <= v_phase_calc[5:0];
                         v_accum      <= v_excess;
                         tap0_slot    <= (in_row[1:0] + 2'd1);
+                        /* iter4g DIAG: count v_cross events = emits per frame. */
+                        emit_count   <= emit_count + 16'd1;
                     end else begin
                         v_accum <= v_accum_next;
                     end

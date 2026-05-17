@@ -138,6 +138,39 @@ static int vdma_setup_channel(int direction, UINTPTR *frame_addrs)
 #  error "AXI GPIO 1 (scaler dims) base address not found in xparameters.h"
 #endif
 
+/* iter4g: AXI GPIO 2 — dual-channel input, exposes per-frame counter
+ * snapshots from scaler_top (CDC'd to FCLK_CLK0 via axi_sync_inputs).
+ *   GPIO  data1 reg (offset 0x00):
+ *     [15:0]  = scaler_h input TLAST count per source frame
+ *                (= v_vid_in_axi4s output TLAST count = source rows in)
+ *     [31:16] = scaler_v input TLAST count per source frame
+ *                (= scaler_h output TLAST count)
+ *   GPIO2 data2 reg (offset 0x08):
+ *     [15:0]  = scaler_v emit (v_cross) count per source frame
+ *                (= scaler_top output TLAST count = rows delivered to S2MM)
+ *
+ * For a clean 1920x1080 source: expect 1080, 1080, 720. Any deviation
+ * identifies which pipeline stage drops/adds rows. */
+#if defined(XPAR_AXI_GPIO_2_BASEADDR)
+#  define DIAG_GPIO_BASEADDR XPAR_AXI_GPIO_2_BASEADDR
+#elif defined(XPAR_AXI_GPIO_2_S_AXI_BASEADDR)
+#  define DIAG_GPIO_BASEADDR XPAR_AXI_GPIO_2_S_AXI_BASEADDR
+#elif defined(XPAR_PHASE_B_BD_AXI_GPIO_2_BASEADDR)
+#  define DIAG_GPIO_BASEADDR XPAR_PHASE_B_BD_AXI_GPIO_2_BASEADDR
+#else
+#  error "AXI GPIO 2 (diag counters) base address not found in xparameters.h"
+#endif
+
+static inline void diag_counters_read(u16 *h_in, u16 *v_in, u16 *v_emit, u16 *mm2s_tlast)
+{
+    u32 ch1 = Xil_In32(DIAG_GPIO_BASEADDR + 0x00);
+    u32 ch2 = Xil_In32(DIAG_GPIO_BASEADDR + 0x08);
+    if (h_in)       *h_in       = (u16)(ch1 & 0xFFFFu);
+    if (v_in)       *v_in       = (u16)((ch1 >> 16) & 0xFFFFu);
+    if (v_emit)     *v_emit     = (u16)(ch2 & 0xFFFFu);
+    if (mm2s_tlast) *mm2s_tlast = (u16)((ch2 >> 16) & 0xFFFFu);
+}
+
 /* iter4e: v_tc_rx detector. Per PG016 register map:
  *   0x000 CTL    bit0=SW, bit1=RU, bit3=DE (Detector Enable)
  *   0x020 DASIZE bits[13:0]=HACTIVE, bits[29:16]=VACTIVE
@@ -398,8 +431,19 @@ static void telemetry_loop(UINTPTR vdma_base)
                 u32 park = Xil_In32(vdma_base + 0x28);
                 int rdstore = (int)((park >> 16) & 0x1F);
                 int wrstore = (int)((park >> 24) & 0x1F);
-                xil_printf("TELEMETRY: src=%d out=%d  RDFRMSTORE=%d WRFRMSTORE=%d\r\n",
-                           src_count, out_count, rdstore, wrstore);
+                /* iter4g: per-stage counters. Expected (1920x1080 -> 1280x720):
+                 *   h_in=1080  v_in=1080  v_emit=720  mm2s=720 (per output frame).
+                 * Plus VDMA SR registers for framing errors. */
+                u16 h_in, v_in, v_emit, mm2s;
+                diag_counters_read(&h_in, &v_in, &v_emit, &mm2s);
+                u32 s2mm_sr = Xil_In32(vdma_base + 0x34);
+                u32 mm2s_sr = Xil_In32(vdma_base + 0x04);
+                xil_printf("DIAG: h_in=%u v_in=%u v_emit=%u mm2s=%u  "
+                           "S2MM_SR=0x%08x MM2S_SR=0x%08x  "
+                           "RDSTORE=%d WRSTORE=%d  src=%d out=%d\r\n",
+                           (unsigned)h_in, (unsigned)v_in, (unsigned)v_emit, (unsigned)mm2s,
+                           (unsigned)s2mm_sr, (unsigned)mm2s_sr,
+                           rdstore, wrstore, src_count, out_count);
                 src_count = 0;
                 out_count = 0;
             }
