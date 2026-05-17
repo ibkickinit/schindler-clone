@@ -46,11 +46,14 @@ module scaler_top_tb #(
     wire        m_axis_tlast;
     wire        m_axis_tuser;
 
+    // iter4e: scaler_top takes runtime IN_W/IN_H via 16-bit async inputs (driven
+    // by AXI GPIO on bench, hardcoded here). Defaults set via _DEFAULT parameters.
+    wire [47:0] diag_counts_unused;
     scaler_top #(
-        .IN_W  (IN_W),
-        .IN_H  (IN_H),
-        .OUT_W (OUT_W),
-        .OUT_H (OUT_H)
+        .IN_W_DEFAULT  (IN_W),
+        .IN_H_DEFAULT  (IN_H),
+        .OUT_W         (OUT_W),
+        .OUT_H         (OUT_H)
     ) dut (
         .aclk          (clk),
         .aresetn       (aresetn),
@@ -63,7 +66,10 @@ module scaler_top_tb #(
         .m_axis_tvalid (m_axis_tvalid),
         .m_axis_tready (m_axis_tready),
         .m_axis_tlast  (m_axis_tlast),
-        .m_axis_tuser  (m_axis_tuser)
+        .m_axis_tuser  (m_axis_tuser),
+        .in_w_async    (IN_W[15:0]),
+        .in_h_async    (IN_H[15:0]),
+        .diag_counts   (diag_counts_unused)
     );
 
     // -----------------------------------------------------------------------
@@ -88,6 +94,57 @@ module scaler_top_tb #(
             errors = errors + 1;
         end
     endtask
+
+    // Content-verification observer (iter4h debug): each frame is driven as
+    // CONSTANT color = (frame_num+1)*0x10 in the R byte (= 0x10, 0x20, 0x30,
+    // ...) plus 0 in G/B. With scaler's nearest-neighbor MAC bypass, each
+    // output pixel = a source pixel from tap1. So:
+    //   Output R byte = 0x00         -> warmup zero (iter3i lbuf_fresh gates)
+    //   Output R byte = my marker    -> correct
+    //   Output R byte = other marker -> CROSS-FRAME CONTAMINATION (the bug)
+    //
+    // tb_observed_frame is the most recent frame_num seen on input that has
+    // also been TUSER'd on output (i.e., the frame currently being observed).
+    // Initially -1 (no frame seen yet).
+    integer tb_active_frame_num = -1;
+    integer tb_observed_frame   = -1;
+    integer warmup_zero_pixels  = 0;   // expected; iter3i warmup
+    integer contam_pixels       = 0;   // the actual bug
+    integer contam_first_row    = -1;
+    integer contam_last_row     = -1;
+    integer contam_first_col    = -1;
+    integer contam_last_col     = -1;
+    integer contam_witnessed_byte = -1;
+
+    function [7:0] expected_marker;
+        input integer frame_num;
+        expected_marker = ((frame_num + 1) * 8'h10);
+    endfunction
+
+    always @(posedge clk) begin
+        if (aresetn && m_axis_tvalid && m_axis_tready) begin
+            if (m_axis_tuser) tb_observed_frame <= tb_active_frame_num;
+            if (tb_observed_frame >= 0) begin
+                if (m_axis_tdata[23:16] == 8'h00) begin
+                    warmup_zero_pixels = warmup_zero_pixels + 1;
+                end else if (m_axis_tdata[23:16] != expected_marker(tb_observed_frame)) begin
+                    contam_pixels = contam_pixels + 1;
+                    if (contam_first_row == -1) begin
+                        contam_first_row = out_tlast_count;
+                        contam_first_col = out_pixels_in_line;
+                        contam_witnessed_byte = m_axis_tdata[23:16];
+                    end
+                    contam_last_row = out_tlast_count;
+                    contam_last_col = out_pixels_in_line;
+                    if (contam_pixels <= 10) begin
+                        $display("[t=%0t] CONTAM: out_row=%0d col=%0d  expected frame=%0d (marker 0x%02x)  got R=0x%02x",
+                                 $time, out_tlast_count, out_pixels_in_line,
+                                 tb_observed_frame, expected_marker(tb_observed_frame), m_axis_tdata[23:16]);
+                    end
+                end
+            end
+        end
+    end
 
     always @(posedge clk) begin
         if (aresetn && m_axis_tvalid && m_axis_tready) begin
@@ -175,11 +232,16 @@ module scaler_top_tb #(
         begin
             $display("[t=%0t] === DRIVE FRAME %0d (input %0dx%0d) ===",
                      $time, frame_num, IN_W, IN_H);
+            tb_active_frame_num = frame_num;   // iter4h: tag for content observer
             for (row = 0; row < IN_H; row = row + 1) begin
                 for (col = 0; col < IN_W; col = col + 1) begin
                     @(posedge clk);
-                    // Pixel data: simple gradient (row<<16 | col<<8 | frame)
-                    s_axis_tdata  <= {row[7:0], col[7:0], frame_num[7:0]};
+                    // iter4h debug: drive frame as constant marker color so
+                    // any inter-frame contamination is unambiguous on output.
+                    // R = (frame_num+1)*0x10 (= 0x10, 0x20, 0x30, ...) so
+                    // R=0 in output is clearly warmup-zero, R != my marker
+                    // is contamination from a different frame.
+                    s_axis_tdata  <= {(((frame_num + 1) * 8'h10) & 8'hFF), col[7:0], row[7:0]};
                     s_axis_tvalid <= 1;
                     s_axis_tuser  <= (row == 0) && (col == 0);
                     s_axis_tlast  <= (col == IN_W - 1);
@@ -244,6 +306,20 @@ module scaler_top_tb #(
 
         $display("Total TUSERs seen: %0d (expect 4)", out_tuser_count);
         $display("Total errors after TEST 2: %0d", errors);
+
+        // ---------- Content contamination report ----------
+        $display("\n========================================");
+        $display("CONTENT CHECK across all frames driven:");
+        $display("  Warmup-zero pixels (expected, iter3i): %0d", warmup_zero_pixels);
+        $display("  CROSS-FRAME CONTAMINATION pixels:      %0d", contam_pixels);
+        if (contam_pixels > 0) begin
+            $display("  Contam span: out_row %0d col %0d  ..  out_row %0d col %0d",
+                     contam_first_row, contam_first_col,
+                     contam_last_row,  contam_last_col);
+            $display("  First contaminated R byte: 0x%02x", contam_witnessed_byte);
+        end
+        $display("========================================");
+        if (contam_pixels > 0) errors = errors + 1;
 
         // ---------- Summary ----------
         $display("\n========================================");

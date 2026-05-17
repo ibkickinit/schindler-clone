@@ -48,7 +48,15 @@ static int vdma_setup_channel(int direction, UINTPTR *frame_addrs)
     XAxiVdma_DmaSetup cfg;
     int status;
 
-    cfg.VertSizeInput     = FRAME_H;
+    /* iter4h Path 2 (2026-05-16): S2MM VSIZE over-allocate workaround.
+     * S2MM consistently writes frame N+1's first ~26 rows into slot K's
+     * last 26 rows (rows 694-719) regardless of FrameDelay or fsync wiring.
+     * By bumping S2MM VSIZE to 720+27=747, we let S2MM keep writing those
+     * 27 extra rows but they land in slot rows 720-746, outside the
+     * MM2S read range (still VSIZE=720, reads rows 1-720 with iter3j shift).
+     * Pure workaround — bug is still present in DDR3 but invisible at output.
+     * MM2S keeps FRAME_H=720; only S2MM gets the bigger value. */
+    cfg.VertSizeInput     = (direction == XAXIVDMA_WRITE) ? (FRAME_H + 27) : FRAME_H;
     cfg.HoriSizeInput     = STRIDE;
     cfg.Stride            = STRIDE;
     /* Phase D iter-4d-3: MM2S as genlock slave with FrameDelay=1 — slave
@@ -64,6 +72,11 @@ static int vdma_setup_channel(int direction, UINTPTR *frame_addrs)
      * documented FRC path is Dynamic Genlock master/slave (iter-4d-3 step 2
      * upgrades from plain to Dynamic), and even plain genlock + FrameDelay=1
      * should kill the seams that PARK was hand-rolling badly. */
+    /* MM2S follows S2MM by 1 frame in Dynamic Genlock (the standard pairing).
+     * Note: per iter4h FrameDelay observation, this register reads-as-zero
+     * in our IP config — the value is set per spec but Xilinx's IP locks the
+     * bits. We keep the assignment for documentation / matching reference
+     * designs. See memory: xilinx-vdma-dmasr-bits + schindler-bottom-bars-artifact. */
     cfg.FrameDelay        = (direction == XAXIVDMA_READ) ? 1 : 0;
     cfg.EnableCircularBuf = 1;
     /* EnableSync=1 on MM2S asserts DMACR bit 3, which enables slave-mode
@@ -395,9 +408,46 @@ static inline void vdma_mm2s_set_park_mode(UINTPTR vdma_base)
  * If seams persist, escalate to step 2 (BD reconfig to Dynamic Genlock:
  * S2MM mode 0→2, MM2S mode 1→3 — verified mapping in axi_vdma_v6_3
  * component.xml: 0=Master, 1=Slave, 2=Dynamic Master, 3=Dynamic Slave). */
+/* iter4h debug (2026-05-16): dump raw DDR3 bytes from a frame buffer slot to
+ * verify what S2MM actually wrote. Cache is already disabled in DDR3 region
+ * (Xil_DCacheDisable at top of main), so reads here are coherent with VDMA.
+ *
+ * Slot N base = FRAME_BUF_BASE + N * (FRAME_BYTES + GUARD_BYTES). For the
+ * bottom-bars-artifact debug, dump slot 0 rows 690..720 (the artifact zone +
+ * guard row) and slot 1 rows 0..8 (the "if frame N+1 leaked, this is what
+ * we'd see in slot 0's tail" reference). */
+static void dump_slot_bytes(u32 slot_idx, u32 row_start, u32 row_end)
+{
+    /* iter4h Path 2: slot stride matches new firmware layout = S2MM 747 active rows + 1 guard row. */
+    const u32 S2MM_DATA_BYTES = (FRAME_H + 27) * STRIDE;
+    const u32 SLOT_STRIDE_BYTES = S2MM_DATA_BYTES + STRIDE;
+    volatile u8 *slot = (volatile u8 *)(FRAME_BUF_BASE + slot_idx * SLOT_STRIDE_BYTES);
+    xil_printf("\r\nDDR3 DUMP: slot=%u rows=%u..%u  base=0x%08x\r\n",
+               (unsigned)slot_idx, (unsigned)row_start, (unsigned)row_end,
+               (unsigned)(FRAME_BUF_BASE + slot_idx * SLOT_STRIDE_BYTES));
+    /* Sample 6 cols spaced across the active 1280 px width — one within each
+     * of the first 6 SMPTE bars (assuming 240 px / bar at 1080p source).
+     * This way the dump distinguishes "top of color bars" (each col = its
+     * own bar's color) from "PLUGE area" (uniform gray-ish across cols)
+     * from "reverse bars" (different per-col colors). */
+    static const u32 SAMPLE_COLS[6] = { 0, 200, 450, 700, 950, 1200 };
+    for (u32 row = row_start; row <= row_end; row++) {
+        u32 row_base = row * STRIDE;
+        xil_printf("  row %3u  ", (unsigned)row);
+        for (u32 i = 0; i < 6; i++) {
+            u32 col = SAMPLE_COLS[i];
+            u32 a = row_base + col * 3;
+            xil_printf("col%4u=%02x%02x%02x  ", (unsigned)col,
+                       (unsigned)slot[a + 0], (unsigned)slot[a + 1], (unsigned)slot[a + 2]);
+        }
+        xil_printf("\r\n");
+    }
+}
+
 static void telemetry_loop(UINTPTR vdma_base)
 {
     (void)vdma_base;
+    int did_ddr_dump = 0;     /* iter4h: dump DDR3 once after steady state */
 
     u32 rate_mHz = measure_source_rate_mhz(60);
     src_regime_t regime = classify_rate(rate_mHz);
@@ -445,25 +495,43 @@ static void telemetry_loop(UINTPTR vdma_base)
                 u32 s2mm_frmcnt = (s2mm_sr >> 16) & 0xFFu;
                 u32 mm2s_frmcnt = (mm2s_sr >> 16) & 0xFFu;
                 xil_printf("DIAG: h_in=%u v_in=%u v_emit=%u mm2s=%u  "
-                           "S2MM_SR=0x%08x[%s%s%s%s frmcnt=%u] "
-                           "MM2S_SR=0x%08x[%s%s%s%s frmcnt=%u]  "
+                           "S2MM_SR=0x%08x[%s%s%s%s%s frmcnt=%u] "
+                           "MM2S_SR=0x%08x[%s%s%s%s%s frmcnt=%u]  "
                            "RDSTORE=%d WRSTORE=%d  src=%d out=%d\r\n",
                            (unsigned)h_in, (unsigned)v_in, (unsigned)v_emit, (unsigned)mm2s,
+                           /* iter4h relabel: bit 12 is FrmCnt_Irq (benign), bit 15 is real EOLLate */
                            (unsigned)s2mm_sr,
-                           (s2mm_sr & 0x100) ? "SOFEarly " : "",
-                           (s2mm_sr & 0x200) ? "EOLEarly " : "",
-                           (s2mm_sr & 0x800) ? "SOFLate " : "",
-                           (s2mm_sr & 0x1000) ? "EOLLate " : "",
+                           (s2mm_sr & 0x80)   ? "SOFEarly " : "",
+                           (s2mm_sr & 0x100)  ? "EOLEarly " : "",
+                           (s2mm_sr & 0x800)  ? "SOFLate " : "",
+                           (s2mm_sr & 0x1000) ? "FrmCnt " : "",     /* benign per PG020 */
+                           (s2mm_sr & 0x8000) ? "EOLLate " : "",    /* real EOLLate is bit 15 */
                            (unsigned)s2mm_frmcnt,
                            (unsigned)mm2s_sr,
-                           (mm2s_sr & 0x100) ? "SOFEarly " : "",
-                           (mm2s_sr & 0x200) ? "EOLEarly " : "",
-                           (mm2s_sr & 0x800) ? "SOFLate " : "",
-                           (mm2s_sr & 0x1000) ? "EOLLate " : "",
+                           (mm2s_sr & 0x80)   ? "SOFEarly " : "",
+                           (mm2s_sr & 0x100)  ? "EOLEarly " : "",
+                           (mm2s_sr & 0x800)  ? "SOFLate " : "",
+                           (mm2s_sr & 0x1000) ? "FrmCnt " : "",
+                           (mm2s_sr & 0x8000) ? "EOLLate " : "",
                            (unsigned)mm2s_frmcnt,
                            rdstore, wrstore, src_count, out_count);
                 src_count = 0;
                 out_count = 0;
+
+                /* iter4h: one-shot DDR3 dump after the first DIAG print so
+                 * pipeline has hit steady state. Reads the artifact zone
+                 * (slot 0 rows 690..720) and the "if-frame-N+1-leaked"
+                 * reference (slot 1 rows 0..8). */
+                if (!did_ddr_dump) {
+                    /* iter4h Path 2: extended range. Dump:
+                     *  - slot 0 rows 690..720 (the previous artifact zone, now expected clean)
+                     *  - slot 0 rows 720..747 (new spillover; this is where the leak should land)
+                     *  - slot 1 rows 0..8 (reference for what frame N+1's top looks like) */
+                    dump_slot_bytes(0, 690, 720);
+                    dump_slot_bytes(0, 720, 747);
+                    dump_slot_bytes(1, 0, 8);
+                    did_ddr_dump = 1;
+                }
             }
         }
         src_prev = src_cur;
@@ -681,16 +749,24 @@ int main(void)
      * FRAME_BYTES + STRIDE: the last STRIDE bytes are a GUARD region that's
      * never written by S2MM, pre-filled with black at init. MM2S's tail
      * lands there and outputs a solid-black row instead of stale data. */
+    /* iter4h Path 2: extend per-slot allocation to 720+27 active rows + 1
+     * guard row. S2MM writes VSIZE=747 rows (active + spillover for the
+     * known 26-row leak); MM2S reads only 720 rows starting at +STRIDE.
+     * Leak lands in rows 720-746, outside MM2S range. */
+    const UINTPTR S2MM_VSIZE_ROWS = (UINTPTR)(FRAME_H + 27);  /* 747 */
+    const UINTPTR S2MM_DATA_BYTES = S2MM_VSIZE_ROWS * STRIDE;
     const UINTPTR GUARD_BYTES = STRIDE;
-    const UINTPTR SLOT_BYTES  = FRAME_BYTES + GUARD_BYTES;
+    const UINTPTR SLOT_BYTES  = S2MM_DATA_BYTES + GUARD_BYTES;
     for (i = 0; i < NUM_FRAMES; i++) {
         s2mm_frame_addrs[i] = FRAME_BUF_BASE + (UINTPTR)(i * SLOT_BYTES);
         mm2s_frame_addrs[i] = s2mm_frame_addrs[i] + STRIDE;
         /* Pre-fill guard (last STRIDE bytes of slot) with 0 so MM2S's tail
-         * row reads as solid black. Done by direct memory writes — cache
-         * is disabled below so the writes hit DRAM directly. */
-        volatile u8 *guard = (volatile u8 *)(s2mm_frame_addrs[i] + FRAME_BYTES);
-        for (int g = 0; g < GUARD_BYTES; g++) guard[g] = 0;
+         * row reads as solid black. Also zero the spillover region (rows
+         * 720..746) so if S2MM doesn't actually write past 720, we see
+         * black rather than stale data when reading from DDR3 for diag. */
+        volatile u8 *zero_region = (volatile u8 *)(s2mm_frame_addrs[i] + FRAME_BYTES);
+        const UINTPTR zero_bytes = (S2MM_DATA_BYTES - FRAME_BYTES) + GUARD_BYTES;
+        for (UINTPTR g = 0; g < zero_bytes; g++) zero_region[g] = 0;
     }
     UINTPTR *frame_addrs = s2mm_frame_addrs;  /* legacy alias for the diag loop */
     xil_printf("Frame buffers: 0x%08lx, 0x%08lx, 0x%08lx (each %d bytes)\r\n",
@@ -766,7 +842,12 @@ int main(void)
      * skip behavior. Source stays 60p (ImagePro RGB), output is 50p, ratio
      * 6:5 means master drops one source frame every 6 to keep ahead of slave.
      * Switch to MODE_720P60 to revert. */
-    if (vtc_setup(&MODE_720P50) != XST_SUCCESS) return -1;
+    /* iter4h debug: revert to 720p60 (matching rate, no FRC) to simplify the
+     * bottom-bars-artifact debug environment. Memory says the artifact is
+     * present at both 720p60 and 720p50, so reverting shouldn't fix it — but
+     * it gives a cleaner baseline (no Dynamic Genlock rate-mismatch dynamics)
+     * for bisection tests below. Switch back to MODE_720P50 once we ship a fix. */
+    if (vtc_setup(&MODE_720P60) != XST_SUCCESS) return -1;
     xil_printf("VTC aligned to source vsync\r\n");
     sleep(1);  /* give VTC time to start pulsing fsync before VDMA reset */
 

@@ -53,6 +53,7 @@ update_ip_catalog
 # Add custom HDL sources used as module references inside the BD.
 add_files -norecurse [file join $project_root hdl axis_to_vid_io.v]
 add_files -norecurse [file join $project_root hdl scaler_passthrough.v]
+add_files -norecurse [file join $project_root hdl scaler_crop_bypass.v]  ;# iter4h bisection
 add_files -norecurse [file join $project_root hdl scaler_top.v]
 add_files -norecurse [file join $project_root hdl scaler_h.v]
 add_files -norecurse [file join $project_root hdl scaler_v.v]
@@ -244,8 +245,22 @@ set_property -dict [list \
     CONFIG.c_include_internal_genlock {1} \
     CONFIG.c_mm2s_genlock_repeat_en {1} \
     CONFIG.c_use_mm2s_fsync {1} \
-    CONFIG.c_use_s2mm_fsync {0} \
+    CONFIG.c_flush_on_fsync {1} \
 ] [get_bd_cells axi_vdma_0]
+# iter4h Path 2 result (2026-05-17): VSIZE over-allocate in firmware
+# (VSIZE=747 instead of 720) eliminates the bottom-bars artifact without
+# needing s2mm_fsync wiring. fsync wiring was tested and merely shifted
+# the bug by 1 row, not fixed it. S2MM uses TUSER on AXIS for frame
+# boundary detection (default Xilinx video pipeline pattern). Keep
+# c_use_s2mm_fsync=0 (default for axi_vdma_v6_3).
+set_property -dict [list CONFIG.c_use_s2mm_fsync {0}] [get_bd_cells axi_vdma_0]
+# iter4h Fix B (2026-05-16): enable S2MM external fsync. Wired to
+# dvi2rgb_0/vid_pVSync (= rising edge during source V-blank). When fsync
+# fires, S2MM flushes its internal address-generator queue and advances
+# its frame-store pointer, ensuring the next frame's first beats don't
+# land in the previous slot's last rows. Combined with c_flush_on_fsync=1
+# this is Xilinx's documented remedy for the "frame N+1 leaks into slot K's
+# tail" class of bugs. See memory: schindler-bottom-bars-artifact.
 # Phase D iter-4d-3 step 2 (2026-05-16): upgrade from plain to Dynamic Genlock.
 #   c_s2mm_genlock_mode 0->2  (Master -> Dynamic Master)
 #   c_mm2s_genlock_mode 1->3  (Slave  -> Dynamic Slave)
@@ -276,9 +291,36 @@ set_property -dict [list \
 # Replaces the C.0 scaler_passthrough placeholder. Sits between v_vid_in_axi4s_0
 # and VDMA S2MM. Downscales 1080p to 720p before storage. DDR3 stores 1280×720
 # frames; MM2S reads them at the 74.25 MHz output pixel clock.
-create_bd_cell -type module -reference scaler_top scaler_0
+# iter4h debug knob: SCALER_MODULE can be set to scaler_top (production) or
+# scaler_crop_bypass (diagnostic — crops 1080p to 1280x720 top-left corner,
+# bypasses all polyphase logic). Default = production. Override via env var:
+#   SCALER_MODULE=scaler_crop_bypass vivado -mode batch -source <this>
+if {[info exists ::env(SCALER_MODULE)]} { set SCALER_MODULE $::env(SCALER_MODULE) }
+if {![info exists SCALER_MODULE]} { set SCALER_MODULE scaler_top }
+puts "BUILD: using SCALER_MODULE=$SCALER_MODULE"
+create_bd_cell -type module -reference $SCALER_MODULE scaler_0
 connect_bd_intf_net [get_bd_intf_pins v_vid_in_axi4s_0/video_out] [get_bd_intf_pins scaler_0/s_axis]
-connect_bd_intf_net [get_bd_intf_pins scaler_0/m_axis]            [get_bd_intf_pins axi_vdma_0/S_AXIS_S2MM]
+
+# iter4h: AXIS FIFO between scaler m_axis and VDMA S2MM. Absorbs end-of-frame
+# back-pressure (Dynamic Genlock master pointer handover + DDR3 arbitration
+# with MM2S) so scaler_v's emit pipeline never stalls into the next frame's
+# input. Without it, frame N+1's row 0 overwrites lbuf cells the stalled
+# emit's stage 0 then reads, producing top-of-bars content in slot rows
+# 692..718. Same clock domain (pclk_in) both sides — sync mode. 1024 deep
+# = 0.8 rows. Tried 4096 (3.2 rows) — caused SOFEarly errors and broke
+# Dynamic Genlock (WRSTORE stuck at 0). Deeper FIFO desynchronized TUSER
+# from S2MM's internal frame counter. Reverted to 1024.
+# See memory: schindler-scaler-architecture-findings.
+create_bd_cell -type ip -vlnv xilinx.com:ip:axis_data_fifo axis_fifo_s2mm
+set_property -dict [list \
+    CONFIG.TDATA_NUM_BYTES {3} \
+    CONFIG.HAS_TLAST       {1} \
+    CONFIG.TUSER_WIDTH     {1} \
+    CONFIG.FIFO_DEPTH      {1024} \
+    CONFIG.IS_ACLK_ASYNC   {0} \
+] [get_bd_cells axis_fifo_s2mm]
+connect_bd_intf_net [get_bd_intf_pins scaler_0/m_axis]       [get_bd_intf_pins axis_fifo_s2mm/S_AXIS]
+connect_bd_intf_net [get_bd_intf_pins axis_fifo_s2mm/M_AXIS] [get_bd_intf_pins axi_vdma_0/S_AXIS_S2MM]
 
 # =============================================================================
 # Video Timing Controller — generates output sync timing
@@ -348,6 +390,10 @@ connect_bd_intf_net [get_bd_intf_pins axi_vdma_0/M_AXIS_MM2S] [get_bd_intf_pins 
 # clk_wiz_pixclk_out/(2200*1125) = 60.000 Hz. Slow walk vs source is
 # acceptable; Phase D (FRC) will handle proper rate-matching.
 connect_bd_net [get_bd_pins v_tc_tx/fsync_out] [get_bd_pins axi_vdma_0/mm2s_fsync]
+# S2MM fsync was tested in iter4h and rejected — over-allocating S2MM VSIZE
+# in firmware (747 instead of 720) is the actual fix for the bottom-bars
+# artifact. S2MM uses TUSER on AXIS for frame boundary, no fsync needed.
+# See memory: schindler-bottom-bars-artifact.
 
 # =============================================================================
 # rgb2dvi (HDMI TX) — same MMCM/kClkRange=2 lessons as Phase A
@@ -401,6 +447,7 @@ set pclk_out [get_bd_pins clk_wiz_pixclk_out/clk_out1]
 connect_bd_net $pclk_in  [get_bd_pins v_vid_in_axi4s_0/aclk]
 connect_bd_net $pclk_in  [get_bd_pins axi_vdma_0/s_axis_s2mm_aclk]
 connect_bd_net $pclk_in  [get_bd_pins scaler_0/aclk]
+connect_bd_net $pclk_in  [get_bd_pins axis_fifo_s2mm/s_axis_aclk]  ;# iter4h
 connect_bd_net $pclk_in  [get_bd_pins v_tc_rx/clk]  ;# iter4e: detector on pclk_in
 # Output side
 connect_bd_net $pclk_out [get_bd_pins axi_vdma_0/m_axis_mm2s_aclk]
@@ -482,6 +529,7 @@ connect_bd_net [get_bd_pins rst_pixclk_out/peripheral_aresetn] [get_bd_pins v_tc
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]        [get_bd_pins v_tc_rx/resetn]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]        [get_bd_pins v_vid_in_axi4s_0/aresetn]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]        [get_bd_pins scaler_0/aresetn]
+connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]        [get_bd_pins axis_fifo_s2mm/s_axis_aresetn]  ;# iter4h
 
 # =============================================================================
 # Memory path: VDMA M_AXI ports → SmartConnect → PS S_AXI_HP0
@@ -726,6 +774,29 @@ set_property -dict [list \
 connect_bd_intf_net [get_bd_intf_pins axi_vdma_0/M_AXIS_MM2S] [get_bd_intf_pins ila_mm2s_out/SLOT_0_AXIS]
 connect_bd_net [get_bd_pins clk_wiz_pixclk_out/clk_out1] [get_bd_pins ila_mm2s_out/clk]
 connect_bd_net [get_bd_pins rst_pixclk_out/peripheral_aresetn] [get_bd_pins ila_mm2s_out/resetn]
+
+# =============================================================================
+# iter4h System ILA on S2MM's AXI-MM write port to DDR3 (FCLK_CLK1 domain).
+# Captures every AXI4 write transaction VDMA issues to DDR3:
+#   awaddr, awlen, awsize, awvalid/awready, wdata, wlast, wvalid/wready, bresp.
+# Goal: confirm by AXI address whether VDMA writes the artifact rows
+# (slot 0 rows 694-719 = byte addrs 0x10290800..0x102A2C00) once or twice
+# per frame, and what data is on the bus at those addresses. Settles the
+# "double write vs never-updated by current frame" question definitively.
+# 4096 sample depth = ~40 µs of capture at FCLK_CLK1 = 100 MHz; deep enough
+# to capture a complete frame-end + frame-start AXI write burst sequence
+# when triggered on AWADDR matching the artifact zone.
+create_bd_cell -type ip -vlnv xilinx.com:ip:system_ila ila_s2mm_axi
+set_property -dict [list \
+    CONFIG.C_NUM_MONITOR_SLOTS  {1} \
+    CONFIG.C_SLOT_0_INTF_TYPE   {xilinx.com:interface:aximm_rtl:1.0} \
+    CONFIG.C_DATA_DEPTH         {4096} \
+    CONFIG.C_EN_STRG_QUAL       {1} \
+    CONFIG.C_ADV_TRIGGER        {true} \
+] [get_bd_cells ila_s2mm_axi]
+connect_bd_intf_net [get_bd_intf_pins axi_vdma_0/M_AXI_S2MM] [get_bd_intf_pins ila_s2mm_axi/SLOT_0_AXI]
+connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK1]              [get_bd_pins ila_s2mm_axi/clk]
+connect_bd_net [get_bd_pins rst_mem/peripheral_aresetn]     [get_bd_pins ila_s2mm_axi/resetn]
 
 # =============================================================================
 # Address map + validate + wrapper
