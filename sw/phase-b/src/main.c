@@ -501,7 +501,12 @@ static void telemetry_loop(UINTPTR vdma_base)
                 /* IRQFrameCount field (bits 23:16) — track increments. */
                 u32 s2mm_frmcnt = (s2mm_sr >> 16) & 0xFFu;
                 u32 mm2s_frmcnt = (mm2s_sr >> 16) & 0xFFu;
-                xil_printf("DIAG: h_in=%u v_in=%u v_emit=%u mm2s=%u  "
+                /* iter5 step1 EOLEarly debug: counter slots repurposed in
+                 * scaler_bypass_1080p — h_in = px-per-line, v_in = lines-per-
+                 * frame, v_emit = max px-per-line observed. mm2s unchanged
+                 * (output-side TLAST count from axis_to_vid_io). Clean 1080p
+                 * source should show px=1920 lines=1080 maxpx=1920. */
+                xil_printf("DIAG: px=%u lines=%u maxpx=%u mm2s=%u  "
                            "S2MM_SR=0x%08x[%s%s%s%s%s frmcnt=%u] "
                            "MM2S_SR=0x%08x[%s%s%s%s%s frmcnt=%u]  "
                            "RDSTORE=%d WRSTORE=%d  src=%d out=%d\r\n",
@@ -662,6 +667,14 @@ static const vtc_mode_t MODE_720P50 = {
  *   timings change. HSync/VSync polarity POSITIVE per CEA-861. */
 static const vtc_mode_t MODE_1080P24 = {
     "1080p24", 1920, 1080, 2750, 1125,  638, 44,  4, 5
+};
+/* iter5 step 1 debug: 1080p30 (CEA-861 mode 34). 2200 × 1125 × 30 = 74.25 MHz
+ * — same clk_wiz output as 1080p24 and 720p60, no BD reconfig. Source 60p →
+ * output 30p is a clean 2:1 drop-every-other-frame ratio. If scroll is FRC-
+ * cadence-related (5:2 at 1080p24), 2:1 should be cleaner. If scroll persists
+ * here, it's deeper than cadence. */
+static const vtc_mode_t MODE_1080P30 = {
+    "1080p30", 1920, 1080, 2200, 1125,  88, 44,  4, 5
 };
 
 static int vtc_setup(const vtc_mode_t *m)
@@ -856,12 +869,10 @@ int main(void)
      * skip behavior. Source stays 60p (ImagePro RGB), output is 50p, ratio
      * 6:5 means master drops one source frame every 6 to keep ahead of slave.
      * Switch to MODE_720P60 to revert. */
-    /* iter5 (2026-05-17): 1080p24 output. Source is 1080p60 (ImagePro); ratio
-     * is exactly 5:2, handled by Dynamic Genlock drop/repeat. Scaler is
-     * bypassed in BD (scaler_bypass_1080p), so DDR3 stores native 1080p frames.
-     * VTC TX timings = MODE_1080P24 at the existing 74.25 MHz clk_wiz output;
-     * no clock-tree change vs. prior 720p60 substrate. */
-    if (vtc_setup(&MODE_1080P24) != XST_SUCCESS) return -1;
+    /* iter5 step 1 debug: 1080p30 bisect. 2:1 ratio (clean integer drop-every-
+     * other) vs. 5:2 (1080p24). If scroll vanishes here, FRC cadence at 5:2 is
+     * involved; if persists, deeper issue. Swap back to MODE_1080P24 after. */
+    if (vtc_setup(&MODE_1080P30) != XST_SUCCESS) return -1;
     xil_printf("VTC aligned to source vsync\r\n");
     sleep(1);  /* give VTC time to start pulsing fsync before VDMA reset */
 

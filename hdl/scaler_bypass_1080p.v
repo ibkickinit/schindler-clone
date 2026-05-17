@@ -48,13 +48,61 @@ module scaler_bypass_1080p #(
     input  wire [15:0] in_w_async,
     input  wire [15:0] in_h_async,
 
-    /* scaler_top exposes 48-bit diag counters. Tied low here; firmware will
-     * see zeros for h_in/v_in/v_emit during the bypass test. */
+    /* scaler_top exposes 48-bit diag counters. iter5 step 1 EOLEarly debug:
+     * repurpose the slots to measure incoming AXIS line/frame boundaries.
+     *   [15:0]  = pixels in last completed line  (should be 1920 for clean 1080p)
+     *   [31:16] = lines in last completed frame  (should be 1080)
+     *   [47:32] = max pixels-per-line observed   (sticky max; >1920 means TLAST late;
+     *                                             <1920 means EOLEarly seen by S2MM)
+     * Reset on TUSER (start of frame). 16-bit fields are plenty: max pixel/line
+     * is bounded by HTOTAL (~2750 worst case for 1080p), max lines/frame by
+     * VTOTAL (~1125). */
     output wire [47:0] diag_counts
 );
     /* Suppress unused-input warnings without dropping ports. */
     wire _stub_keep = |{in_w_async, in_h_async};
-    assign diag_counts = 48'd0;
+
+    reg [15:0] px_running;          /* pixels in current line */
+    reg [15:0] px_latched;          /* pixels in last completed line */
+    reg [15:0] lines_running;       /* lines in current frame */
+    reg [15:0] lines_latched;       /* lines in last completed frame */
+    reg [15:0] max_px_running;      /* max pixels-per-line within current frame */
+    reg [15:0] max_px_latched;      /* same, latched at TUSER */
+
+    wire beat = s_axis_tvalid && s_axis_tready;
+
+    always @(posedge aclk) begin
+        if (!aresetn) begin
+            px_running     <= 16'd0;
+            px_latched     <= 16'd0;
+            lines_running  <= 16'd0;
+            lines_latched  <= 16'd0;
+            max_px_running <= 16'd0;
+            max_px_latched <= 16'd0;
+        end else if (beat) begin
+            if (s_axis_tuser) begin
+                /* First pixel of new frame. Latch previous frame's line count
+                 * and max-pixel-per-line. Reset everything. This beat itself
+                 * is pixel 1 of line 0 of the new frame. */
+                lines_latched  <= lines_running;
+                max_px_latched <= max_px_running;
+                lines_running  <= 16'd0;
+                max_px_running <= 16'd0;
+                px_running     <= 16'd1;
+            end else if (s_axis_tlast) begin
+                /* End of line. This beat counts toward the line. */
+                px_latched     <= px_running + 16'd1;
+                lines_running  <= lines_running + 16'd1;
+                if ((px_running + 16'd1) > max_px_running)
+                    max_px_running <= px_running + 16'd1;
+                px_running     <= 16'd0;
+            end else begin
+                px_running <= px_running + 16'd1;
+            end
+        end
+    end
+
+    assign diag_counts = {max_px_latched, lines_latched, px_latched};
 
     /* Standard 1-deep AXIS register stage. Slave-side ready when output is
      * empty or about to drain. Downstream axis_data_fifo gives us back-
