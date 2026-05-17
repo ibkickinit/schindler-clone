@@ -49,7 +49,16 @@ module scaler_top #(
      * scaler held in soft reset — so we never sample a torn value in
      * steady state. */
     input  wire [15:0] in_w_async,
-    input  wire [15:0] in_h_async
+    input  wire [15:0] in_h_async,
+
+    /* iter4g DIAG: per-frame counter snapshots (latched at TUSER inside the
+     * scaler modules). Packed into a 48-bit bus for routing through the BD
+     * to a CDC + AXI GPIO. Firmware reads via GPIO + prints via UART.
+     *   [15:0]  = scaler_h input TLAST count per source frame
+     *   [31:16] = scaler_v input TLAST count per source frame
+     *   [47:32] = scaler_v emit (v_cross) count per source frame
+     * All on aclk domain (pclk_in); CDC happens in top-level wiring. */
+    output wire [47:0] diag_counts
 );
     /* 2-FF synchronizers on each bit. Marked ASYNC_REG for the placer. */
     (* ASYNC_REG = "TRUE" *) reg [15:0] in_w_q1, in_w_q2;
@@ -77,6 +86,13 @@ module scaler_top #(
     wire        mid_tlast;
     wire        mid_tuser;
 
+    /* iter4g DIAG: counter wires from scaler_h and scaler_v, packed for
+     * routing through the BD. All in aclk domain. Declared up front so
+     * they're visible to the instances below. */
+    wire [15:0] scaler_h_in_tlast_snap;
+    wire [15:0] scaler_v_in_tlast_snap;
+    wire [15:0] scaler_v_emit_snap;
+
     scaler_h #(
         .IN_W_DEFAULT (IN_W_DEFAULT),
         .OUT_W        (OUT_W),
@@ -95,7 +111,8 @@ module scaler_top #(
         .m_axis_tready (mid_tready),
         .m_axis_tlast  (mid_tlast),
         .m_axis_tuser  (mid_tuser),
-        .in_w_runtime  (in_w_eff)
+        .in_w_runtime  (in_w_eff),
+        .in_tlast_count_snap (scaler_h_in_tlast_snap)
     );
 
     scaler_v #(
@@ -117,8 +134,12 @@ module scaler_top #(
         .m_axis_tready (m_axis_tready),
         .m_axis_tlast  (m_axis_tlast),
         .m_axis_tuser  (m_axis_tuser),
-        .in_h_runtime  (in_h_eff)
+        .in_h_runtime  (in_h_eff),
+        .in_tlast_count_snap (scaler_v_in_tlast_snap),
+        .emit_count_snap     (scaler_v_emit_snap)
     );
+
+    assign diag_counts = {scaler_v_emit_snap, scaler_v_in_tlast_snap, scaler_h_in_tlast_snap};
 endmodule
 
 `default_nettype wire

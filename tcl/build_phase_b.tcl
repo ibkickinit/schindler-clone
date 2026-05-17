@@ -440,11 +440,11 @@ connect_bd_net [get_bd_pins rst_pixclk_out/peripheral_reset] [get_bd_pins rgb2dv
 # AXI-Lite control path: PS GP0 → 1×2 Interconnect → VDMA, VTC
 # =============================================================================
 create_bd_cell -type ip -vlnv xilinx.com:ip:axi_interconnect axi_ic_lite
-# 5 master ports (iter4e expanded 3->5):
+# 6 master ports (iter4g expanded 5->6):
 #   M00 = VDMA, M01 = VTC tx (generator), M02 = GPIO 0 (status inputs)
-#   M03 = VTC rx (detector, new)
-#   M04 = GPIO 1 (scaler dim outputs, new)
-set_property -dict [list CONFIG.NUM_SI {1} CONFIG.NUM_MI {5}] [get_bd_cells axi_ic_lite]
+#   M03 = VTC rx (detector), M04 = GPIO 1 (scaler dim outputs)
+#   M05 = GPIO 2 (iter4g diagnostic counters, new)
+set_property -dict [list CONFIG.NUM_SI {1} CONFIG.NUM_MI {6}] [get_bd_cells axi_ic_lite]
 connect_bd_intf_net [get_bd_intf_pins zynq_ps/M_AXI_GP0]     [get_bd_intf_pins axi_ic_lite/S00_AXI]
 connect_bd_intf_net [get_bd_intf_pins axi_ic_lite/M00_AXI]   [get_bd_intf_pins axi_vdma_0/S_AXI_LITE]
 connect_bd_intf_net [get_bd_intf_pins axi_ic_lite/M01_AXI]   [get_bd_intf_pins v_tc_tx/ctrl]
@@ -457,6 +457,7 @@ connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/M01_A
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/M02_ACLK]
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/M03_ACLK]
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/M04_ACLK]
+connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/M05_ACLK]
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_vdma_0/s_axi_lite_aclk]
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins v_tc_tx/s_axi_aclk]
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins v_tc_rx/s_axi_aclk]
@@ -467,6 +468,7 @@ connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_li
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_lite/M02_ARESETN]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_lite/M03_ARESETN]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_lite/M04_ARESETN]
+connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_lite/M05_ARESETN]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_vdma_0/axi_resetn]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins v_tc_tx/s_axi_aresetn]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins v_tc_rx/s_axi_aresetn]
@@ -539,6 +541,14 @@ connect_bd_net [get_bd_pins dvi2rgb_0/pLocked]              [get_bd_pins axi_syn
 # Phase D iter-4d-1: output-side observability for FRC cadence engine
 connect_bd_net [get_bd_pins v_tc_tx/vsync_out]              [get_bd_pins axi_sync_inputs_0/vsync_out_async]
 connect_bd_net [get_bd_pins clk_wiz_pixclk_out/locked]      [get_bd_pins axi_sync_inputs_0/pclk_locked_async]
+# iter4g DIAG: 64-bit counter bus = scaler_0/diag_counts (48-bit, low) +
+# axis_to_vid_io_0/mm2s_tlast_snap (16-bit, high). CDC'd in axi_sync_inputs.
+create_bd_cell -type ip -vlnv xilinx.com:ip:xlconcat diag_concat
+set_property -dict [list CONFIG.NUM_PORTS {2} CONFIG.IN0_WIDTH {48} CONFIG.IN1_WIDTH {16}] \
+    [get_bd_cells diag_concat]
+connect_bd_net [get_bd_pins scaler_0/diag_counts]               [get_bd_pins diag_concat/In0]
+connect_bd_net [get_bd_pins axis_to_vid_io_0/mm2s_tlast_snap]   [get_bd_pins diag_concat/In1]
+connect_bd_net [get_bd_pins diag_concat/dout]                   [get_bd_pins axi_sync_inputs_0/diag_counts_async]
 
 # AXI GPIO — input-only, 4 bits:
 #   bit 0 = plocked_sync       (dvi2rgb source HDMI lock)
@@ -619,6 +629,58 @@ connect_bd_net [get_bd_pins slice_in_h/Dout]      [get_bd_pins scaler_0/in_h_asy
 connect_bd_intf_net [get_bd_intf_pins axi_ic_lite/M04_AXI] [get_bd_intf_pins axi_gpio_1/S_AXI]
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]             [get_bd_pins axi_gpio_1/s_axi_aclk]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]    [get_bd_pins axi_gpio_1/s_axi_aresetn]
+
+# =============================================================================
+# iter4g: AXI GPIO 2 — dual-channel, input-only, exposes scaler_top counters
+# CDC'd to FCLK_CLK0. Firmware reads + prints per frame to identify the
+# pipeline stage that drops/adds rows.
+#   Channel 1 (32-bit): bits [15:0]=scaler_h_in_tlast, [31:16]=scaler_v_in_tlast
+#   Channel 2 (32-bit): bits [15:0]=scaler_v_emit
+# =============================================================================
+create_bd_cell -type ip -vlnv xilinx.com:ip:axi_gpio axi_gpio_2
+set_property -dict [list \
+    CONFIG.C_GPIO_WIDTH    {32} \
+    CONFIG.C_GPIO2_WIDTH   {32} \
+    CONFIG.C_ALL_INPUTS    {1} \
+    CONFIG.C_ALL_INPUTS_2  {1} \
+    CONFIG.C_IS_DUAL       {1} \
+    CONFIG.C_INTERRUPT_PRESENT {0} \
+] [get_bd_cells axi_gpio_2]
+
+# Slice the 64-bit diag_counts_sync into 4 16-bit fields
+create_bd_cell -type ip -vlnv xilinx.com:ip:xlslice slice_diag_h_tlast
+set_property -dict [list CONFIG.DIN_WIDTH {64} CONFIG.DIN_FROM {15}  CONFIG.DIN_TO {0}  CONFIG.DOUT_WIDTH {16}] [get_bd_cells slice_diag_h_tlast]
+create_bd_cell -type ip -vlnv xilinx.com:ip:xlslice slice_diag_v_tlast
+set_property -dict [list CONFIG.DIN_WIDTH {64} CONFIG.DIN_FROM {31}  CONFIG.DIN_TO {16} CONFIG.DOUT_WIDTH {16}] [get_bd_cells slice_diag_v_tlast]
+create_bd_cell -type ip -vlnv xilinx.com:ip:xlslice slice_diag_v_emit
+set_property -dict [list CONFIG.DIN_WIDTH {64} CONFIG.DIN_FROM {47}  CONFIG.DIN_TO {32} CONFIG.DOUT_WIDTH {16}] [get_bd_cells slice_diag_v_emit]
+create_bd_cell -type ip -vlnv xilinx.com:ip:xlslice slice_diag_mm2s
+set_property -dict [list CONFIG.DIN_WIDTH {64} CONFIG.DIN_FROM {63}  CONFIG.DIN_TO {48} CONFIG.DOUT_WIDTH {16}] [get_bd_cells slice_diag_mm2s]
+connect_bd_net [get_bd_pins axi_sync_inputs_0/diag_counts_sync] [get_bd_pins slice_diag_h_tlast/Din]
+connect_bd_net [get_bd_pins axi_sync_inputs_0/diag_counts_sync] [get_bd_pins slice_diag_v_tlast/Din]
+connect_bd_net [get_bd_pins axi_sync_inputs_0/diag_counts_sync] [get_bd_pins slice_diag_v_emit/Din]
+connect_bd_net [get_bd_pins axi_sync_inputs_0/diag_counts_sync] [get_bd_pins slice_diag_mm2s/Din]
+
+# Channel 1 (gpio_io_i) = {v_tlast, h_tlast}
+create_bd_cell -type ip -vlnv xilinx.com:ip:xlconcat gpio2_ch1_concat
+set_property -dict [list CONFIG.NUM_PORTS {2} CONFIG.IN0_WIDTH {16} CONFIG.IN1_WIDTH {16}] \
+    [get_bd_cells gpio2_ch1_concat]
+connect_bd_net [get_bd_pins slice_diag_h_tlast/Dout] [get_bd_pins gpio2_ch1_concat/In0]
+connect_bd_net [get_bd_pins slice_diag_v_tlast/Dout] [get_bd_pins gpio2_ch1_concat/In1]
+connect_bd_net [get_bd_pins gpio2_ch1_concat/dout]   [get_bd_pins axi_gpio_2/gpio_io_i]
+
+# Channel 2 (gpio2_io_i) = {mm2s_tlast, v_emit}
+create_bd_cell -type ip -vlnv xilinx.com:ip:xlconcat gpio2_ch2_concat
+set_property -dict [list CONFIG.NUM_PORTS {2} CONFIG.IN0_WIDTH {16} CONFIG.IN1_WIDTH {16}] \
+    [get_bd_cells gpio2_ch2_concat]
+connect_bd_net [get_bd_pins slice_diag_v_emit/Dout]  [get_bd_pins gpio2_ch2_concat/In0]
+connect_bd_net [get_bd_pins slice_diag_mm2s/Dout]    [get_bd_pins gpio2_ch2_concat/In1]
+connect_bd_net [get_bd_pins gpio2_ch2_concat/dout]   [get_bd_pins axi_gpio_2/gpio2_io_i]
+
+# AXI-Lite — needs axi_ic_lite NUM_MI expanded 5 -> 6 (handled in earlier edit)
+connect_bd_intf_net [get_bd_intf_pins axi_ic_lite/M05_AXI] [get_bd_intf_pins axi_gpio_2/S_AXI]
+connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]             [get_bd_pins axi_gpio_2/s_axi_aclk]
+connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]    [get_bd_pins axi_gpio_2/s_axi_aresetn]
 
 # =============================================================================
 # Phase D iter-3n — ILA instrumentation on scaler_top output and axis_to_vid_io

@@ -50,7 +50,13 @@ module scaler_v #(
      * detector's DASIZE register via AXI GPIO (CDC'd into clk domain in
      * scaler_top). Latched into in_h_active at each input TUSER so
      * v_cross/v_excess math is frame-atomic. */
-    input  wire [11:0] in_h_runtime
+    input  wire [11:0] in_h_runtime,
+
+    /* iter4g DIAG: per-frame counter snapshots, latched at TUSER.
+     *   in_tlast_count_snap  - how many TLASTs came IN from scaler_h
+     *   emit_count_snap      - how many v_cross/emits OUT to S2MM */
+    output reg  [15:0] in_tlast_count_snap,
+    output reg  [15:0] emit_count_snap
 );
     // Line buffers — 4 separate arrays, Vivado infers 4 BRAMs (1 each).
     reg [23:0] lbuf0 [0:IN_W-1];
@@ -65,11 +71,11 @@ module scaler_v #(
     // Runtime IN_H, latched at TUSER for frame-atomic commit.
     reg [11:0] in_h_active;
 
-    /* iter4f DIAG: emit-row counter — increments at v_cross, resets on
-     * TUSER. Latched at v_cross so it's stable across the emit row. Drives
-     * a 3-band gradient test pattern that overrides m_axis_tdata. */
-    reg [11:0] emit_row_count;
-    reg [11:0] emit_row_latched;
+    /* iter4g DIAG: running counters of input TLAST and emit (v_cross)
+     * events. Both reset on TUSER; previous frame's values latched into
+     * the *_snap outputs above. */
+    reg [15:0] in_tlast_count;
+    reg [15:0] emit_count;
 
     // Vertical accumulator
     reg  [11:0] v_accum;
@@ -159,19 +165,6 @@ module scaler_v #(
     wire [7:0] mac_b = tap1[ 7: 0];
     wire _vcoef_keep = |{k0, k1, k2, k3};
 
-    /* iter4f DIAG: 3-band test pattern. Each emit row N produces a uniform
-     * color encoding N:
-     *   N in 0..255   : R = N,       G = 0,     B = 0   (red ramp,    band 0)
-     *   N in 256..511 : R = N-256,   G = 0,     B = 255 (magenta ramp, band 1)
-     *   N in 512..719 : R = N-512,   G = 255,   B = 0   (yellow ramp,  band 2)
-     * (Note: byte-swap quirk — what we encode as G shows up as display B and
-     * vice versa, see iter4d-3-FRC analysis. Reading the captured RGB tells
-     * us the exact emit index that landed at each display row.) */
-    wire [7:0] pat_r = emit_row_latched[7:0];
-    wire [7:0] pat_g = emit_row_latched[8] ? 8'hFF : 8'h00;
-    wire [7:0] pat_b = emit_row_latched[9] ? 8'hFF : 8'h00;
-    wire _mac_keep = |{mac_r, mac_g, mac_b};
-
     // Always ready to accept input — internal 4-line BRAM absorbs bursts.
     assign s_axis_tready = 1'b1;
 
@@ -203,8 +196,10 @@ module scaler_v #(
             m_axis_tlast    <= 1'b0;
             m_axis_tuser    <= 1'b0;
             in_h_active     <= IN_H_DEFAULT[11:0];
-            emit_row_count   <= 12'd0;
-            emit_row_latched <= 12'd0;
+            in_tlast_count       <= 16'd0;
+            in_tlast_count_snap  <= 16'd0;
+            emit_count           <= 16'd0;
+            emit_count_snap      <= 16'd0;
         end else begin
             // -----------------------------------------------------------------
             // INPUT side (lbuf write + v_accum tracking)
@@ -224,7 +219,17 @@ module scaler_v #(
                     /* Frame-atomic commit of runtime IN_H — any AXI-Lite
                      * change between frames takes effect here, not mid-frame. */
                     in_h_active    <= in_h_runtime;
-                    emit_row_count <= 12'd0;  /* iter4f DIAG: reset per-frame */
+                    /* iter4g DIAG: snapshot + reset per-frame counters. */
+                    in_tlast_count_snap <= in_tlast_count;
+                    in_tlast_count      <= s_axis_tlast ? 16'd1 : 16'd0;
+                    emit_count_snap     <= emit_count;
+                    emit_count          <= 16'd0;
+                end
+                /* iter4g DIAG: count input TLAST events (non-TUSER cycle).
+                 * Doing this OUTSIDE the v_cross gate so we count the raw
+                 * input count regardless of whether scaler emits or not. */
+                if (s_axis_tlast && !s_axis_tuser) begin
+                    in_tlast_count <= in_tlast_count + 16'd1;
                 end
                 if (s_axis_tlast) begin
                     in_col <= 11'd0;
@@ -246,9 +251,8 @@ module scaler_v #(
                         v_phase_held <= v_phase_calc[5:0];
                         v_accum      <= v_excess;
                         tap0_slot    <= (in_row[1:0] + 2'd1);
-                        /* iter4f DIAG: capture this emit's index, advance. */
-                        emit_row_latched <= emit_row_count;
-                        emit_row_count   <= emit_row_count + 12'd1;
+                        /* iter4g DIAG: count v_cross events = emits per frame. */
+                        emit_count   <= emit_count + 16'd1;
                     end else begin
                         v_accum <= v_accum_next;
                     end
@@ -266,10 +270,7 @@ module scaler_v #(
                 m_axis_tlast  <= tlast_q & stage0_valid_q;
                 m_axis_tuser  <= tuser_q & stage0_valid_q;
                 if (stage0_valid_q) begin
-                    /* iter4f DIAG: override scaler MAC output with row-index
-                     * test pattern. Restore to {mac_r, mac_g, mac_b} after
-                     * the bug is found. */
-                    m_axis_tdata <= {pat_r, pat_g, pat_b};
+                    m_axis_tdata <= {mac_r, mac_g, mac_b};
                 end
 
                 // Stage 0: issue BRAM read at out_col, latch metadata.
