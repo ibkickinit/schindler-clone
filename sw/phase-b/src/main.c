@@ -598,12 +598,20 @@ static int vtc_detector_read(u32 *hactive_out, u32 *vactive_out,
         }
     }
     /* Require LOCKED stable for an additional 50 ms (3+ frames at 60p) so
-     * DASIZE has settled to the actual source values, not transient noise. */
+     * DASIZE has settled to the actual source values, not transient noise.
+     * NOW WITH TIMEOUT (2026-05-17): if source vsync is flickering, this
+     * loop used to spin forever. Cap at 2 seconds and proceed with whatever
+     * DASIZE has — caller defaults to 1920×1080 if values look wrong. */
     int lock_stable_ms = 0;
+    int stability_total_ms = 0;
     while (lock_stable_ms < 50) {
         if (Xil_In32(VTC_RX_BASEADDR + 0x024) & 0x01u) lock_stable_ms++;
         else lock_stable_ms = 0;
         usleep(1000);
+        if (++stability_total_ms > 2000) {
+            xil_printf("WARN: v_tc_rx LOCKED unstable (flickering source); proceeding anyway\r\n");
+            break;
+        }
     }
 
     u32 dasize = Xil_In32(VTC_RX_BASEADDR + 0x020);
