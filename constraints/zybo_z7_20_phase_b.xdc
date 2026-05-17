@@ -74,3 +74,20 @@ set_false_path -to [get_pins {phase_b_bd_i/axi_sync_inputs_0/inst/vsync_q1_reg/D
 set_false_path -to [get_pins {phase_b_bd_i/axi_sync_inputs_0/inst/plocked_q1_reg/D}]
 set_false_path -to [get_pins {phase_b_bd_i/axi_sync_inputs_0/inst/vsync_out_q1_reg/D}]
 set_false_path -to [get_pins {phase_b_bd_i/axi_sync_inputs_0/inst/pclk_locked_q1_reg/D}]
+
+# ============================================================================
+# Phase G iter1 (2026-05-17): AXI I2C to ADV7393 eval board.
+# Pmod JD pin assignments per Zybo Z7-20 reference manual:
+#   JD7 = U14 -> iic_adv7393_sda_io
+#   JD8 = U15 -> iic_adv7393_scl_io
+# PULLUP TRUE enables internal FPGA pull-up in case the eval board lacks
+# external pull-ups. Standard 3.3V I2C signaling.
+# ============================================================================
+set_property -dict { PACKAGE_PIN U14 IOSTANDARD LVCMOS33 PULLUP TRUE } [get_ports iic_adv7393_sda_io]
+set_property -dict { PACKAGE_PIN U15 IOSTANDARD LVCMOS33 PULLUP TRUE } [get_ports iic_adv7393_scl_io]
+
+# Phase G iter1: 27 MHz CLKIN to ADV7393 via JD1 = T14.
+# Justin's bench wire: Pmod JD1 -> chip pin 19 (CLKIN). LVCMOS33 3.3V drive
+# is fine for ADV7393's 3.3V CMOS clock input. No pull resistor needed for
+# a clock signal — slew is what matters, drive is FAST by default.
+set_property -dict { PACKAGE_PIN T14 IOSTANDARD LVCMOS33 SLEW FAST DRIVE 12 } [get_ports adv7393_clkin]

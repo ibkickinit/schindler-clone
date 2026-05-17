@@ -169,6 +169,28 @@ set_property -dict [list \
 ] [get_bd_cells clk_wiz_ref]
 connect_bd_net [get_bd_ports sys_clk]  [get_bd_pins clk_wiz_ref/clk_in1]
 connect_bd_net [get_bd_ports btn_rst]  [get_bd_pins clk_wiz_ref/reset]
+
+# =============================================================================
+# Phase G iter1 (2026-05-17): 27 MHz CLKIN for ADV7393
+# =============================================================================
+# EVAL-ADV7393EBZ does not have an onboard crystal connected to chip pin 19
+# (CLKIN). Without a master clock the chip's internal state machine doesn't
+# tick and I2C won't ACK. We generate 27 MHz from a PLL fed by FCLK_CLK0
+# (100 MHz from the PS) and route it out via a top-level port wired to Pmod
+# JD1 (FPGA pin T14, constrained in XDC). Justin's bench wire from JD1 → chip
+# pin 19 already in place.
+create_bd_cell -type ip -vlnv xilinx.com:ip:clk_wiz clk_wiz_adv7393
+set_property -dict [list \
+    CONFIG.PRIMITIVE {MMCM} \
+    CONFIG.PRIM_IN_FREQ {100.000} \
+    CONFIG.CLKOUT1_REQUESTED_OUT_FREQ {27.000} \
+    CONFIG.USE_LOCKED {false} \
+    CONFIG.USE_RESET {false} \
+    CONFIG.RESET_PORT {} \
+] [get_bd_cells clk_wiz_adv7393]
+connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0] [get_bd_pins clk_wiz_adv7393/clk_in1]
+create_bd_port -dir O adv7393_clkin
+connect_bd_net [get_bd_pins clk_wiz_adv7393/clk_out1] [get_bd_ports adv7393_clkin]
 connect_bd_net [get_bd_pins clk_wiz_ref/locked] [get_bd_ports hdmi_rx_hpd]
 
 # =============================================================================
@@ -487,11 +509,12 @@ connect_bd_net [get_bd_pins rst_pixclk_out/peripheral_reset] [get_bd_pins rgb2dv
 # AXI-Lite control path: PS GP0 → 1×2 Interconnect → VDMA, VTC
 # =============================================================================
 create_bd_cell -type ip -vlnv xilinx.com:ip:axi_interconnect axi_ic_lite
-# 6 master ports (iter4g expanded 5->6):
+# 7 master ports (Phase G iter1 expanded 6->7):
 #   M00 = VDMA, M01 = VTC tx (generator), M02 = GPIO 0 (status inputs)
 #   M03 = VTC rx (detector), M04 = GPIO 1 (scaler dim outputs)
-#   M05 = GPIO 2 (iter4g diagnostic counters, new)
-set_property -dict [list CONFIG.NUM_SI {1} CONFIG.NUM_MI {6}] [get_bd_cells axi_ic_lite]
+#   M05 = GPIO 2 (iter4g diagnostic counters)
+#   M06 = AXI I2C (Phase G: ADV7393 chip config via Pmod JD7/JD8)
+set_property -dict [list CONFIG.NUM_SI {1} CONFIG.NUM_MI {7}] [get_bd_cells axi_ic_lite]
 connect_bd_intf_net [get_bd_intf_pins zynq_ps/M_AXI_GP0]     [get_bd_intf_pins axi_ic_lite/S00_AXI]
 connect_bd_intf_net [get_bd_intf_pins axi_ic_lite/M00_AXI]   [get_bd_intf_pins axi_vdma_0/S_AXI_LITE]
 connect_bd_intf_net [get_bd_intf_pins axi_ic_lite/M01_AXI]   [get_bd_intf_pins v_tc_tx/ctrl]
@@ -505,6 +528,7 @@ connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/M02_A
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/M03_ACLK]
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/M04_ACLK]
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/M05_ACLK]
+connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/M06_ACLK]  ;# Phase G iter1
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_vdma_0/s_axi_lite_aclk]
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins v_tc_tx/s_axi_aclk]
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins v_tc_rx/s_axi_aclk]
@@ -516,6 +540,7 @@ connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_li
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_lite/M03_ARESETN]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_lite/M04_ARESETN]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_lite/M05_ARESETN]
+connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_lite/M06_ARESETN]  ;# Phase G iter1
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_vdma_0/axi_resetn]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins v_tc_tx/s_axi_aresetn]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins v_tc_rx/s_axi_aresetn]
@@ -729,6 +754,25 @@ connect_bd_net [get_bd_pins gpio2_ch2_concat/dout]   [get_bd_pins axi_gpio_2/gpi
 connect_bd_intf_net [get_bd_intf_pins axi_ic_lite/M05_AXI] [get_bd_intf_pins axi_gpio_2/S_AXI]
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]             [get_bd_pins axi_gpio_2/s_axi_aclk]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]    [get_bd_pins axi_gpio_2/s_axi_aresetn]
+
+# =============================================================================
+# Phase G iter1 (2026-05-17) — AXI I2C for ADV7393 chip configuration
+# =============================================================================
+# Minimum-viable analog bring-up: just I2C reachability to the ADV7393 eval
+# board on a separate PSU. No parallel data / clock / sync pins yet (iter2).
+# Wired to Pmod JD7 (SDA) and JD8 (SCL) per the proposed pinout. Internal
+# FPGA pull-ups enabled in XDC in case the eval board lacks them.
+create_bd_cell -type ip -vlnv xilinx.com:ip:axi_iic axi_iic_adv7393
+set_property -dict [list \
+    CONFIG.IIC_FREQ_KHZ      {100} \
+    CONFIG.C_SCL_INERTIAL_DELAY {0} \
+] [get_bd_cells axi_iic_adv7393]
+connect_bd_intf_net [get_bd_intf_pins axi_ic_lite/M06_AXI] [get_bd_intf_pins axi_iic_adv7393/S_AXI]
+connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]             [get_bd_pins axi_iic_adv7393/s_axi_aclk]
+connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]    [get_bd_pins axi_iic_adv7393/s_axi_aresetn]
+# Expose IIC interface — Vivado autogenerates IOBUFs in the wrapper.
+make_bd_intf_pins_external [get_bd_intf_pins axi_iic_adv7393/IIC]
+set_property name iic_adv7393 [get_bd_intf_ports IIC_0]
 
 # =============================================================================
 # Phase D iter-3n — ILA instrumentation on scaler_top output and axis_to_vid_io

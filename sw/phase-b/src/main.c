@@ -24,6 +24,8 @@
 #include "xaxivdma.h"
 #include "xvtc.h"
 #include "xtime_l.h"   /* Phase D iter-4a: SCU timer for precise rate measurement */
+#include "xiic.h"      /* Phase G iter1: AXI I2C for ADV7393 chip config */
+#include "xiic_l.h"    /* low-level polled API: XIic_Send / XIic_Recv */
 
 // Phase C.1 (pivoted to 720p): output is 720p (1280×720) — scaler downscales
 // 1080p → 720p before storage. DDR3 holds 1280×720 frames. 480p was infeasible
@@ -42,6 +44,89 @@
 
 static XAxiVdma vdma;
 static XVtc    vtc;
+
+/* ============================================================================
+ * Phase G iter1 (2026-05-17): AXI I2C probe for ADV7393 analog video DAC.
+ *
+ * Minimum-viable first-light test: verify the ADV7393 (on a separate EVAL-
+ * ADV7393EBZ board, separate PSU) ACKs at its I2C address. No register writes
+ * yet — just confirm the chip is electrically reachable on the I2C bus.
+ *
+ * ADV7393 I2C addresses (7-bit):
+ *   ALSB pin = 0  ->  0x2A
+ *   ALSB pin = 1  ->  0x2C
+ *
+ * Wired to Pmod JD7 (SDA, U14) and JD8 (SCL, U15) per Phase G iter1 plan.
+ * Internal FPGA pull-ups enabled via XDC; eval board typically also has
+ * external pull-ups (they parallel safely).
+ * ============================================================================ */
+#if defined(XPAR_AXI_IIC_ADV7393_BASEADDR)
+#  define IIC_ADV7393_BASE XPAR_AXI_IIC_ADV7393_BASEADDR
+#elif defined(XPAR_PHASE_B_BD_AXI_IIC_ADV7393_BASEADDR)
+#  define IIC_ADV7393_BASE XPAR_PHASE_B_BD_AXI_IIC_ADV7393_BASEADDR
+#elif defined(XPAR_XIIC_0_BASEADDR)
+#  define IIC_ADV7393_BASE XPAR_XIIC_0_BASEADDR
+#else
+#  error "axi_iic_adv7393 base address not found in xparameters.h"
+#endif
+
+static XIic iic_adv;
+
+static int adv7393_iic_init(void)
+{
+    XIic_Config *cfg = XIic_LookupConfig(IIC_ADV7393_BASE);
+    if (!cfg) {
+        xil_printf("ADV7393: XIic_LookupConfig failed\r\n");
+        return XST_FAILURE;
+    }
+    int status = XIic_CfgInitialize(&iic_adv, cfg, cfg->BaseAddress);
+    if (status != XST_SUCCESS) {
+        xil_printf("ADV7393: XIic_CfgInitialize failed: %d\r\n", status);
+        return status;
+    }
+    return XST_SUCCESS;
+}
+
+/* Read 1 byte from ADV7393 at 7-bit `addr`, register `reg`. Returns 1 on
+ * success (fills *out), 0 on NAK/error. Uses XIic_Send + XIic_Recv polled. */
+static int adv7393_read_reg(u8 addr, u8 reg, u8 *out)
+{
+    int sent = XIic_Send(IIC_ADV7393_BASE, addr, &reg, 1, XIIC_REPEATED_START);
+    if (sent != 1) return 0;
+    int recvd = XIic_Recv(IIC_ADV7393_BASE, addr, out, 1, XIIC_STOP);
+    return (recvd == 1) ? 1 : 0;
+}
+
+static void adv7393_probe(void)
+{
+    /* iter1.5: trimmed to fast 0x2A-only probe so we get a quick yes/no in
+     * the looping diagnostic. Generic bus scan removed (was hanging on
+     * per-address NAK timeouts). Init once. */
+    static int initted = 0;
+    if (!initted) {
+        xil_printf("\r\nPhase G iter1.5: fast 0x2A probe loop\r\n");
+        xil_printf("  IIC base = 0x%08x  CLKIN driven 27 MHz on JD1\r\n",
+                   (unsigned)IIC_ADV7393_BASE);
+        if (adv7393_iic_init() != XST_SUCCESS) {
+            xil_printf("  ABORT: AXI I2C init failed\r\n");
+            return;
+        }
+        initted = 1;
+    }
+    u8 val;
+    if (adv7393_read_reg(0x2A, 0x00, &val)) {
+        xil_printf("ACK 0x2A: reg0x00=0x%02x", val);
+        /* On ACK, also try to read reg 0x01..0x07 for context. */
+        for (u8 r = 0x01; r <= 0x07; r++) {
+            u8 rv;
+            if (adv7393_read_reg(0x2A, r, &rv))
+                xil_printf(" %02x:%02x", r, rv);
+        }
+        xil_printf("\r\n");
+    } else {
+        xil_printf("NAK 0x2A\r\n");
+    }
+}
 
 static int vdma_setup_channel(int direction, UINTPTR *frame_addrs)
 {
@@ -780,6 +865,20 @@ int main(void)
      * Phase B.1; future phases that touch frames from the PS will revisit. */
     Xil_DCacheDisable();
 
+    /* Phase G iter1: probe ADV7393 BEFORE the HDMI pLocked wait. ADV7393 is
+     * on a separate PSU + I2C bus, independent of HDMI source. Running first
+     * means we still get the I2C result even if no HDMI source is plugged in
+     * (firmware would otherwise hang at "pLocked never stable after 10s"). */
+    /* iter1 scope-capture mode: loop probe forever so SDA/SCL traffic is
+     * easy to capture on bench scope. HDMI pipeline never starts in this
+     * mode; revert this loop once ADV7393 is detected. */
+    while (1) {
+        adv7393_probe();
+        for (volatile int d = 0; d < 50000000; d++) { /* ~0.5s spacing */ }
+    }
+    /* unreachable */
+    adv7393_probe();
+
     /* The video pipeline (VDMA AXIS sides + video adapters + VTC) runs on the
      * RX-recovered PixelClk from dvi2rgb. If we try to init the VDMA before
      * PixelClk is stable, the IP's reset state machine stalls waiting for
@@ -883,6 +982,9 @@ int main(void)
         u32 v = Xil_In32(vbase + off);
         if (v != 0) xil_printf("  +0x%02x = 0x%08x  (%u)\r\n", off, (unsigned)v, (unsigned)v);
     }
+
+    /* Phase G iter1 probe moved earlier (before pLocked wait) so it runs
+     * even without an HDMI source connected. */
 
     xil_printf("Pipeline live — entering diag loop (1 sec/dump)\r\n\r\n");
 
