@@ -155,9 +155,10 @@ static int vdma_setup_channel(int direction, UINTPTR *frame_addrs)
 #  error "AXI GPIO 1 (scaler dims) base address not found in xparameters.h"
 #endif
 
-/* Color-correct AXI GPIO 3 — dual-channel output, drives color_correct's
- * 6 × 8-bit params. Channel 1 = {spare[31:24], black_b, black_g, black_r}.
- * Channel 2 = {spare[31:24], white_b, white_g, white_r}. */
+/* Color AXI GPIO 3 — dual-channel output, drives the color pipeline.
+ *   Channel 1: [31:24]=saturation, [23:16]=black_b, [15:8]=black_g, [7:0]=black_r
+ *   Channel 2: [31:24]=spare,      [23:16]=white_b, [15:8]=white_g, [7:0]=white_r
+ * Saturation factor: 0 = grayscale, 255 ≈ identity (~0.4% error). */
 #if defined(XPAR_AXI_GPIO_3_BASEADDR)
 #  define COLOR_GPIO_BASEADDR XPAR_AXI_GPIO_3_BASEADDR
 #elif defined(XPAR_AXI_GPIO_3_S_AXI_BASEADDR)
@@ -168,20 +169,22 @@ static int vdma_setup_channel(int direction, UINTPTR *frame_addrs)
 #  error "AXI GPIO 3 (color correct) base address not found in xparameters.h"
 #endif
 
-/* Write black/white RGB to color_correct via AXI GPIO 3.
+/* Single combined writer for the full color pipeline state.
+ *   sat:    0=grayscale, 255≈identity (color_saturation Rec.601 mix).
  *   black_*: per-channel offset (RGB code for "black"). 0 = true black.
  *   white_*: per-channel scale ceiling (RGB code for "white"). 255 = full white.
- * Math in HDL: out = ((in * (white-black)) >> 8) + black, range [black, white].
- * Caller MUST keep white_c >= black_c per channel. */
-static inline void color_set(u8 black_r, u8 black_g, u8 black_b,
+ * color_saturation runs first, then color_correct (black/white diagonal). */
+static inline void color_set(u8 sat,
+                             u8 black_r, u8 black_g, u8 black_b,
                              u8 white_r, u8 white_g, u8 white_b)
 {
-    u32 ch1 = ((u32)black_b << 16) | ((u32)black_g << 8) | (u32)black_r;
+    u32 ch1 = ((u32)sat     << 24) | ((u32)black_b << 16) |
+              ((u32)black_g <<  8) | (u32)black_r;
     u32 ch2 = ((u32)white_b << 16) | ((u32)white_g << 8) | (u32)white_r;
     Xil_Out32(COLOR_GPIO_BASEADDR + 0x00, ch1);  /* ch1 data */
     Xil_Out32(COLOR_GPIO_BASEADDR + 0x08, ch2);  /* ch2 data */
-    xil_printf("COLOR: black=(%u,%u,%u) white=(%u,%u,%u)\r\n",
-               black_r, black_g, black_b, white_r, white_g, white_b);
+    xil_printf("COLOR: sat=%u  black=(%u,%u,%u)  white=(%u,%u,%u)\r\n",
+               sat, black_r, black_g, black_b, white_r, white_g, white_b);
 }
 
 /* iter4g: AXI GPIO 2 — dual-channel input, exposes per-frame counter
@@ -977,7 +980,8 @@ int main(void)
      * glance that the color_correct block is active and routed correctly.
      * Identity preset would be color_set(0,0,0, 255,255,255). To dial in
      * NEUTRAL white once you've confirmed routing, change to that. */
-    color_set(16, 16, 16,  200, 230, 255);  /* raised black + cool tint test */
+    /* Demo: 12.5% saturation — colors should be very pastel / near-gray. */
+    color_set(32,  0, 0, 0,    255, 255, 255);
 
     xil_printf("Pipeline live — entering diag loop (1 sec/dump)\r\n\r\n");
 

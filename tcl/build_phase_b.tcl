@@ -56,6 +56,7 @@ add_files -norecurse [file join $project_root hdl scaler_passthrough.v]
 add_files -norecurse [file join $project_root hdl scaler_crop_bypass.v]  ;# iter4h bisection
 add_files -norecurse [file join $project_root hdl scaler_bypass_1080p.v] ;# iter5 1080p passthrough
 add_files -norecurse [file join $project_root hdl color_correct.v]      ;# white-balance / color-temp
+add_files -norecurse [file join $project_root hdl color_saturation.v]   ;# Rec.601 luma-mix saturation
 add_files -norecurse [file join $project_root hdl scaler_top.v]
 add_files -norecurse [file join $project_root hdl scaler_h.v]
 add_files -norecurse [file join $project_root hdl scaler_v.v]
@@ -372,14 +373,16 @@ connect_bd_net [get_bd_pins v_tc_tx/vsync_out]        [get_bd_pins axis_to_vid_i
 connect_bd_net [get_bd_pins v_tc_tx/hblank_out]       [get_bd_pins axis_to_vid_io_0/vtg_hblank]
 connect_bd_net [get_bd_pins v_tc_tx/vblank_out]       [get_bd_pins axis_to_vid_io_0/vtg_vblank]
 # AXIS in from VDMA MM2S → adapter (both on output clock)
-# Color-correct AXIS block inserted between MM2S and axis_to_vid_io. Diagonal
-# RGB matrix correction (per-channel scale + offset) — gives users black/white
-# RGB controls for tint, color temp, black-level lift. See hdl/color_correct.v.
-# Async params come from axi_gpio_3 below (FCLK_CLK0 domain) with internal CDC.
-# Note: aresetn wired further down after rst_pixclk_out cell is created.
-create_bd_cell -type module -reference color_correct color_correct_0
-connect_bd_intf_net [get_bd_intf_pins axi_vdma_0/M_AXIS_MM2S]    [get_bd_intf_pins color_correct_0/s_axis]
+# Color pipeline: MM2S → color_saturation → color_correct → axis_to_vid_io.
+# color_saturation: Rec.601 luma-mix, single sat knob (0=gray..255=identity).
+# color_correct:    per-channel black/white diagonal scale + offset.
+# Both clock on pclk_out; aresetn from rst_pixclk_out wired further down.
+create_bd_cell -type module -reference color_saturation color_saturation_0
+create_bd_cell -type module -reference color_correct    color_correct_0
+connect_bd_intf_net [get_bd_intf_pins axi_vdma_0/M_AXIS_MM2S]    [get_bd_intf_pins color_saturation_0/s_axis]
+connect_bd_intf_net [get_bd_intf_pins color_saturation_0/m_axis] [get_bd_intf_pins color_correct_0/s_axis]
 connect_bd_intf_net [get_bd_intf_pins color_correct_0/m_axis]    [get_bd_intf_pins axis_to_vid_io_0/s_axis]
+connect_bd_net [get_bd_pins clk_wiz_pixclk_out/clk_out1]         [get_bd_pins color_saturation_0/aclk]
 connect_bd_net [get_bd_pins clk_wiz_pixclk_out/clk_out1]         [get_bd_pins color_correct_0/aclk]
 # fsync: VTC's frame-start pulse → VDMA MM2S so MM2S SOF aligns with VTC frame.
 # VTC is free-running on output clock — output frame rate is exactly
@@ -524,6 +527,7 @@ connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins v_tc_rx/s
 # async to it but the IP handles its own internal reset synchronization.
 connect_bd_net [get_bd_pins rst_pixclk_out/peripheral_aresetn] [get_bd_pins v_tc_tx/resetn]
 connect_bd_net [get_bd_pins rst_pixclk_out/peripheral_aresetn] [get_bd_pins color_correct_0/aresetn]
+connect_bd_net [get_bd_pins rst_pixclk_out/peripheral_aresetn] [get_bd_pins color_saturation_0/aresetn]
 # VTC_rx detector also on pclk_in — reset comes from axi (input-side IP)
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]        [get_bd_pins v_tc_rx/resetn]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]        [get_bd_pins v_vid_in_axi4s_0/aresetn]
@@ -744,9 +748,11 @@ set_property -dict [list \
     CONFIG.C_ALL_OUTPUTS_2 {1} \
     CONFIG.C_IS_DUAL       {1} \
     CONFIG.C_INTERRUPT_PRESENT {0} \
-    CONFIG.C_DOUT_DEFAULT   {0x00000000} \
+    CONFIG.C_DOUT_DEFAULT   {0xFF000000} \
     CONFIG.C_DOUT_DEFAULT_2 {0x00FFFFFF} \
 ] [get_bd_cells axi_gpio_3]
+# ch1[31:24] = saturation factor (0..255, 0=grayscale, 255=identity).
+# Boot default ch1=0xFF000000 → sat=0xFF (identity).
 
 # Slice IPs break out the 6 × 8-bit color params from the two 32-bit GPIO chs.
 foreach {name din_from} {slice_color_br 7  slice_color_bg 15  slice_color_bb 23} {
@@ -767,6 +773,12 @@ connect_bd_net [get_bd_pins slice_color_bb/Dout] [get_bd_pins color_correct_0/bl
 connect_bd_net [get_bd_pins slice_color_wr/Dout] [get_bd_pins color_correct_0/white_r_async]
 connect_bd_net [get_bd_pins slice_color_wg/Dout] [get_bd_pins color_correct_0/white_g_async]
 connect_bd_net [get_bd_pins slice_color_wb/Dout] [get_bd_pins color_correct_0/white_b_async]
+
+# Saturation slice: axi_gpio_3 ch1 bits [31:24] → color_saturation_0/sat_async
+create_bd_cell -type ip -vlnv xilinx.com:ip:xlslice slice_color_sat
+set_property -dict [list CONFIG.DIN_WIDTH {32} CONFIG.DIN_FROM {31} CONFIG.DIN_TO {24} CONFIG.DOUT_WIDTH {8}] [get_bd_cells slice_color_sat]
+connect_bd_net [get_bd_pins axi_gpio_3/gpio_io_o] [get_bd_pins slice_color_sat/Din]
+connect_bd_net [get_bd_pins slice_color_sat/Dout] [get_bd_pins color_saturation_0/sat_async]
 
 connect_bd_intf_net [get_bd_intf_pins axi_ic_lite/M06_AXI] [get_bd_intf_pins axi_gpio_3/S_AXI]
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]             [get_bd_pins axi_gpio_3/s_axi_aclk]
