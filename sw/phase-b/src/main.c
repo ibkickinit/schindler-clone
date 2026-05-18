@@ -25,11 +25,12 @@
 #include "xvtc.h"
 #include "xtime_l.h"   /* Phase D iter-4a: SCU timer for precise rate measurement */
 
-// iter5-1080p-clean (2026-05-17): resume 1080p60→1080p24 5:2 FRC on the clean
-// post-bisect substrate (no iter4h additions, no MM2S +STRIDE shift). Build
-// uses SCALER_MODULE=scaler_bypass_1080p (default in TCL). NUM_FRAMES=3 kept.
-#define FRAME_W           1920
-#define FRAME_H           1080
+// iter5-1080p-clean 720p re-validation (2026-05-17 evening): 1080p60 source
+// scaled to 720p60 output (matched rate). Build with SCALER_MODULE=scaler_top
+// env var. Tests row 2 of format-support-matrix on the production substrate
+// (NUM_FRAMES=5, no iter4h additions).
+#define FRAME_W           1280
+#define FRAME_H           720
 /* AXIS data width on the VDMA is 24-bit (RGB888, one pixel-per-clock with no
  * padding). Memory stride must therefore be 3 bytes/pixel, NOT 4 — using 4
  * was the actual reason v_axi4s_vid_out couldn't lock and S2MM was reporting
@@ -815,15 +816,16 @@ int main(void)
      * FRAME_BYTES + STRIDE: the last STRIDE bytes are a GUARD region that's
      * never written by S2MM, pre-filled with black at init. MM2S's tail
      * lands there and outputs a solid-black row instead of stale data. */
-    /* iter5-bisect Option B: drop MM2S +STRIDE shift. MM2S reads rows 0..FRAME_H-1
-     * from slot base (instead of +STRIDE shift to rows 1..FRAME_H). Tests
-     * whether the iter3i +STRIDE shift is still needed — if scaler row 0 is
-     * clean (no leak), we don't need the shift. Slot size unchanged. */
+    /* iter3i MM2S +STRIDE shift RESTORED (2026-05-17 evening): bench at 720p
+     * with scaler_top shows the row-0 leak still exists (one line of previous-
+     * frame bottom visible at top of displayed frame). Earlier bisect (Option B)
+     * tested without scaler_top engaged — bypass module doesn't have the
+     * leak. With scaler_top, the shift is still needed. Pre-iter4h pattern. */
     const UINTPTR GUARD_BYTES = STRIDE;
     const UINTPTR SLOT_BYTES  = FRAME_BYTES + GUARD_BYTES;
     for (i = 0; i < NUM_FRAMES; i++) {
         s2mm_frame_addrs[i] = FRAME_BUF_BASE + (UINTPTR)(i * SLOT_BYTES);
-        mm2s_frame_addrs[i] = s2mm_frame_addrs[i];  /* Option B: no +STRIDE */
+        mm2s_frame_addrs[i] = s2mm_frame_addrs[i] + STRIDE;
         volatile u8 *guard = (volatile u8 *)(s2mm_frame_addrs[i] + FRAME_BYTES);
         for (UINTPTR g = 0; g < GUARD_BYTES; g++) guard[g] = 0;
     }
@@ -901,11 +903,10 @@ int main(void)
      * skip behavior. Source stays 60p (ImagePro RGB), output is 50p, ratio
      * 6:5 means master drops one source frame every 6 to keep ahead of slave.
      * Switch to MODE_720P60 to revert. */
-    /* Option C test (2026-05-17 evening): 1080p60→1080p25 ugly 12:5 FRC.
-     * Expected PHASE deltas pattern: 2,3,2,3,2,2,3,2,3,2,... (5-gap super-
-     * cycle of 12 source frames). Will show visible judder — this is
-     * where Mackin virtual-shutter blend would be needed for "smooth." */
-    if (vtc_setup(&MODE_1080P25) != XST_SUCCESS) return -1;
+    /* 720p re-validation (2026-05-17): 1080p60 source → 720p60 output on
+     * production substrate (NUM_FRAMES=5, post-bisect). Matched rate, no
+     * FRC. Expected PHASE deltas all 1 (every source frame consumed). */
+    if (vtc_setup(&MODE_720P60) != XST_SUCCESS) return -1;
     xil_printf("VTC aligned to source vsync\r\n");
     sleep(1);  /* give VTC time to start pulsing fsync before VDMA reset */
 

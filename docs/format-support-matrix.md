@@ -50,7 +50,7 @@ Primary output path (rgb2dvi). Covers everything we ship today and most of Phase
 | # | Input format | Output format | Status | Method | Scaling | Notes |
 |---|---|---|---|---|---|---|
 | 1 | 1080p60 | 1080p60 | ⚠️ | — | none | Phase A passthrough validated on early substrate. Needs re-test on iter5-1080p-clean substrate (current production base — iter4h additions removed). |
-| 2 | 1080p60 | 720p60 | ⚠️ | — / A | down | iter4d-3 era validated. Re-test on iter5-1080p-clean substrate. |
+| 2 | 1080p60 | 720p60 | ✅ | — | down | **Bench-validated 2026-05-17 evening** on production substrate (`scaler_top` + NUM_FRAMES=5 + iter3i +STRIDE shift restored). PHASE deltas `{1,1,1,...}` confirms matched 1:1. |
 | 3 | 1080p60 | 720p50 | ⚠️ | D (6:5) | down | iter4d-3 FRC validation. Re-test on iter5-1080p-clean substrate. |
 | 4 | 1080p60 | 1080p24 | ✅ | D (5:2) | none | **Bench-validated 2026-05-17 evening** on `iter5-1080p-clean` commit `86dc034`. Clean (no scroll, no tear, no bottom-bars). NUM_FRAMES=5 required to prevent S2MM lapping MM2S mid-read. Scaler bypassed. |
 | 5 | 1080p59.94 | 1080p23.976 | 🟡 | A / B | none | **iter5 stretch.** Tests MMCM tracking under 1000/1001 drift. |
