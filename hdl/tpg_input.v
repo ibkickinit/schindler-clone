@@ -30,8 +30,10 @@
 `timescale 1ns / 1ps
 
 module tpg_input #(
-    parameter integer FRAME_W = 1920,
-    parameter integer FRAME_H = 1080
+    parameter integer FRAME_W  = 1920,   // HACTIVE
+    parameter integer FRAME_H  = 1080,   // VACTIVE
+    parameter integer HTOTAL   = 2200,   // 1080p60 CEA-861 total cols
+    parameter integer VTOTAL   = 1125    // 1080p60 CEA-861 total rows
 ) (
     input  wire        aclk,
     input  wire        aresetn,
@@ -41,6 +43,12 @@ module tpg_input #(
     input  wire        motion_en_async,
     input  wire [7:0]  frame_rate_div_async, // 1=full speed, N=1/N speed
     input  wire [23:0] solid_color_async,    // R-B-G for pattern 1
+
+    // External vsync — when TPG is the active source, the rising edge of this
+    // re-anchors col/row counters to (0,0). Tied to dvi2rgb's vid_pVSync so
+    // TPG frames stay locked to HDMI source frame phase (which is what VTC TX
+    // is aligned to at boot). Same clock domain as aclk (both pclk_in).
+    input  wire        vsync_in,
 
     // AXIS master
     output reg  [23:0] m_axis_tdata,
@@ -73,18 +81,45 @@ module tpg_input #(
     end
 
     // ====================================================================
-    // Pixel + line + frame counters
+    // Pixel + line + frame counters (now span HTOTAL × VTOTAL, not just
+    // active region — gives proper inter-frame blanking so the TPG produces
+    // exactly 60.000 Hz at 148.5 MHz pclk_in matching real 1080p60 source).
     // ====================================================================
-    reg [11:0] col;   // 0..FRAME_W-1
-    reg [11:0] row;   // 0..FRAME_H-1
-    reg [31:0] frame_count_native;   // every output frame
-    reg [31:0] frame_count_logical;  // increments every frate_div native frames
-    reg [7:0]  frame_rate_phase;     // mod-frate counter
+    reg [11:0] col;   // 0..HTOTAL-1
+    reg [11:0] row;   // 0..VTOTAL-1
+    reg [31:0] frame_count_native;
+    reg [31:0] frame_count_logical;
+    reg [7:0]  frame_rate_phase;
 
-    wire end_of_frame = (col == FRAME_W-1) && (row == FRAME_H-1);
-    wire end_of_line  = (col == FRAME_W-1);
+    wire in_active = (col < FRAME_W) && (row < FRAME_H);
+    // End-of-frame is the last cycle of the whole HTOTAL × VTOTAL canvas
+    wire end_of_frame = (col == HTOTAL-1) && (row == VTOTAL-1);
 
-    wire pixel_accept = m_axis_tready;  // tvalid always 1 below
+    // External vsync edge detector. vsync_in originates on dvi2rgb's
+    // PixelClk domain — when our clock is dvi2rgb's, same domain (1 FF
+    // of lag fine). When our clock is clk_wiz_tpg, it's a true CDC; add a
+    // 2-FF synchronizer + edge detect.
+    (* ASYNC_REG = "TRUE" *) reg vsync_q1, vsync_q2, vsync_q3;
+    always @(posedge aclk) begin
+        if (!aresetn) begin
+            vsync_q1 <= 1'b0; vsync_q2 <= 1'b0; vsync_q3 <= 1'b0;
+        end else begin
+            vsync_q1 <= vsync_in;
+            vsync_q2 <= vsync_q1;
+            vsync_q3 <= vsync_q2;
+        end
+    end
+    wire vsync_rising = vsync_q2 && !vsync_q3;
+    // End-of-line marker for AXIS tlast is the last ACTIVE pixel of each
+    // active row (the proper "row boundary" downstream wants to see).
+    wire end_of_active_line = (col == FRAME_W-1) && (row < FRAME_H);
+    // (Legacy alias for downstream conditionals)
+    wire end_of_line = (col == HTOTAL-1);
+
+    // Counters always advance — TPG runs free at pclk_in rate. Downstream
+    // back-pressure: we drop pixels but only during active region. Blanking
+    // never asserts tvalid, so nothing's lost there.
+    wire pixel_accept = 1'b1;
 
     always @(posedge aclk) begin
         if (!aresetn) begin
@@ -93,20 +128,32 @@ module tpg_input #(
             frame_count_native  <= 32'd0;
             frame_count_logical <= 32'd0;
             frame_rate_phase    <= 8'd0;
-        end else if (pixel_accept) begin
-            if (end_of_frame) begin
+        end else begin
+            // External vsync edge forces a clean re-anchor to (0,0).
+            // Takes priority over the natural end-of-frame wrap so the TPG
+            // stays locked to source phase even if its internal counter
+            // is slightly off (clock-skew tolerance).
+            if (vsync_rising) begin
                 col <= 12'd0;
                 row <= 12'd0;
                 frame_count_native <= frame_count_native + 32'd1;
-                // Logical frame tick happens every frate_div native frames.
-                // frame_count_logical is what motion logic uses.
                 if (frame_rate_phase + 1 >= frate_q2) begin
                     frame_rate_phase    <= 8'd0;
                     frame_count_logical <= frame_count_logical + 32'd1;
                 end else begin
                     frame_rate_phase <= frame_rate_phase + 8'd1;
                 end
-            end else if (end_of_line) begin
+            end else if (end_of_frame) begin
+                col <= 12'd0;
+                row <= 12'd0;
+                frame_count_native <= frame_count_native + 32'd1;
+                if (frame_rate_phase + 1 >= frate_q2) begin
+                    frame_rate_phase    <= 8'd0;
+                    frame_count_logical <= frame_count_logical + 32'd1;
+                end else begin
+                    frame_rate_phase <= frame_rate_phase + 8'd1;
+                end
+            end else if (col == HTOTAL-1) begin
                 col <= 12'd0;
                 row <= row + 12'd1;
             end else begin
@@ -263,6 +310,22 @@ module tpg_input #(
     wire counter_pixel_on = in_counter_area && bit_lit && (sub_x != 2'd3);
 
     // ====================================================================
+    // Universal "this is our TPG" identifiers — applied on TOP of all patterns
+    // ====================================================================
+    // (1) Magenta 1-pixel border on all four edges. Real video never has this,
+    //     and capture-stick no-signal fallbacks don't either.
+    wire on_border = (col == 12'd0) || (col == FRAME_W-1) ||
+                     (row == 12'd0) || (row == FRAME_H-1);
+
+    // (2) Live hex frame-counter overlay in upper-left corner (256x48 region).
+    //     Uses the same bit-block rendering as pattern 7. Always visible on
+    //     pattern 0 (bars) so you can immediately tell TPG is live and the
+    //     count is incrementing. Skipped on patterns that already use the
+    //     overlay area (patterns 5/6/7).
+    wire in_counter_overlay = (row < 12'd48) && (col < 12'd256);
+    wire show_counter_overlay = in_counter_overlay && (pattern_sel_q2 == 3'd0);
+
+    // ====================================================================
     // Final pixel mux based on pattern_sel_q2
     // ====================================================================
     reg [7:0] pix_r, pix_g, pix_b;
@@ -306,6 +369,25 @@ module tpg_input #(
     end
 
     // ====================================================================
+    // Apply universal overlays (border + counter on pattern 0)
+    // ====================================================================
+    reg [7:0] final_r, final_g, final_b;
+    always @(*) begin
+        if (on_border) begin
+            // Magenta 1-pixel border
+            final_r = 8'd255; final_g = 8'd0; final_b = 8'd255;
+        end else if (show_counter_overlay && counter_pixel_on) begin
+            // Yellow lit-bit cells of the hex counter
+            final_r = 8'd255; final_g = 8'd255; final_b = 8'd0;
+        end else if (show_counter_overlay && in_counter_overlay) begin
+            // Dark blue background of the counter area to make it stand out
+            final_r = 8'd0; final_g = 8'd0; final_b = 8'd80;
+        end else begin
+            final_r = pix_r; final_g = pix_g; final_b = pix_b;
+        end
+    end
+
+    // ====================================================================
     // AXIS output register
     // ====================================================================
     always @(posedge aclk) begin
@@ -315,11 +397,15 @@ module tpg_input #(
             m_axis_tlast  <= 1'b0;
             m_axis_tuser  <= 1'b0;
         end else begin
-            // Always valid (free-running); downstream tready throttles
-            m_axis_tvalid <= 1'b1;
+            // tvalid only during the active 1920×1080 region. Blanking
+            // cycles (col >= 1920 or row >= 1080) have tvalid=0 — these
+            // are the inter-frame gap the downstream pipeline relies on.
+            m_axis_tvalid <= in_active;
             // R-B-G byte order to match Schindler pipeline convention
-            m_axis_tdata  <= {pix_r, pix_b, pix_g};
-            m_axis_tlast  <= end_of_line;
+            m_axis_tdata  <= {final_r, final_b, final_g};
+            // tlast: last active pixel of each active row (col=FRAME_W-1)
+            m_axis_tlast  <= end_of_active_line;
+            // tuser: first pixel of each frame (active row 0, col 0)
             m_axis_tuser  <= (col == 12'd0) && (row == 12'd0);
         end
     end

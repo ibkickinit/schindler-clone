@@ -62,6 +62,9 @@ add_files -norecurse [file join $project_root hdl axis_clone.v]         ;# Macki
 add_files -norecurse [file join $project_root hdl mackin_blender.v]     ;# Mackin: per-pixel temporal lerp
 add_files -norecurse [file join $project_root hdl tpg_input.v]          ;# Built-in test pattern generator
 add_files -norecurse [file join $project_root hdl axis_mux_2to1.v]      ;# AXIS source mux (HDMI vs TPG)
+# clk_mux.v was an earlier attempt at BUFGMUX-based pclk_in switching; replaced
+# by v_vid_in_axi4s async-clock mode + always-on clk_wiz_tpg. Kept on disk for
+# reference but not added to project sources.
 add_files -norecurse [file join $project_root hdl scaler_top.v]
 add_files -norecurse [file join $project_root hdl scaler_h.v]
 add_files -norecurse [file join $project_root hdl scaler_v.v]
@@ -152,6 +155,10 @@ set_property -dict [list \
     CONFIG.USE_LOCKED {true} \
     CONFIG.USE_RESET {true} \
 ] [get_bd_cells clk_wiz_pixclk_out]
+# Reverted CLKOUT2 (was 148.5 MHz for input-side independence from HDMI) —
+# pursuing simpler path: pclk_in stays on dvi2rgb's recovered PixelClk. TPG
+# works only when HDMI source is plugged in (provides clock). Standalone-TPG
+# is a follow-up requiring axis_clock_converter.
 # clk_in1 ← dvi2rgb_0/PixelClk is wired AFTER dvi2rgb_0 is created
 # (search for "GENLOCK_WIRE" below).
 # clk_wiz exposes 'reset' (active-high) when USE_RESET=true. Derive from
@@ -232,6 +239,11 @@ connect_bd_net [get_bd_ports btn_rst]             [get_bd_pins dvi2rgb_0/aRst]
 # so downstream clk_wiz_pixclk_out's clk_in1 FREQ_HZ check passes.
 set_property CONFIG.FREQ_HZ 148500000 [get_bd_pins dvi2rgb_0/PixelClk]
 
+# =============================================================================
+# Input-side 148.5 MHz now comes from dvi2rgb_0/PixelClk (above),
+# not a separate clk_wiz — Z7-20 has only 4 MMCMs and we were over budget.
+# =============================================================================
+
 # GENLOCK_WIRE — Phase D iter-4c: clk_wiz_pixclk_out's input is PS FCLK_CLK0
 # (100 MHz, stable PS-derived), NOT dvi2rgb's recovered HDMI PixelClk. Output
 # now free-runs at ~74.25 MHz independent of source. Scaffolding for FRC.
@@ -242,7 +254,15 @@ connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0] [get_bd_pins clk_wiz_pixclk_out/c
 # Video In to AXI4-Stream — parallel video → AXIS
 # =============================================================================
 create_bd_cell -type ip -vlnv xilinx.com:ip:v_vid_in_axi4s v_vid_in_axi4s_0
+# Async clock mode: video-side clock (dvi2rgb PixelClk) is separate from the
+# AXIS-side clock (clk_wiz_tpg). Internal FIFO handles CDC. Lets the pipeline
+# run on a stable synthesized 148.5 MHz independent of HDMI source presence.
 set_property -dict [list CONFIG.C_HAS_ASYNC_CLK {0}] [get_bd_cells v_vid_in_axi4s_0]
+# Sync mode (aclk drives both video-input and AXIS-output sides). With pclk_in
+# from dvi2rgb_0/PixelClk the HDMI source path can't capture dvi2rgb
+# data correctly (different clock domain). That's intentional for now —
+# focus is TPG working as the always-available source. HDMI input can be
+# re-enabled later via axis_clock_converter.
 # Connect dvi2rgb → v_vid_in_axi4s signals individually. The connect_bd_intf_net
 # version (dvi2rgb_0/RGB ↔ v_vid_in_axi4s_0/vid_io_in) only auto-wires vid_data;
 # dvi2rgb's RGB interface bundle doesn't include the sync signals, so the
@@ -346,6 +366,10 @@ connect_bd_intf_net [get_bd_intf_pins tpg_input_0/m_axis]         [get_bd_intf_p
 connect_bd_intf_net [get_bd_intf_pins axis_src_mux_0/m]           [get_bd_intf_pins scaler_0/s_axis]
 connect_bd_net [get_bd_pins dvi2rgb_0/PixelClk] [get_bd_pins tpg_input_0/aclk]
 connect_bd_net [get_bd_pins dvi2rgb_0/PixelClk] [get_bd_pins axis_src_mux_0/aclk]
+# Lock TPG frame start to HDMI source vsync — both are on the muxed pclk_in
+# (148.5 MHz). When src=HDMI, vsync_in is real and pulls TPG in phase. When
+# src=TPG, dvi2rgb's vid_pVSync stays low (no HDMI lock), TPG free-runs.
+connect_bd_net [get_bd_pins dvi2rgb_0/vid_pVSync] [get_bd_pins tpg_input_0/vsync_in]
 
 # iter5-bisect-iter4d3: bypass AXIS FIFO — connect scaler directly to S2MM
 # as in iter4d-3 (which shipped visually clean). FIFO is one of three iter4h
@@ -1076,7 +1100,7 @@ set_property -dict [list \
     CONFIG.C_ADV_TRIGGER        {true} \
 ] [get_bd_cells ila_scaler_out]
 connect_bd_intf_net [get_bd_intf_pins scaler_0/m_axis] [get_bd_intf_pins ila_scaler_out/SLOT_0_AXIS]
-connect_bd_net [get_bd_pins dvi2rgb_0/PixelClk] [get_bd_pins ila_scaler_out/clk]
+connect_bd_net $pclk_in [get_bd_pins ila_scaler_out/clk]
 connect_bd_net [get_bd_pins rst_pixclk_out/peripheral_aresetn] [get_bd_pins ila_scaler_out/resetn]
 
 # System ILA on the MM2S output AXIS (pclk_out domain, 74.25 MHz).

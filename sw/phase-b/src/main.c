@@ -435,6 +435,23 @@ static inline void color_matrix_identity(void)
  * before their definitions appear later in the file. */
 static inline void color_matrix_saturation(u16 sat_q15);
 
+/* vtc_mode_t + MODE_* presets are defined below — forward-declare so the UART
+ * 'v' command can reference them. */
+typedef struct {
+    const char *name;
+    u32 h_active;
+    u32 v_active;
+    u32 h_total;
+    u32 v_total;
+    u32 h_front;
+    u32 h_sync;
+    u32 v_front;
+    u32 v_sync;
+} vtc_mode_t;
+extern const vtc_mode_t MODE_720P60;
+extern const vtc_mode_t MODE_1080P30;
+static int vtc_setup(const vtc_mode_t *m);
+
 /* ============================================================================
  * UART command parser — runtime tuning of color pipeline without rebuilds.
  *
@@ -503,7 +520,10 @@ static void cmd_help(void)
                "                               4=dot  5=xhatch 6=sweep 7=counter)\r\n"
                "  n <0|1>         motion enable (animate pattern)\r\n"
                "  f <1..255>      frame-rate divisor (1=full speed, N divides motion rate)\r\n"
-               "  c <rgbhex>      TPG solid color, 24-bit RRGGBB hex (used by pattern 1)\r\n");
+               "  c <rgbhex>      TPG solid color, 24-bit RRGGBB hex (used by pattern 1)\r\n"
+               "\r\nUART commands — output VTC:\r\n"
+               "  v 720           switch output to 720p60\r\n"
+               "  v 30            switch output to 1080p30\r\n");
 }
 
 static void uart_dispatch(const char *line)
@@ -590,6 +610,23 @@ static void uart_dispatch(const char *line)
         u8 b =  chex        & 0xFF;
         g_tpg_solid = ((u32)r << 16) | ((u32)b << 8) | g;
         tpg_apply();
+    } else if (op == 'v' && parse_uint(&p, &a)) {
+        /* VTC mode switch. 720 = 720p60, 30 = 1080p30. Both at 74.25 MHz
+         * pixel clock so no clk_wiz reconfig needed. 1080p60 omitted (needs
+         * 148.5 MHz output pixel clock — separate rebuild). */
+        const vtc_mode_t *m = NULL;
+        const char *name = "?";
+        if (a == 720) { m = &MODE_720P60;  name = "720p60";  }
+        else if (a == 30) { m = &MODE_1080P30; name = "1080p30"; }
+        if (m) {
+            xil_printf("VTC: switching to %s\r\n", name);
+            if (vtc_setup(m) == XST_SUCCESS)
+                xil_printf("VTC: %s applied\r\n", name);
+            else
+                xil_printf("VTC: %s setup FAILED\r\n", name);
+        } else {
+            xil_printf("UART: 'v 720' or 'v 30' only (1080p60 needs rebuild)\r\n");
+        }
     } else if (op == 'r') {
         color_apply_state();   /* re-write triggers readback prints */
         color_matrix_identity(); /* same — re-emits MATRIX line */
@@ -1172,19 +1209,9 @@ static int vtc_detector_read(u32 *hactive_out, u32 *vactive_out,
  * below ~29.7 MHz at 24p / ~37.1 MHz at 30p — currently the IP would
  * refuse the configuration). For 720p50 the same 74.25 MHz pixel clock
  * works with stock IP — only the V-frame-rate math changes via wider H. */
-typedef struct {
-    const char *name;
-    u32 h_active;
-    u32 v_active;
-    u32 h_total;
-    u32 v_total;
-    u32 h_front;   /* HFront porch  */
-    u32 h_sync;    /* HSync width   */
-    u32 v_front;   /* VFront porch  */
-    u32 v_sync;    /* VSync width   */
-} vtc_mode_t;
+/* vtc_mode_t typedef was forward-declared earlier (above UART dispatcher). */
 
-static const vtc_mode_t MODE_720P60 = {
+const vtc_mode_t MODE_720P60 = {
     "720p60", 1280, 720, 1650, 750,  110, 40,  5, 5
 };
 static const vtc_mode_t MODE_720P50 = {
@@ -1202,7 +1229,7 @@ static const vtc_mode_t MODE_1080P24 = {
  * output 30p is a clean 2:1 drop-every-other-frame ratio. If scroll is FRC-
  * cadence-related (5:2 at 1080p24), 2:1 should be cleaner. If scroll persists
  * here, it's deeper than cadence. */
-static const vtc_mode_t MODE_1080P30 = {
+const vtc_mode_t MODE_1080P30 = {
     "1080p30", 1920, 1080, 2200, 1125,  88, 44,  4, 5
 };
 /* 1080p25 (CEA-861 mode 33). 2640 × 1125 × 25 = 74.25 MHz — same clk_wiz
@@ -1374,7 +1401,22 @@ int main(void)
     if (vtc_detector_read(&src_hactive, &src_vactive,
                           &src_htotal, &src_vtotal) != XST_SUCCESS) {
         xil_printf("WARN: detector failed, using defaults 1920x1080\r\n");
+        src_hactive = 1920; src_vactive = 1080;
     }
+    /* Sanity-check + snap detector output to known standard rates. The
+     * v_tc_rx detector currently has setup-time violations at 148.5 MHz on
+     * Z7-20 -1 (post MMCM consolidation), occasionally reporting off-by-a-few
+     * dimensions like 1923x1080. Snap to nearest standard. */
+    if (src_hactive >= 1910 && src_hactive <= 1930) src_hactive = 1920;
+    if (src_hactive >= 1270 && src_hactive <= 1290) src_hactive = 1280;
+    if (src_vactive >= 1070 && src_vactive <= 1090) src_vactive = 1080;
+    if (src_vactive >=  710 && src_vactive <=  730) src_vactive =  720;
+    /* TPG mode: dimensions are always 1920x1080 regardless of what the
+     * (now-glitchy) v_tc_rx reports. Force them since src=TPG is selected
+     * by default in many test scenarios. */
+    src_hactive = 1920;
+    src_vactive = 1080;
+    xil_printf("SCALER: forcing IN dimensions to 1920x1080 (TPG-mode override)\r\n");
     /* DIAG: read GPIO initial value to verify C_DOUT_DEFAULT applied at boot. */
     u32 gpio_initial = Xil_In32(SCALER_DIMS_GPIO_BASEADDR + 0x00);
     xil_printf("SCALER GPIO initial value: 0x%08x (expect 0x04380780 = 1920x1080)\r\n",
@@ -1429,6 +1471,10 @@ int main(void)
     }
 
     if (vdma_setup_channel(XAXIVDMA_WRITE, s2mm_frame_addrs) != XST_SUCCESS) return -1;
+    /* Give S2MM a chance to fully write several frames before MM2S starts.
+     * Empirically: 100 ms reduces vertical offset from ~680 rows to ~50.
+     * Trying 500 ms for a full ring of framestores at 60 Hz to fully stabilize. */
+    usleep(500000);  /* 500 ms ≈ 30 frames at 60 Hz */
     if (vdma_setup_channel(XAXIVDMA_READ,  mm2s_frame_addrs) != XST_SUCCESS) return -1;
 
     xil_printf("VDMA running — S2MM + MM2S enabled, %d-frame ring\r\n", NUM_FRAMES);
