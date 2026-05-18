@@ -234,7 +234,7 @@ create_bd_cell -type ip -vlnv xilinx.com:ip:axi_vdma axi_vdma_0
 set_property -dict [list \
     CONFIG.c_include_s2mm {1} \
     CONFIG.c_include_mm2s {1} \
-    CONFIG.c_num_fstores {5} \
+    CONFIG.c_num_fstores {3} \
     CONFIG.c_m_axi_s2mm_data_width {64} \
     CONFIG.c_m_axi_mm2s_data_width {64} \
     CONFIG.c_s_axis_s2mm_tdata_width {24} \
@@ -246,7 +246,7 @@ set_property -dict [list \
     CONFIG.c_include_internal_genlock {1} \
     CONFIG.c_mm2s_genlock_repeat_en {1} \
     CONFIG.c_use_mm2s_fsync {1} \
-    CONFIG.c_flush_on_fsync {1} \
+    CONFIG.c_flush_on_fsync {0} \
 ] [get_bd_cells axi_vdma_0]
 # iter4h Path 2 result (2026-05-17): VSIZE over-allocate in firmware
 # (VSIZE=747 instead of 720) eliminates the bottom-bars artifact without
@@ -304,26 +304,10 @@ puts "BUILD: using SCALER_MODULE=$SCALER_MODULE"
 create_bd_cell -type module -reference $SCALER_MODULE scaler_0
 connect_bd_intf_net [get_bd_intf_pins v_vid_in_axi4s_0/video_out] [get_bd_intf_pins scaler_0/s_axis]
 
-# iter4h: AXIS FIFO between scaler m_axis and VDMA S2MM. Absorbs end-of-frame
-# back-pressure (Dynamic Genlock master pointer handover + DDR3 arbitration
-# with MM2S) so scaler_v's emit pipeline never stalls into the next frame's
-# input. Without it, frame N+1's row 0 overwrites lbuf cells the stalled
-# emit's stage 0 then reads, producing top-of-bars content in slot rows
-# 692..718. Same clock domain (pclk_in) both sides — sync mode. 1024 deep
-# = 0.8 rows. Tried 4096 (3.2 rows) — caused SOFEarly errors and broke
-# Dynamic Genlock (WRSTORE stuck at 0). Deeper FIFO desynchronized TUSER
-# from S2MM's internal frame counter. Reverted to 1024.
-# See memory: schindler-scaler-architecture-findings.
-create_bd_cell -type ip -vlnv xilinx.com:ip:axis_data_fifo axis_fifo_s2mm
-set_property -dict [list \
-    CONFIG.TDATA_NUM_BYTES {3} \
-    CONFIG.HAS_TLAST       {1} \
-    CONFIG.TUSER_WIDTH     {1} \
-    CONFIG.FIFO_DEPTH      {1024} \
-    CONFIG.IS_ACLK_ASYNC   {0} \
-] [get_bd_cells axis_fifo_s2mm]
-connect_bd_intf_net [get_bd_intf_pins scaler_0/m_axis]       [get_bd_intf_pins axis_fifo_s2mm/S_AXIS]
-connect_bd_intf_net [get_bd_intf_pins axis_fifo_s2mm/M_AXIS] [get_bd_intf_pins axi_vdma_0/S_AXIS_S2MM]
+# iter5-bisect-iter4d3: bypass AXIS FIFO — connect scaler directly to S2MM
+# as in iter4d-3 (which shipped visually clean). FIFO is one of three iter4h
+# additions being bisected to isolate the scroll cause.
+connect_bd_intf_net [get_bd_intf_pins scaler_0/m_axis] [get_bd_intf_pins axi_vdma_0/S_AXIS_S2MM]
 
 # =============================================================================
 # Video Timing Controller — generates output sync timing
@@ -450,7 +434,7 @@ set pclk_out [get_bd_pins clk_wiz_pixclk_out/clk_out1]
 connect_bd_net $pclk_in  [get_bd_pins v_vid_in_axi4s_0/aclk]
 connect_bd_net $pclk_in  [get_bd_pins axi_vdma_0/s_axis_s2mm_aclk]
 connect_bd_net $pclk_in  [get_bd_pins scaler_0/aclk]
-connect_bd_net $pclk_in  [get_bd_pins axis_fifo_s2mm/s_axis_aclk]  ;# iter4h
+# iter5-bisect-iter4d3: AXIS FIFO removed — clock wire not needed
 connect_bd_net $pclk_in  [get_bd_pins v_tc_rx/clk]  ;# iter4e: detector on pclk_in
 # Output side
 connect_bd_net $pclk_out [get_bd_pins axi_vdma_0/m_axis_mm2s_aclk]
@@ -532,7 +516,7 @@ connect_bd_net [get_bd_pins rst_pixclk_out/peripheral_aresetn] [get_bd_pins v_tc
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]        [get_bd_pins v_tc_rx/resetn]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]        [get_bd_pins v_vid_in_axi4s_0/aresetn]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]        [get_bd_pins scaler_0/aresetn]
-connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]        [get_bd_pins axis_fifo_s2mm/s_axis_aresetn]  ;# iter4h
+# iter5-bisect-iter4d3: AXIS FIFO removed — reset wire not needed
 
 # =============================================================================
 # Memory path: VDMA M_AXI ports → SmartConnect → PS S_AXI_HP0

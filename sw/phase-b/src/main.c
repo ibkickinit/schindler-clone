@@ -25,13 +25,13 @@
 #include "xvtc.h"
 #include "xtime_l.h"   /* Phase D iter-4a: SCU timer for precise rate measurement */
 
-// iter5 (2026-05-17): pivot to 1080p frames + 60→24 FRC validation. Scaler is
-// bypassed (SCALER_MODULE=scaler_bypass_1080p in BD). DDR3 holds 1920×1080
-// RGB888 frames. Output is 1080p24 at 74.25 MHz — same clk_wiz output clock as
-// the prior 720p60 mode, just different VTC TX timings (MODE_1080P24 below).
-// 5:2 FRC handled by Dynamic Genlock drop/repeat.
-#define FRAME_W           1920
-#define FRAME_H           1080
+// iter5-bisect-720p (2026-05-17): revert to 720p frame size + scaler_top to
+// isolate whether the smooth-vertical-scroll bug is 1080p-specific OR something
+// in our iter5 substrate (5 framestores, AXIS FIFO, c_flush_on_fsync=1).
+// Build with SCALER_MODULE=scaler_top in env; everything else iter5 stays.
+// MODE_720P60 (matched-rate) used below so no FRC variable in play.
+#define FRAME_W           1280
+#define FRAME_H           720
 /* AXIS data width on the VDMA is 24-bit (RGB888, one pixel-per-clock with no
  * padding). Memory stride must therefore be 3 bytes/pixel, NOT 4 — using 4
  * was the actual reason v_axi4s_vid_out couldn't lock and S2MM was reporting
@@ -39,11 +39,10 @@
 #define BYTES_PP          3
 #define STRIDE            (FRAME_W * BYTES_PP)
 #define FRAME_BYTES       (STRIDE * FRAME_H)
-/* iter5: NUM_FRAMES 3 → 5 for drift headroom. Per [[xilinx-vdma-drift-limits]],
- * FrameDelay=1 + 3 framestores is brittle under sustained drift; 5 buys ~3×
- * margin. At 1080p RGB the slot ring is ~32 MB total, well within 1 GB DDR3.
- * BD config c_num_fstores must match (set in tcl/build_phase_b.tcl). */
-#define NUM_FRAMES        5
+/* iter5-bisect-720p: NUM_FRAMES 5 → 3 to isolate scroll cause. Bisect shows
+ * 5 framestores is the only iter5 substrate change vs. clean iter4h; revert
+ * to 3 to confirm. BD config c_num_fstores must also match (3 in TCL). */
+#define NUM_FRAMES        3
 #define FRAME_BUF_BASE    0x10000000U
 
 static XAxiVdma vdma;
@@ -54,15 +53,11 @@ static int vdma_setup_channel(int direction, UINTPTR *frame_addrs)
     XAxiVdma_DmaSetup cfg;
     int status;
 
-    /* iter4h Path 2 (2026-05-16): S2MM VSIZE over-allocate workaround.
-     * S2MM consistently writes frame N+1's first ~26 rows into slot K's
-     * last 26 rows (rows 694-719) regardless of FrameDelay or fsync wiring.
-     * By bumping S2MM VSIZE to 720+27=747, we let S2MM keep writing those
-     * 27 extra rows but they land in slot rows 720-746, outside the
-     * MM2S read range (still VSIZE=720, reads rows 1-720 with iter3j shift).
-     * Pure workaround — bug is still present in DDR3 but invisible at output.
-     * MM2S keeps FRAME_H=720; only S2MM gets the bigger value. */
-    cfg.VertSizeInput     = (direction == XAXIVDMA_WRITE) ? (FRAME_H + 27) : FRAME_H;
+    /* iter5-bisect FINAL (2026-05-17 evening): both channels VSIZE = FRAME_H.
+     * Pure iter4d-3 substrate. Production-clean visually at matched rate
+     * with laptop source. Bottom-bars artifact (if it reappears with other
+     * sources) will need a non-over-allocate fix. */
+    cfg.VertSizeInput     = FRAME_H;
     cfg.HoriSizeInput     = STRIDE;
     cfg.Stride            = STRIDE;
     /* Phase D iter-4d-3: MM2S as genlock slave with FrameDelay=1 — slave
@@ -784,24 +779,17 @@ int main(void)
      * FRAME_BYTES + STRIDE: the last STRIDE bytes are a GUARD region that's
      * never written by S2MM, pre-filled with black at init. MM2S's tail
      * lands there and outputs a solid-black row instead of stale data. */
-    /* iter4h Path 2: extend per-slot allocation to 720+27 active rows + 1
-     * guard row. S2MM writes VSIZE=747 rows (active + spillover for the
-     * known 26-row leak); MM2S reads only 720 rows starting at +STRIDE.
-     * Leak lands in rows 720-746, outside MM2S range. */
-    const UINTPTR S2MM_VSIZE_ROWS = (UINTPTR)(FRAME_H + 27);  /* 747 */
-    const UINTPTR S2MM_DATA_BYTES = S2MM_VSIZE_ROWS * STRIDE;
+    /* iter5-bisect Option B: drop MM2S +STRIDE shift. MM2S reads rows 0..FRAME_H-1
+     * from slot base (instead of +STRIDE shift to rows 1..FRAME_H). Tests
+     * whether the iter3i +STRIDE shift is still needed — if scaler row 0 is
+     * clean (no leak), we don't need the shift. Slot size unchanged. */
     const UINTPTR GUARD_BYTES = STRIDE;
-    const UINTPTR SLOT_BYTES  = S2MM_DATA_BYTES + GUARD_BYTES;
+    const UINTPTR SLOT_BYTES  = FRAME_BYTES + GUARD_BYTES;
     for (i = 0; i < NUM_FRAMES; i++) {
         s2mm_frame_addrs[i] = FRAME_BUF_BASE + (UINTPTR)(i * SLOT_BYTES);
-        mm2s_frame_addrs[i] = s2mm_frame_addrs[i] + STRIDE;
-        /* Pre-fill guard (last STRIDE bytes of slot) with 0 so MM2S's tail
-         * row reads as solid black. Also zero the spillover region (rows
-         * 720..746) so if S2MM doesn't actually write past 720, we see
-         * black rather than stale data when reading from DDR3 for diag. */
-        volatile u8 *zero_region = (volatile u8 *)(s2mm_frame_addrs[i] + FRAME_BYTES);
-        const UINTPTR zero_bytes = (S2MM_DATA_BYTES - FRAME_BYTES) + GUARD_BYTES;
-        for (UINTPTR g = 0; g < zero_bytes; g++) zero_region[g] = 0;
+        mm2s_frame_addrs[i] = s2mm_frame_addrs[i];  /* Option B: no +STRIDE */
+        volatile u8 *guard = (volatile u8 *)(s2mm_frame_addrs[i] + FRAME_BYTES);
+        for (UINTPTR g = 0; g < GUARD_BYTES; g++) guard[g] = 0;
     }
     UINTPTR *frame_addrs = s2mm_frame_addrs;  /* legacy alias for the diag loop */
     xil_printf("Frame buffers: 0x%08lx, 0x%08lx, 0x%08lx (each %d bytes)\r\n",
@@ -877,10 +865,12 @@ int main(void)
      * skip behavior. Source stays 60p (ImagePro RGB), output is 50p, ratio
      * 6:5 means master drops one source frame every 6 to keep ahead of slave.
      * Switch to MODE_720P60 to revert. */
-    /* iter5 step 1 debug: 1080p30 bisect. 2:1 ratio (clean integer drop-every-
-     * other) vs. 5:2 (1080p24). If scroll vanishes here, FRC cadence at 5:2 is
-     * involved; if persists, deeper issue. Swap back to MODE_1080P24 after. */
-    if (vtc_setup(&MODE_1080P30) != XST_SUCCESS) return -1;
+    /* iter5-bisect-720p: matched-rate 720p60→720p60 with iter5 substrate kept
+     * (5 framestores, AXIS FIFO, flush_on_fsync=1, iter4h over-allocate). If
+     * scroll vanishes here, the bug is specifically the 1080p change. If
+     * scroll persists at 720p60 matched rate, one of our iter5 substrate
+     * changes is the culprit (most likely candidate: 5 framestores). */
+    if (vtc_setup(&MODE_720P60) != XST_SUCCESS) return -1;
     xil_printf("VTC aligned to source vsync\r\n");
     sleep(1);  /* give VTC time to start pulsing fsync before VDMA reset */
 
