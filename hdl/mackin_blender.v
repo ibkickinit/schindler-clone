@@ -75,16 +75,26 @@ module mackin_blender (
     end
 
     // ========================================================================
-    // Both-valid handshake — accept pixel pair only when both streams valid.
-    // Downstream stall propagates back to both inputs.
+    // AXIS handshake — tready depends ONLY on internal pipeline state, NEVER
+    // on tvalid inputs. (Earlier version had tready=pair_valid && stage1_adv
+    // which combinationally couples tready to tvalid. With axis_clone fanout
+    // upstream that creates a closed comb loop: MM2S_tready = f(MM2S_tvalid).
+    // Vivado synthesizes it but the resolved logic deadlocks intermittently.
+    // Per AXIS spec: TREADY may be high while TVALID is low.)
+    //
+    // Capture (always-block below) only fires when BOTH tvalids high. With
+    // axis_clone upstream (both inputs from same source), tvalids are always
+    // equal — no risk of "accepted but not captured" pixel loss. For future
+    // dual-VDMA wiring where the two streams may de-synchronize transiently,
+    // skid buffers per input will be required (deferred until that iter).
     // ========================================================================
     wire pair_valid = s_curr_tvalid && s_prev_tvalid;
     wire stage1_advance;
     wire stage2_advance;
     wire stage3_advance;
 
-    assign s_curr_tready = pair_valid && stage1_advance;
-    assign s_prev_tready = pair_valid && stage1_advance;
+    assign s_curr_tready = stage1_advance;
+    assign s_prev_tready = stage1_advance;
 
     // ========================================================================
     // Channel unpacking (R-B-G byte order, but math is per-byte and order-blind)
