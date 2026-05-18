@@ -1222,10 +1222,10 @@ int main(void)
     /* color_correct / color_saturation: identity baseline. */
     color_set(color_sat_from_percent(100),  0, 0, 0,    255, 255, 255);
 
-    /* color_matrix test: grayscale via sat=0 matrix. All 3 rows = Rec.601
-     * luma weights so out_r=out_g=out_b=luma. Image should go full B&W.
-     * This is the unambiguous "matrix is doing its job" test. */
-    color_matrix_saturation(0);
+    /* color_matrix boot default: identity (full color pass-through).
+     * Send 'g' over UART for Rec.601 grayscale, 'm 0' for matrix-based
+     * grayscale, 'm 150' for vivid, etc. */
+    color_matrix_identity();
 
     xil_printf("Pipeline live — entering diag loop (1 sec/dump)\r\n\r\n");
 
