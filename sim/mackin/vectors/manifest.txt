@@ -1,0 +1,8 @@
+0x0000 alpha_0000.txt 420
+0x0001 alpha_0001.txt 420
+0x1000 alpha_1000.txt 420
+0x2000 alpha_2000.txt 420
+0x4000 alpha_4000.txt 420
+0x6000 alpha_6000.txt 420
+0x7fff alpha_7fff.txt 420
+0x8000 alpha_8000.txt 420
