@@ -60,6 +60,8 @@ add_files -norecurse [file join $project_root hdl color_saturation.v]   ;# Rec.6
 add_files -norecurse [file join $project_root hdl color_matrix.v]       ;# general 3x3 color matrix
 add_files -norecurse [file join $project_root hdl axis_clone.v]         ;# Mackin: AXIS fan-out (placeholder dual-stream)
 add_files -norecurse [file join $project_root hdl mackin_blender.v]     ;# Mackin: per-pixel temporal lerp
+add_files -norecurse [file join $project_root hdl tpg_input.v]          ;# Built-in test pattern generator
+add_files -norecurse [file join $project_root hdl axis_mux_2to1.v]      ;# AXIS source mux (HDMI vs TPG)
 add_files -norecurse [file join $project_root hdl scaler_top.v]
 add_files -norecurse [file join $project_root hdl scaler_h.v]
 add_files -norecurse [file join $project_root hdl scaler_v.v]
@@ -329,7 +331,21 @@ if {[info exists ::env(SCALER_MODULE)]} { set SCALER_MODULE $::env(SCALER_MODULE
 if {![info exists SCALER_MODULE]} { set SCALER_MODULE scaler_bypass_1080p }
 puts "BUILD: using SCALER_MODULE=$SCALER_MODULE"
 create_bd_cell -type module -reference $SCALER_MODULE scaler_0
-connect_bd_intf_net [get_bd_intf_pins v_vid_in_axi4s_0/video_out] [get_bd_intf_pins scaler_0/s_axis]
+
+# =============================================================================
+# TPG (test pattern generator) + AXIS source mux
+# =============================================================================
+# Built-in ImagePro: tpg_input_0 generates 1920x1080 synthetic video. Runtime
+# mux selects between HDMI source (via v_vid_in_axi4s_0/video_out) and TPG.
+# When source_sel=1, downstream sees TPG-generated patterns; no HDMI needed.
+# Both sources clock at the same 148.5 MHz pclk_in domain.
+create_bd_cell -type module -reference tpg_input     tpg_input_0
+create_bd_cell -type module -reference axis_mux_2to1 axis_src_mux_0
+connect_bd_intf_net [get_bd_intf_pins v_vid_in_axi4s_0/video_out] [get_bd_intf_pins axis_src_mux_0/s0]
+connect_bd_intf_net [get_bd_intf_pins tpg_input_0/m_axis]         [get_bd_intf_pins axis_src_mux_0/s1]
+connect_bd_intf_net [get_bd_intf_pins axis_src_mux_0/m]           [get_bd_intf_pins scaler_0/s_axis]
+connect_bd_net [get_bd_pins dvi2rgb_0/PixelClk] [get_bd_pins tpg_input_0/aclk]
+connect_bd_net [get_bd_pins dvi2rgb_0/PixelClk] [get_bd_pins axis_src_mux_0/aclk]
 
 # iter5-bisect-iter4d3: bypass AXIS FIFO — connect scaler directly to S2MM
 # as in iter4d-3 (which shipped visually clean). FIFO is one of three iter4h
@@ -532,7 +548,7 @@ connect_bd_net [get_bd_pins rst_pixclk_out/peripheral_reset] [get_bd_pins rgb2dv
 # AXI-Lite control path: PS GP0 → 1×2 Interconnect → VDMA, VTC
 # =============================================================================
 create_bd_cell -type ip -vlnv xilinx.com:ip:axi_interconnect axi_ic_lite
-# 12 master ports (post-reconcile mackin + phase-g):
+# 13 master ports (post-reconcile mackin + phase-g + TPG):
 #   M00 = VDMA, M01 = VTC tx (generator), M02 = GPIO 0 (status inputs)
 #   M03 = VTC rx (detector), M04 = GPIO 1 (scaler dim outputs)
 #   M05 = GPIO 2 (iter4g diagnostic counters)
@@ -542,7 +558,8 @@ create_bd_cell -type ip -vlnv xilinx.com:ip:axi_interconnect axi_ic_lite
 #   M09 = axi_gpio_6 (matrix m22 + offsets)
 #   M10 = axi_gpio_7 (mackin alpha)
 #   M11 = axi_iic_adv7393 (Phase G: ADV7393 chip config via Pmod JD7/JD8)
-set_property -dict [list CONFIG.NUM_SI {1} CONFIG.NUM_MI {12}] [get_bd_cells axi_ic_lite]
+#   M12 = axi_gpio_8 (TPG: pattern + motion + rate + solid color + src mux)
+set_property -dict [list CONFIG.NUM_SI {1} CONFIG.NUM_MI {13}] [get_bd_cells axi_ic_lite]
 connect_bd_intf_net [get_bd_intf_pins zynq_ps/M_AXI_GP0]     [get_bd_intf_pins axi_ic_lite/S00_AXI]
 connect_bd_intf_net [get_bd_intf_pins axi_ic_lite/M00_AXI]   [get_bd_intf_pins axi_vdma_0/S_AXI_LITE]
 connect_bd_intf_net [get_bd_intf_pins axi_ic_lite/M01_AXI]   [get_bd_intf_pins v_tc_tx/ctrl]
@@ -562,6 +579,7 @@ connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/M08_A
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/M09_ACLK]  ;# axi_gpio_6 (matrix m22 + offsets)
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/M10_ACLK]  ;# axi_gpio_7 (mackin alpha)
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/M11_ACLK]  ;# axi_iic_adv7393
+connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/M12_ACLK]  ;# axi_gpio_8 (TPG)
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_vdma_0/s_axi_lite_aclk]
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins v_tc_tx/s_axi_aclk]
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins v_tc_rx/s_axi_aclk]
@@ -579,6 +597,7 @@ connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_li
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_lite/M09_ARESETN]  ;# axi_gpio_6
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_lite/M10_ARESETN]  ;# axi_gpio_7
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_lite/M11_ARESETN]  ;# axi_iic_adv7393
+connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_lite/M12_ARESETN]  ;# axi_gpio_8 (TPG)
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_vdma_0/axi_resetn]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins v_tc_tx/s_axi_aresetn]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins v_tc_rx/s_axi_aresetn]
@@ -597,6 +616,8 @@ connect_bd_net [get_bd_pins rst_pixclk_out/peripheral_aresetn] [get_bd_pins axis
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]        [get_bd_pins v_tc_rx/resetn]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]        [get_bd_pins v_vid_in_axi4s_0/aresetn]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]        [get_bd_pins scaler_0/aresetn]
+connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]        [get_bd_pins tpg_input_0/aresetn]
+connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]        [get_bd_pins axis_src_mux_0/aresetn]
 # iter5-bisect-iter4d3: AXIS FIFO removed — reset wire not needed
 
 # =============================================================================
@@ -971,6 +992,60 @@ connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]    [get_bd_pins axi_iic_
 # Expose IIC interface — Vivado autogenerates IOBUFs in the wrapper.
 make_bd_intf_pins_external [get_bd_intf_pins axi_iic_adv7393/IIC]
 set_property name iic_adv7393 [get_bd_intf_ports IIC_0]
+
+# =============================================================================
+# TPG control AXI GPIO (axi_gpio_8). Dual-channel, output-only.
+# Channel 1 (32-bit):
+#   [2:0]   pattern_sel    (0=bars, 1=solid, 2=hgrad, 3=vgrad, 4=dot, 5=xhatch, 6=sweep, 7=counter)
+#   [3]     motion_en      (1=animate, 0=static)
+#   [4]     src_sel        (0=HDMI source, 1=TPG)
+#   [15:8]  frame_rate_div (1=full speed, N divides motion update rate)
+#   [31:24] reserved
+# Channel 2 (32-bit) — solid color (R-B-G byte order for pattern 1):
+#   [23:16] solid_R
+#   [15:8]  solid_B
+#   [7:0]   solid_G
+# Boot defaults: ch1 = 0x00000110 (src=HDMI, rate=1, motion on, bars), ch2 = 0xFFFFFF.
+create_bd_cell -type ip -vlnv xilinx.com:ip:axi_gpio axi_gpio_8
+set_property -dict [list \
+    CONFIG.C_GPIO_WIDTH    {32} \
+    CONFIG.C_GPIO2_WIDTH   {32} \
+    CONFIG.C_ALL_OUTPUTS   {1} \
+    CONFIG.C_ALL_OUTPUTS_2 {1} \
+    CONFIG.C_IS_DUAL       {1} \
+    CONFIG.C_INTERRUPT_PRESENT {0} \
+    CONFIG.C_DOUT_DEFAULT   {0x00000108} \
+    CONFIG.C_DOUT_DEFAULT_2 {0x00FFFFFF} \
+] [get_bd_cells axi_gpio_8]
+connect_bd_intf_net [get_bd_intf_pins axi_ic_lite/M12_AXI] [get_bd_intf_pins axi_gpio_8/S_AXI]
+connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]             [get_bd_pins axi_gpio_8/s_axi_aclk]
+connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]    [get_bd_pins axi_gpio_8/s_axi_aresetn]
+
+# Slice ch1 bits into TPG inputs
+create_bd_cell -type ip -vlnv xilinx.com:ip:xlslice slice_tpg_pattern
+set_property -dict [list CONFIG.DIN_WIDTH {32} CONFIG.DIN_FROM {2}  CONFIG.DIN_TO {0}  CONFIG.DOUT_WIDTH {3}] [get_bd_cells slice_tpg_pattern]
+connect_bd_net [get_bd_pins axi_gpio_8/gpio_io_o]  [get_bd_pins slice_tpg_pattern/Din]
+connect_bd_net [get_bd_pins slice_tpg_pattern/Dout] [get_bd_pins tpg_input_0/pattern_sel_async]
+
+create_bd_cell -type ip -vlnv xilinx.com:ip:xlslice slice_tpg_motion
+set_property -dict [list CONFIG.DIN_WIDTH {32} CONFIG.DIN_FROM {3}  CONFIG.DIN_TO {3}  CONFIG.DOUT_WIDTH {1}] [get_bd_cells slice_tpg_motion]
+connect_bd_net [get_bd_pins axi_gpio_8/gpio_io_o]  [get_bd_pins slice_tpg_motion/Din]
+connect_bd_net [get_bd_pins slice_tpg_motion/Dout] [get_bd_pins tpg_input_0/motion_en_async]
+
+create_bd_cell -type ip -vlnv xilinx.com:ip:xlslice slice_tpg_srcsel
+set_property -dict [list CONFIG.DIN_WIDTH {32} CONFIG.DIN_FROM {4}  CONFIG.DIN_TO {4}  CONFIG.DOUT_WIDTH {1}] [get_bd_cells slice_tpg_srcsel]
+connect_bd_net [get_bd_pins axi_gpio_8/gpio_io_o]  [get_bd_pins slice_tpg_srcsel/Din]
+connect_bd_net [get_bd_pins slice_tpg_srcsel/Dout] [get_bd_pins axis_src_mux_0/sel_async]
+
+create_bd_cell -type ip -vlnv xilinx.com:ip:xlslice slice_tpg_rate
+set_property -dict [list CONFIG.DIN_WIDTH {32} CONFIG.DIN_FROM {15} CONFIG.DIN_TO {8}  CONFIG.DOUT_WIDTH {8}] [get_bd_cells slice_tpg_rate]
+connect_bd_net [get_bd_pins axi_gpio_8/gpio_io_o]  [get_bd_pins slice_tpg_rate/Din]
+connect_bd_net [get_bd_pins slice_tpg_rate/Dout]   [get_bd_pins tpg_input_0/frame_rate_div_async]
+
+create_bd_cell -type ip -vlnv xilinx.com:ip:xlslice slice_tpg_solid
+set_property -dict [list CONFIG.DIN_WIDTH {32} CONFIG.DIN_FROM {23} CONFIG.DIN_TO {0}  CONFIG.DOUT_WIDTH {24}] [get_bd_cells slice_tpg_solid]
+connect_bd_net [get_bd_pins axi_gpio_8/gpio2_io_o] [get_bd_pins slice_tpg_solid/Din]
+connect_bd_net [get_bd_pins slice_tpg_solid/Dout]  [get_bd_pins tpg_input_0/solid_color_async]
 
 # =============================================================================
 # Phase D iter-3n — ILA instrumentation on scaler_top output and axis_to_vid_io

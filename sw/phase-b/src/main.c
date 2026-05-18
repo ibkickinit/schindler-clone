@@ -345,6 +345,48 @@ static inline void mackin_set(u16 alpha_q15)
 
 static u16 g_alpha_q15 = 0x8000;
 
+/* ============================================================================
+ * TPG (test pattern generator) — axi_gpio_8
+ *   ch1 [2:0]   pattern_sel (0=bars, 1=solid, 2=hgrad, 3=vgrad,
+ *                            4=dot,  5=xhatch, 6=sweep, 7=counter)
+ *   ch1 [3]     motion_en
+ *   ch1 [4]     src_sel (0=HDMI, 1=TPG)
+ *   ch1 [15:8]  frame_rate_div (1=full speed, N divides motion update)
+ *   ch2 [23:0]  solid color (R-B-G byte order)
+ * Boot defaults: ch1 = 0x00000108 (src=HDMI, rate=1, motion=1, pattern=bars).
+ * Set src=TPG (bit 4) to switch source mux at runtime.
+ * ============================================================================ */
+#if defined(XPAR_AXI_GPIO_8_BASEADDR)
+#  define TPG_GPIO XPAR_AXI_GPIO_8_BASEADDR
+#elif defined(XPAR_PHASE_B_BD_AXI_GPIO_8_BASEADDR)
+#  define TPG_GPIO XPAR_PHASE_B_BD_AXI_GPIO_8_BASEADDR
+#else
+#  error "AXI GPIO 8 (TPG) base address not in xparameters.h"
+#endif
+
+static u8  g_tpg_pattern = 0;       /* 0=bars at boot */
+static u8  g_tpg_motion  = 1;       /* on at boot */
+static u8  g_tpg_src     = 0;       /* HDMI at boot */
+static u8  g_tpg_rate    = 1;       /* full speed at boot */
+static u32 g_tpg_solid   = 0xFFFFFF;  /* white at boot */
+
+static inline void tpg_apply(void)
+{
+    u32 ch1 = ((u32)(g_tpg_pattern & 0x7))
+            | ((u32)(g_tpg_motion  & 0x1) << 3)
+            | ((u32)(g_tpg_src     & 0x1) << 4)
+            | ((u32)(g_tpg_rate) << 8);
+    Xil_Out32(TPG_GPIO + 0x00, ch1);          /* ch1 */
+    Xil_Out32(TPG_GPIO + 0x08, g_tpg_solid);  /* ch2 (axi_gpio second channel offset) */
+    u32 rb1 = Xil_In32(TPG_GPIO + 0x00);
+    u32 rb2 = Xil_In32(TPG_GPIO + 0x08);
+    xil_printf("TPG: pat=%u mot=%u src=%s rate=%u solid=0x%06x  RB=[%08x %08x]\r\n",
+               g_tpg_pattern, g_tpg_motion,
+               g_tpg_src ? "TPG" : "HDMI",
+               g_tpg_rate, (unsigned)g_tpg_solid,
+               (unsigned)rb1, (unsigned)rb2);
+}
+
 /* Write a full 3x3 matrix + 3 offsets to GPIO 4/5/6.
  * Coefficients are raw Q2.14 signed s16 (caller converts from float).
  * Offsets are signed s8. */
@@ -445,7 +487,7 @@ static int parse_uint(const char **pp, unsigned *out)
 
 static void cmd_help(void)
 {
-    xil_printf("\r\nUART commands:\r\n"
+    xil_printf("\r\nUART commands — color pipeline:\r\n"
                "  ?               help\r\n"
                "  i               identity (sat=100%%, black=0, white=255, matrix=I)\r\n"
                "  s <pct>         color_saturation at <pct>%% (0..200)\r\n"
@@ -454,7 +496,14 @@ static void cmd_help(void)
                "  b <r> <g> <b>   color_correct black RGB (0..255)\r\n"
                "  w <r> <g> <b>   color_correct white RGB (0..255)\r\n"
                "  a <hex>         mackin alpha Q1.15 hex (0..8000)\r\n"
-               "  r               re-print GPIO readbacks\r\n");
+               "  r               re-print GPIO readbacks\r\n"
+               "\r\nUART commands — TPG (built-in ImagePro):\r\n"
+               "  t <0|1>         source: 0=HDMI input, 1=TPG\r\n"
+               "  p <0..7>        TPG pattern (0=bars 1=solid 2=hgrad 3=vgrad\r\n"
+               "                               4=dot  5=xhatch 6=sweep 7=counter)\r\n"
+               "  n <0|1>         motion enable (animate pattern)\r\n"
+               "  f <1..255>      frame-rate divisor (1=full speed, N divides motion rate)\r\n"
+               "  c <rgbhex>      TPG solid color, 24-bit RRGGBB hex (used by pattern 1)\r\n");
 }
 
 static void uart_dispatch(const char *line)
@@ -506,10 +555,46 @@ static void uart_dispatch(const char *line)
         if (ahex > 0x8000) ahex = 0x8000;
         g_alpha_q15 = (u16)ahex;
         mackin_set(g_alpha_q15);
+    } else if (op == 't' && parse_uint(&p, &a)) {
+        g_tpg_src = (u8)(a ? 1 : 0);
+        tpg_apply();
+    } else if (op == 'p' && parse_uint(&p, &a)) {
+        g_tpg_pattern = (u8)(a & 0x7);
+        tpg_apply();
+    } else if (op == 'n' && parse_uint(&p, &a)) {
+        g_tpg_motion = (u8)(a ? 1 : 0);
+        tpg_apply();
+    } else if (op == 'f' && parse_uint(&p, &a)) {
+        if (a < 1) a = 1; if (a > 255) a = 255;
+        g_tpg_rate = (u8)a;
+        tpg_apply();
+    } else if (op == 'c') {
+        unsigned chex = 0;
+        const char *q = line + 1;
+        while (*q == ' ') q++;
+        if (*q == '\0') { xil_printf("UART: 'c <rgbhex>' needs value\r\n"); return; }
+        while (*q) {
+            char ch = *q;
+            unsigned d;
+            if (ch >= '0' && ch <= '9') d = ch - '0';
+            else if (ch >= 'a' && ch <= 'f') d = ch - 'a' + 10;
+            else if (ch >= 'A' && ch <= 'F') d = ch - 'A' + 10;
+            else break;
+            chex = (chex << 4) | d;
+            q++;
+        }
+        /* Caller writes standard RGB hex (0xRRGGBB). Repack to R-B-G byte order
+         * for the AXIS pipeline convention. */
+        u8 r = (chex >> 16) & 0xFF;
+        u8 g = (chex >>  8) & 0xFF;
+        u8 b =  chex        & 0xFF;
+        g_tpg_solid = ((u32)r << 16) | ((u32)b << 8) | g;
+        tpg_apply();
     } else if (op == 'r') {
         color_apply_state();   /* re-write triggers readback prints */
         color_matrix_identity(); /* same — re-emits MATRIX line */
         mackin_set(g_alpha_q15); /* re-emit MACKIN line too */
+        tpg_apply();           /* re-emit TPG line too */
     } else {
         xil_printf("UART: unknown cmd '%s' — type ? for help\r\n", line);
     }
@@ -1255,15 +1340,12 @@ int main(void)
      * on a separate PSU + I2C bus, independent of HDMI source. Running first
      * means we still get the I2C result even if no HDMI source is plugged in
      * (firmware would otherwise hang at "pLocked never stable after 10s"). */
-    /* iter1 scope-capture mode: loop probe forever so SDA/SCL traffic is
-     * easy to capture on bench scope. HDMI pipeline never starts in this
-     * mode; revert this loop once ADV7393 is detected. */
-    while (1) {
-        adv7393_probe();
-        for (volatile int d = 0; d < 50000000; d++) { /* ~0.5s spacing */ }
-    }
-    /* unreachable */
-    adv7393_probe();
+    /* iter1.5 probe DISABLED 2026-05-18 — the XIic polled API can hang for
+     * many seconds on NAK (driver internal timeout). Disabled at boot until
+     * the DVDD 1.8V rail is fixed (task #26) and we expect ACKs. To re-enable
+     * for bench debug, uncomment the line below. */
+    /* adv7393_probe(); */
+    xil_printf("ADV7393 probe: skipped (DVDD-blocked; task #26)\r\n");
 
     /* The video pipeline (VDMA AXIS sides + video adapters + VTC) runs on the
      * RX-recovered PixelClk from dvi2rgb. If we try to init the VDMA before
@@ -1381,6 +1463,10 @@ int main(void)
      * Becomes meaningful when dual-VDMA is added (axi_vdma_1 Genlock Slave
      * FrmDly=2). See docs/mackin-blender-design.md. */
     mackin_set(g_alpha_q15);
+
+    /* TPG boot default: HDMI source, bars pattern, motion on, rate=1.
+     * Send 't 1' to switch to TPG source. */
+    tpg_apply();
 
     /* Phase G iter1 probe — actual call moved earlier in main(), before the
      * HDMI pLocked wait, so it runs even without an HDMI source connected.
