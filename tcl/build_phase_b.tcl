@@ -58,6 +58,8 @@ add_files -norecurse [file join $project_root hdl scaler_bypass_1080p.v] ;# iter
 add_files -norecurse [file join $project_root hdl color_correct.v]      ;# white-balance / color-temp
 add_files -norecurse [file join $project_root hdl color_saturation.v]   ;# Rec.601 luma-mix saturation
 add_files -norecurse [file join $project_root hdl color_matrix.v]       ;# general 3x3 color matrix
+add_files -norecurse [file join $project_root hdl axis_clone.v]         ;# Mackin: AXIS fan-out (placeholder dual-stream)
+add_files -norecurse [file join $project_root hdl mackin_blender.v]     ;# Mackin: per-pixel temporal lerp
 add_files -norecurse [file join $project_root hdl scaler_top.v]
 add_files -norecurse [file join $project_root hdl scaler_h.v]
 add_files -norecurse [file join $project_root hdl scaler_v.v]
@@ -386,13 +388,26 @@ create_bd_cell -type module -reference color_correct    color_correct_0
 # desired). Future: retire color_saturation_0 + color_correct_0 once matrix
 # preset coverage is verified.
 create_bd_cell -type module -reference color_matrix     color_matrix_0
-connect_bd_intf_net [get_bd_intf_pins axi_vdma_0/M_AXIS_MM2S]    [get_bd_intf_pins color_saturation_0/s_axis]
+# mackin_blender_0: per-pixel temporal lerp between two AXIS streams.
+# OVERNIGHT 2026-05-18: placeholder wiring — both inputs cloned from the same
+# MM2S via axis_clone_0. When curr == prev, diff == 0, output == curr regardless
+# of alpha (logical no-op). Next iter: replace axis_clone with second VDMA
+# instance (axi_vdma_1, MM2S-only, Genlock Slave FrmDly=2) for real dual-stream
+# temporal blending. See docs/mackin-blender-design.md for the dual-VDMA recipe.
+create_bd_cell -type module -reference axis_clone       axis_clone_0
+create_bd_cell -type module -reference mackin_blender   mackin_blender_0
+connect_bd_intf_net [get_bd_intf_pins axi_vdma_0/M_AXIS_MM2S]    [get_bd_intf_pins axis_clone_0/s_axis]
+connect_bd_intf_net [get_bd_intf_pins axis_clone_0/m1_axis]      [get_bd_intf_pins mackin_blender_0/s_curr]
+connect_bd_intf_net [get_bd_intf_pins axis_clone_0/m2_axis]      [get_bd_intf_pins mackin_blender_0/s_prev]
+connect_bd_net [get_bd_pins clk_wiz_pixclk_out/clk_out1]         [get_bd_pins axis_clone_0/aclk]
+connect_bd_intf_net [get_bd_intf_pins mackin_blender_0/m_axis]   [get_bd_intf_pins color_saturation_0/s_axis]
 connect_bd_intf_net [get_bd_intf_pins color_saturation_0/m_axis] [get_bd_intf_pins color_correct_0/s_axis]
 connect_bd_intf_net [get_bd_intf_pins color_correct_0/m_axis]    [get_bd_intf_pins color_matrix_0/s_axis]
 connect_bd_intf_net [get_bd_intf_pins color_matrix_0/m_axis]     [get_bd_intf_pins axis_to_vid_io_0/s_axis]
 connect_bd_net [get_bd_pins clk_wiz_pixclk_out/clk_out1]         [get_bd_pins color_matrix_0/aclk]
 connect_bd_net [get_bd_pins clk_wiz_pixclk_out/clk_out1]         [get_bd_pins color_saturation_0/aclk]
 connect_bd_net [get_bd_pins clk_wiz_pixclk_out/clk_out1]         [get_bd_pins color_correct_0/aclk]
+connect_bd_net [get_bd_pins clk_wiz_pixclk_out/clk_out1]         [get_bd_pins mackin_blender_0/aclk]
 # fsync: VTC's frame-start pulse → VDMA MM2S so MM2S SOF aligns with VTC frame.
 # VTC is free-running on output clock — output frame rate is exactly
 # clk_wiz_pixclk_out/(2200*1125) = 60.000 Hz. Slow walk vs source is
@@ -499,7 +514,7 @@ create_bd_cell -type ip -vlnv xilinx.com:ip:axi_interconnect axi_ic_lite
 #   M00 = VDMA, M01 = VTC tx (generator), M02 = GPIO 0 (status inputs)
 #   M03 = VTC rx (detector), M04 = GPIO 1 (scaler dim outputs)
 #   M05 = GPIO 2 (iter4g diagnostic counters, new)
-set_property -dict [list CONFIG.NUM_SI {1} CONFIG.NUM_MI {10}] [get_bd_cells axi_ic_lite]
+set_property -dict [list CONFIG.NUM_SI {1} CONFIG.NUM_MI {11}] [get_bd_cells axi_ic_lite]
 connect_bd_intf_net [get_bd_intf_pins zynq_ps/M_AXI_GP0]     [get_bd_intf_pins axi_ic_lite/S00_AXI]
 connect_bd_intf_net [get_bd_intf_pins axi_ic_lite/M00_AXI]   [get_bd_intf_pins axi_vdma_0/S_AXI_LITE]
 connect_bd_intf_net [get_bd_intf_pins axi_ic_lite/M01_AXI]   [get_bd_intf_pins v_tc_tx/ctrl]
@@ -517,6 +532,7 @@ connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/M06_A
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/M07_ACLK]  ;# axi_gpio_4 (matrix coefs row 0)
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/M08_ACLK]  ;# axi_gpio_5 (matrix coefs row 1+row 2 start)
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/M09_ACLK]  ;# axi_gpio_6 (matrix m22 + offsets)
+connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/M10_ACLK]  ;# axi_gpio_7 (mackin alpha)
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_vdma_0/s_axi_lite_aclk]
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins v_tc_tx/s_axi_aclk]
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins v_tc_rx/s_axi_aclk]
@@ -532,6 +548,7 @@ connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_li
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_lite/M07_ARESETN]  ;# axi_gpio_4
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_lite/M08_ARESETN]  ;# axi_gpio_5
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_lite/M09_ARESETN]  ;# axi_gpio_6
+connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_lite/M10_ARESETN]  ;# axi_gpio_7
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_vdma_0/axi_resetn]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins v_tc_tx/s_axi_aresetn]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins v_tc_rx/s_axi_aresetn]
@@ -544,6 +561,8 @@ connect_bd_net [get_bd_pins rst_pixclk_out/peripheral_aresetn] [get_bd_pins v_tc
 connect_bd_net [get_bd_pins rst_pixclk_out/peripheral_aresetn] [get_bd_pins color_correct_0/aresetn]
 connect_bd_net [get_bd_pins rst_pixclk_out/peripheral_aresetn] [get_bd_pins color_saturation_0/aresetn]
 connect_bd_net [get_bd_pins rst_pixclk_out/peripheral_aresetn] [get_bd_pins color_matrix_0/aresetn]
+connect_bd_net [get_bd_pins rst_pixclk_out/peripheral_aresetn] [get_bd_pins mackin_blender_0/aresetn]
+connect_bd_net [get_bd_pins rst_pixclk_out/peripheral_aresetn] [get_bd_pins axis_clone_0/aresetn]
 # VTC_rx detector also on pclk_in — reset comes from axi (input-side IP)
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]        [get_bd_pins v_tc_rx/resetn]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]        [get_bd_pins v_vid_in_axi4s_0/aresetn]
@@ -875,6 +894,32 @@ foreach {sname hi lo dest} {
 connect_bd_intf_net [get_bd_intf_pins axi_ic_lite/M06_AXI] [get_bd_intf_pins axi_gpio_3/S_AXI]
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]             [get_bd_pins axi_gpio_3/s_axi_aclk]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]    [get_bd_pins axi_gpio_3/s_axi_aresetn]
+
+# =============================================================================
+# Mackin blender alpha GPIO (axi_gpio_7).
+# 16-bit Q1.15 alpha coefficient (0..0x8000) for mackin_blender_0.
+# OVERNIGHT 2026-05-18: blender currently placeholder-wired (both inputs
+# from same MM2S via axis_clone_0), so alpha has no visible effect until
+# the dual-VDMA wiring is added in a future iter.
+# Boot default = 0x8000 -> alpha=1.0 -> out = curr (no-op).
+# =============================================================================
+create_bd_cell -type ip -vlnv xilinx.com:ip:axi_gpio axi_gpio_7
+set_property -dict [list \
+    CONFIG.C_GPIO_WIDTH    {32} \
+    CONFIG.C_ALL_OUTPUTS   {1} \
+    CONFIG.C_IS_DUAL       {0} \
+    CONFIG.C_INTERRUPT_PRESENT {0} \
+    CONFIG.C_DOUT_DEFAULT  {0x00008000} \
+] [get_bd_cells axi_gpio_7]
+connect_bd_intf_net [get_bd_intf_pins axi_ic_lite/M10_AXI] [get_bd_intf_pins axi_gpio_7/S_AXI]
+connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]             [get_bd_pins axi_gpio_7/s_axi_aclk]
+connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]    [get_bd_pins axi_gpio_7/s_axi_aresetn]
+
+# Slice low 16 bits of axi_gpio_7 ch1 → mackin_blender_0/alpha_async
+create_bd_cell -type ip -vlnv xilinx.com:ip:xlslice slice_alpha
+set_property -dict [list CONFIG.DIN_WIDTH {32} CONFIG.DIN_FROM {15} CONFIG.DIN_TO {0} CONFIG.DOUT_WIDTH {16}] [get_bd_cells slice_alpha]
+connect_bd_net [get_bd_pins axi_gpio_7/gpio_io_o]    [get_bd_pins slice_alpha/Din]
+connect_bd_net [get_bd_pins slice_alpha/Dout]        [get_bd_pins mackin_blender_0/alpha_async]
 
 # =============================================================================
 # Phase D iter-3n — ILA instrumentation on scaler_top output and axis_to_vid_io

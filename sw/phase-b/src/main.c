@@ -230,6 +230,36 @@ static inline u16 color_sat_from_percent(unsigned pct)
 #  error "AXI GPIO 4/5/6 (color_matrix) base addresses not in xparameters.h"
 #endif
 
+/* ============================================================================
+ * mackin_blender alpha — axi_gpio_7, 16-bit Q1.15 coefficient.
+ *   GPIO 7 ch1 [15:0] = alpha (0..0x8000)
+ *
+ * OVERNIGHT 2026-05-18: blender is structurally in the pipeline but both
+ * inputs are wired from the same MM2S via axis_clone_0. Alpha has NO visible
+ * effect on the output until a second VDMA instance (Genlock Slave, FrmDly=2)
+ * is added in a future iter. See docs/mackin-blender-design.md.
+ * Until then, this firmware path is verified via UART readback only.
+ * ============================================================================ */
+#if defined(XPAR_AXI_GPIO_7_BASEADDR)
+#  define MACKIN_GPIO XPAR_AXI_GPIO_7_BASEADDR
+#elif defined(XPAR_PHASE_B_BD_AXI_GPIO_7_BASEADDR)
+#  define MACKIN_GPIO XPAR_PHASE_B_BD_AXI_GPIO_7_BASEADDR
+#else
+#  error "AXI GPIO 7 (mackin alpha) base address not in xparameters.h"
+#endif
+
+/* alpha_q15 must be in [0, 0x8000]. 0=prev, 0x4000=50/50, 0x8000=curr. */
+static inline void mackin_set(u16 alpha_q15)
+{
+    if (alpha_q15 > 0x8000) alpha_q15 = 0x8000;
+    Xil_Out32(MACKIN_GPIO + 0x00, (u32)alpha_q15);
+    u32 rb = Xil_In32(MACKIN_GPIO + 0x00);
+    xil_printf("MACKIN: alpha=0x%04x  base=0x%08x  RB=0x%08x\r\n",
+               (u16)alpha_q15, (unsigned)MACKIN_GPIO, (unsigned)rb);
+}
+
+static u16 g_alpha_q15 = 0x8000;
+
 /* Write a full 3x3 matrix + 3 offsets to GPIO 4/5/6.
  * Coefficients are raw Q2.14 signed s16 (caller converts from float).
  * Offsets are signed s8. */
@@ -338,6 +368,7 @@ static void cmd_help(void)
                "  g               matrix grayscale (m 0)\r\n"
                "  b <r> <g> <b>   color_correct black RGB (0..255)\r\n"
                "  w <r> <g> <b>   color_correct white RGB (0..255)\r\n"
+               "  a <hex>         mackin alpha Q1.15 hex (0..8000)\r\n"
                "  r               re-print GPIO readbacks\r\n");
 }
 
@@ -368,9 +399,32 @@ static void uart_dispatch(const char *line)
     } else if (op == 'w' && parse_uint(&p, &a) && parse_uint(&p, &b) && parse_uint(&p, &c)) {
         g_white_r = (u8)a; g_white_g = (u8)b; g_white_b = (u8)c;
         color_apply_state();
+    } else if (op == 'a') {
+        /* alpha is hex Q1.15 — parse as hex (caller passes "8000", "4000", etc.) */
+        unsigned ahex = 0;
+        const char *q = line + 1;
+        while (*q == ' ') q++;
+        if (*q == '\0') {
+            xil_printf("UART: 'a <hex>' needs value 0..8000\r\n");
+            return;
+        }
+        while (*q) {
+            char ch = *q;
+            unsigned d;
+            if (ch >= '0' && ch <= '9') d = ch - '0';
+            else if (ch >= 'a' && ch <= 'f') d = ch - 'a' + 10;
+            else if (ch >= 'A' && ch <= 'F') d = ch - 'A' + 10;
+            else break;
+            ahex = (ahex << 4) | d;
+            q++;
+        }
+        if (ahex > 0x8000) ahex = 0x8000;
+        g_alpha_q15 = (u16)ahex;
+        mackin_set(g_alpha_q15);
     } else if (op == 'r') {
         color_apply_state();   /* re-write triggers readback prints */
         color_matrix_identity(); /* same — re-emits MATRIX line */
+        mackin_set(g_alpha_q15); /* re-emit MACKIN line too */
     } else {
         xil_printf("UART: unknown cmd '%s' — type ? for help\r\n", line);
     }
@@ -1226,6 +1280,12 @@ int main(void)
      * Send 'g' over UART for Rec.601 grayscale, 'm 0' for matrix-based
      * grayscale, 'm 150' for vivid, etc. */
     color_matrix_identity();
+
+    /* mackin_blender boot default: alpha = 0x8000 (1.0) -> out = curr.
+     * No-op when both inputs are the same stream (current placeholder wiring).
+     * Becomes meaningful when dual-VDMA is added (axi_vdma_1 Genlock Slave
+     * FrmDly=2). See docs/mackin-blender-design.md. */
+    mackin_set(g_alpha_q15);
 
     xil_printf("Pipeline live — entering diag loop (1 sec/dump)\r\n\r\n");
 

@@ -1,6 +1,27 @@
 # Mackin Blender — Design Doc
 
-Status: **WIP draft** — 2026-05-18 overnight implementation. Will be revised once parallel research agents return.
+Status: **HDL + sim COMPLETE 2026-05-18 overnight.** 3360-vector sim suite (8 alpha values × 420 vectors) bit-exact vs Python golden. BD integration and Vivado build in progress. Bench validation deferred to next session.
+
+## Algorithm authority (per research 2026-05-18)
+
+The algorithm is from **Alex Mackin** et al., *"A Frame Rate Conversion Method Based on a Virtual Shutter Angle"*, ICIP 2019 (Bristol Research Portal: [PDF](https://research-information.bris.ac.uk/ws/files/194366047/ICIP2019_VirtualShutter_OA.pdf)). (Common misattribution: "Tyler Mackin" — author is Alex Mackin.)
+
+Mackin's core equation (Eq. 2):
+```
+F_d = g( Σ_{k=1..K}  α[k] · g⁻¹(F_s[k]) )    s.t.  Σ α[k] = 1, α[k] ≥ 0
+```
+where `g()` is the gamma transfer function. K = f_input / f_output.
+
+For sv = 360° virtual shutter (output-period-wide), weights derive from **fractional overlap** between the output frame's window and each input frame's period. For Schindler's K = 2.5 (60→24), the rolling weight pattern is `[0.40, 0.40, 0.20]` — 3 input frames per output.
+
+**This HDL implements the 2-frame special case.** That's correct for:
+- K = 1 (60→60, identity, alpha = 0x8000 fixed)
+- K = 1.001 (60→59.94 NTSC drift — the *primary FRC motivation*, where each output overlaps almost exactly 1 input + tiny fraction of next)
+- K = 2 (60→30, alpha cycles 0x8000 → 0x0000 each output)
+
+For K > 2 (60→24, 60→12), the 2-frame lerp underweights one of the three overlapping input frames. Acceptable first-cut behavior; would require a 3-input-frame extension for full Mackin fidelity. **Deferred to a future iter.**
+
+Linear-light blending (gamma decode → blend → gamma encode) per Mackin's Eq. 2 is **NOT YET implemented**. Current HDL blends in encoded RGB space. Visible error is bounded; full linearization requires a 256-entry inverse-gamma LUT before the blender (matches the deferred [[gamma-lut]] task).
 
 ## Goal
 
@@ -65,17 +86,47 @@ One DSP per channel, 3 DSPs total per blender.
 
 Round-to-nearest, ties-toward-positive (add `0x4000` then arithmetic shift right). Equivalent to `round(x + 0.5)` for non-negative, slightly biased positive for negative — acceptable for video; visually invisible.
 
-## Why TWO streams?
+## Why TWO streams — option A confirmed by research
 
-VDMA Dynamic Genlock currently advances MM2S's RDSTORE pointer once per output frame, reading one framestore per output. For Mackin blend, we need to read TWO framestores in parallel (current and previous in the ring). Three options:
+Per research 2026-05-18, Option A (second VDMA, MM2S-only) is the canonical Xilinx pattern (cf. XAPP792 which runs 16 streams across 8 VDMAs sharing DDR3). Specific recipe:
 
-| Option | Approach | Complexity | Resource cost |
-|---|---|---|---|
-| **A** | Second VDMA instance, MM2S-only, RDSTORE one slot behind | Medium BD work, shared HP port | ~2× MM2S BRAM/DSP |
-| **B** | Single VDMA + DDR3 line buffer for previous-pixel | Large HDL, BRAM-hungry at 1080p | Doesn't fit |
-| **C** | `v_frmbuf_rd` × 2 instances | Newer IP, two instances | Unknown |
+**Step 1 — switch from Dynamic Genlock to classic Genlock** in `axi_vdma_0`:
+- `axi_vdma_0.S2MM` → **Genlock Master** (drives `s2mm_frame_ptr_out`)
+- `axi_vdma_0.MM2S` → **Genlock Slave**, `FrmDly = 1` (reads N−1, "current" frame)
 
-→ **Plan A.** See research agent's findings (pending) for shared-DDR3 / HP-port arbitration details.
+**Step 2 — add `axi_vdma_1`**, MM2S-only:
+- `c_include_s2mm = 0`
+- Set hidden parameter `c_mm2s_genlock_num_masters = 1` (exposes external `mm2s_frame_ptr_in` port)
+- Genlock Slave mode with `FrmDly = 2` (reads N−2, "previous" frame)
+- 5 framestores, **identical** start addresses to axi_vdma_0
+- m_axi_mm2s on a separate HP port (HP2; HP0 already used by axi_vdma_0)
+
+**Step 3 — wire fan-out** of `axi_vdma_0/s2mm_frame_ptr_out` to BOTH `axi_vdma_0/mm2s_frame_ptr_in` AND `axi_vdma_1/mm2s_frame_ptr_in`. Six-wire Gray-code bus; register-buffered if timing tight.
+
+**Bandwidth budget:**
+| Stream | Rate | Bandwidth |
+|---|---|---|
+| S2MM write (60p input) | 1920·1080·4·60 | ~498 MB/s |
+| MM2S read VDMA-0 (24p output) | 1920·1080·4·24 | ~199 MB/s |
+| MM2S read VDMA-1 (24p output) | 1920·1080·4·24 | ~199 MB/s |
+| **Total** | | **~896 MB/s** |
+
+DDR3 on Zynq-7020 delivers ~3.5-4.2 GB/s practical → ~22-25% utilization. Trivially fits.
+
+**Resource cost (MM2S-only VDMA-1):** ~1.2k LUT, ~1.8k FF, 2 BRAM. Z7-20 has 53k LUT / 140 BRAM — negligible.
+
+**Why classic Genlock instead of Dynamic:**
+- Dynamic Master "skips frames the slave is on" — fine for one slave, but with two slaves at different FrmDly offsets, slot collisions become possible if S2MM races ahead. Classic Master never skips → both slaves get a stable, predictable view.
+- Dynamic Slave has FrmDly **hardcoded** to "last completed" — can't position at N−2.
+- Classic Genlock with 5 framestores absorbs the 5:2 ratio without master-stomping-slave.
+
+**Open question (bench-only):** PG020 wording is slightly ambiguous about whether `FrmDly=1` and `FrmDly=2` actually land exactly one slot apart, or if there's an off-by-one in how "behind master" is counted. Plan one bench iter to confirm; worst case use FrmDly=2 and FrmDly=3.
+
+**Rejected options:**
+- (B) DDR3 line buffer for previous-pixel: doesn't fit at 1080p (would need full-frame BRAM).
+- (C) `v_frmbuf_rd × 2`: no hardware genlock chain, forces firmware ISR per vsync. PG278 explicitly moved frame coordination to software — wrong tool.
+- Cascaded Dynamic Genlock: both slaves would land on the same frame (Dynamic Slave is always "last completed").
+- Park-mode + firmware PARK_PTR_REG writes per vsync: anti-pattern per [[schindler-vdma-dynamic-genlock]] memory; PG020 doesn't guarantee SOF-atomic latching.
 
 ## AXIS port shape
 
@@ -181,4 +232,5 @@ Boot default: α = 0x8000 → pure curr → identical to current iter5 nearest-n
 ## Revision log
 
 - 2026-05-18 02:0X: initial strawman before research lands
-- (pending) research-driven revisions
+- 2026-05-18 02:3X: HDL + Python golden complete; 3360 vectors pass bit-exact
+- 2026-05-18 02:4X: research-driven revisions to algorithm authority + dual-VDMA section
