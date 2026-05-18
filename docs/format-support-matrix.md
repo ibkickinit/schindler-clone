@@ -56,7 +56,7 @@ Primary output path (rgb2dvi). Covers everything we ship today and most of Phase
 | 5 | 1080p59.94 | 1080p23.976 | 🟡 | A / B | none | **iter5 stretch.** Tests MMCM tracking under 1000/1001 drift. |
 | 6 | 1080p59.94 | 1080p24 | 🔲 | B | none | Phase E1. Needs MMCM tracking to absorb 59.94→60 drift before 5:2 FRC. |
 | 7 | 1080p60 | 1080p30 | ✅ | D (2:1) | none | **Bench-validated 2026-05-17 evening.** PHASE telemetry confirms `deltas={2,2,2,2,...}` constant — exact 2:1 cadence. Picture clean. |
-| 8 | 1080p60 | 1080p25 | 🔲 | E (12:5) | none | Phase E2. Ugly ratio (12:5), benefits from Mackin blend. |
+| 8 | 1080p60 | 1080p25 | ✅ | D (12:5) | none | **Bench-validated 2026-05-17 evening.** PHASE telemetry confirms 12:5 super-cycle with deltas avg 2.4 in pattern `2,3,2,2,3` (rotating per ring snapshot). Cadence irregular — judder would be visible on motion in person; remote capture can't resolve. Mackin blend would help; not blocking. |
 | 9 | 1080p60 | 1080p50 | 🔲 | E (6:5) | none | Phase E2. Ugly near-1:1 ratio. |
 | 10 | 1080p50 | 1080p60 | 🔲 | E (5:6) | none | Phase E2. Inverse of #9. |
 | 11 | 1080p50 | 1080p25 | 🔲 | D (2:1) | none | Phase E. Trivial. |

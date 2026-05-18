@@ -709,6 +709,12 @@ static const vtc_mode_t MODE_1080P24 = {
 static const vtc_mode_t MODE_1080P30 = {
     "1080p30", 1920, 1080, 2200, 1125,  88, 44,  4, 5
 };
+/* 1080p25 (CEA-861 mode 33). 2640 × 1125 × 25 = 74.25 MHz — same clk_wiz
+ * output as 1080p24/p30, no clock reconfig. Used to test the 12:5 "ugly"
+ * FRC ratio from 60p source. */
+static const vtc_mode_t MODE_1080P25 = {
+    "1080p25", 1920, 1080, 2640, 1125,  528, 44,  4, 5
+};
 
 static int vtc_setup(const vtc_mode_t *m)
 {
@@ -895,10 +901,11 @@ int main(void)
      * skip behavior. Source stays 60p (ImagePro RGB), output is 50p, ratio
      * 6:5 means master drops one source frame every 6 to keep ahead of slave.
      * Switch to MODE_720P60 to revert. */
-    /* Option B test (2026-05-17 evening): 1080p60→1080p30 clean 2:1 FRC.
-     * Expected PHASE deltas pattern: 2,2,2,2,... (every other source frame
-     * shown). Sanity check on the easiest integer ratio. */
-    if (vtc_setup(&MODE_1080P30) != XST_SUCCESS) return -1;
+    /* Option C test (2026-05-17 evening): 1080p60→1080p25 ugly 12:5 FRC.
+     * Expected PHASE deltas pattern: 2,3,2,3,2,2,3,2,3,2,... (5-gap super-
+     * cycle of 12 source frames). Will show visible judder — this is
+     * where Mackin virtual-shutter blend would be needed for "smooth." */
+    if (vtc_setup(&MODE_1080P25) != XST_SUCCESS) return -1;
     xil_printf("VTC aligned to source vsync\r\n");
     sleep(1);  /* give VTC time to start pulsing fsync before VDMA reset */
 
