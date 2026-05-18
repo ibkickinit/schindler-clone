@@ -1351,6 +1351,13 @@ int main(void)
         volatile u8 *guard = (volatile u8 *)(s2mm_frame_addrs[i] + FRAME_BYTES);
         for (UINTPTR g = 0; g < GUARD_BYTES; g++) guard[g] = 0;
     }
+    /* CRITICAL: PS writes go through L1/L2 cache; VDMA reads DDR3 directly
+     * via AXI HP, bypassing cache. Flush the guard region (and the entire
+     * framebuffer area) so the PS-side zeros actually reach DDR3 before
+     * MM2S reads them. Without this, MM2S reads stale data from boot/prior
+     * bitstream loads — visible as ghost content in the last few output
+     * rows (the MM2S over-read past slot end into guard). */
+    Xil_DCacheFlushRange((UINTPTR)FRAME_BUF_BASE, NUM_FRAMES * SLOT_BYTES);
     UINTPTR *frame_addrs = s2mm_frame_addrs;  /* legacy alias for the diag loop */
     xil_printf("Frame buffers: 0x%08lx, 0x%08lx, 0x%08lx (each %d bytes)\r\n",
                (unsigned long)frame_addrs[0],
