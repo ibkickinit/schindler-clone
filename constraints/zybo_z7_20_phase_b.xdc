@@ -74,3 +74,15 @@ set_false_path -to [get_pins {phase_b_bd_i/axi_sync_inputs_0/inst/vsync_q1_reg/D
 set_false_path -to [get_pins {phase_b_bd_i/axi_sync_inputs_0/inst/plocked_q1_reg/D}]
 set_false_path -to [get_pins {phase_b_bd_i/axi_sync_inputs_0/inst/vsync_out_q1_reg/D}]
 set_false_path -to [get_pins {phase_b_bd_i/axi_sync_inputs_0/inst/pclk_locked_q1_reg/D}]
+
+# Color-correct GPIO-to-pclk_out CDC false-paths. ASYNC_REG handles
+# metastability; these inform the timing engine the inter-clock paths are
+# async and shouldn't be constrained. Without them Vivado tries to meet
+# setup from clk_fpga_0 (100 MHz) to clk_out1_pclk_out (74.25 MHz) on
+# the first-stage flops, fails badly (~-3.5 ns WNS).
+set_false_path -to [get_pins {phase_b_bd_i/color_correct_0/br_q1_reg[*]/D}]
+set_false_path -to [get_pins {phase_b_bd_i/color_correct_0/bg_q1_reg[*]/D}]
+set_false_path -to [get_pins {phase_b_bd_i/color_correct_0/bb_q1_reg[*]/D}]
+set_false_path -to [get_pins {phase_b_bd_i/color_correct_0/wr_q1_reg[*]/D}]
+set_false_path -to [get_pins {phase_b_bd_i/color_correct_0/wg_q1_reg[*]/D}]
+set_false_path -to [get_pins {phase_b_bd_i/color_correct_0/wb_q1_reg[*]/D}]

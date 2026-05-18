@@ -55,6 +55,7 @@ add_files -norecurse [file join $project_root hdl axis_to_vid_io.v]
 add_files -norecurse [file join $project_root hdl scaler_passthrough.v]
 add_files -norecurse [file join $project_root hdl scaler_crop_bypass.v]  ;# iter4h bisection
 add_files -norecurse [file join $project_root hdl scaler_bypass_1080p.v] ;# iter5 1080p passthrough
+add_files -norecurse [file join $project_root hdl color_correct.v]      ;# white-balance / color-temp
 add_files -norecurse [file join $project_root hdl scaler_top.v]
 add_files -norecurse [file join $project_root hdl scaler_h.v]
 add_files -norecurse [file join $project_root hdl scaler_v.v]
@@ -371,7 +372,15 @@ connect_bd_net [get_bd_pins v_tc_tx/vsync_out]        [get_bd_pins axis_to_vid_i
 connect_bd_net [get_bd_pins v_tc_tx/hblank_out]       [get_bd_pins axis_to_vid_io_0/vtg_hblank]
 connect_bd_net [get_bd_pins v_tc_tx/vblank_out]       [get_bd_pins axis_to_vid_io_0/vtg_vblank]
 # AXIS in from VDMA MM2S → adapter (both on output clock)
-connect_bd_intf_net [get_bd_intf_pins axi_vdma_0/M_AXIS_MM2S] [get_bd_intf_pins axis_to_vid_io_0/s_axis]
+# Color-correct AXIS block inserted between MM2S and axis_to_vid_io. Diagonal
+# RGB matrix correction (per-channel scale + offset) — gives users black/white
+# RGB controls for tint, color temp, black-level lift. See hdl/color_correct.v.
+# Async params come from axi_gpio_3 below (FCLK_CLK0 domain) with internal CDC.
+# Note: aresetn wired further down after rst_pixclk_out cell is created.
+create_bd_cell -type module -reference color_correct color_correct_0
+connect_bd_intf_net [get_bd_intf_pins axi_vdma_0/M_AXIS_MM2S]    [get_bd_intf_pins color_correct_0/s_axis]
+connect_bd_intf_net [get_bd_intf_pins color_correct_0/m_axis]    [get_bd_intf_pins axis_to_vid_io_0/s_axis]
+connect_bd_net [get_bd_pins clk_wiz_pixclk_out/clk_out1]         [get_bd_pins color_correct_0/aclk]
 # fsync: VTC's frame-start pulse → VDMA MM2S so MM2S SOF aligns with VTC frame.
 # VTC is free-running on output clock — output frame rate is exactly
 # clk_wiz_pixclk_out/(2200*1125) = 60.000 Hz. Slow walk vs source is
@@ -478,7 +487,7 @@ create_bd_cell -type ip -vlnv xilinx.com:ip:axi_interconnect axi_ic_lite
 #   M00 = VDMA, M01 = VTC tx (generator), M02 = GPIO 0 (status inputs)
 #   M03 = VTC rx (detector), M04 = GPIO 1 (scaler dim outputs)
 #   M05 = GPIO 2 (iter4g diagnostic counters, new)
-set_property -dict [list CONFIG.NUM_SI {1} CONFIG.NUM_MI {6}] [get_bd_cells axi_ic_lite]
+set_property -dict [list CONFIG.NUM_SI {1} CONFIG.NUM_MI {7}] [get_bd_cells axi_ic_lite]
 connect_bd_intf_net [get_bd_intf_pins zynq_ps/M_AXI_GP0]     [get_bd_intf_pins axi_ic_lite/S00_AXI]
 connect_bd_intf_net [get_bd_intf_pins axi_ic_lite/M00_AXI]   [get_bd_intf_pins axi_vdma_0/S_AXI_LITE]
 connect_bd_intf_net [get_bd_intf_pins axi_ic_lite/M01_AXI]   [get_bd_intf_pins v_tc_tx/ctrl]
@@ -492,6 +501,7 @@ connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/M02_A
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/M03_ACLK]
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/M04_ACLK]
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/M05_ACLK]
+connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/M06_ACLK]  ;# axi_gpio_3 (color)
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_vdma_0/s_axi_lite_aclk]
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins v_tc_tx/s_axi_aclk]
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins v_tc_rx/s_axi_aclk]
@@ -503,6 +513,7 @@ connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_li
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_lite/M03_ARESETN]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_lite/M04_ARESETN]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_lite/M05_ARESETN]
+connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_lite/M06_ARESETN]  ;# axi_gpio_3 (color)
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_vdma_0/axi_resetn]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins v_tc_tx/s_axi_aresetn]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins v_tc_rx/s_axi_aresetn]
@@ -512,6 +523,7 @@ connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins v_tc_rx/s
 # v_vid_in_axi4s is on the input (dvi2rgb) PixelClk; rst_axi (FCLK_CLK0) is
 # async to it but the IP handles its own internal reset synchronization.
 connect_bd_net [get_bd_pins rst_pixclk_out/peripheral_aresetn] [get_bd_pins v_tc_tx/resetn]
+connect_bd_net [get_bd_pins rst_pixclk_out/peripheral_aresetn] [get_bd_pins color_correct_0/aresetn]
 # VTC_rx detector also on pclk_in — reset comes from axi (input-side IP)
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]        [get_bd_pins v_tc_rx/resetn]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]        [get_bd_pins v_vid_in_axi4s_0/aresetn]
@@ -716,6 +728,49 @@ connect_bd_net [get_bd_pins gpio2_ch2_concat/dout]   [get_bd_pins axi_gpio_2/gpi
 connect_bd_intf_net [get_bd_intf_pins axi_ic_lite/M05_AXI] [get_bd_intf_pins axi_gpio_2/S_AXI]
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]             [get_bd_pins axi_gpio_2/s_axi_aclk]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]    [get_bd_pins axi_gpio_2/s_axi_aresetn]
+
+# =============================================================================
+# Color correction params — AXI GPIO 3 (dual-channel, output-only).
+# Channel 1 (32-bit): {spare[31:24], black_b[23:16], black_g[15:8], black_r[7:0]}
+# Channel 2 (32-bit): {spare[31:24], white_b[23:16], white_g[15:8], white_r[7:0]}
+# Default at boot: identity transform (black=0,0,0 white=255,255,255).
+# Firmware writes any tint / black-lift / white-cap via color_set() helper.
+# =============================================================================
+create_bd_cell -type ip -vlnv xilinx.com:ip:axi_gpio axi_gpio_3
+set_property -dict [list \
+    CONFIG.C_GPIO_WIDTH    {32} \
+    CONFIG.C_GPIO2_WIDTH   {32} \
+    CONFIG.C_ALL_OUTPUTS   {1} \
+    CONFIG.C_ALL_OUTPUTS_2 {1} \
+    CONFIG.C_IS_DUAL       {1} \
+    CONFIG.C_INTERRUPT_PRESENT {0} \
+    CONFIG.C_DOUT_DEFAULT   {0x00000000} \
+    CONFIG.C_DOUT_DEFAULT_2 {0x00FFFFFF} \
+] [get_bd_cells axi_gpio_3]
+
+# Slice IPs break out the 6 × 8-bit color params from the two 32-bit GPIO chs.
+foreach {name din_from} {slice_color_br 7  slice_color_bg 15  slice_color_bb 23} {
+    create_bd_cell -type ip -vlnv xilinx.com:ip:xlslice $name
+    set din_to [expr $din_from - 7]
+    set_property -dict [list CONFIG.DIN_WIDTH {32} CONFIG.DIN_FROM $din_from CONFIG.DIN_TO $din_to CONFIG.DOUT_WIDTH {8}] [get_bd_cells $name]
+    connect_bd_net [get_bd_pins axi_gpio_3/gpio_io_o] [get_bd_pins ${name}/Din]
+}
+foreach {name din_from} {slice_color_wr 7  slice_color_wg 15  slice_color_wb 23} {
+    create_bd_cell -type ip -vlnv xilinx.com:ip:xlslice $name
+    set din_to [expr $din_from - 7]
+    set_property -dict [list CONFIG.DIN_WIDTH {32} CONFIG.DIN_FROM $din_from CONFIG.DIN_TO $din_to CONFIG.DOUT_WIDTH {8}] [get_bd_cells $name]
+    connect_bd_net [get_bd_pins axi_gpio_3/gpio2_io_o] [get_bd_pins ${name}/Din]
+}
+connect_bd_net [get_bd_pins slice_color_br/Dout] [get_bd_pins color_correct_0/black_r_async]
+connect_bd_net [get_bd_pins slice_color_bg/Dout] [get_bd_pins color_correct_0/black_g_async]
+connect_bd_net [get_bd_pins slice_color_bb/Dout] [get_bd_pins color_correct_0/black_b_async]
+connect_bd_net [get_bd_pins slice_color_wr/Dout] [get_bd_pins color_correct_0/white_r_async]
+connect_bd_net [get_bd_pins slice_color_wg/Dout] [get_bd_pins color_correct_0/white_g_async]
+connect_bd_net [get_bd_pins slice_color_wb/Dout] [get_bd_pins color_correct_0/white_b_async]
+
+connect_bd_intf_net [get_bd_intf_pins axi_ic_lite/M06_AXI] [get_bd_intf_pins axi_gpio_3/S_AXI]
+connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]             [get_bd_pins axi_gpio_3/s_axi_aclk]
+connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]    [get_bd_pins axi_gpio_3/s_axi_aresetn]
 
 # =============================================================================
 # Phase D iter-3n — ILA instrumentation on scaler_top output and axis_to_vid_io
