@@ -75,15 +75,38 @@ set_false_path -to [get_pins {phase_b_bd_i/axi_sync_inputs_0/inst/plocked_q1_reg
 set_false_path -to [get_pins {phase_b_bd_i/axi_sync_inputs_0/inst/vsync_out_q1_reg/D}]
 set_false_path -to [get_pins {phase_b_bd_i/axi_sync_inputs_0/inst/pclk_locked_q1_reg/D}]
 
-# Color-correct GPIO-to-pclk_out CDC false-paths. ASYNC_REG handles
-# metastability; these inform the timing engine the inter-clock paths are
-# async and shouldn't be constrained. Without them Vivado tries to meet
-# setup from clk_fpga_0 (100 MHz) to clk_out1_pclk_out (74.25 MHz) on
-# the first-stage flops, fails badly (~-3.5 ns WNS).
-set_false_path -to [get_pins {phase_b_bd_i/color_correct_0/br_q1_reg[*]/D}]
-set_false_path -to [get_pins {phase_b_bd_i/color_correct_0/bg_q1_reg[*]/D}]
-set_false_path -to [get_pins {phase_b_bd_i/color_correct_0/bb_q1_reg[*]/D}]
-set_false_path -to [get_pins {phase_b_bd_i/color_correct_0/wr_q1_reg[*]/D}]
-set_false_path -to [get_pins {phase_b_bd_i/color_correct_0/wg_q1_reg[*]/D}]
-set_false_path -to [get_pins {phase_b_bd_i/color_correct_0/wb_q1_reg[*]/D}]
-set_false_path -to [get_pins {phase_b_bd_i/color_saturation_0/sat_q1_reg[*]/D}]
+# Color GPIO-to-pclk_out CDC false-paths. ASYNC_REG handles metastability;
+# these inform the timing engine the inter-clock paths are async and shouldn't
+# be constrained. Without them Vivado tries to meet setup from clk_fpga_0
+# (100 MHz) to clk_out1_pclk_out (74.25 MHz) on the first-stage flops, fails
+# badly (~-3.5 ns WNS).
+#
+# NOTE the `/inst/` level in the hierarchical path. BD module-reference cells
+# (-type module -reference foo) get an inner `inst` wrapper around the user
+# HDL inside the bd_wrapper. The pre-2026-05-18 patterns omitted this and
+# silently matched nothing; WNS stayed at -3.5ns until 2026-05-18.
+#
+# color_correct: 6 channels (black + white per RGB)
+set_false_path -to [get_pins {phase_b_bd_i/color_correct_0/inst/br_q1_reg[*]/D}]
+set_false_path -to [get_pins {phase_b_bd_i/color_correct_0/inst/bg_q1_reg[*]/D}]
+set_false_path -to [get_pins {phase_b_bd_i/color_correct_0/inst/bb_q1_reg[*]/D}]
+set_false_path -to [get_pins {phase_b_bd_i/color_correct_0/inst/wr_q1_reg[*]/D}]
+set_false_path -to [get_pins {phase_b_bd_i/color_correct_0/inst/wg_q1_reg[*]/D}]
+set_false_path -to [get_pins {phase_b_bd_i/color_correct_0/inst/wb_q1_reg[*]/D}]
+# color_saturation: single 16-bit alpha
+set_false_path -to [get_pins {phase_b_bd_i/color_saturation_0/inst/sat_q1_reg[*]/D}]
+# color_matrix: 9 × 16-bit coefs + 3 × 8-bit offsets
+set_false_path -to [get_pins {phase_b_bd_i/color_matrix_0/inst/m00_q1_reg[*]/D}]
+set_false_path -to [get_pins {phase_b_bd_i/color_matrix_0/inst/m01_q1_reg[*]/D}]
+set_false_path -to [get_pins {phase_b_bd_i/color_matrix_0/inst/m02_q1_reg[*]/D}]
+set_false_path -to [get_pins {phase_b_bd_i/color_matrix_0/inst/m10_q1_reg[*]/D}]
+set_false_path -to [get_pins {phase_b_bd_i/color_matrix_0/inst/m11_q1_reg[*]/D}]
+set_false_path -to [get_pins {phase_b_bd_i/color_matrix_0/inst/m12_q1_reg[*]/D}]
+set_false_path -to [get_pins {phase_b_bd_i/color_matrix_0/inst/m20_q1_reg[*]/D}]
+set_false_path -to [get_pins {phase_b_bd_i/color_matrix_0/inst/m21_q1_reg[*]/D}]
+set_false_path -to [get_pins {phase_b_bd_i/color_matrix_0/inst/m22_q1_reg[*]/D}]
+set_false_path -to [get_pins {phase_b_bd_i/color_matrix_0/inst/off_r_q1_reg[*]/D}]
+set_false_path -to [get_pins {phase_b_bd_i/color_matrix_0/inst/off_g_q1_reg[*]/D}]
+set_false_path -to [get_pins {phase_b_bd_i/color_matrix_0/inst/off_b_q1_reg[*]/D}]
+# mackin_blender: alpha
+set_false_path -to [get_pins {phase_b_bd_i/mackin_blender_0/inst/alpha_q1_reg[*]/D}]
