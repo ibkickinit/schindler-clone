@@ -467,6 +467,18 @@ static void telemetry_loop(UINTPTR vdma_base)
     int src_count = 0, out_count = 0;
     int status_every = 60;
 
+    /* Phase tracking telemetry (iter5 step 4, 2026-05-17 evening): on each
+     * output vsync edge, capture the current cumulative source vsync count.
+     * Deltas between consecutive captures = which source frames each output
+     * frame represents. At 5:2 cadence (60→24), expected delta pattern is
+     * 2,3,2,3,2,3,... (alternating); at 2:1 (60→30), expected 2,2,2,...
+     * Ring is dumped every status_every output frames just before the
+     * normal DIAG line. */
+    #define PHASE_RING_LEN 12
+    int phase_ring[PHASE_RING_LEN];
+    int phase_ring_idx = 0;
+    int phase_last_src = 0;
+
     while (1) {
         u32 g = vsync_gpio_read();
         if (!(g & VSYNC_GPIO_PLOCKED_MASK)) {
@@ -481,6 +493,11 @@ static void telemetry_loop(UINTPTR vdma_base)
         if (src_cur && !src_prev) src_count++;
         if (out_cur && !out_prev) {
             out_count++;
+            /* Phase tracking: capture source-frame delta since last output vsync. */
+            int delta = src_count - phase_last_src;
+            phase_last_src = src_count;
+            phase_ring[phase_ring_idx] = delta;
+            phase_ring_idx = (phase_ring_idx + 1) % PHASE_RING_LEN;
             if (out_count >= status_every) {
                 u32 park = Xil_In32(vdma_base + 0x28);
                 int rdstore = (int)((park >> 16) & 0x1F);
@@ -524,8 +541,19 @@ static void telemetry_loop(UINTPTR vdma_base)
                            (mm2s_sr & 0x8000) ? "EOLLate " : "",
                            (unsigned)mm2s_frmcnt,
                            rdstore, wrstore, src_count, out_count);
+                /* Phase tracking dump — recent per-output-frame source-frame
+                 * deltas. Start from oldest entry (right after the last write
+                 * position) so the sequence reads left-to-right in time. */
+                xil_printf("PHASE: deltas[%d]={", PHASE_RING_LEN);
+                for (int i = 0; i < PHASE_RING_LEN; i++) {
+                    int idx = (phase_ring_idx + i) % PHASE_RING_LEN;
+                    xil_printf("%d%s", phase_ring[idx],
+                               (i == PHASE_RING_LEN - 1) ? "" : ",");
+                }
+                xil_printf("}\r\n");
                 src_count = 0;
                 out_count = 0;
+                phase_last_src = 0;
 
                 /* iter5: one-shot DDR3 dump after the first DIAG print so
                  * pipeline has hit steady state. Frame layout scales with
@@ -867,11 +895,10 @@ int main(void)
      * skip behavior. Source stays 60p (ImagePro RGB), output is 50p, ratio
      * 6:5 means master drops one source frame every 6 to keep ahead of slave.
      * Switch to MODE_720P60 to revert. */
-    /* iter5-1080p-clean (2026-05-17): 1080p60→1080p24 5:2 FRC on clean
-     * substrate. Source from laptop or ImagePro at 1080p60, scaler bypassed
-     * (scaler_bypass_1080p passes through), output 1080p24 via Dynamic
-     * Genlock drop/repeat. */
-    if (vtc_setup(&MODE_1080P24) != XST_SUCCESS) return -1;
+    /* Option B test (2026-05-17 evening): 1080p60→1080p30 clean 2:1 FRC.
+     * Expected PHASE deltas pattern: 2,2,2,2,... (every other source frame
+     * shown). Sanity check on the easiest integer ratio. */
+    if (vtc_setup(&MODE_1080P30) != XST_SUCCESS) return -1;
     xil_printf("VTC aligned to source vsync\r\n");
     sleep(1);  /* give VTC time to start pulsing fsync before VDMA reset */
 

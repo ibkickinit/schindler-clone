@@ -55,7 +55,7 @@ Primary output path (rgb2dvi). Covers everything we ship today and most of Phase
 | 4 | 1080p60 | 1080p24 | ✅ | D (5:2) | none | **Bench-validated 2026-05-17 evening** on `iter5-1080p-clean` commit `86dc034`. Clean (no scroll, no tear, no bottom-bars). NUM_FRAMES=5 required to prevent S2MM lapping MM2S mid-read. Scaler bypassed. |
 | 5 | 1080p59.94 | 1080p23.976 | 🟡 | A / B | none | **iter5 stretch.** Tests MMCM tracking under 1000/1001 drift. |
 | 6 | 1080p59.94 | 1080p24 | 🔲 | B | none | Phase E1. Needs MMCM tracking to absorb 59.94→60 drift before 5:2 FRC. |
-| 7 | 1080p60 | 1080p30 | 🔲 | D (2:1) | none | Phase E. Trivial integer ratio; should "just work" once iter5 validates substrate. |
+| 7 | 1080p60 | 1080p30 | ✅ | D (2:1) | none | **Bench-validated 2026-05-17 evening.** PHASE telemetry confirms `deltas={2,2,2,2,...}` constant — exact 2:1 cadence. Picture clean. |
 | 8 | 1080p60 | 1080p25 | 🔲 | E (12:5) | none | Phase E2. Ugly ratio (12:5), benefits from Mackin blend. |
 | 9 | 1080p60 | 1080p50 | 🔲 | E (6:5) | none | Phase E2. Ugly near-1:1 ratio. |
 | 10 | 1080p50 | 1080p60 | 🔲 | E (5:6) | none | Phase E2. Inverse of #9. |
