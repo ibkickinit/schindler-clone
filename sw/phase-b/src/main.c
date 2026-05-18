@@ -25,13 +25,11 @@
 #include "xvtc.h"
 #include "xtime_l.h"   /* Phase D iter-4a: SCU timer for precise rate measurement */
 
-// iter5-bisect-720p (2026-05-17): revert to 720p frame size + scaler_top to
-// isolate whether the smooth-vertical-scroll bug is 1080p-specific OR something
-// in our iter5 substrate (5 framestores, AXIS FIFO, c_flush_on_fsync=1).
-// Build with SCALER_MODULE=scaler_top in env; everything else iter5 stays.
-// MODE_720P60 (matched-rate) used below so no FRC variable in play.
-#define FRAME_W           1280
-#define FRAME_H           720
+// iter5-1080p-clean (2026-05-17): resume 1080p60→1080p24 5:2 FRC on the clean
+// post-bisect substrate (no iter4h additions, no MM2S +STRIDE shift). Build
+// uses SCALER_MODULE=scaler_bypass_1080p (default in TCL). NUM_FRAMES=3 kept.
+#define FRAME_W           1920
+#define FRAME_H           1080
 /* AXIS data width on the VDMA is 24-bit (RGB888, one pixel-per-clock with no
  * padding). Memory stride must therefore be 3 bytes/pixel, NOT 4 — using 4
  * was the actual reason v_axi4s_vid_out couldn't lock and S2MM was reporting
@@ -865,12 +863,11 @@ int main(void)
      * skip behavior. Source stays 60p (ImagePro RGB), output is 50p, ratio
      * 6:5 means master drops one source frame every 6 to keep ahead of slave.
      * Switch to MODE_720P60 to revert. */
-    /* iter5-bisect-720p: matched-rate 720p60→720p60 with iter5 substrate kept
-     * (5 framestores, AXIS FIFO, flush_on_fsync=1, iter4h over-allocate). If
-     * scroll vanishes here, the bug is specifically the 1080p change. If
-     * scroll persists at 720p60 matched rate, one of our iter5 substrate
-     * changes is the culprit (most likely candidate: 5 framestores). */
-    if (vtc_setup(&MODE_720P60) != XST_SUCCESS) return -1;
+    /* iter5-1080p-clean (2026-05-17): 1080p60→1080p24 5:2 FRC on clean
+     * substrate. Source from laptop or ImagePro at 1080p60, scaler bypassed
+     * (scaler_bypass_1080p passes through), output 1080p24 via Dynamic
+     * Genlock drop/repeat. */
+    if (vtc_setup(&MODE_1080P24) != XST_SUCCESS) return -1;
     xil_printf("VTC aligned to source vsync\r\n");
     sleep(1);  /* give VTC time to start pulsing fsync before VDMA reset */
 
