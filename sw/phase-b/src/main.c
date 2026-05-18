@@ -186,10 +186,14 @@ static inline void color_set(u16 sat,
               ((u32)white_g  <<  8) | (u32)white_r;
     Xil_Out32(COLOR_GPIO_BASEADDR + 0x00, ch1);
     Xil_Out32(COLOR_GPIO_BASEADDR + 0x08, ch2);
-    /* Percentage: sat / 0x8000 × 100. Approximation via integer divide. */
+    /* Readback to verify the write reached the register */
+    u32 rb1 = Xil_In32(COLOR_GPIO_BASEADDR + 0x00);
+    u32 rb2 = Xil_In32(COLOR_GPIO_BASEADDR + 0x08);
     unsigned pct = ((unsigned)sat * 100) >> 15;
-    xil_printf("COLOR: sat=0x%04x (%u%%)  black=(%u,%u,%u)  white=(%u,%u,%u)\r\n",
-               (unsigned)sat, pct, black_r, black_g, black_b, white_r, white_g, white_b);
+    xil_printf("COLOR: sat=0x%04x (%u%%)  black=(%u,%u,%u)  white=(%u,%u,%u)"
+               "  base=0x%08x  RB=[%08x,%08x]\r\n",
+               (unsigned)sat, pct, black_r, black_g, black_b, white_r, white_g, white_b,
+               (unsigned)COLOR_GPIO_BASEADDR, (unsigned)rb1, (unsigned)rb2);
 }
 
 /* Convenience: set saturation by percentage (0..200+). Anything above 200
@@ -198,6 +202,227 @@ static inline u16 color_sat_from_percent(unsigned pct)
 {
     if (pct >= 200) return 0xFFFF;
     return (u16)((pct << 15) / 100);
+}
+
+/* ============================================================================
+ * color_matrix: general 3x3 RGB transform.
+ *   out = matrix · in + offset (per channel, clamp to [0,255]).
+ * Coefficients are Q2.14 signed (multiply by 16384.0 to convert from float).
+ * Offsets are 8-bit signed integers (±127 range; +128 not representable).
+ *
+ * GPIO 4/5/6 layout (writes to base+0x00 = ch1, base+0x08 = ch2):
+ *   GPIO 4 ch1 = (m01<<16) | m00
+ *   GPIO 4 ch2 = (m10<<16) | m02
+ *   GPIO 5 ch1 = (m12<<16) | m11
+ *   GPIO 5 ch2 = (m21<<16) | m20
+ *   GPIO 6 ch1 = (spare<<16) | m22
+ *   GPIO 6 ch2 = (off_b<<16) | (off_g<<8) | off_r
+ * ============================================================================ */
+#if defined(XPAR_AXI_GPIO_4_BASEADDR)
+#  define MATRIX_GPIO4 XPAR_AXI_GPIO_4_BASEADDR
+#  define MATRIX_GPIO5 XPAR_AXI_GPIO_5_BASEADDR
+#  define MATRIX_GPIO6 XPAR_AXI_GPIO_6_BASEADDR
+#elif defined(XPAR_PHASE_B_BD_AXI_GPIO_4_BASEADDR)
+#  define MATRIX_GPIO4 XPAR_PHASE_B_BD_AXI_GPIO_4_BASEADDR
+#  define MATRIX_GPIO5 XPAR_PHASE_B_BD_AXI_GPIO_5_BASEADDR
+#  define MATRIX_GPIO6 XPAR_PHASE_B_BD_AXI_GPIO_6_BASEADDR
+#else
+#  error "AXI GPIO 4/5/6 (color_matrix) base addresses not in xparameters.h"
+#endif
+
+/* Write a full 3x3 matrix + 3 offsets to GPIO 4/5/6.
+ * Coefficients are raw Q2.14 signed s16 (caller converts from float).
+ * Offsets are signed s8. */
+static inline void color_matrix_set(s16 m00, s16 m01, s16 m02,
+                                    s16 m10, s16 m11, s16 m12,
+                                    s16 m20, s16 m21, s16 m22,
+                                    s8  off_r, s8 off_g, s8 off_b)
+{
+    Xil_Out32(MATRIX_GPIO4 + 0x00, ((u32)(u16)m01 << 16) | (u16)m00);
+    Xil_Out32(MATRIX_GPIO4 + 0x08, ((u32)(u16)m10 << 16) | (u16)m02);
+    Xil_Out32(MATRIX_GPIO5 + 0x00, ((u32)(u16)m12 << 16) | (u16)m11);
+    Xil_Out32(MATRIX_GPIO5 + 0x08, ((u32)(u16)m21 << 16) | (u16)m20);
+    Xil_Out32(MATRIX_GPIO6 + 0x00, (u32)(u16)m22);
+    Xil_Out32(MATRIX_GPIO6 + 0x08, ((u32)(u8)off_b << 16) | ((u32)(u8)off_g << 8) | (u8)off_r);
+    /* Readback all 6 GPIO registers to verify writes reached the registers. */
+    u32 rb4_1 = Xil_In32(MATRIX_GPIO4 + 0x00);
+    u32 rb4_2 = Xil_In32(MATRIX_GPIO4 + 0x08);
+    u32 rb5_1 = Xil_In32(MATRIX_GPIO5 + 0x00);
+    u32 rb5_2 = Xil_In32(MATRIX_GPIO5 + 0x08);
+    u32 rb6_1 = Xil_In32(MATRIX_GPIO6 + 0x00);
+    u32 rb6_2 = Xil_In32(MATRIX_GPIO6 + 0x08);
+    xil_printf("MATRIX: [%04x %04x %04x / %04x %04x %04x / %04x %04x %04x]"
+               " off=(%d,%d,%d)\r\n",
+               (u16)m00, (u16)m01, (u16)m02,
+               (u16)m10, (u16)m11, (u16)m12,
+               (u16)m20, (u16)m21, (u16)m22,
+               off_r, off_g, off_b);
+    xil_printf("MATRIX bases: g4=0x%08x g5=0x%08x g6=0x%08x\r\n",
+               (unsigned)MATRIX_GPIO4, (unsigned)MATRIX_GPIO5, (unsigned)MATRIX_GPIO6);
+    xil_printf("MATRIX RB:  g4=[%08x %08x]  g5=[%08x %08x]  g6=[%08x %08x]\r\n",
+               (unsigned)rb4_1, (unsigned)rb4_2,
+               (unsigned)rb5_1, (unsigned)rb5_2,
+               (unsigned)rb6_1, (unsigned)rb6_2);
+}
+
+/* Identity matrix: pass-through. */
+static inline void color_matrix_identity(void)
+{
+    color_matrix_set(0x4000, 0x0000, 0x0000,
+                     0x0000, 0x4000, 0x0000,
+                     0x0000, 0x0000, 0x4000,
+                     0, 0, 0);
+}
+
+/* Forward declarations for symbols used by the UART command parser
+ * before their definitions appear later in the file. */
+static inline void color_matrix_saturation(u16 sat_q15);
+
+/* ============================================================================
+ * UART command parser — runtime tuning of color pipeline without rebuilds.
+ *
+ * Commands (one-line, terminated by \r or \n):
+ *   ?               help
+ *   i               identity all (sat=100%, black=0,0,0, white=255,255,255, matrix=I)
+ *   s <0..200>      color_saturation at percentage
+ *   m <0..200>      matrix saturation at percentage (via color_matrix)
+ *   g               matrix grayscale (= m 0)
+ *   b <r> <g> <b>   color_correct black RGB
+ *   w <r> <g> <b>   color_correct white RGB
+ *   r               re-print all GPIO readbacks
+ *
+ * Numeric args are decimal. Pipe from this host:
+ *   echo "i" > /dev/ttyUSB1
+ *   echo "m 50" > /dev/ttyUSB1
+ * ============================================================================ */
+#ifndef STDIN_BASEADDRESS
+#  if defined(XPAR_PS7_UART_1_BASEADDR)
+#    define STDIN_BASEADDRESS XPAR_PS7_UART_1_BASEADDR
+#  elif defined(XPAR_PS7_UART_0_BASEADDR)
+#    define STDIN_BASEADDRESS XPAR_PS7_UART_0_BASEADDR
+#  elif defined(XPAR_XUARTPS_0_BASEADDR)
+#    define STDIN_BASEADDRESS XPAR_XUARTPS_0_BASEADDR
+#  endif
+#endif
+
+/* Last-known color state (for partial-update commands). */
+static u16 g_sat_q15 = 0x8000;
+static u8  g_black_r = 0, g_black_g = 0, g_black_b = 0;
+static u8  g_white_r = 255, g_white_g = 255, g_white_b = 255;
+
+static inline void color_apply_state(void)
+{
+    color_set(g_sat_q15, g_black_r, g_black_g, g_black_b,
+              g_white_r, g_white_g, g_white_b);
+}
+
+static int parse_uint(const char **pp, unsigned *out)
+{
+    const char *p = *pp;
+    while (*p == ' ' || *p == '\t') p++;
+    if (*p < '0' || *p > '9') return 0;
+    unsigned v = 0;
+    while (*p >= '0' && *p <= '9') { v = v * 10 + (*p - '0'); p++; }
+    *out = v;
+    *pp = p;
+    return 1;
+}
+
+static void cmd_help(void)
+{
+    xil_printf("\r\nUART commands:\r\n"
+               "  ?               help\r\n"
+               "  i               identity (sat=100%%, black=0, white=255, matrix=I)\r\n"
+               "  s <pct>         color_saturation at <pct>%% (0..200)\r\n"
+               "  m <pct>         matrix saturation at <pct>%% (0..200)\r\n"
+               "  g               matrix grayscale (m 0)\r\n"
+               "  b <r> <g> <b>   color_correct black RGB (0..255)\r\n"
+               "  w <r> <g> <b>   color_correct white RGB (0..255)\r\n"
+               "  r               re-print GPIO readbacks\r\n");
+}
+
+static void uart_dispatch(const char *line)
+{
+    if (line[0] == '\0') return;
+    char op = line[0];
+    const char *p = line + 1;
+    unsigned a, b, c;
+    if (op == '?' || op == 'h') {
+        cmd_help();
+    } else if (op == 'i') {
+        g_sat_q15 = 0x8000;
+        g_black_r = g_black_g = g_black_b = 0;
+        g_white_r = g_white_g = g_white_b = 255;
+        color_apply_state();
+        color_matrix_identity();
+    } else if (op == 's' && parse_uint(&p, &a)) {
+        g_sat_q15 = color_sat_from_percent(a);
+        color_apply_state();
+    } else if (op == 'm' && parse_uint(&p, &a)) {
+        color_matrix_saturation(color_sat_from_percent(a));
+    } else if (op == 'g') {
+        color_matrix_saturation(0);
+    } else if (op == 'b' && parse_uint(&p, &a) && parse_uint(&p, &b) && parse_uint(&p, &c)) {
+        g_black_r = (u8)a; g_black_g = (u8)b; g_black_b = (u8)c;
+        color_apply_state();
+    } else if (op == 'w' && parse_uint(&p, &a) && parse_uint(&p, &b) && parse_uint(&p, &c)) {
+        g_white_r = (u8)a; g_white_g = (u8)b; g_white_b = (u8)c;
+        color_apply_state();
+    } else if (op == 'r') {
+        color_apply_state();   /* re-write triggers readback prints */
+        color_matrix_identity(); /* same — re-emits MATRIX line */
+    } else {
+        xil_printf("UART: unknown cmd '%s' — type ? for help\r\n", line);
+    }
+}
+
+#ifdef STDIN_BASEADDRESS
+static void uart_poll(void)
+{
+    static char buf[80];
+    static int  len = 0;
+    /* Direct register access via Xil_In32 — UART PS Channel SR @ +0x2C,
+     * RXEMPTY = bit 1; RX FIFO data @ +0x30. */
+    while (!(Xil_In32(STDIN_BASEADDRESS + 0x2C) & 0x2)) {
+        u8 ch = (u8)Xil_In32(STDIN_BASEADDRESS + 0x30);
+        if (ch == '\r' || ch == '\n') {
+            if (len > 0) {
+                buf[len] = '\0';
+                xil_printf("\r\nUART> %s\r\n", buf);
+                uart_dispatch(buf);
+                len = 0;
+            }
+        } else if (ch >= ' ' && len < (int)sizeof(buf) - 1) {
+            buf[len++] = (char)ch;
+        }
+    }
+}
+#else
+static void uart_poll(void) {}
+#endif
+
+/* Saturation matrix via Rec.601 luma weights (Yr=0.299, Yg=0.587, Yb=0.114).
+ * sat_q15 is Q1.15 (0x0000=gray, 0x8000=identity, 0xFFFF≈200%).
+ * Note: this duplicates color_saturation_0's function — useful for verifying
+ * the matrix module produces equivalent results. */
+static inline void color_matrix_saturation(u16 sat_q15)
+{
+    /* Convert sat from Q1.15 to Q2.14 (right-shift by 1 since one fewer
+     * fraction bit). At 100% sat (Q1.15=0x8000), q14=0x4000 (1.0). */
+    s32 s = (s32)sat_q15 >> 1;  /* Q2.14 signed */
+    s32 one_q14 = 0x4000;
+    s32 inv_s   = one_q14 - s;  /* (1-s) in Q2.14 */
+
+    /* Yr=0.299*16384=4899 ; Yg=0.587*16384=9617 ; Yb=0.114*16384=1868 */
+    s32 yr = (inv_s * 4899) >> 14;
+    s32 yg = (inv_s * 9617) >> 14;
+    s32 yb = (inv_s * 1868) >> 14;
+
+    /* Diagonal entries = s + (1-s)·Y_channel ; off-diagonals = (1-s)·Y_col_channel */
+    color_matrix_set((s16)(s + yr), (s16)yg,        (s16)yb,
+                     (s16)yr,       (s16)(s + yg),  (s16)yb,
+                     (s16)yr,       (s16)yg,        (s16)(s + yb),
+                     0, 0, 0);
 }
 
 /* iter4g: AXI GPIO 2 — dual-channel input, exposes per-frame counter
@@ -526,6 +751,7 @@ static void telemetry_loop(UINTPTR vdma_base)
     int phase_last_src = 0;
 
     while (1) {
+        uart_poll();  /* runtime command parser — non-blocking */
         u32 g = vsync_gpio_read();
         if (!(g & VSYNC_GPIO_PLOCKED_MASK)) {
             xil_printf("TELEMETRY: source dropped (pLocked=0), waiting...\r\n");
@@ -993,9 +1219,13 @@ int main(void)
      * glance that the color_correct block is active and routed correctly.
      * Identity preset would be color_set(0,0,0, 255,255,255). To dial in
      * NEUTRAL white once you've confirmed routing, change to that. */
-    /* Identity baseline (sat=100%, no color tint) — used as a reference
-     * for comparison against saturation experiments. */
+    /* color_correct / color_saturation: identity baseline. */
     color_set(color_sat_from_percent(100),  0, 0, 0,    255, 255, 255);
+
+    /* color_matrix test: grayscale via sat=0 matrix. All 3 rows = Rec.601
+     * luma weights so out_r=out_g=out_b=luma. Image should go full B&W.
+     * This is the unambiguous "matrix is doing its job" test. */
+    color_matrix_saturation(0);
 
     xil_printf("Pipeline live — entering diag loop (1 sec/dump)\r\n\r\n");
 

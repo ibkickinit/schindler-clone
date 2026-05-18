@@ -57,6 +57,7 @@ add_files -norecurse [file join $project_root hdl scaler_crop_bypass.v]  ;# iter
 add_files -norecurse [file join $project_root hdl scaler_bypass_1080p.v] ;# iter5 1080p passthrough
 add_files -norecurse [file join $project_root hdl color_correct.v]      ;# white-balance / color-temp
 add_files -norecurse [file join $project_root hdl color_saturation.v]   ;# Rec.601 luma-mix saturation
+add_files -norecurse [file join $project_root hdl color_matrix.v]       ;# general 3x3 color matrix
 add_files -norecurse [file join $project_root hdl scaler_top.v]
 add_files -norecurse [file join $project_root hdl scaler_h.v]
 add_files -norecurse [file join $project_root hdl scaler_v.v]
@@ -379,9 +380,17 @@ connect_bd_net [get_bd_pins v_tc_tx/vblank_out]       [get_bd_pins axis_to_vid_i
 # Both clock on pclk_out; aresetn from rst_pixclk_out wired further down.
 create_bd_cell -type module -reference color_saturation color_saturation_0
 create_bd_cell -type module -reference color_correct    color_correct_0
+# color_matrix_0: general 3x3 RGB matrix + 3 offsets. Identity at boot.
+# Inserted DOWNSTREAM of color_correct so the new matrix can be tested
+# independently while existing sat/correct keep working (set to identity if
+# desired). Future: retire color_saturation_0 + color_correct_0 once matrix
+# preset coverage is verified.
+create_bd_cell -type module -reference color_matrix     color_matrix_0
 connect_bd_intf_net [get_bd_intf_pins axi_vdma_0/M_AXIS_MM2S]    [get_bd_intf_pins color_saturation_0/s_axis]
 connect_bd_intf_net [get_bd_intf_pins color_saturation_0/m_axis] [get_bd_intf_pins color_correct_0/s_axis]
-connect_bd_intf_net [get_bd_intf_pins color_correct_0/m_axis]    [get_bd_intf_pins axis_to_vid_io_0/s_axis]
+connect_bd_intf_net [get_bd_intf_pins color_correct_0/m_axis]    [get_bd_intf_pins color_matrix_0/s_axis]
+connect_bd_intf_net [get_bd_intf_pins color_matrix_0/m_axis]     [get_bd_intf_pins axis_to_vid_io_0/s_axis]
+connect_bd_net [get_bd_pins clk_wiz_pixclk_out/clk_out1]         [get_bd_pins color_matrix_0/aclk]
 connect_bd_net [get_bd_pins clk_wiz_pixclk_out/clk_out1]         [get_bd_pins color_saturation_0/aclk]
 connect_bd_net [get_bd_pins clk_wiz_pixclk_out/clk_out1]         [get_bd_pins color_correct_0/aclk]
 # fsync: VTC's frame-start pulse → VDMA MM2S so MM2S SOF aligns with VTC frame.
@@ -490,7 +499,7 @@ create_bd_cell -type ip -vlnv xilinx.com:ip:axi_interconnect axi_ic_lite
 #   M00 = VDMA, M01 = VTC tx (generator), M02 = GPIO 0 (status inputs)
 #   M03 = VTC rx (detector), M04 = GPIO 1 (scaler dim outputs)
 #   M05 = GPIO 2 (iter4g diagnostic counters, new)
-set_property -dict [list CONFIG.NUM_SI {1} CONFIG.NUM_MI {7}] [get_bd_cells axi_ic_lite]
+set_property -dict [list CONFIG.NUM_SI {1} CONFIG.NUM_MI {10}] [get_bd_cells axi_ic_lite]
 connect_bd_intf_net [get_bd_intf_pins zynq_ps/M_AXI_GP0]     [get_bd_intf_pins axi_ic_lite/S00_AXI]
 connect_bd_intf_net [get_bd_intf_pins axi_ic_lite/M00_AXI]   [get_bd_intf_pins axi_vdma_0/S_AXI_LITE]
 connect_bd_intf_net [get_bd_intf_pins axi_ic_lite/M01_AXI]   [get_bd_intf_pins v_tc_tx/ctrl]
@@ -505,6 +514,9 @@ connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/M03_A
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/M04_ACLK]
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/M05_ACLK]
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/M06_ACLK]  ;# axi_gpio_3 (color)
+connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/M07_ACLK]  ;# axi_gpio_4 (matrix coefs row 0)
+connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/M08_ACLK]  ;# axi_gpio_5 (matrix coefs row 1+row 2 start)
+connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/M09_ACLK]  ;# axi_gpio_6 (matrix m22 + offsets)
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_vdma_0/s_axi_lite_aclk]
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins v_tc_tx/s_axi_aclk]
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins v_tc_rx/s_axi_aclk]
@@ -517,6 +529,9 @@ connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_li
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_lite/M04_ARESETN]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_lite/M05_ARESETN]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_lite/M06_ARESETN]  ;# axi_gpio_3 (color)
+connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_lite/M07_ARESETN]  ;# axi_gpio_4
+connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_lite/M08_ARESETN]  ;# axi_gpio_5
+connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_lite/M09_ARESETN]  ;# axi_gpio_6
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_vdma_0/axi_resetn]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins v_tc_tx/s_axi_aresetn]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins v_tc_rx/s_axi_aresetn]
@@ -528,6 +543,7 @@ connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins v_tc_rx/s
 connect_bd_net [get_bd_pins rst_pixclk_out/peripheral_aresetn] [get_bd_pins v_tc_tx/resetn]
 connect_bd_net [get_bd_pins rst_pixclk_out/peripheral_aresetn] [get_bd_pins color_correct_0/aresetn]
 connect_bd_net [get_bd_pins rst_pixclk_out/peripheral_aresetn] [get_bd_pins color_saturation_0/aresetn]
+connect_bd_net [get_bd_pins rst_pixclk_out/peripheral_aresetn] [get_bd_pins color_matrix_0/aresetn]
 # VTC_rx detector also on pclk_in — reset comes from axi (input-side IP)
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]        [get_bd_pins v_tc_rx/resetn]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]        [get_bd_pins v_vid_in_axi4s_0/aresetn]
@@ -790,6 +806,71 @@ set_property -dict [list CONFIG.NUM_PORTS {2} CONFIG.IN0_WIDTH {8} CONFIG.IN1_WI
 connect_bd_net [get_bd_pins slice_color_sat_lo/Dout] [get_bd_pins concat_color_sat/In0]  ;# lower 8 bits
 connect_bd_net [get_bd_pins slice_color_sat_hi/Dout] [get_bd_pins concat_color_sat/In1]  ;# upper 8 bits
 connect_bd_net [get_bd_pins concat_color_sat/dout]   [get_bd_pins color_saturation_0/sat_async]
+
+# =============================================================================
+# color_matrix coefficient + offset AXI GPIOs (axi_gpio_4/5/6).
+# 9 × 16-bit signed Q2.14 coefficients + 3 × 8-bit signed offsets, packed:
+#   axi_gpio_4 ch1: [31:16]=m01  [15:0]=m00      row 0 first half
+#   axi_gpio_4 ch2: [31:16]=m10  [15:0]=m02      m02 + row 1 start
+#   axi_gpio_5 ch1: [31:16]=m12  [15:0]=m11      row 1 finish
+#   axi_gpio_5 ch2: [31:16]=m21  [15:0]=m20      row 2 start
+#   axi_gpio_6 ch1: [31:16]=spare [15:0]=m22     row 2 finish
+#   axi_gpio_6 ch2: [23:16]=off_b [15:8]=off_g [7:0]=off_r
+# Boot defaults give identity matrix (m00=m11=m22=0x4000 = 1.0 in Q2.14).
+# =============================================================================
+foreach {gpio_name def_ch1 def_ch2 m_idx} {
+    axi_gpio_4 0x00004000 0x00000000 0
+    axi_gpio_5 0x00004000 0x00000000 1
+    axi_gpio_6 0x00004000 0x00000000 2
+} {
+    create_bd_cell -type ip -vlnv xilinx.com:ip:axi_gpio $gpio_name
+    set_property -dict [list \
+        CONFIG.C_GPIO_WIDTH    {32} \
+        CONFIG.C_GPIO2_WIDTH   {32} \
+        CONFIG.C_ALL_OUTPUTS   {1} \
+        CONFIG.C_ALL_OUTPUTS_2 {1} \
+        CONFIG.C_IS_DUAL       {1} \
+        CONFIG.C_INTERRUPT_PRESENT {0} \
+        CONFIG.C_DOUT_DEFAULT   $def_ch1 \
+        CONFIG.C_DOUT_DEFAULT_2 $def_ch2 \
+    ] [get_bd_cells $gpio_name]
+    set port_idx [expr 7 + $m_idx]
+    connect_bd_intf_net [get_bd_intf_pins axi_ic_lite/M0${port_idx}_AXI] [get_bd_intf_pins ${gpio_name}/S_AXI]
+    connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]             [get_bd_pins ${gpio_name}/s_axi_aclk]
+    connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]    [get_bd_pins ${gpio_name}/s_axi_aresetn]
+}
+
+# Slice IPs to break out the 9 coefficients + 3 offsets.
+# Format: {slice_name, gpio_cell, ch, hi_bit, lo_bit, dest_pin}
+foreach {sname gpio ch hi lo dest} {
+    slice_m00 axi_gpio_4 gpio_io_o  15  0 m00_async
+    slice_m01 axi_gpio_4 gpio_io_o  31 16 m01_async
+    slice_m02 axi_gpio_4 gpio2_io_o 15  0 m02_async
+    slice_m10 axi_gpio_4 gpio2_io_o 31 16 m10_async
+    slice_m11 axi_gpio_5 gpio_io_o  15  0 m11_async
+    slice_m12 axi_gpio_5 gpio_io_o  31 16 m12_async
+    slice_m20 axi_gpio_5 gpio2_io_o 15  0 m20_async
+    slice_m21 axi_gpio_5 gpio2_io_o 31 16 m21_async
+    slice_m22 axi_gpio_6 gpio_io_o  15  0 m22_async
+} {
+    create_bd_cell -type ip -vlnv xilinx.com:ip:xlslice $sname
+    set width [expr $hi - $lo + 1]
+    set_property -dict [list CONFIG.DIN_WIDTH {32} CONFIG.DIN_FROM $hi CONFIG.DIN_TO $lo CONFIG.DOUT_WIDTH $width] [get_bd_cells $sname]
+    connect_bd_net [get_bd_pins ${gpio}/${ch}] [get_bd_pins ${sname}/Din]
+    connect_bd_net [get_bd_pins ${sname}/Dout] [get_bd_pins color_matrix_0/${dest}]
+}
+
+# Offsets — 8-bit each from axi_gpio_6/gpio2_io_o.
+foreach {sname hi lo dest} {
+    slice_off_r  7  0 off_r_async
+    slice_off_g 15  8 off_g_async
+    slice_off_b 23 16 off_b_async
+} {
+    create_bd_cell -type ip -vlnv xilinx.com:ip:xlslice $sname
+    set_property -dict [list CONFIG.DIN_WIDTH {32} CONFIG.DIN_FROM $hi CONFIG.DIN_TO $lo CONFIG.DOUT_WIDTH {8}] [get_bd_cells $sname]
+    connect_bd_net [get_bd_pins axi_gpio_6/gpio2_io_o] [get_bd_pins ${sname}/Din]
+    connect_bd_net [get_bd_pins ${sname}/Dout]         [get_bd_pins color_matrix_0/${dest}]
+}
 
 connect_bd_intf_net [get_bd_intf_pins axi_ic_lite/M06_AXI] [get_bd_intf_pins axi_gpio_3/S_AXI]
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]             [get_bd_pins axi_gpio_3/s_axi_aclk]
