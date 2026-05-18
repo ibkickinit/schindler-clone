@@ -234,7 +234,7 @@ create_bd_cell -type ip -vlnv xilinx.com:ip:axi_vdma axi_vdma_0
 set_property -dict [list \
     CONFIG.c_include_s2mm {1} \
     CONFIG.c_include_mm2s {1} \
-    CONFIG.c_num_fstores {3} \
+    CONFIG.c_num_fstores {5} \
     CONFIG.c_m_axi_s2mm_data_width {64} \
     CONFIG.c_m_axi_mm2s_data_width {64} \
     CONFIG.c_s_axis_s2mm_tdata_width {24} \

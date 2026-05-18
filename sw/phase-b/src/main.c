@@ -40,7 +40,11 @@
 /* iter5-bisect-720p: NUM_FRAMES 5 → 3 to isolate scroll cause. Bisect shows
  * 5 framestores is the only iter5 substrate change vs. clean iter4h; revert
  * to 3 to confirm. BD config c_num_fstores must also match (3 in TCL). */
-#define NUM_FRAMES        3
+/* iter5-1080p-clean: NUM_FRAMES 3 → 5 to give S2MM enough cycle headroom
+ * to not lap MM2S during its 41.7 ms read window at 24p output. 5 × 16.7
+ * = 83 ms cycle time vs. MM2S 41.7 ms read = 2× headroom. Addresses the
+ * FRC tear-line-that-drifts symptom. BD c_num_fstores must match. */
+#define NUM_FRAMES        5
 #define FRAME_BUF_BASE    0x10000000U
 
 static XAxiVdma vdma;
