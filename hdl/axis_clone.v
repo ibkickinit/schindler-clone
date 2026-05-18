@@ -44,12 +44,17 @@ module axis_clone (
     output wire        m2_axis_tuser
 );
 
-    // Source is consumed when both masters are ready
+    // Source is consumed when both masters are ready.
     assign s_axis_tready  = m1_axis_tready && m2_axis_tready;
 
-    // Each master is valid only when source is valid AND the other master is ready
-    assign m1_axis_tvalid = s_axis_tvalid && m2_axis_tready;
-    assign m2_axis_tvalid = s_axis_tvalid && m1_axis_tready;
+    // Both masters see valid whenever source is valid. This is correct ONLY
+    // when m1_axis_tready and m2_axis_tready are equal (common case: both
+    // downstreams are the same module with identical ready logic, e.g.
+    // mackin_blender's s_curr_tready == s_prev_tready). Avoids the
+    // combinational loop that arose from "m1_tvalid = s_tvalid && m2_tready"
+    // when mackin's pair_valid (which feeds the other tready) feeds back here.
+    assign m1_axis_tvalid = s_axis_tvalid;
+    assign m2_axis_tvalid = s_axis_tvalid;
 
     // Data/last/user fan out identically
     assign m1_axis_tdata  = s_axis_tdata;
