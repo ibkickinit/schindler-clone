@@ -2,17 +2,17 @@
 
 Living document. Source of truth for **what input → output combinations Schindler supports, by what method, with what caveats.** Updated each iter as features ship. Also serves as the QA test plan — every ✅ row should have a bench-validated pass; every 🟡 is the current iter's focus.
 
-Last updated: 2026-05-17 (post-iter4h, entering iter5).
+Last updated: 2026-05-17 evening (post-bisect; iter4h substrate retired). Production substrate is `iter5-1080p-clean` branch commit `86dc034` — iter4d-3 + cleanups (no AXIS FIFO, no `c_flush_on_fsync=1`, no S2MM over-allocate, no MM2S +STRIDE shift) + NUM_FRAMES=5 / `c_num_fstores=5`.
 
 ---
 
 ## Legend
 
 **Status:**
-- ✅ Shipped + bench-validated
-- 🟡 In progress (current iter — iter5)
+- ✅ Shipped + bench-validated on the current production substrate
+- ⚠️ Validated on an OLD substrate (pre-iter5 bisect); needs re-test on current substrate
+- 🟡 In progress (current iter)
 - 🔲 Planned (Phase E or later)
-- ⚠️ Supported with caveat (see Notes)
 - ❌ Not supported / explicitly out of scope
 
 **Method (FRC handling):**
@@ -49,10 +49,10 @@ Primary output path (rgb2dvi). Covers everything we ship today and most of Phase
 
 | # | Input format | Output format | Status | Method | Scaling | Notes |
 |---|---|---|---|---|---|---|
-| 1 | 1080p60 | 1080p60 | ✅ | — | none | Phase A passthrough. Bench-validated. |
-| 2 | 1080p60 | 720p60 | ✅ | — / A | down | iter4d-3 substrate. Scaler in input-side. Bench-validated. |
-| 3 | 1080p60 | 720p50 | ✅ | D (6:5) | down | iter4d-3 FRC validation. Genlock + drop/repeat. Bench-validated. |
-| 4 | 1080p60 | 1080p24 | 🟡 | D (5:2) | none | **iter5 target.** Clean integer FRC, scaler bypassed. |
+| 1 | 1080p60 | 1080p60 | ⚠️ | — | none | Phase A passthrough validated on early substrate. Needs re-test on iter5-1080p-clean substrate (current production base — iter4h additions removed). |
+| 2 | 1080p60 | 720p60 | ⚠️ | — / A | down | iter4d-3 era validated. Re-test on iter5-1080p-clean substrate. |
+| 3 | 1080p60 | 720p50 | ⚠️ | D (6:5) | down | iter4d-3 FRC validation. Re-test on iter5-1080p-clean substrate. |
+| 4 | 1080p60 | 1080p24 | ✅ | D (5:2) | none | **Bench-validated 2026-05-17 evening** on `iter5-1080p-clean` commit `86dc034`. Clean (no scroll, no tear, no bottom-bars). NUM_FRAMES=5 required to prevent S2MM lapping MM2S mid-read. Scaler bypassed. |
 | 5 | 1080p59.94 | 1080p23.976 | 🟡 | A / B | none | **iter5 stretch.** Tests MMCM tracking under 1000/1001 drift. |
 | 6 | 1080p59.94 | 1080p24 | 🔲 | B | none | Phase E1. Needs MMCM tracking to absorb 59.94→60 drift before 5:2 FRC. |
 | 7 | 1080p60 | 1080p30 | 🔲 | D (2:1) | none | Phase E. Trivial integer ratio; should "just work" once iter5 validates substrate. |
@@ -64,7 +64,7 @@ Primary output path (rgb2dvi). Covers everything we ship today and most of Phase
 | 13 | 1080p24 | 1080p24 | 🔲 | — | none | Phase E. Pure passthrough; should be trivial. |
 | 14 | 1080p24 | 1080p60 | 🔲 | D (2:5 pulldown) | none | Phase F? Reverse pulldown / cadence-aware repeat. Non-trivial. |
 | 15 | 1080p23.976 | 1080p60 | 🔲 | D + B | none | Phase F. 3:2 telecine, classic NTSC pattern. |
-| 16 | 720p60 | 720p60 | ✅ | — | none | Phase A heritage. Bench-validated. |
+| 16 | 720p60 | 720p60 | ⚠️ | — | none | Phase A heritage validated. Re-test on iter5-1080p-clean substrate. Bisect already validated `iter5-bisect-720p` substrate at 720p60→720p60 with laptop source — likely fine. |
 | 17 | 720p60 | 1080p60 | 🔲 | — | up | Phase E4. Needs scaler on output side AND upscale support. |
 | 18 | 720p60 | 720p24 | 🔲 | D (5:2) | none | Phase E. |
 | 19 | 720p50 | 720p60 | 🔲 | E (5:6) | none | Phase E2. |
