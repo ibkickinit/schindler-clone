@@ -41,14 +41,20 @@ module color_saturation (
     output reg         m_axis_tlast,
     output reg         m_axis_tuser,
 
-    // Async saturation factor (0=grayscale, 255≈identity)
-    input  wire [7:0]  sat_async
+    // Async saturation factor — 16-bit Q1.15 fixed-point.
+    //   0x0000 = grayscale (sat=0)
+    //   0x4000 = 50% (sat=0.5)
+    //   0x8000 = identity (sat=1.0)
+    //   0xC000 = 150% (sat=1.5)
+    //   0xFFFF ≈ 200% (sat=1.9999...)
+    // Widened from 8-bit Q0.8 (2026-05-17 evening) to support oversaturation.
+    input  wire [15:0] sat_async
 );
     // ---- CDC: 2-FF synchronizer for sat ----
-    (* ASYNC_REG = "TRUE" *) reg [7:0] sat_q1, sat_q2;
+    (* ASYNC_REG = "TRUE" *) reg [15:0] sat_q1, sat_q2;
     always @(posedge aclk) begin
         if (!aresetn) begin
-            sat_q1 <= 8'd255; sat_q2 <= 8'd255;  // boot at identity
+            sat_q1 <= 16'h8000; sat_q2 <= 16'h8000;  // boot at identity (1.0)
         end else begin
             sat_q1 <= sat_async; sat_q2 <= sat_q1;
         end
@@ -87,26 +93,29 @@ module color_saturation (
     // ====================================================================
     // STAGE 2 — compute scaled diff, sum with luma, clamp to [0, 255]
     // ====================================================================
-    // sat * diff: 8-bit unsigned × 10-bit signed = 18-bit signed
-    wire signed [17:0] scaled_r_full = $signed({1'b0, sat_q2}) * s1_diff_r;
-    wire signed [17:0] scaled_g_full = $signed({1'b0, sat_q2}) * s1_diff_g;
-    wire signed [17:0] scaled_b_full = $signed({1'b0, sat_q2}) * s1_diff_b;
-    // (sat * diff) >> 8 — back to ~10-bit signed
-    wire signed [9:0] scaled_r = scaled_r_full[17:8];
-    wire signed [9:0] scaled_g = scaled_g_full[17:8];
-    wire signed [9:0] scaled_b = scaled_b_full[17:8];
+    // sat (Q1.15, 17-bit unsigned after 1'b0 pad) × diff (10-bit signed) = 27-bit signed
+    wire signed [26:0] scaled_r_full = $signed({1'b0, sat_q2}) * s1_diff_r;
+    wire signed [26:0] scaled_g_full = $signed({1'b0, sat_q2}) * s1_diff_g;
+    wire signed [26:0] scaled_b_full = $signed({1'b0, sat_q2}) * s1_diff_b;
+    // (sat * diff) >> 15 — converts Q1.15 product back to integer.
+    // At sat=2.0, diff=±255 → scaled in ±510 range, fits in 12-bit signed.
+    wire signed [11:0] scaled_r = scaled_r_full[26:15];
+    wire signed [11:0] scaled_g = scaled_g_full[26:15];
+    wire signed [11:0] scaled_b = scaled_b_full[26:15];
 
     // out_c = luma_int + scaled_c, clamp to [0, 255]
-    wire signed [10:0] sum_r = {3'b000, s1_luma_int} + {scaled_r[9], scaled_r};
-    wire signed [10:0] sum_g = {3'b000, s1_luma_int} + {scaled_g[9], scaled_g};
-    wire signed [10:0] sum_b = {3'b000, s1_luma_int} + {scaled_b[9], scaled_b};
+    // scaled_c is 12-bit signed (-2048..+2047). luma_int is 8-bit unsigned (0..255).
+    // Sum range: -2048..+2302. Fits in 13-bit signed.
+    wire signed [12:0] sum_r = {5'b00000, s1_luma_int} + {scaled_r[11], scaled_r};
+    wire signed [12:0] sum_g = {5'b00000, s1_luma_int} + {scaled_g[11], scaled_g};
+    wire signed [12:0] sum_b = {5'b00000, s1_luma_int} + {scaled_b[11], scaled_b};
 
-    wire [7:0] out_r_clamped = sum_r < 0    ? 8'd0   :
-                                sum_r > 255  ? 8'd255 : sum_r[7:0];
-    wire [7:0] out_g_clamped = sum_g < 0    ? 8'd0   :
-                                sum_g > 255  ? 8'd255 : sum_g[7:0];
-    wire [7:0] out_b_clamped = sum_b < 0    ? 8'd0   :
-                                sum_b > 255  ? 8'd255 : sum_b[7:0];
+    wire [7:0] out_r_clamped = sum_r < 13'sd0    ? 8'd0   :
+                                sum_r > 13'sd255  ? 8'd255 : sum_r[7:0];
+    wire [7:0] out_g_clamped = sum_g < 13'sd0    ? 8'd0   :
+                                sum_g > 13'sd255  ? 8'd255 : sum_g[7:0];
+    wire [7:0] out_b_clamped = sum_b < 13'sd0    ? 8'd0   :
+                                sum_b > 13'sd255  ? 8'd255 : sum_b[7:0];
 
     // ---- AXIS handshake with 2-stage pipeline ----
     // Stage 1 holds when stage 2 is full and not advancing

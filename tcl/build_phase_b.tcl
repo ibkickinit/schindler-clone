@@ -748,11 +748,11 @@ set_property -dict [list \
     CONFIG.C_ALL_OUTPUTS_2 {1} \
     CONFIG.C_IS_DUAL       {1} \
     CONFIG.C_INTERRUPT_PRESENT {0} \
-    CONFIG.C_DOUT_DEFAULT   {0xFF000000} \
-    CONFIG.C_DOUT_DEFAULT_2 {0x00FFFFFF} \
+    CONFIG.C_DOUT_DEFAULT   {0x00000000} \
+    CONFIG.C_DOUT_DEFAULT_2 {0x80FFFFFF} \
 ] [get_bd_cells axi_gpio_3]
-# ch1[31:24] = saturation factor (0..255, 0=grayscale, 255=identity).
-# Boot default ch1=0xFF000000 → sat=0xFF (identity).
+# 16-bit sat (Q1.15): ch1[31:24] = sat_lo, ch2[31:24] = sat_hi.
+# Boot defaults give sat=0x8000 (identity 1.0) + black=(0,0,0) + white=(255,255,255).
 
 # Slice IPs break out the 6 × 8-bit color params from the two 32-bit GPIO chs.
 foreach {name din_from} {slice_color_br 7  slice_color_bg 15  slice_color_bb 23} {
@@ -774,11 +774,22 @@ connect_bd_net [get_bd_pins slice_color_wr/Dout] [get_bd_pins color_correct_0/wh
 connect_bd_net [get_bd_pins slice_color_wg/Dout] [get_bd_pins color_correct_0/white_g_async]
 connect_bd_net [get_bd_pins slice_color_wb/Dout] [get_bd_pins color_correct_0/white_b_async]
 
-# Saturation slice: axi_gpio_3 ch1 bits [31:24] → color_saturation_0/sat_async
-create_bd_cell -type ip -vlnv xilinx.com:ip:xlslice slice_color_sat
-set_property -dict [list CONFIG.DIN_WIDTH {32} CONFIG.DIN_FROM {31} CONFIG.DIN_TO {24} CONFIG.DOUT_WIDTH {8}] [get_bd_cells slice_color_sat]
-connect_bd_net [get_bd_pins axi_gpio_3/gpio_io_o] [get_bd_pins slice_color_sat/Din]
-connect_bd_net [get_bd_pins slice_color_sat/Dout] [get_bd_pins color_saturation_0/sat_async]
+# 16-bit saturation (Q1.15 fixed-point) packed across both axi_gpio_3 spare bytes.
+#   ch1[31:24] = sat_low [7:0]    ch2[31:24] = sat_high [15:8]
+# Concat into single 16-bit bus feeding color_saturation_0/sat_async.
+create_bd_cell -type ip -vlnv xilinx.com:ip:xlslice slice_color_sat_lo
+set_property -dict [list CONFIG.DIN_WIDTH {32} CONFIG.DIN_FROM {31} CONFIG.DIN_TO {24} CONFIG.DOUT_WIDTH {8}] [get_bd_cells slice_color_sat_lo]
+connect_bd_net [get_bd_pins axi_gpio_3/gpio_io_o] [get_bd_pins slice_color_sat_lo/Din]
+
+create_bd_cell -type ip -vlnv xilinx.com:ip:xlslice slice_color_sat_hi
+set_property -dict [list CONFIG.DIN_WIDTH {32} CONFIG.DIN_FROM {31} CONFIG.DIN_TO {24} CONFIG.DOUT_WIDTH {8}] [get_bd_cells slice_color_sat_hi]
+connect_bd_net [get_bd_pins axi_gpio_3/gpio2_io_o] [get_bd_pins slice_color_sat_hi/Din]
+
+create_bd_cell -type ip -vlnv xilinx.com:ip:xlconcat concat_color_sat
+set_property -dict [list CONFIG.NUM_PORTS {2} CONFIG.IN0_WIDTH {8} CONFIG.IN1_WIDTH {8}] [get_bd_cells concat_color_sat]
+connect_bd_net [get_bd_pins slice_color_sat_lo/Dout] [get_bd_pins concat_color_sat/In0]  ;# lower 8 bits
+connect_bd_net [get_bd_pins slice_color_sat_hi/Dout] [get_bd_pins concat_color_sat/In1]  ;# upper 8 bits
+connect_bd_net [get_bd_pins concat_color_sat/dout]   [get_bd_pins color_saturation_0/sat_async]
 
 connect_bd_intf_net [get_bd_intf_pins axi_ic_lite/M06_AXI] [get_bd_intf_pins axi_gpio_3/S_AXI]
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]             [get_bd_pins axi_gpio_3/s_axi_aclk]
