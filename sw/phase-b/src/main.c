@@ -331,13 +331,69 @@ static void cmd_capture(unsigned n)
     xil_printf("# phase2_capture done N=%u\r\n", n);
 }
 
+/* Phase 3 drift capture: trigger on each ts_out edge, emit a CSV row with
+ * (idx, out_count, ts_out, ref_count, ts_ref) pairs. The host analyzer
+ * computes phase_delta = ts_out - ts_ref per sample, unwraps any 48-bit
+ * wraps, fits a line to phase_delta vs out_count, converts slope to ppm.
+ *
+ * Sample budget: at 50 Hz output, 3000 samples = 60 s of data. UART
+ * emission per row (~50 bytes) at 115200 baud = ~4.3 ms. That fits within
+ * the 20 ms output period; the dispatcher reads the next edge before
+ * emitting, so any emission overrun shows up as a skipped out_count rather
+ * than corrupting the timestamps.
+ */
+static void cmd_drift(unsigned n)
+{
+    u32 last_out_count, this_out_count, ref_count;
+    u64 ts_out, ts_ref;
+    if (n == 0 || n > 5000) n = 3000;
+
+    /* Establish baseline on the next output edge. */
+    ts_out = vts_read_ts(VTS_TS_OUT_LO, VTS_TS_OUT_HI, VTS_OUT_COUNT, &last_out_count);
+    (void)ts_out;
+    if (last_out_count == 0) {
+        xil_printf("\r\n[R] WARNING: ts_out_count=0 — output vsync not yet running.\r\n");
+        return;
+    }
+
+    /* Header. */
+    xil_printf("\r\n# phase3_capture N=%u base_out_count=%u\r\n"
+               "idx,out_count,ts_out_lo32,ts_out_hi16,ref_count,ts_ref_lo32,ts_ref_hi16\r\n",
+               n, (unsigned)last_out_count);
+
+    for (unsigned i = 0; i < n; ++i) {
+        /* Wait for the next output edge. */
+        do {
+            ts_out = vts_read_ts(VTS_TS_OUT_LO, VTS_TS_OUT_HI, VTS_OUT_COUNT, &this_out_count);
+        } while (this_out_count == last_out_count);
+        last_out_count = this_out_count;
+
+        /* Snapshot the most-recent ref edge (whatever happened most recently
+         * before this row — may lag behind or even-with the output edge
+         * depending on phase relationship). */
+        ts_ref = vts_read_ts(VTS_TS_REF_LO, VTS_TS_REF_HI, VTS_REF_COUNT, &ref_count);
+
+        xil_printf("%u,%u,%u,%u,%u,%u,%u\r\n",
+                   i,
+                   (unsigned)this_out_count,
+                   (u32)(ts_out & 0xFFFFFFFFU),
+                   (u32)((ts_out >> 32) & 0xFFFFU),
+                   (unsigned)ref_count,
+                   (u32)(ts_ref & 0xFFFFFFFFU),
+                   (u32)((ts_ref >> 32) & 0xFFFFU));
+    }
+    xil_printf("# phase3_capture done N=%u\r\n", n);
+}
+
 static void cmd_help(void)
 {
     xil_printf("\r\nPhase E1 UART commands:\r\n"
                "  q   query: counter, ts_ref, ts_out, edge counts\r\n"
                "  p   phase: signed (ts_out - ts_ref) in ticks/ns\r\n"
-               "  c   capture 1000 ts_ref samples as CSV (Phase 2 evidence)\r\n"
-               "  C   capture 100 ts_ref samples as CSV (quick jitter check)\r\n"
+               "  c   Phase 2: capture 1000 ts_ref samples as CSV\r\n"
+               "  C   Phase 2: capture 100 ts_ref samples (quick jitter check)\r\n"
+               "  r   Phase 3: capture 3000 (ts_out, ts_ref) pairs for drift fit\r\n"
+               "  R   Phase 3: capture 300 pairs (quick drift sanity)\r\n"
                "  ?   this help\r\n");
 }
 
@@ -350,6 +406,8 @@ static void uart_poll_and_dispatch(void)
         case 'p': case 'P': cmd_phase(); break;
         case 'c':           cmd_capture(1000); break;
         case 'C':           cmd_capture(100);  break;
+        case 'r':           cmd_drift(3000);   break;
+        case 'R':           cmd_drift(300);    break;
         case '?': case 'h': case 'H': cmd_help(); break;
         case '\r': case '\n': break;  /* silent on bare newline */
         default:
