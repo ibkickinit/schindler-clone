@@ -1,6 +1,14 @@
 # Mackin Blender — Design Doc
 
-Status: **HDL + sim COMPLETE 2026-05-18 overnight.** 3360-vector sim suite (8 alpha values × 420 vectors) bit-exact vs Python golden. BD integration and Vivado build in progress. Bench validation deferred to next session.
+> **CHAPTER SEALED at commit `6c1efe0` ("mackin_blender: decouple tready from tvalid — fixes pipeline deadlock").** As of that commit, the blender is bit-exact in sim (3,360 vectors), wired into the BD, controlled via UART (axi_gpio_7 alpha with readback), and passes pixels through the pipeline without deadlock. Boot default α = `0x8000` makes it a no-op (pure-curr), so the pipeline behaves identically to the pre-Mackin build.
+>
+> **Important — structural success, not yet functional:** both AXIS inputs are currently wired from the same MM2S via `axis_clone`, so for every pixel `curr == prev` and α has no visible effect. Functional activation requires adding a second VDMA instance (MM2S-only, Genlock Slave, `FrmDly=2`) per the dual-VDMA recipe in §"Why TWO streams" below and [`mackin-dual-vdma-recipe.md`](mackin-dual-vdma-recipe.md). That work is deferred; it is the next chapter, not this one.
+>
+> See [`color-pipeline.md`](color-pipeline.md) for the SSOT covering this module's role in the full color pipeline, register maps, boot defaults, and chapter-close TODOs.
+
+---
+
+Status (historical, prior to chapter close): **HDL + sim COMPLETE 2026-05-18 overnight.** 3360-vector sim suite (8 alpha values × 420 vectors) bit-exact vs Python golden. BD integration and Vivado build in progress. Bench validation deferred to next session.
 
 ## Algorithm authority (per research 2026-05-18)
 

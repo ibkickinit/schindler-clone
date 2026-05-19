@@ -1,5 +1,13 @@
 # Phase E1 — MMCM phase-tracking spike
 
+> **⚠️ SUPERSEDED 2026-05-18.** This document assumed the spike would instrument the current (broken, scrolling, untrusted) `mackin-impl-wip` build and measure from there. That premise was wrong: the build can't be trusted as a measurement substrate, and the capture-stick / TPG / VDMA confounds make the numbers meaningless.
+>
+> **Use [`phase-e1-ground-up-plan.md`](phase-e1-ground-up-plan.md) instead.** It rolls back to a clean baseline (`d71c994`), builds an in-FPGA measurement instrument before measuring anything, and adds complexity one controlled phase at a time.
+>
+> This doc is retained as historical reference only.
+
+---
+
 **Date:** 2026-05-18
 **Audience:** The agent pivoting from TPG fsync debug to Phase E1.
 **Status:** Spike brief. Scope, success criteria, and a seven-step iterative test plan that produces hard evidence at each step.
@@ -88,24 +96,117 @@ If all four pass, the product's architectural foundation is in place.
 
 Each test produces a number, a plot, or a binary pass/fail — not a "it looks better." Stop at the first failure and fix it before moving on. Tests 1–6 validate the MMCM phase loop in isolation. Tests 7–8 validate the dual-loop / reference-selector / holdover behavior that makes this the full architecture, not just a phase tracker.
 
-### Test 1 — Measure the current drift rate
+### Test 1 — Measure the relative drift between source and output pixel clocks
 
-**Goal:** convert the current "moving wrap" bench evidence into a ppm offset between the two pixel clocks.
+#### 1.1 What this test is for (read this before doing anything)
 
-**Setup:** current build (Attempt D), TPG selected, capture stick connected.
+This is **the baseline measurement** the entire spike is calibrated against. Every later test references the number this one produces. Skipping it or rushing it leaves all downstream gain choices as guesses.
 
-**Procedure:**
-1. Capture 30 seconds of video from the MS2109 (`ffmpeg -t 30 ...`).
-2. For each frame, run the existing `analyze_tpg_capture.py` to extract the counter-overlay row.
-3. Plot row vs frame number. Fit a straight line.
-4. Slope (rows/frame) × frame rate (60 fps) = wrap velocity (rows/sec).
-5. Convert to ppm: `ppm = (rows_per_sec / lines_per_frame) × (1 / frame_rate) × 1e6`. For 720p60: `ppm ≈ rows_per_sec × (1/720) × (1/60) × 1e6 ≈ rows_per_sec × 23.1`.
+The test answers a single, specific question:
 
-**Pass:** produces a single number — e.g., "the relative drift between source and output pixel clocks is 47 ppm."
+> **At what rate, in parts-per-million, is the output pixel clock drifting relative to the source pixel clock, in the current free-running build?**
 
-**Why it matters:** sets the **required pull range** for the MMCM. If drift is 47 ppm, the loop must be able to slew the output clock by at least ±47 ppm (with margin — call it ±200 ppm) to capture and hold. The prior-art note documents ±500 ppm range, so we expect headroom, but confirm.
+Notice the careful framing. We are **not** measuring:
 
-**Debug info to log:** raw row-per-frame data as CSV. Keep it — useful for plant identification in Test 3.
+- The absolute frequency error of either clock against a true reference (we don't have a true reference at the bench, and we don't need one).
+- The drift of the output clock alone.
+- The drift of the source clock alone.
+
+We are measuring the **algebraic difference** between the two: `ppm_relative = ppm_source − ppm_output` (signed — sign tells us which clock is faster). That difference is the quantity the PLL has to compensate. Knowing it absolutely (independently for each clock) requires a third reference and is irrelevant to the spike.
+
+#### 1.2 Why "relative drift" is the right quantity
+
+The PLL we're about to build has one job: drag the output pixel clock to match a reference. In the spike's bench environment, the reference is the source vsync. The MMCM's pull range has to cover the *gap* between the two clocks — and that gap is exactly what Test 1 measures.
+
+Consequences this number drives:
+
+| Downstream choice | How Test 1 informs it |
+|---|---|
+| **MMCM required pull range** (Test 2 sanity check) | Must comfortably exceed the measured drift. Rule of thumb: ≥ 4× the measured value. If drift is 50 ppm, we need ≥ 200 ppm pull. The prior-art `xilinx_mmcm_psincdec_tracking` claims ±500 ppm — Test 1 confirms we have headroom. |
+| **Test 3 plant-sweep range** (open-loop characterization) | Sweep should span ±2× the measured drift, with enough points to fit a line. |
+| **Test 4 initial controller gain** | Start `Kp` such that one frame's worth of phase error commands a correction roughly equal to the measured drift. Tunable from there. |
+| **Test 5 disturbance step size** | Inject something 2–5× the measured drift, so the disturbance is clearly above the noise floor. |
+| **Test 7 synthetic over-range bias** | The 1000 ppm injection in Test 7 assumes natural drift is ≪1000 ppm. Test 1 confirms that's true (anything <100 ppm here is fine). |
+
+If you skip Test 1 and start with assumed numbers, every gain and range above is a guess. Tests 4–7 then fail in confusing ways (controller oscillates, MMCM saturates instantly, disturbance gets lost in noise) and the agent spends days "tuning" what was a measurement problem upstream.
+
+#### 1.3 The measurement principle
+
+The MS2109 capture stick samples the FPGA's HDMI output and presents it to the host as a stream of frames. The host doesn't see either of the FPGA's two pixel clocks directly — it sees frames produced *by* the output pixel clock, with content laid out *in* source-pixel-clock time (because the TPG writes into the framestore on the source clock and the output reader pulls from it on the output clock).
+
+The TPG's counter overlay is written into the source-domain framebuffer at source rows 0–47. When the output pulls that frame out, the overlay lands at some output row position. That position is determined by the **intra-frame phase** between the two clocks at the moment the output reader started this output frame.
+
+- If the two clocks were running at exactly the same rate, every output frame would land the overlay at the same row. The captured video would show a still, fixed-position overlay.
+- If the two clocks differ by Δ ppm, the intra-frame phase walks by `Δ × frame_period` worth of pixels per frame. The overlay row position changes monotonically across captured frames.
+
+The slope of overlay-row-vs-frame-number is therefore a direct, calibrated measurement of the relative drift. No external reference needed; the relationship between rows-of-walk and ppm is pure arithmetic.
+
+**Capture-stick caveat (worth understanding, not blocking):** the MS2109 has its own internal clock and may resample. But it samples the HDMI output frame-by-frame; whatever resampling it does cannot introduce a slope in overlay-row-vs-frame-number because the overlay's position within each output frame is determined *before* it reaches the capture stick. The capture stick can add noise (jitter in the measured row), but not slope. If you ever see a slope that flips sign between captures of the same build, suspect the capture stick — but as a baseline measurement of slope direction and magnitude, it's reliable.
+
+#### 1.4 Setup
+
+- Current build at HEAD of `mackin-impl-wip`, with the fsync_pulse_gen wired per Attempt D. **Do not rebuild.** The point is to measure the baseline as it stands today.
+- TPG selected as source via UART (`t 1`).
+- No external HDMI source needs to be connected (TPG bypasses the receive path). If one is connected, fine — it doesn't affect the measurement.
+- MS2109 capture stick on the HDMI output, host computer with `ffmpeg` available.
+- Bench should be at thermal steady state — let the board run for ≥5 minutes before capturing so the crystals are warm. Cold crystals drift on their own warming curve and confound the reading.
+
+#### 1.5 Procedure
+
+1. **Confirm TPG is active and stable.** Eyeball the captured video — counter overlay should be visible somewhere on screen (not the right row, but visible). The wrap is OK; in fact, that's exactly what we're measuring.
+2. **Capture 60 seconds of HDMI output** at 720p60:
+   ```bash
+   bash scripts/capture_hdmi.sh /tmp/test1_capture.mp4 60
+   ```
+   (Adapt the script if it currently captures stills only; we need a video.)
+3. **Extract overlay row per frame.** Use `scripts/analyze_tpg_capture.py` in a loop over decoded frames, or extend it to ingest video directly. Produce a CSV: `frame_index, overlay_row, confidence`.
+4. **Discard low-confidence rows.** The analyzer's confidence value (or any frame where the overlay was occluded by the wrap point itself) should be filtered.
+5. **Plot overlay_row vs frame_index.** Sanity check by eye:
+   - Should be a near-straight line over 60 sec × 60 fps = 3,600 frames.
+   - The line wraps at the frame boundary (row 720 → 0). Unwrap before fitting.
+6. **Fit a line.** Compute slope in units of *rows per frame*.
+7. **Convert to ppm.** For 720p60 output:
+   ```
+   ppm_relative = slope_rows_per_frame × (1 / lines_per_frame) × 1e6
+                = slope_rows_per_frame × (1 / 720) × 1e6
+                = slope_rows_per_frame × 1389
+   ```
+   Sign convention: positive slope = source running faster than output. Negative slope = output faster.
+8. **Report the number with units and sign**: e.g., *"`ppm_relative = +47.3 ppm (source faster than output)`, 60 sec measurement, 720p60."*
+
+#### 1.6 Pass criteria
+
+- A single signed number is produced.
+- The fit's residual is bounded (R² ≥ 0.95 — i.e., the relationship really is linear, not noisy junk).
+- The magnitude is somewhere in the range you'd expect for two independent crystals at the same nominal rate: **|ppm_relative| typically 5–100 ppm.** Anything >200 ppm suggests one crystal is genuinely out of spec (worth flagging, but doesn't block the spike — the MMCM still has headroom).
+- The capture is repeatable: run twice, get the same number within ±5 ppm.
+
+#### 1.7 What success here unlocks
+
+A signed ppm number with bounded residual. That's it. Stop and commit:
+
+- `tests/phase-e1/test1_drift_measurement.csv` — full per-frame data
+- `tests/phase-e1/test1_drift_measurement.png` — plot with fit line
+- `tests/phase-e1/test1_summary.md` — the number, the date, the build hash, the bench temperature if recorded
+
+Then proceed to Test 2 with that number in hand. Every later test references it.
+
+#### 1.8 Things that look like Test 1 but aren't
+
+These are common detours. Don't chase them in this test.
+
+- **"Is the absolute output rate exactly 74.25 MHz?"** No — we don't care, and we can't measure it without a Rb standard. The PLL doesn't care either; it tracks a reference, not an absolute frequency.
+- **"Which crystal is the bad one?"** Unanswerable from this data, and irrelevant. We're going to slave the output to the source regardless.
+- **"Does the drift vary with temperature?"** Probably yes, slightly. Not in scope. Run at thermal steady state and document the temperature.
+- **"What if drift changes during the 60-second capture?"** It won't, materially. Crystal aging is on the scale of ppm/year, not ppm/minute. If you see slope-of-slope (curvature) in the data, suspect the analyzer or the capture stick — not the crystals.
+- **"Should I run Test 1 again after the spike is done, with the loop closed?"** Yes, **as a separate verification, not as part of Test 1.** Re-running in *explicit Free-run mode* (reference selector = Free-run, integrator forced to zero, post-spike build) should produce the same ppm as today's reading. That confirms the Free-run mode is genuinely free-running and didn't get accidentally roped into the loop. Log it as Test 1b in the post-spike verification CSV.
+
+#### 1.9 Debug info to log
+
+- Raw `frame_index, overlay_row, confidence` CSV — keep forever, useful for Test 3 plant identification and post-spike regressions.
+- The plot itself (PNG).
+- Build hash, bench temperature, capture stick make/model, host OS / ffmpeg version (so future re-measurements are comparable).
+- Notes on any anomalies (capture stick dropouts, occlusion events, lighting changes — anything that affected the analyzer).
 
 ---
 

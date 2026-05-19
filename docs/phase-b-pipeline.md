@@ -1,5 +1,7 @@
 # Phase B/D HDMI pipeline — stages, clocks, and observability
 
+> **Updated 2026-05-18 to reflect color-pipeline + Mackin chapter close (`6c1efe0`).** Earlier revisions of this diagram showed `MM2S → axis_to_vid_io` directly, omitting the four color-pipeline stages that landed during the color/Mackin work. The diagram below is the actual BD as sealed. See [`color-pipeline.md`](color-pipeline.md) for the color-stage SSOT.
+
 Vertical data flow from source HDMI input to monitor output, with clock domains
 and the counters / status registers firmware can read at each stage.
 
@@ -13,6 +15,11 @@ flowchart TD
     S2MM["**VDMA S2MM** (Xilinx IP)<br/>AXIS → DDR3 frame buffer<br/>Dynamic Master, FrameDelay=1<br/>3-slot ring (iter4d-3)<br/>S2MM_VSIZE=720, S2MM_DMASR status"]
     DDR["**DDR3 frame buffer**<br/>3 slots × (720 rows × 1280×3 bytes + 1 guard row)<br/>at FRAME_BUF_BASE = 0x10000000"]
     MM2S["**VDMA MM2S** (Xilinx IP)<br/>DDR3 → AXIS<br/>Dynamic Slave, repeat_en=1<br/>fsync from VTC_TX<br/>MM2S_DMASR status"]
+    ACLN["**axis_clone** (Schindler HDL)<br/>fan-out MM2S → curr + prev<br/>placeholder; both copies identical<br/>until dual-VDMA lands"]
+    MKBL["**mackin_blender** (Schindler HDL)<br/>per-pixel temporal lerp (FRC)<br/>α via axi_gpio_7, Q1.15<br/>structural-only at boot (α=0x8000, no-op)"]
+    CSAT["**color_saturation** (Schindler HDL)<br/>Rec.601 luma-mix saturation<br/>0%→200% via axi_gpio_3"]
+    CCOR["**color_correct** (Schindler HDL)<br/>per-channel black/white diagonal<br/>via axi_gpio_3"]
+    CMAT["**color_matrix** (Schindler HDL)<br/>3×3 RGB matrix + offsets<br/>Q2.14 coefs, axi_gpio_4/5/6"]
     A2V["**axis_to_vid_io** (Schindler HDL)<br/>AXIS + VTC sync → parallel RGB + sync<br/>enable = pixel-clock MMCM locked<br/>iter4g mm2s_tlast counter"]
     R2D["**rgb2dvi** (Digilent IP)<br/>parallel RGB → TMDS serialize<br/>internal MMCM, kClkRange=2<br/>status: aRst held until pclk_locked"]
     TX["**HDMI TX**<br/>1280×720 @ 50p<br/>(or 60p; configurable iter4d-3-FRC)"]
@@ -25,7 +32,13 @@ flowchart TD
     SCV -->|"AXIS 1280×720"| S2MM
     S2MM -->|"M_AXI burst writes"| DDR
     DDR -->|"M_AXI burst reads"| MM2S
-    MM2S -->|"AXIS 1280×720"| A2V
+    MM2S -->|"AXIS 1280×720"| ACLN
+    ACLN -->|"AXIS curr"| MKBL
+    ACLN -->|"AXIS prev"| MKBL
+    MKBL -->|"AXIS blended"| CSAT
+    CSAT -->|"AXIS"| CCOR
+    CCOR -->|"AXIS"| CMAT
+    CMAT -->|"AXIS"| A2V
     A2V -->|"vid_data/sync"| R2D
     R2D -->|"TMDS"| TX
     TX -->|"HDMI cable"| MS
