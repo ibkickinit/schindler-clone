@@ -1,6 +1,6 @@
 # Phase E2.1 — Source-vsync as loop reference
 
-**Status:** HDL + BD + firmware shipped 2026-05-19. Build verification pending; bench validation pending (needs user).
+**Status:** HDL + BD + firmware shipped + Vivado/Vitis build verified 2026-05-19 (commit `07a8b39`). Bench validation (UART + monitor) pending — needs user.
 
 **Goal:** Lock the loop's reference to a Bresenham-divided HDMI source vsync (instead of the fixed-rate synth_vsync_gen). Closes the architectural gap E1.8 identified: source rate variations (Mac 59.94, Apple TV ~60.001, etc.) currently cause output/source ratio drift → monitor tears within tens of seconds. With source-derived reference, the ratio is locked-by-construction; output tracks source × M/N exactly, drift is zero regardless of source rate.
 
@@ -28,12 +28,12 @@ dvi2rgb_0/vid_pVSync     ───►  src_vsync_divider_0  ──►  ref_mux_0
 
 ## Test plan
 
-### Build verification (no bench needed)
+### Build verification (no bench needed) — DONE
 
-- [ ] Vivado synth completes without errors
-- [ ] WHS ≥ +0.050 ns intrinsic (E1.7 floor maintained)
-- [ ] No new critical warnings from the new HDL
-- [ ] Firmware compiles cleanly against the new XSA
+- [x] Vivado synth completes without errors. (One failed attempt: first build had WNS=-1.694 ns from a cross-domain reset wiring bug — `rst_mem` is on FCLK_CLK1; src_vsync_divider needed FCLK_CLK0's `rst_axi`. Fixed and rebuilt.)
+- [x] WHS ≥ +0.050 ns intrinsic. Achieved WNS=+0.403 / WHS=+0.017 reported with +0.050 ns uncertainty → intrinsic **+0.067 ns** (E1.7 floor maintained).
+- [x] No new critical warnings from src_vsync_divider or axi_gpio_srcdiv.
+- [x] Firmware compiles cleanly against new XSA. Two pre-existing warnings (`MODE_720P60 defined but not used`, `measure_output_rate_mhz defined but not used`); none from E2.1 code.
 
 ### Functional UART tests (no bench monitor needed)
 
