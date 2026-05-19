@@ -649,7 +649,39 @@ static void cmd_toggle_dump(void)
 
 #define REFSEL_FREE   0x0    /* sel=00 mask=0 */
 #define REFSEL_SYNC   0x1    /* sel=01 mask=0 */
+#define REFSEL_EXT0   0x2    /* sel=10 — reserved (Si5351 / analog recovery) */
+#define REFSEL_SRC    0x3    /* sel=11 — Phase E2.1 src_vsync_divider output */
 #define REFSEL_MASK_BIT 0x4  /* OR with current to mask the output */
+
+/* Phase E2.1 — src_vsync_divider M/N control via axi_gpio_srcdiv.
+ * ch0 (offset +0x00) = M (numerator, 8 bits)
+ * ch1 (offset +0x08) = N (denominator, 8 bits)
+ * Output rate = source_rate × M / N. M=N=0 selects HDL parameter defaults
+ * (M=1, N=1 — passthrough). */
+#if defined(XPAR_AXI_GPIO_SRCDIV_BASEADDR)
+#  define SRCDIV_BASEADDR XPAR_AXI_GPIO_SRCDIV_BASEADDR
+#elif defined(XPAR_AXI_GPIO_SRCDIV_S_AXI_BASEADDR)
+#  define SRCDIV_BASEADDR XPAR_AXI_GPIO_SRCDIV_S_AXI_BASEADDR
+#elif defined(XPAR_PHASE_B_BD_AXI_GPIO_SRCDIV_BASEADDR)
+#  define SRCDIV_BASEADDR XPAR_PHASE_B_BD_AXI_GPIO_SRCDIV_BASEADDR
+#else
+#  error "axi_gpio_srcdiv base address not found in xparameters.h"
+#endif
+#define SRCDIV_M_DATA (SRCDIV_BASEADDR + 0x00)
+#define SRCDIV_M_TRI  (SRCDIV_BASEADDR + 0x04)
+#define SRCDIV_N_DATA (SRCDIV_BASEADDR + 0x08)
+#define SRCDIV_N_TRI  (SRCDIV_BASEADDR + 0x0C)
+
+static u8 g_srcdiv_m = 1;  /* default: passthrough 1:1 */
+static u8 g_srcdiv_n = 1;
+
+static void srcdiv_write(u8 m, u8 n)
+{
+    Xil_Out32(SRCDIV_M_TRI, 0);
+    Xil_Out32(SRCDIV_N_TRI, 0);
+    Xil_Out32(SRCDIV_M_DATA, (u32)m);
+    Xil_Out32(SRCDIV_N_DATA, (u32)n);
+}
 
 static u8 g_ref_select = REFSEL_FREE;   /* boot: free-run (safe — no edges) */
 static int g_ref_masked = 0;
@@ -679,7 +711,7 @@ static void cmd_ref_select(const char *arg)
         g_frames_since_ref_edge = 0;
         refsel_write(g_ref_select, g_ref_masked);
         xil_printf("\r\n[R] reference = FREE_RUN (integrator zeroed, actuator zeroed)\r\n");
-    } else if (arg[0] == 's' || arg[0] == 'S') {
+    } else if (arg[0] == 's' && (arg[1] == 'y' || arg[1] == 'Y' || arg[1] == ' ' || arg[1] == '\0' || arg[1] == '\r' || arg[1] == '\n')) {
         g_ref_select = REFSEL_SYNC;
         refsel_write(g_ref_select, g_ref_masked);
         /* If the loop is enabled, transition state machine to ACQUIRING. */
@@ -692,9 +724,52 @@ static void cmd_ref_select(const char *arg)
             g_integrator_mppm = INTEGRATOR_PRELOAD_MILLI_PPM;
         }
         xil_printf("\r\n[R] reference = SYNC (synthetic Phase 2)\r\n");
+    } else if (arg[0] == 's' && (arg[1] == 'r' || arg[1] == 'R')) {
+        /* Phase E2.1 — source-vsync-derived reference. The ref_mux selects
+         * src_vsync_divider's output (sel=11), which is a stream of pulses
+         * at source_rate × M / N. Default M=N=1 is 1:1 passthrough — use
+         * with output VTC mode that matches source rate (720p60 from
+         * 720p60 source). For 60→50 FRC: set M=5, N=6 via 'n' command. */
+        g_ref_select = REFSEL_SRC;
+        refsel_write(g_ref_select, g_ref_masked);
+        if (g_loop_enable) {
+            g_lock_state = LOOP_ACQUIRING;
+            g_frames_in_lock_range = 0;
+            g_frames_out_lock_range = 0;
+            g_frames_since_ref_edge = 0;
+            g_integrator_mppm = INTEGRATOR_PRELOAD_MILLI_PPM;
+        }
+        xil_printf("\r\n[R] reference = SRC (source vsync × %u/%u via src_vsync_divider)\r\n",
+                   (unsigned)g_srcdiv_m, (unsigned)g_srcdiv_n);
     } else {
-        xil_printf("\r\nUART: 'r <free|sync>' — got '%s'\r\n", arg);
+        xil_printf("\r\nUART: 'r <free|sync|src>' — got '%s'\r\n", arg);
     }
+}
+
+/* Phase E2.1 — set source-divider M/N ratio. Output rate = source × M/N.
+ * Constraints (enforced here): both > 0, M ≤ N (down-conversion only;
+ * src_vsync_divider's HDL doesn't support M > N). */
+static void cmd_srcdiv_set(const char *arg)
+{
+    unsigned m = 0, n = 0;
+    while (*arg == ' ') ++arg;
+    while (*arg >= '0' && *arg <= '9') { m = m * 10 + (*arg - '0'); ++arg; }
+    while (*arg == ' ') ++arg;
+    while (*arg >= '0' && *arg <= '9') { n = n * 10 + (*arg - '0'); ++arg; }
+
+    if (m == 0 || n == 0 || m > 255 || n > 255) {
+        xil_printf("\r\n[N] usage: n <M> <N>  (1..255 each). Got M=%u N=%u\r\n", m, n);
+        return;
+    }
+    if (m > n) {
+        xil_printf("\r\n[N] reject: M (%u) > N (%u). Divider is down-conversion only.\r\n", m, n);
+        return;
+    }
+    g_srcdiv_m = (u8)m;
+    g_srcdiv_n = (u8)n;
+    srcdiv_write(g_srcdiv_m, g_srcdiv_n);
+    xil_printf("\r\n[N] src_vsync_divider M/N = %u/%u  (ref rate = source × %u/%u)\r\n",
+               m, n, m, n);
 }
 
 static void cmd_toggle_ref_mask(void)
@@ -964,8 +1039,9 @@ static void cmd_help(void)
                "  L             Phase 6: enable PI loop (closed-loop lock)\r\n"
                "  U             Phase 6: disable loop, zero actuator (free-run)\r\n"
                "  S             Phase 6: toggle per-frame CSV dump\r\n"
-               "  r <free|sync> Phase 7: select reference source\r\n"
+               "  r <free|sync|src> Phase 7 + E2.1: select reference source\r\n"
                "  s             Phase 7: toggle ref-mask (simulate ref loss)\r\n"
+               "  n <M> <N>     E2.1: src_vsync_divider ratio (output = src×M/N)\r\n"
                "  B <ppm>       Phase 8: inject ref-rate bias (saturation/slip test)\r\n"
                "  ?             this help\r\n");
 }
@@ -1008,7 +1084,7 @@ static void uart_poll_and_dispatch(void)
             break;
         }
         case 'r': {
-            /* r <free|sync>  — Phase 7 reference selector */
+            /* r <free|sync|src>  — Phase 7 + E2.1 reference selector */
             char buf[16];
             unsigned bi = 0;
             int timeout_ticks = 100000000;
@@ -1021,6 +1097,22 @@ static void uart_poll_and_dispatch(void)
             }
             buf[bi] = '\0';
             cmd_ref_select(buf);
+            break;
+        }
+        case 'n': case 'N': {
+            /* n <M> <N>  — E2.1 src_vsync_divider M/N ratio. */
+            char buf[24];
+            unsigned bi = 0;
+            int timeout_ticks = 100000000;
+            while (bi + 1 < sizeof(buf) && timeout_ticks > 0) {
+                int ch = uart_recv_nb();
+                if (ch < 0) { --timeout_ticks; continue; }
+                if (ch == '\r' || ch == '\n') break;
+                buf[bi++] = (char)ch;
+                xil_printf("%c", ch);
+            }
+            buf[bi] = '\0';
+            cmd_srcdiv_set(buf);
             break;
         }
         case 'm': {

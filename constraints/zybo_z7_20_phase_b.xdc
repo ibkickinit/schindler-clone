@@ -84,6 +84,12 @@ set_false_path -to [get_pins {phase_b_bd_i/axi_sync_inputs_0/inst/pclk_locked_q1
 set_false_path -to [get_pins -hier -filter {NAME =~ */vsync_timestamp_0/inst/ref_sync_reg*/D}]
 set_false_path -to [get_pins -hier -filter {NAME =~ */vsync_timestamp_0/inst/out_sync_reg*/D}]
 
+# Phase E2.1: src_vsync_divider's 2-FF synchronizer (PixelClk → FCLK_CLK0).
+# dvi2rgb's vid_pVSync is on the pixel-clock domain; the divider re-times
+# it to FCLK_CLK0 via src_sync_q1/q2 (ASYNC_REG=TRUE). Tell the timer the
+# input path is asynchronous.
+set_false_path -to [get_pins -hier -filter {NAME =~ */src_vsync_divider_0/inst/src_sync_q1_reg/D}]
+
 # ============================================================================
 # Phase E1.7 (2026-05-19): hold-margin pessimism for production reliability.
 #
