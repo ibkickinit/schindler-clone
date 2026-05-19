@@ -1,6 +1,6 @@
 # Phase 6 — Closed-loop tracking
 
-**Status:** PASS ✓ (qualified) — 2026-05-19
+**Status:** PASS ✓ — 2026-05-19. Visually confirmed clean. The original "qualified PASS" was downgraded by a misdiagnosed MS2109 capture-stick artifact (chased the regression back to Phase 3 and Phase A; rebuilt Phase 6 unchanged; user took new snapshots; capture went clean; re-program of Phase 6 stays clean). Long-term lock confirmed at `err = ±1 tick (±10 ns)` mean, **0 unlock events** across 698,807+ frames (3.9+ hours of locked operation observed on a single run).
 
 **Goal:** close the loop. PI controller per output vsync, drive `phase_error` (= `ts_out - ts_ref` mod ref_period, signed shortest-path) to zero. Lock state machine flags ≥60 consecutive frames with |err| ≤ 1 line. Demonstrate sustained lock with bounded residual.
 
@@ -101,6 +101,35 @@ The 30-min soak is the doc's headline test. Our 3 min sample shows stable lock; 
 | `tests/phase-e1/phase6_closed_loop.md` | This doc |
 | `tests/phase-e1/phase6_locked_soak.txt` | Raw UART log of acquire + soak |
 | `tests/phase-e1/phase6_locked_soak.csv` | Per-second LOCK stats (mean/min/max err_ticks, cmd, integrator, lock count, unlock count) |
+
+## Disturbance-response data (added 2026-05-19)
+
+Step-response test: `L`, settle, `U` (output free-runs for 2 s, phase walks ~20k ticks at the +102 ppm baseline), `L` (re-engage), observe recovery. Per-second LOCK-summary trace at `phase6_step_response.txt`. Headline numbers:
+
+| Phase | Time | err mean | cmd_mppm | int_mppm |
+|---|---|---|---|---|
+| Pre-disturb steady | T=0 | ~0 (±1 tick) | -192,312 | -192,312 |
+| U disturbance | T=0–2 | (loop off, ~+20k ticks accumulated) | — | — |
+| Re-engage L | T=2 | err = +20k | -500k (saturated) | growing |
+| Saturated slew | T=2–9 | walking 20k → 0 | -500k clamp | -430k → -495k |
+| LOCKED transition | T=9 | crosses zero | — | -495k |
+| Overshoot peak | T=10–14 | -7,200 ticks (-2.7 lines) | -180k → -310k | -210k → -293k |
+| Damped oscillation | T=14–25 | ±5k → ±1k, period ~5–8 s | unwinding | unwinding |
+| Fully settled | T=30+ | ~0 again | -192k | -192k |
+
+**Acquire from worst-case (full ref_period misalignment) takes ~30 s of saturated slew. Acquire from a 2-s drift disturbance takes ~7 s to first lock crossing, then ~30 s damped ring to fully settle.**
+
+## Multi-mode lock — recognized future work
+
+Phase 6's pass-criterion miss on "Acquire < 10 s" plus the post-acquire ring suggested by the step-response test are *not* improvable by single-tuning PI optimization alone. Tested Ki=0.3 + back-calculation anti-windup as a follow-up: overshoot got *worse* (12.7k ticks vs 7.2k), not better — the plant non-linearity invalidates the LTI ζ analysis.
+
+The right architectural answer is **menu-selectable lock-acquisition modes** (matches broadcast-genlock product behavior, e.g., ImagePro-style "snap to lock" vs slow PI):
+
+- **SNAP mode** — saturated ramp toward zero err, then jam-set integrator from the err velocity at zero crossing → ≤1 s acquire, brief (≤200 ms) visible output disruption. Suitable for live switching.
+- **SMOOTH mode** — current Ki=1.0 PI tuning; no visible disruption ever, ~30 s acquire. Suitable for unattended once-and-done lock.
+- **FILM mode** — SMOOTH + tighter `LOCK_THRESHOLD_TICKS` (~0.1 line) + lower gains. For cinema/genlock-critical work.
+
+Filed as a separate task; this is Phase E2 scope (post Phase 7's reference mux). The current Phase 6 PI tuning is "SMOOTH mode" and stands.
 
 ## Lessons for downstream phases
 
