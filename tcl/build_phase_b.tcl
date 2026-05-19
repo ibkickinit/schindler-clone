@@ -62,6 +62,7 @@ add_files -norecurse [file join $project_root hdl axis_clone.v]         ;# Macki
 add_files -norecurse [file join $project_root hdl mackin_blender.v]     ;# Mackin: per-pixel temporal lerp
 add_files -norecurse [file join $project_root hdl tpg_input.v]          ;# Built-in test pattern generator
 add_files -norecurse [file join $project_root hdl axis_mux_2to1.v]      ;# AXIS source mux (HDMI vs TPG)
+add_files -norecurse [file join $project_root hdl fsync_pulse_gen.v]    ;# 1-cycle vsync pulse for v_tc/fsync_in
 # clk_mux.v was an earlier attempt at BUFGMUX-based pclk_in switching; replaced
 # by v_vid_in_axi4s async-clock mode + always-on clk_wiz_tpg. Kept on disk for
 # reference but not added to project sources.
@@ -396,6 +397,23 @@ set_property -dict [list \
 ] [get_bd_cells v_tc_tx]
 
 # =============================================================================
+# Hardware vsync-locked startup (2026-05-18, per PG016 v_tc IP fsync_in pin)
+# =============================================================================
+# Source vsync (from dvi2rgb) drives a 1-cycle pulse into v_tc_tx/fsync_in.
+# Per PG016: "fsync_in resets all internal generator counters and starts the
+# generated frame timing synchronized to this input." Replaces the firmware
+# polling + VTC CTL write race with hardware-deterministic alignment.
+#
+# Phase error reduces from 0-290 rows (firmware AXI race) to 1 pixel-clock
+# (2-FF CDC synchronizer latency). Source: research synthesized 2026-05-18.
+create_bd_cell -type module -reference fsync_pulse_gen fsync_pulse_gen_0
+connect_bd_net [get_bd_pins clk_wiz_pixclk_out/clk_out1]        [get_bd_pins fsync_pulse_gen_0/aclk]
+connect_bd_net [get_bd_pins dvi2rgb_0/vid_pVSync]               [get_bd_pins fsync_pulse_gen_0/vsync_in_async]
+connect_bd_net [get_bd_pins v_tc_tx/vsync_out]                  [get_bd_pins fsync_pulse_gen_0/vtc_vsync_in]
+connect_bd_net [get_bd_pins fsync_pulse_gen_0/fsync_pulse]      [get_bd_pins v_tc_tx/fsync_in]
+# fsync_pulse_gen_0/aresetn wired below after rst_pixclk_out is created.
+
+# =============================================================================
 # iter4e: Video Timing Controller — DETECTOR — measures source dimensions
 # =============================================================================
 # Reads timing signals out of v_vid_in_axi4s_0/vtiming_out (which is itself
@@ -631,6 +649,7 @@ connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins v_tc_rx/s
 # v_vid_in_axi4s is on the input (dvi2rgb) PixelClk; rst_axi (FCLK_CLK0) is
 # async to it but the IP handles its own internal reset synchronization.
 connect_bd_net [get_bd_pins rst_pixclk_out/peripheral_aresetn] [get_bd_pins v_tc_tx/resetn]
+connect_bd_net [get_bd_pins rst_pixclk_out/peripheral_aresetn] [get_bd_pins fsync_pulse_gen_0/aresetn]
 connect_bd_net [get_bd_pins rst_pixclk_out/peripheral_aresetn] [get_bd_pins color_correct_0/aresetn]
 connect_bd_net [get_bd_pins rst_pixclk_out/peripheral_aresetn] [get_bd_pins color_saturation_0/aresetn]
 connect_bd_net [get_bd_pins rst_pixclk_out/peripheral_aresetn] [get_bd_pins color_matrix_0/aresetn]
