@@ -509,6 +509,14 @@ static u32           g_total_locked_frames = 0;
 static u32           g_unlock_events  = 0;
 static u32           g_loop_enable_count_at_start = 0;
 
+/* Phase 8 — dual-loop cadence cooperation. */
+static s32           g_bias_mppm           = 0;     /* synthetic ref-rate bias (set by 'b') */
+static s64           g_bias_accum_ticks    = 0;     /* cumulative bias-induced phase shift */
+static s64           g_slip_offset_ticks   = 0;     /* total ref-side slip absorbed */
+static int           g_frames_at_saturation = 0;    /* contiguous frames with cmd at clamp */
+static u32           g_slip_count          = 0;     /* total slip events emitted */
+#define SLIP_SAT_FRAMES_THRESHOLD  30   /* frames at clamp before emitting a slip */
+
 static const char *state_label(loop_state_t s)
 {
     switch (s) {
@@ -546,6 +554,10 @@ static void cmd_lock_enable(void)
     g_stat_err_min = g_stat_err_max = g_stat_err_sum = 0;
     g_total_locked_frames = 0;
     g_unlock_events = 0;
+    g_bias_accum_ticks = 0;
+    g_slip_offset_ticks = 0;
+    g_frames_at_saturation = 0;
+    g_slip_count = 0;
 
     /* Zero actuator before flipping the enable, so first correction starts clean. */
     Xil_Out32(ACT_PHASE_STEP, 0);
@@ -697,10 +709,19 @@ static void loop_tick(void)
      * advancing — the raw difference grows unbounded. Use a proper modular
      * reduction (not a single-iteration if/else) so the normalization
      * survives ref-loss intervals. C99 % for negative dividends truncates
-     * toward zero, so the conditional touch-ups handle the sign. */
+     * toward zero, so the conditional touch-ups handle the sign.
+     *
+     * Phase 8 — accumulate ref-rate bias each frame and subtract the running
+     * slip offset, BEFORE the modular reduction. Bias of B ppm produces
+     * 2B ticks of accumulated extra phase per frame at 50 Hz / 100 MHz ctr.
+     * (ppm × frame_period × counter_freq = ppm × 0.02 × 1e8 / 1e6 = ppm × 2.)
+     * Bias and slip both operate as "virtual ts_ref adjustment" — they make
+     * the loop SEE a different ref relationship without touching the actual
+     * synth_vsync_gen output. */
+    g_bias_accum_ticks += (s64)g_bias_mppm * 2 / 1000;  /* 2 ticks per ppm per frame, mppm → ppm */
     u64 diff = (ts_out - ts_ref) & 0x0000FFFFFFFFFFFFULL;
     if (diff & 0x0000800000000000ULL) diff |= 0xFFFF000000000000ULL;
-    s64 err64 = (s64)diff;
+    s64 err64 = (s64)diff + g_bias_accum_ticks - g_slip_offset_ticks;
     err64 = err64 % REF_PERIOD_TICKS;
     if (err64 >  (REF_PERIOD_TICKS / 2)) err64 -= REF_PERIOD_TICKS;
     else if (err64 < -(REF_PERIOD_TICKS / 2)) err64 += REF_PERIOD_TICKS;
@@ -763,6 +784,50 @@ static void loop_tick(void)
     s64 step64 = (s64)cmd_mppm * ACT_STEP_PER_PPM / 1000;
     Xil_Out32(ACT_PHASE_STEP, (u32)(s32)step64);
 
+    /* Phase 8 — cadence-cooperation slip event. The spec calls for the
+     * controller to "release a frame slip" when the rate offset exceeds
+     * what fine PS can compensate. Trigger conditions:
+     *   (a) loop is LOCKED (this is steady-state behavior, not initial
+     *       acquire saturation)
+     *   (b) cmd has been at ±clamp for ≥SLIP_SAT_FRAMES_THRESHOLD frames
+     *       (proves the MMCM is genuinely out of range, not just transient)
+     *   (c) the unbounded bias accumulator has crossed ±REF_PERIOD_TICKS
+     *       since the last slip — this gates the slip RATE to match
+     *       bias_ppm × frame_rate / 1e6 slips/sec, the spec's prediction.
+     *
+     * The slip itself is a controller-counter event for the spike: real
+     * VDMA frame-slip semantics (actually drop/repeat a frame in the
+     * framestore ring) are production plumbing. We track slips and prove
+     * the rate matches; the SOF-atomic VDMA park-pointer write is left
+     * for production. */
+    int at_clamp_hi = (cmd_mppm >=  INTEGRATOR_CLAMP_MILLI_PPM);
+    int at_clamp_lo = (cmd_mppm <= -INTEGRATOR_CLAMP_MILLI_PPM);
+    if (at_clamp_hi || at_clamp_lo) g_frames_at_saturation++;
+    else                            g_frames_at_saturation = 0;
+
+    /* Trigger condition: bias accumulator has crossed ±REF_PERIOD AND
+     * the loop is saturated (confirming the over-range condition).
+     * Decoupled from lock state — under heavy bias the loop alternates
+     * between LOCKED, ACQUIRING, and saturated, and slips should fire
+     * throughout. This counts "controller would have commanded a VDMA
+     * frame slip"; real VDMA park-pointer manipulation is left for
+     * production. */
+    if (g_bias_mppm != 0 && (at_clamp_hi || at_clamp_lo)) {
+        s64 net_bias = g_bias_accum_ticks - g_slip_offset_ticks;
+        s32 slip_dir = 0;
+        if (net_bias >=  REF_PERIOD_TICKS) slip_dir = +1;
+        else if (net_bias <= -REF_PERIOD_TICKS) slip_dir = -1;
+        if (slip_dir != 0) {
+            g_slip_offset_ticks += (s64)slip_dir * REF_PERIOD_TICKS;
+            g_slip_count++;
+            xil_printf(">>> SLIP %u dir %d frame %u sat_frames %d net_bias_post %d\r\n",
+                       (unsigned)g_slip_count, (int)slip_dir,
+                       (unsigned)out_count,
+                       (int)g_frames_at_saturation,
+                       (int)(net_bias - (s64)slip_dir * REF_PERIOD_TICKS));
+        }
+    }
+
     /* In ACQUIRING / LOCKED only: update the |err|-based lock detection. */
     if (g_lock_state == LOOP_ACQUIRING || g_lock_state == LOOP_LOCKED) {
         int in_lock    = (err >= -LOCK_THRESHOLD_TICKS) && (err <= LOCK_THRESHOLD_TICKS);
@@ -807,12 +872,20 @@ static void loop_tick(void)
 
     if (g_stat_frames >= STATS_PERIOD_FRAMES) {
         s32 mean = g_stat_err_sum / g_stat_frames;
-        xil_printf("LOCK state=%s err_ticks mean=%d min=%d max=%d cmd_mppm=%d int_mppm=%d locked_frames=%u unlocks=%u ref_idle=%d\r\n",
+        /* bias_accum/slip_offset are s64 — print only the low 32 bits.
+         * For the +1000 ppm validation case the accumulator never exceeds
+         * a few minutes' worth of ticks (well under 2^31). */
+        xil_printf("LOCK state=%s err=%d/%d/%d cmd=%d int=%d locked=%u unlocks=%u ref_idle=%d bias=%d slips=%u sat=%d acc=%d slip_off=%d\r\n",
                    state_label(g_lock_state),
                    (int)mean, (int)g_stat_err_min, (int)g_stat_err_max,
                    (int)cmd_mppm, (int)g_integrator_mppm,
                    (unsigned)g_total_locked_frames, (unsigned)g_unlock_events,
-                   (int)g_frames_since_ref_edge);
+                   (int)g_frames_since_ref_edge,
+                   (int)g_bias_mppm,
+                   (unsigned)g_slip_count,
+                   (int)g_frames_at_saturation,
+                   (int)(g_bias_accum_ticks & 0xFFFFFFFF),
+                   (int)(g_slip_offset_ticks & 0xFFFFFFFF));
         g_stat_frames = 0;
         g_stat_err_sum = 0;
     }
@@ -834,6 +907,23 @@ static int parse_signed(const char *s, s32 *out)
     return 1;
 }
 
+/* Phase 8 — synthetic reference-rate bias injector + slip counter reset.
+ * The bias is added to the loop's perceived err each frame, simulating a
+ * reference that's running at the *commanded ppm offset* from the actual
+ * synth_vsync_gen rate. Used to drive the loop past its MMCM pull range
+ * (±500 ppm) and exercise the cadence-cooperation handoff (frame slips). */
+static void cmd_bias(s32 ppm)
+{
+    g_bias_mppm = ppm * 1000;          /* store as milli-ppm */
+    g_bias_accum_ticks = 0;            /* reset bias accumulator on new cmd */
+    g_slip_offset_ticks = 0;           /* clear prior slip tally */
+    g_frames_at_saturation = 0;
+    g_slip_count = 0;
+    xil_printf("\r\n[B] reference-rate bias = %d ppm (mppm=%d)\r\n"
+               "    accumulator + slip tally reset.\r\n",
+               (int)ppm, (int)g_bias_mppm);
+}
+
 static void cmd_help(void)
 {
     xil_printf("\r\nPhase E1 UART commands:\r\n"
@@ -850,6 +940,7 @@ static void cmd_help(void)
                "  S             Phase 6: toggle per-frame CSV dump\r\n"
                "  r <free|sync> Phase 7: select reference source\r\n"
                "  s             Phase 7: toggle ref-mask (simulate ref loss)\r\n"
+               "  B <ppm>       Phase 8: inject ref-rate bias (saturation/slip test)\r\n"
                "  ?             this help\r\n");
 }
 
@@ -869,6 +960,27 @@ static void uart_poll_and_dispatch(void)
         case 'U':           cmd_unlock();      break;
         case 'S':           cmd_toggle_dump(); break;
         case 's':           cmd_toggle_ref_mask(); break;
+        case 'B': {
+            /* B <signed_ppm> — Phase 8 reference-rate bias injection */
+            char buf[16];
+            unsigned bi = 0;
+            int timeout_ticks = 100000000;
+            while (bi + 1 < sizeof(buf) && timeout_ticks > 0) {
+                int ch = uart_recv_nb();
+                if (ch < 0) { --timeout_ticks; continue; }
+                if (ch == '\r' || ch == '\n') break;
+                buf[bi++] = (char)ch;
+                xil_printf("%c", ch);
+            }
+            buf[bi] = '\0';
+            s32 ppm;
+            if (parse_signed(buf, &ppm)) {
+                cmd_bias(ppm);
+            } else {
+                xil_printf("\r\nUART: 'B <signed_ppm>' (e.g. 'B +1000'). Got '%s'\r\n", buf);
+            }
+            break;
+        }
         case 'r': {
             /* r <free|sync>  — Phase 7 reference selector */
             char buf[16];

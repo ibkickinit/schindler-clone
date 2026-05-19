@@ -1,0 +1,558 @@
+TELEMETRY: src=72 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+
+[L] Phase 6 loop ENABLED  (ts_ref_count=499, baseline ~102 ppm)
+    Kp_milli=10000 ppm/line  Ki_milli=1000 ppm/line/frame
+    integrator_clamp_milli=500000  lock_frames=60  lock_thresh_ticks=2667
+TELEMETRY: src=71 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err=124932/123335/126529 cmd=-500000 int=-94000 locked=0 unlocks=0 ref_idle=0 bias=0 slips=0 sat=50 acc=0 slip_off=0
+LOCK state=ACQUIRING err=121672/120076/123269 cmd=-500000 int=-94000 locked=0 unlocks=0 ref_idle=0 bias=0 slips=0 sat=100 acc=0 slip_off=0
+TELEMETRY: src=71 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err=118412/116816/120009 cmd=-500000 int=-94000 locked=0 unlocks=0 ref_idle=0 bias=0 slips=0 sat=150 acc=0 slip_off=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err=115152/113556/116750 cmd=-500000 int=-94000 locked=0 unlocks=0 ref_idle=0 bias=0 slips=0 sat=200 acc=0 slip_off=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err=111892/110296/113490 cmd=-500000 int=-94000 locked=0 unlocks=0 ref_idle=0 bias=0 slips=0 sat=250 acc=0 slip_off=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err=108632/107036/110230 cmd=-500000 int=-134597 locked=0 unlocks=0 ref_idle=0 bias=0 slips=0 sat=300 acc=0 slip_off=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err=105373/103776/106970 cmd=-500000 int=-134597 locked=0 unlocks=0 ref_idle=0 bias=0 slips=0 sat=350 acc=0 slip_off=0
+LOCK state=ACQUIRING err=102113/100516/103710 cmd=-500000 int=-134597 locked=0 unlocks=0 ref_idle=0 bias=0 slips=0 sat=400 acc=0 slip_off=0
+TELEMETRY: src=75 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err=98853/97256/100450 cmd=-500000 int=-171136 locked=0 unlocks=0 ref_idle=0 bias=0 slips=0 sat=450 acc=0 slip_off=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err=95593/93997/97190 cmd=-500000 int=-171136 locked=0 unlocks=0 ref_idle=0 bias=0 slips=0 sat=500 acc=0 slip_off=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err=92333/90737/93931 cmd=-500000 int=-171136 locked=0 unlocks=0 ref_idle=0 bias=0 slips=0 sat=550 acc=0 slip_off=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err=89073/87477/90671 cmd=-500000 int=-204008 locked=0 unlocks=0 ref_idle=0 bias=0 slips=0 sat=600 acc=0 slip_off=0
+LOCK state=ACQUIRING err=85813/84217/87411 cmd=-500000 int=-204008 locked=0 unlocks=0 ref_idle=0 bias=0 slips=0 sat=650 acc=0 slip_off=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err=82554/80957/84151 cmd=-500000 int=-204008 locked=0 unlocks=0 ref_idle=0 bias=0 slips=0 sat=700 acc=0 slip_off=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err=79294/77697/80891 cmd=-500000 int=-233604 locked=0 unlocks=0 ref_idle=0 bias=0 slips=0 sat=750 acc=0 slip_off=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err=76034/74437/77631 cmd=-500000 int=-233604 locked=0 unlocks=0 ref_idle=0 bias=0 slips=0 sat=800 acc=0 slip_off=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err=72774/71178/74371 cmd=-500000 int=-233604 locked=0 unlocks=0 ref_idle=0 bias=0 slips=0 sat=850 acc=0 slip_off=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err=69514/67918/71111 cmd=-500000 int=-260242 locked=0 unlocks=0 ref_idle=0 bias=0 slips=0 sat=900 acc=0 slip_off=0
+LOCK state=ACQUIRING err=66254/64658/67852 cmd=-500000 int=-260242 locked=0 unlocks=0 ref_idle=0 bias=0 slips=0 sat=950 acc=0 slip_off=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err=62994/61398/64592 cmd=-500000 int=-284216 locked=0 unlocks=0 ref_idle=0 bias=0 slips=0 sat=1000 acc=0 slip_off=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err=59735/58138/61332 cmd=-500000 int=-284216 locked=0 unlocks=0 ref_idle=0 bias=0 slips=0 sat=1050 acc=0 slip_off=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err=56475/54878/58072 cmd=-500000 int=-305770 locked=0 unlocks=0 ref_idle=0 bias=0 slips=0 sat=1100 acc=0 slip_off=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err=53215/51618/54812 cmd=-500000 int=-325173 locked=0 unlocks=0 ref_idle=0 bias=0 slips=0 sat=1150 acc=0 slip_off=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err=49955/48359/51552 cmd=-500000 int=-325173 locked=0 unlocks=0 ref_idle=0 bias=0 slips=0 sat=1200 acc=0 slip_off=0
+LOCK state=ACQUIRING err=46695/45099/48292 cmd=-500000 int=-342645 locked=0 unlocks=0 ref_idle=0 bias=0 slips=0 sat=1250 acc=0 slip_off=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err=43435/41839/45033 cmd=-500000 int=-358357 locked=0 unlocks=0 ref_idle=0 bias=0 slips=0 sat=1300 acc=0 slip_off=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err=40175/38579/41773 cmd=-500000 int=-358357 locked=0 unlocks=0 ref_idle=0 bias=0 slips=0 sat=1350 acc=0 slip_off=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err=36915/35319/38513 cmd=-500000 int=-372504 locked=0 unlocks=0 ref_idle=0 bias=0 slips=0 sat=1400 acc=0 slip_off=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err=33656/32059/35253 cmd=-500000 int=-385233 locked=0 unlocks=0 ref_idle=0 bias=0 slips=0 sat=1450 acc=0 slip_off=0
+LOCK state=ACQUIRING err=30396/28799/31993 cmd=-500000 int=-396691 locked=0 unlocks=0 ref_idle=0 bias=0 slips=0 sat=1500 acc=0 slip_off=0
+TELEMETRY: src=74 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err=27136/25540/28733 cmd=-500000 int=-407000 locked=0 unlocks=0 ref_idle=0 bias=0 slips=0 sat=1550 acc=0 slip_off=0
+TELEMETRY: src=74 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err=23876/22280/25473 cmd=-500000 int=-424635 locked=0 unlocks=0 ref_idle=0 bias=0 slips=0 sat=1600 acc=0 slip_off=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err=20616/19020/22214 cmd=-500000 int=-432157 locked=0 unlocks=0 ref_idle=0 bias=0 slips=0 sat=1650 acc=0 slip_off=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err=17356/15760/18954 cmd=-500000 int=-445025 locked=0 unlocks=0 ref_idle=0 bias=0 slips=0 sat=1700 acc=0 slip_off=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err=14096/12500/15694 cmd=-500000 int=-455449 locked=0 unlocks=0 ref_idle=0 bias=0 slips=0 sat=1750 acc=0 slip_off=0
+LOCK state=ACQUIRING err=10837/9240/12434 cmd=-500000 int=-467479 locked=0 unlocks=0 ref_idle=0 bias=0 slips=0 sat=1800 acc=0 slip_off=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err=7577/5980/9174 cmd=-500000 int=-478646 locked=0 unlocks=0 ref_idle=0 bias=0 slips=0 sat=1850 acc=0 slip_off=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err=4317/2720/5914 cmd=-500000 int=-490735 locked=0 unlocks=0 ref_idle=0 bias=0 slips=0 sat=1900 acc=0 slip_off=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err=1057/-537/2654 cmd=-495860 int=-497873 locked=0 unlocks=0 ref_idle=0 bias=0 slips=0 sat=0 acc=0 slip_off=0
+>>> LOCKED at frame 1960
+TELEMETRY: src=73 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=LOCKED err=-2153/-3655/-603 cmd=-443829 int=-457533 locked=24 unlocks=0 ref_idle=0 bias=0 slips=0 sat=0 acc=0 slip_off=0
+LOCK state=LOCKED err=-5039/-6235/-3714 cmd=-339710 int=-363088 locked=24 unlocks=0 ref_idle=0 bias=0 slips=0 sat=0 acc=0 slip_off=0
+TELEMETRY: src=74 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=LOCKED err=-7054/-7538/-6277 cmd=-202596 int=-230859 locked=24 unlocks=0 ref_idle=0 bias=0 slips=0 sat=0 acc=0 slip_off=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=LOCKED err=-7074/-7548/-5968 cmd=-75880 int=-98257 locked=24 unlocks=0 ref_idle=0 bias=0 slips=0 sat=0 acc=0 slip_off=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=LOCKED err=-3288/-5891/-240 cmd=-35730 int=-36629 locked=43 unlocks=0 ref_idle=0 bias=0 slips=0 sat=0 acc=0 slip_off=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=LOCKED err=2520/-112/4529 cmd=-100838 int=-83857 locked=68 unlocks=0 ref_idle=0 bias=0 slips=0 sat=0 acc=0 slip_off=0
+ +1000
+[B] reference-rate bias = 1000 ppm (mppm=1000000)
+    accumulator + slip tally reset.
+TELEMETRY: src=73 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=LOCKED err=51070/4582/98620 cmd=-500000 int=-315651 locked=68 unlocks=0 ref_idle=0 bias=1000000 slips=0 sat=26 acc=96000 slip_off=0
+>>> UNLOCK event #1 at frame 2316
+LOCK state=ACQUIRING err=147957/100554/195361 cmd=-500000 int=-315651 locked=68 unlocks=1 ref_idle=0 bias=1000000 slips=0 sat=76 acc=196000 slip_off=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err=244697/197294/292101 cmd=-500000 int=-315651 locked=68 unlocks=1 ref_idle=0 bias=1000000 slips=0 sat=126 acc=296000 slip_off=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err=341437/294036/388841 cmd=-500000 int=-315651 locked=68 unlocks=1 ref_idle=0 bias=1000000 slips=0 sat=176 acc=396000 slip_off=0
+TELEMETRY: src=71 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err=438177/390776/485581 cmd=-500000 int=-315651 locked=68 unlocks=1 ref_idle=0 bias=1000000 slips=0 sat=226 acc=496000 slip_off=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err=534918/487516/582321 cmd=-500000 int=-315651 locked=68 unlocks=1 ref_idle=0 bias=1000000 slips=0 sat=276 acc=596000 slip_off=0
+LOCK state=ACQUIRING err=631658/584256/679061 cmd=-500000 int=-315651 locked=68 unlocks=1 ref_idle=0 bias=1000000 slips=0 sat=326 acc=696000 slip_off=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err=728398/680996/775801 cmd=-500000 int=-315651 locked=68 unlocks=1 ref_idle=0 bias=1000000 slips=0 sat=376 acc=796000 slip_off=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err=825138/777736/872542 cmd=-500000 int=-315651 locked=68 unlocks=1 ref_idle=0 bias=1000000 slips=0 sat=426 acc=896000 slip_off=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err=921878/874476/969282 cmd=-500000 int=-315651 locked=68 unlocks=1 ref_idle=0 bias=1000000 slips=0 sat=476 acc=996000 slip_off=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err=-374974/-999762/998303 cmd=500000 int=-315651 locked=68 unlocks=1 ref_idle=0 bias=1000000 slips=0 sat=526 acc=1096000 slip_off=0
+TELEMETRY: src=71 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err=-852604/-913199/-792010 cmd=500000 int=-315651 locked=68 unlocks=1 ref_idle=0 bias=1000000 slips=0 sat=576 acc=1196000 slip_off=0
+LOCK state=ACQUIRING err=-728943/-789538/-668349 cmd=500000 int=-315651 locked=68 unlocks=1 ref_idle=0 bias=1000000 slips=0 sat=626 acc=1296000 slip_off=0
+TELEMETRY: src=74 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err=-605281/-665876/-544687 cmd=500000 int=-315651 locked=68 unlocks=1 ref_idle=0 bias=1000000 slips=0 sat=676 acc=1396000 slip_off=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err=-481620/-542215/-421026 cmd=500000 int=-315651 locked=68 unlocks=1 ref_idle=0 bias=1000000 slips=0 sat=726 acc=1496000 slip_off=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err=-357958/-418553/-297364 cmd=500000 int=-315651 locked=68 unlocks=1 ref_idle=0 bias=1000000 slips=0 sat=776 acc=1596000 slip_off=0
+TELEMETRY: src=74 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err=-234297/-294892/-173702 cmd=500000 int=-96150 locked=68 unlocks=1 ref_idle=0 bias=1000000 slips=0 sat=826 acc=1696000 slip_off=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err=-110635/-171230/-50041 cmd=500000 int=328379 locked=68 unlocks=1 ref_idle=0 bias=1000000 slips=0 sat=876 acc=1796000 slip_off=0
+LOCK state=ACQUIRING err=12478/-47568/69557 cmd=-224724 int=36082 locked=68 unlocks=1 ref_idle=0 bias=1000000 slips=0 sat=0 acc=1896000 slip_off=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err=119079/71543/166490 cmd=-500000 int=-199112 locked=68 unlocks=1 ref_idle=0 bias=1000000 slips=0 sat=43 acc=1996000 slip_off=0
+>>> SLIP 1 dir 1 frame 3614 sat_frames 45 net_bias_post 0
+TELEMETRY: src=73 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err=215827/168424/263230 cmd=-500000 int=-199112 locked=68 unlocks=1 ref_idle=0 bias=1000000 slips=1 sat=93 acc=2096000 slip_off=2000000
+TELEMETRY: src=73 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err=312567/265164/359970 cmd=-500000 int=-199112 locked=68 unlocks=1 ref_idle=0 bias=1000000 slips=1 sat=143 acc=2196000 slip_off=2000000
+TELEMETRY: src=71 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err=409307/361904/456710 cmd=-500000 int=-199112 locked=68 unlocks=1 ref_idle=0 bias=1000000 slips=1 sat=193 acc=2296000 slip_off=2000000
+LOCK state=ACQUIRING err=506047/458644/553451 cmd=-500000 int=-199112 locked=68 unlocks=1 ref_idle=0 bias=1000000 slips=1 sat=243 acc=2396000 slip_off=2000000
+TELEMETRY: src=71 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err=602787/555385/650191 cmd=-500000 int=-199112 locked=68 unlocks=1 ref_idle=0 bias=1000000 slips=1 sat=293 acc=2496000 slip_off=2000000
+TELEMETRY: src=72 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err=699527/652125/746931 cmd=-500000 int=-199112 locked=68 unlocks=1 ref_idle=0 bias=1000000 slips=1 sat=343 acc=2596000 slip_off=2000000
+TELEMETRY: src=71 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err=796267/748865/843671 cmd=-500000 int=-199112 locked=68 unlocks=1 ref_idle=0 bias=1000000 slips=1 sat=393 acc=2696000 slip_off=2000000
+TELEMETRY: src=72 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err=893008/845605/940411 cmd=-500000 int=-199112 locked=68 unlocks=1 ref_idle=0 bias=1000000 slips=1 sat=443 acc=2796000 slip_off=2000000
+TELEMETRY: src=72 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err=191794/-999611/998455 cmd=500000 int=-199112 locked=68 unlocks=1 ref_idle=0 bias=1000000 slips=1 sat=493 acc=2896000 slip_off=2000000
+LOCK state=ACQUIRING err=-889552/-950147/-828957 cmd=500000 int=-199112 locked=68 unlocks=1 ref_idle=0 bias=1000000 slips=1 sat=543 acc=2996000 slip_off=2000000
+TELEMETRY: src=71 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err=-765890/-826485/-705296 cmd=500000 int=-199112 locked=68 unlocks=1 ref_idle=0 bias=1000000 slips=1 sat=593 acc=3096000 slip_off=2000000
+TELEMETRY: src=74 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err=-642228/-702823/-581634 cmd=500000 int=-199112 locked=68 unlocks=1 ref_idle=0 bias=1000000 slips=1 sat=643 acc=3196000 slip_off=2000000
+TELEMETRY: src=73 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err=-518567/-579162/-457972 cmd=500000 int=-199112 locked=68 unlocks=1 ref_idle=0 bias=1000000 slips=1 sat=693 acc=3296000 slip_off=2000000
+TELEMETRY: src=73 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err=-394905/-455500/-334311 cmd=500000 int=-199112 locked=68 unlocks=1 ref_idle=0 bias=1000000 slips=1 sat=743 acc=3396000 slip_off=2000000
+LOCK state=ACQUIRING err=-271243/-331838/-210649 cmd=500000 int=-199112 locked=68 unlocks=1 ref_idle=0 bias=1000000 slips=1 sat=793 acc=3496000 slip_off=2000000
+TELEMETRY: src=73 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err=-147582/-208177/-86987 cmd=500000 int=196282 locked=68 unlocks=1 ref_idle=0 bias=1000000 slips=1 sat=843 acc=3596000 slip_off=2000000
+TELEMETRY: src=73 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err=-23959/-84515/36335 cmd=209480 int=345719 locked=68 unlocks=1 ref_idle=0 bias=1000000 slips=1 sat=0 acc=3696000 slip_off=2000000
+TELEMETRY: src=73 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err=89759/38749/137650 cmd=-500000 int=-198171 locked=68 unlocks=1 ref_idle=0 bias=1000000 slips=1 sat=28 acc=3796000 slip_off=2000000
+TELEMETRY: src=72 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err=186986/139583/234390 cmd=-500000 int=-198171 locked=68 unlocks=1 ref_idle=0 bias=1000000 slips=1 sat=78 acc=3896000 slip_off=2000000
+TELEMETRY: src=73 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err=283726/236324/331130 cmd=-500000 int=-198171 locked=68 unlocks=1 ref_idle=0 bias=1000000 slips=1 sat=128 acc=3996000 slip_off=2000000
+>>> SLIP 2 dir 1 frame 4614 sat_frames 130 net_bias_post 0
+LOCK state=ACQUIRING err=380466/333064/427870 cmd=-500000 int=-198171 locked=68 unlocks=1 ref_idle=0 bias=1000000 slips=2 sat=178 acc=4096000 slip_off=4000000
+TELEMETRY: src=72 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err=477206/429804/524610 cmd=-500000 int=-198171 locked=68 unlocks=1 ref_idle=0 bias=1000000 slips=2 sat=228 acc=4196000 slip_off=4000000
+TELEMETRY: src=73 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err=573947/526544/621350 cmd=-500000 int=-198171 locked=68 unlocks=1 ref_idle=0 bias=1000000 slips=2 sat=278 acc=4296000 slip_off=4000000
+TELEMETRY: src=72 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err=670687/623284/718090 cmd=-500000 int=-198171 locked=68 unlocks=1 ref_idle=0 bias=1000000 slips=2 sat=328 acc=4396000 slip_off=4000000
+TELEMETRY: src=72 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err=767427/720024/814831 cmd=-500000 int=-198171 locked=68 unlocks=1 ref_idle=0 bias=1000000 slips=2 sat=378 acc=4496000 slip_off=4000000
+TELEMETRY: src=72 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err=864167/816764/911571 cmd=-500000 int=-198171 locked=68 unlocks=1 ref_idle=0 bias=1000000 slips=2 sat=428 acc=4596000 slip_off=4000000
+LOCK state=ACQUIRING err=761015/-999429/998636 cmd=500000 int=-198171 locked=68 unlocks=1 ref_idle=0 bias=1000000 slips=2 sat=478 acc=4696000 slip_off=4000000
+TELEMETRY: src=71 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err=-926469/-987064/-865874 cmd=500000 int=-198171 locked=68 unlocks=1 ref_idle=0 bias=1000000 slips=2 sat=528 acc=4796000 slip_off=4000000
+TELEMETRY: src=72 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err=-802807/-863402/-742213 cmd=500000 int=-198171 locked=68 unlocks=1 ref_idle=0 bias=1000000 slips=2 sat=578 acc=4896000 slip_off=4000000
+TELEMETRY: src=72 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err=-679145/-739740/-618551 cmd=500000 int=-198171 locked=68 unlocks=1 ref_idle=0 bias=1000000 slips=2 sat=628 acc=4996000 slip_off=4000000
+TELEMETRY: src=72 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err=-555484/-616079/-494889 cmd=500000 int=-198171 locked=68 unlocks=1 ref_idle=0 bias=1000000 slips=2 sat=678 acc=5096000 slip_off=4000000
+LOCK state=ACQUIRING err=-431822/-492417/-371228 cmd=500000 int=-198171 locked=68 unlocks=1 ref_idle=0 bias=1000000 slips=2 sat=728 acc=5196000 slip_off=4000000
+TELEMETRY: src=74 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err=-308160/-368755/-247566 cmd=500000 int=-198171 locked=68 unlocks=1 ref_idle=0 bias=1000000 slips=2 sat=778 acc=5296000 slip_off=4000000
+TELEMETRY: src=74 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err=-184499/-245094/-123904 cmd=500000 int=39592 locked=68 unlocks=1 ref_idle=0 bias=1000000 slips=2 sat=828 acc=5396000 slip_off=4000000
+TELEMETRY: src=73 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err=-60838/-121432/-256 cmd=453735 int=452776 locked=68 unlocks=1 ref_idle=0 bias=1000000 slips=2 sat=0 acc=5496000 slip_off=4000000
+TELEMETRY: src=73 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err=58445/2211/108749 cmd=-500000 int=-201488 locked=68 unlocks=1 ref_idle=0 bias=1000000 slips=2 sat=13 acc=5596000 slip_off=4000000
+TELEMETRY: src=73 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err=158086/110683/205489 cmd=-500000 int=-201488 locked=68 unlocks=1 ref_idle=0 bias=1000000 slips=2 sat=63 acc=5696000 slip_off=4000000
+LOCK state=ACQUIRING err=254826/207423/302229 cmd=-500000 int=-201488 locked=68 unlocks=1 ref_idle=0 bias=1000000 slips=2 sat=113 acc=5796000 slip_off=4000000
+TELEMETRY: src=74 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err=351566/304163/398970 cmd=-500000 int=-201488 locked=68 unlocks=1 ref_idle=0 bias=1000000 slips=2 sat=163 acc=5896000 slip_off=4000000
+TELEMETRY: src=72 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err=448306/400903/495710 cmd=-500000 int=-201488 locked=68 unlocks=1 ref_idle=0 bias=1000000 slips=2 sat=213 acc=5996000 slip_off=4000000
+>>> SLIP 3 dir 1 frame 5614 sat_frames 215 net_bias_post 0
+TELEMETRY: src=71 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err=545046/497644/592450 cmd=-500000 int=-201488 locked=68 unlocks=1 ref_idle=0 bias=1000000 slips=3 sat=263 acc=6096000 slip_off=6000000
+TELEMETRY: src=72 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err=641786/594384/689190 cmd=-500000 int=-201488 locked=68 unlocks=1 ref_idle=0 bias=1000000 slips=3 sat=313 acc=6196000 slip_off=6000000
+LOCK state=ACQUIRING err=738527/691124/785930 cmd=-500000 int=-201488 locked=68 unlocks=1 ref_idle=0 bias=1000000 slips=3 sat=363 acc=6296000 slip_off=6000000
+TELEMETRY: src=72 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err=835267/787864/882670 cmd=-500000 int=-201488 locked=68 unlocks=1 ref_idle=0 bias=1000000 slips=3 sat=413 acc=6396000 slip_off=6000000
+TELEMETRY: src=71 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err=932007/884604/979410 cmd=-500000 int=-201488 locked=68 unlocks=1 ref_idle=0 bias=1000000 slips=3 sat=463 acc=6496000 slip_off=6000000
+TELEMETRY: src=72 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err=-562853/-999308/998758 cmd=500000 int=-201488 locked=68 unlocks=1 ref_idle=0 bias=1000000 slips=3 sat=513 acc=6596000 slip_off=6000000
+TELEMETRY: src=72 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err=-839784/-900379/-779190 cmd=500000 int=-201488 locked=68 unlocks=1 ref_idle=0 bias=1000000 slips=3 sat=563 acc=6696000 slip_off=6000000
+TELEMETRY: src=71 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err=-716122/-776717/-655528 cmd=500000 int=-201488 locked=68 unlocks=1 ref_idle=0 bias=1000000 slips=3 sat=613 acc=6796000 slip_off=6000000
+LOCK state=ACQUIRING err=-592461/-653056/-531866 cmd=500000 int=-201488 locked=68 unlocks=1 ref_idle=0 bias=1000000 slips=3 sat=663 acc=6896000 slip_off=6000000
+TELEMETRY: src=74 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err=-468799/-529394/-408205 cmd=500000 int=-201488 locked=68 unlocks=1 ref_idle=0 bias=1000000 slips=3 sat=713 acc=6996000 slip_off=6000000
+TELEMETRY: src=73 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err=-345137/-405732/-284543 cmd=500000 int=-201488 locked=68 unlocks=1 ref_idle=0 bias=1000000 slips=3 sat=763 acc=7096000 slip_off=6000000
+TELEMETRY: src=73 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err=-221476/-282071/-160881 cmd=500000 int=-68788 locked=68 unlocks=1 ref_idle=0 bias=1000000 slips=3 sat=813 acc=7196000 slip_off=6000000
+TELEMETRY: src=74 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err=-97814/-158409/-37220 cmd=500000 int=365842 locked=68 unlocks=1 ref_idle=0 bias=1000000 slips=3 sat=863 acc=7296000 slip_off=6000000
+LOCK state=ACQUIRING err=24731/-34747/79802 cmd=-408195 int=-108975 locked=68 unlocks=1 ref_idle=0 bias=1000000 slips=3 sat=0 acc=7396000 slip_off=6000000
+TELEMETRY: src=74 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err=129158/81748/176562 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=1000000 slips=3 sat=48 acc=7496000 slip_off=6000000
+ 0
+[B] reference-rate bias = 0 ppm (mppm=0)
+    accumulator + slip tally reset.
+TELEMETRY: src=72 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err=658858/178496/680366 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=48 acc=0 slip_off=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err=675639/674042/677236 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=98 acc=0 slip_off=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err=672379/670782/673976 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=148 acc=0 slip_off=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err=669119/667522/670716 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=198 acc=0 slip_off=0
+LOCK state=ACQUIRING err=665859/664263/667456 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=248 acc=0 slip_off=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err=662599/661003/664196 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=298 acc=0 slip_off=0
+TELEMETRY: src=71 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err=659339/657743/660937 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=348 acc=0 slip_off=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err=656079/654483/657677 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=398 acc=0 slip_off=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err=652819/651223/654417 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=448 acc=0 slip_off=0
+LOCK state=ACQUIRING err=649560/647963/651157 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=498 acc=0 slip_off=0
+TELEMETRY: src=74 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err=646300/644703/647897 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=548 acc=0 slip_off=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err=643040/641444/644637 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=598 acc=0 slip_off=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err=639780/638184/641377 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=648 acc=0 slip_off=0
+TELEMETRY: src=74 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err=636520/634924/638118 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=698 acc=0 slip_off=0
+TELEMETRY: src=71 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err=633260/631664/634858 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=748 acc=0 slip_off=0
+LOCK state=ACQUIRING err=630000/628404/631598 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=798 acc=0 slip_off=0
+TELEMETRY: src=74 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err=626741/625144/628338 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=848 acc=0 slip_off=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err=623481/621884/625078 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=898 acc=0 slip_off=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err=620221/618624/621818 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=948 acc=0 slip_off=0
+TELEMETRY: src=71 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err=616961/615365/618558 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=998 acc=0 slip_off=0
+TELEMETRY: src=71 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err=613701/612105/615299 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=1048 acc=0 slip_off=0
+LOCK state=ACQUIRING err=610441/608845/612039 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=1098 acc=0 slip_off=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err=607181/605585/608779 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=1148 acc=0 slip_off=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err=603922/602325/605519 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=1198 acc=0 slip_off=0
+TELEMETRY: src=71 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err=600662/599065/602259 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=1248 acc=0 slip_off=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err=597402/595805/598999 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=1298 acc=0 slip_off=0
+LOCK state=ACQUIRING err=594142/592546/595739 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=1348 acc=0 slip_off=0
+TELEMETRY: src=75 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err=590882/589286/592479 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=1398 acc=0 slip_off=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err=587622/586026/589220 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=1448 acc=0 slip_off=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err=584362/582766/585960 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=1498 acc=0 slip_off=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err=581103/579506/582700 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=1548 acc=0 slip_off=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err=577843/576246/579440 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=1598 acc=0 slip_off=0
+LOCK state=ACQUIRING err=574583/572986/576180 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=1648 acc=0 slip_off=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err=571323/569727/572920 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=1698 acc=0 slip_off=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err=568063/566467/569660 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=1748 acc=0 slip_off=0
+TELEMETRY: src=71 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err=564803/563207/566401 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=1798 acc=0 slip_off=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err=561543/559947/563141 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=1848 acc=0 slip_off=0
+LOCK state=ACQUIRING err=558284/556687/559881 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=1898 acc=0 slip_off=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err=555024/553427/556621 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=1948 acc=0 slip_off=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err=551764/550167/553361 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=1998 acc=0 slip_off=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err=548504/546908/550101 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=2048 acc=0 slip_off=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err=545244/543648/546841 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=2098 acc=0 slip_off=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err=541984/540388/543582 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=2148 acc=0 slip_off=0
+LOCK state=ACQUIRING err=538724/537128/540322 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=2198 acc=0 slip_off=0
+TELEMETRY: src=74 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err=535464/533868/537062 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=2248 acc=0 slip_off=0
+TELEMETRY: src=74 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err=532205/530608/533802 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=2298 acc=0 slip_off=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err=528945/527348/530542 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=2348 acc=0 slip_off=0
+TELEMETRY: src=71 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err=525685/524088/527282 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=2398 acc=0 slip_off=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err=522425/520829/524022 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=2448 acc=0 slip_off=0
+LOCK state=ACQUIRING err=519165/517569/520763 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=2498 acc=0 slip_off=0
+TELEMETRY: src=74 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err=515905/514309/517503 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=2548 acc=0 slip_off=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err=512645/511049/514243 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=2598 acc=0 slip_off=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err=509386/507789/510983 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=2648 acc=0 slip_off=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err=506126/504529/507723 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=2698 acc=0 slip_off=0
+LOCK state=ACQUIRING err=502866/501269/504463 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=2748 acc=0 slip_off=0
+TELEMETRY: src=71 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err=499606/498010/501203 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=2798 acc=0 slip_off=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err=496346/494750/497944 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=2848 acc=0 slip_off=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err=493086/491490/494684 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=2898 acc=0 slip_off=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err=489826/488230/491424 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=2948 acc=0 slip_off=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err=486567/484970/488164 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=2998 acc=0 slip_off=0
+LOCK state=ACQUIRING err=483307/481710/484904 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=3048 acc=0 slip_off=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err=480047/478450/481644 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=3098 acc=0 slip_off=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err=476787/475191/478384 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=3148 acc=0 slip_off=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err=473527/471931/475124 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=3198 acc=0 slip_off=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err=470267/468671/471865 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=3248 acc=0 slip_off=0
+LOCK state=ACQUIRING err=467007/465411/468605 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=3298 acc=0 slip_off=0
+TELEMETRY: src=75 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err=463748/462151/465345 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=3348 acc=0 slip_off=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err=460488/458891/462085 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=3398 acc=0 slip_off=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err=457228/455631/458825 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=3448 acc=0 slip_off=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err=453968/452372/455565 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=3498 acc=0 slip_off=0
+TELEMETRY: src=71 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err=450708/449112/452305 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=3548 acc=0 slip_off=0
+LOCK state=ACQUIRING err=447448/445852/449046 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=3598 acc=0 slip_off=0
+TELEMETRY: src=71 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err=444188/442592/445786 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=3648 acc=0 slip_off=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err=440928/439332/442526 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=3698 acc=0 slip_off=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err=437669/436072/439266 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=3748 acc=0 slip_off=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err=434409/432812/436006 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=3798 acc=0 slip_off=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err=431149/429552/432746 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=3848 acc=0 slip_off=0
+LOCK state=ACQUIRING err=427889/426293/429486 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=3898 acc=0 slip_off=0
+TELEMETRY: src=74 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err=424629/423033/426227 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=3948 acc=0 slip_off=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err=421369/419773/422967 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=3998 acc=0 slip_off=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err=418109/416513/419707 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=4048 acc=0 slip_off=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err=414850/413253/416447 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=4098 acc=0 slip_off=0
+LOCK state=ACQUIRING err=411590/409993/413187 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=4148 acc=0 slip_off=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err=408330/406733/409927 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=4198 acc=0 slip_off=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err=405070/403474/406667 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=4248 acc=0 slip_off=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err=401810/400214/403408 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=4298 acc=0 slip_off=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err=398550/396954/400148 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=4348 acc=0 slip_off=0
+TELEMETRY: src=71 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err=395290/393694/396888 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=4398 acc=0 slip_off=0
+LOCK state=ACQUIRING err=392031/390434/393628 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=4448 acc=0 slip_off=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err=388771/387174/390368 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=4498 acc=0 slip_off=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err=385511/383914/387108 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=4548 acc=0 slip_off=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err=382251/380655/383848 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=4598 acc=0 slip_off=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err=378991/377395/380589 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=4648 acc=0 slip_off=0
+LOCK state=ACQUIRING err=375731/374135/377329 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=4698 acc=0 slip_off=0
+TELEMETRY: src=74 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err=372471/370875/374069 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=4748 acc=0 slip_off=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err=369212/367615/370809 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=4798 acc=0 slip_off=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err=365952/364355/367549 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=4848 acc=0 slip_off=0
+TELEMETRY: src=74 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err=362692/361095/364289 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=4898 acc=0 slip_off=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err=359432/357836/361029 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=4948 acc=0 slip_off=0
+LOCK state=ACQUIRING err=356172/354576/357769 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=4998 acc=0 slip_off=0
+TELEMETRY: src=71 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err=352912/351316/354510 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=5048 acc=0 slip_off=0
+TELEMETRY: src=71 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err=349652/348056/351250 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=5098 acc=0 slip_off=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err=346392/344796/347990 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=5148 acc=0 slip_off=0
+TELEMETRY: src=71 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err=343133/341536/344730 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=5198 acc=0 slip_off=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err=339873/338276/341470 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=5248 acc=0 slip_off=0
+LOCK state=ACQUIRING err=336613/335017/338210 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=5298 acc=0 slip_off=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err=333353/331757/334950 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=5348 acc=0 slip_off=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err=330093/328497/331691 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=5398 acc=0 slip_off=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err=326833/325237/328431 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=5448 acc=0 slip_off=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err=323573/321977/325171 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=5498 acc=0 slip_off=0
+LOCK state=ACQUIRING err=320314/318717/321911 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=5548 acc=0 slip_off=0
+TELEMETRY: src=75 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err=317054/315457/318651 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=5598 acc=0 slip_off=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err=313794/312197/315391 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=5648 acc=0 slip_off=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err=310534/308938/312131 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=5698 acc=0 slip_off=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err=307274/305678/308872 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=5748 acc=0 slip_off=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err=304014/302418/305612 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=5798 acc=0 slip_off=0
+LOCK state=ACQUIRING err=300754/299158/302352 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=5848 acc=0 slip_off=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err=297495/295898/299092 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=5898 acc=0 slip_off=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err=294235/292638/295832 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=5948 acc=0 slip_off=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err=290975/289378/292572 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=5998 acc=0 slip_off=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err=287715/286119/289312 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=6048 acc=0 slip_off=0
+LOCK state=ACQUIRING err=284455/282859/286053 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=6098 acc=0 slip_off=0
+TELEMETRY: src=71 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err=281195/279599/282793 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=6148 acc=0 slip_off=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err=277935/276339/279533 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=6198 acc=0 slip_off=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err=274676/273079/276273 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=6248 acc=0 slip_off=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err=271416/269819/273013 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=6298 acc=0 slip_off=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err=268156/266559/269753 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=6348 acc=0 slip_off=0
+LOCK state=ACQUIRING err=264896/263300/266493 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=6398 acc=0 slip_off=0
+TELEMETRY: src=74 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err=261636/260040/263233 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=6448 acc=0 slip_off=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err=258376/256780/259974 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=6498 acc=0 slip_off=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err=255116/253520/256714 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=6548 acc=0 slip_off=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err=251857/250260/253454 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=6598 acc=0 slip_off=0
+LOCK state=ACQUIRING err=248597/247000/250194 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=6648 acc=0 slip_off=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err=245337/243740/246934 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=6698 acc=0 slip_off=0
+TELEMETRY: src=71 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err=242077/240481/243674 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=6748 acc=0 slip_off=0
+TELEMETRY: src=71 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err=238817/237221/240414 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=6798 acc=0 slip_off=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err=235557/233961/237155 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=6848 acc=0 slip_off=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err=232297/230701/233895 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=6898 acc=0 slip_off=0
+LOCK state=ACQUIRING err=229037/227441/230635 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=6948 acc=0 slip_off=0
+TELEMETRY: src=74 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err=225778/224181/227375 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=6998 acc=0 slip_off=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err=222518/220921/224115 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=7048 acc=0 slip_off=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err=219258/217662/220855 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=7098 acc=0 slip_off=0
+TELEMETRY: src=74 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err=215998/214402/217595 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=7148 acc=0 slip_off=0
+LOCK state=ACQUIRING err=212738/211142/214336 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=7198 acc=0 slip_off=0
+TELEMETRY: src=74 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err=209478/207882/211076 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=7248 acc=0 slip_off=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err=206218/204622/207816 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=7298 acc=0 slip_off=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err=202959/201362/204556 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=7348 acc=0 slip_off=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err=199699/198102/201296 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=7398 acc=0 slip_off=0
+TELEMETRY: src=71 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err=196439/194842/198036 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=7448 acc=0 slip_off=0
+LOCK state=ACQUIRING err=193179/191583/194776 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=7498 acc=0 slip_off=0
+TELEMETRY: src=71 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err=189919/188323/191517 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=7548 acc=0 slip_off=0
+TELEMETRY: src=71 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err=186659/185063/188257 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=7598 acc=0 slip_off=0
+TELEMETRY: src=71 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err=183399/181803/184997 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=7648 acc=0 slip_off=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err=180140/178543/181737 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=7698 acc=0 slip_off=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err=176880/175283/178477 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=7748 acc=0 slip_off=0
+LOCK state=ACQUIRING err=173620/172023/175217 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=7798 acc=0 slip_off=0
+TELEMETRY: src=74 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err=170360/168764/171957 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=7848 acc=0 slip_off=0
+TELEMETRY: src=71 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err=167100/165504/168697 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=7898 acc=0 slip_off=0
+TELEMETRY: src=74 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err=163840/162244/165438 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=7948 acc=0 slip_off=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err=160580/158984/162178 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=7998 acc=0 slip_off=0
+LOCK state=ACQUIRING err=157321/155724/158918 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=8048 acc=0 slip_off=0
+TELEMETRY: src=74 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err=154061/152464/155658 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=8098 acc=0 slip_off=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err=150801/149204/152398 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=8148 acc=0 slip_off=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err=147541/145945/149138 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=8198 acc=0 slip_off=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err=144281/142685/145878 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=8248 acc=0 slip_off=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err=141021/139425/142619 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=8298 acc=0 slip_off=0
+LOCK state=ACQUIRING err=137761/136165/139359 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=8348 acc=0 slip_off=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err=134501/132905/136099 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=8398 acc=0 slip_off=0
+TELEMETRY: src=71 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err=131242/129645/132839 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=8448 acc=0 slip_off=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err=127982/126385/129579 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=8498 acc=0 slip_off=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err=124722/123126/126319 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=8548 acc=0 slip_off=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err=121462/119866/123059 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=8598 acc=0 slip_off=0
+LOCK state=ACQUIRING err=118202/116606/119800 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=8648 acc=0 slip_off=0
+TELEMETRY: src=74 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err=114942/113346/116540 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=8698 acc=0 slip_off=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err=111682/110086/113280 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=8748 acc=0 slip_off=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err=108423/106826/110020 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=8798 acc=0 slip_off=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err=105163/103566/106760 cmd=-500000 int=-203110 locked=68 unlocks=1 ref_idle=0 bias=0 slips=0 sat=8848 acc=0 slip_off=0
