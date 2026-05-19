@@ -1,6 +1,6 @@
 # Phase 7 — Reference selector and lock state machine
 
-**Status:** PASS ✓ — 2026-05-19 (visual confirmation: picture stable across all 5 state transitions)
+**Status:** PASS ✓ for LOCKED/HOLDOVER/re-acquire — 2026-05-19. **FREE_RUN claim AMENDED 2026-05-19** (see footer) — Free-run picture stability was an MS2109 artifact; on a real monitor, free-run produces visible corruption because output drifts off the FRC-clean rate. State-machine transitions and HOLDOVER behavior remain validated.
 
 **Goal:** prove the user-facing Reference Select model works — `Free-run`, `Input-lock`, `Holdover` are observable and correct via UART. The reference selector and holdover are the user-facing behavior of the entire sync subsystem; without them, the architecture isn't really genlock — it's just a phase tracker that loses its mind when the reference goes away.
 
@@ -163,3 +163,16 @@ After HOLDOVER release, re-LOCKED in **42 frames ≈ 0.84 s** (frame 3851 minus 
 
 - **No LED for state.** The spec says "all states observable on the LED" but adding a 5th LED would require a wider `leds` port + constraint changes, and the UART output already gives the user-visible state every second. Adding the LED is a small follow-up if needed for the final product.
 - **Free-run drift expected value.** Phase 3's measured baseline was −0.05 ppm (clean MMCM, no fine PS). Phase 4+ has fine PS enabled, which shifted baseline to +102 ppm. So FREE_RUN drift in this build should be ~+102 ppm — much larger than Phase 3's number, but still a deterministic constant. The doc's "±5 ppm of Phase 3" criterion was written assuming the MMCM config hadn't changed; we should reinterpret as "stable, reproducible across reboots within ±5 ppm" rather than "matches the specific Phase 3 number."
+
+---
+
+## Amendment 2026-05-19 — MS2109 caveat (from E1.6)
+
+The "picture completely stable across all 5 state transitions" claim in §"Results" was made watching the MS2109 capture stick, which we now know absorbs FRC-ratio drift via its internal framebuffer resampling. Specifically:
+
+- **LOCKED, HOLDOVER (after steady-state), ACQUIRING, re-LOCKED**: claims hold on monitor too. In all these states, output stays at 50.000 Hz exactly (or within a fraction of a ppm during HOLDOVER with a well-tuned integrator), which is the FRC-clean rate vs the 60 Hz source. Both MS2109 and real monitor see a clean picture.
+- **FREE_RUN**: claim is **MS2109-mediated and false on a real monitor.** With `cmd=0, int=0` the output runs at the MMCM's native 49.99490 Hz, breaking the 6:5 ratio with the 60 Hz source. The framestore depth gets out of sync at ~0.06 frames/sec, and within ~50 seconds the read pointer laps the write pointer and the monitor tears with horizontal stripes. MS2109's resampling hides this entirely.
+
+**The state machine and HOLDOVER behavior are validated.** The FREE_RUN-as-a-feature framing is not — FREE_RUN should be treated as a diagnostic state, not a normal operating point, until either (a) Si5351 replaces the MMCM and natively produces FRC-clean rates, or (b) explicit "loop must be locked for valid output" gating is added to the UI / output enables.
+
+See [`phase_e1p6_baseline_root_cause.md`](phase_e1p6_baseline_root_cause.md) for the full investigation and [`phase_e1p7_whs_hold_margin.md`](phase_e1p7_whs_hold_margin.md), [`phase_e1p8_source_rate_sensitivity.md`](phase_e1p8_source_rate_sensitivity.md) for follow-up work that must complete before declaring the spike done.

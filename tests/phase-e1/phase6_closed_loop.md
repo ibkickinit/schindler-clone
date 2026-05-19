@@ -2,6 +2,8 @@
 
 **Status:** PASS ✓ — 2026-05-19. Visually confirmed clean. The original "qualified PASS" was downgraded by a misdiagnosed MS2109 capture-stick artifact (chased the regression back to Phase 3 and Phase A; rebuilt Phase 6 unchanged; user took new snapshots; capture went clean; re-program of Phase 6 stays clean). Long-term lock confirmed at `err = ±1 tick (±10 ns)` mean, **0 unlock events** across 698,807+ frames (3.9+ hours of locked operation observed on a single run).
 
+> **AMENDMENT 2026-05-19 (per E1.6 finding):** the *locked-state* claims in this doc are still correct — when the loop is locked, output sits at 50.000 Hz exactly, which is the FRC-clean rate vs the 60 Hz source and produces a clean picture on both MS2109 and a real monitor. The MS2109 question (does it hide failure modes?) primarily affects loop-OFF or free-run claims, which this phase doesn't make. See [`phase_e1p6_baseline_root_cause.md`](phase_e1p6_baseline_root_cause.md) for the full investigation. **Phase 6 needs no functional revision — its claims are reproducible on a monitor.**
+
 **Goal:** close the loop. PI controller per output vsync, drive `phase_error` (= `ts_out - ts_ref` mod ref_period, signed shortest-path) to zero. Lock state machine flags ≥60 consecutive frames with |err| ≤ 1 line. Demonstrate sustained lock with bounded residual.
 
 Per [`docs/phase-e1-ground-up-plan.md`](../../docs/phase-e1-ground-up-plan.md) §4 Phase 6.

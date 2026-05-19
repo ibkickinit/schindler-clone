@@ -75,6 +75,22 @@ Implications for Phase E2 onward:
 - **Loss-of-lock behavior matters.** If the loop ever drops out of lock, the picture corrupts within a few framestore-depths. Need either fast re-lock (Phase 7's hold-over already gives <1s after brief signal loss) or graceful degradation. Consider mute / freeze-frame on prolonged loss.
 - **For other FRC ratios** (60→24, 50→60, 24→60, etc.): same principle — output must lock to integer ratio with source. Phase E2's three-mode design (SNAP / SMOOTH / FILM) needs to formalize this.
 
+## What changes when Si5351 replaces the MMCM as actuator
+
+The +102 ppm floor is **specifically an MMCM-with-fine-PS constraint** (integer MULT_F ≤ 64, can't hit M=297 needed for exact 74.25 MHz from 100 MHz). The Si5351 has no equivalent constraint — its fractional divider can output exactly 74.250000 MHz with sub-ppb precision. Concretely:
+
+| | MMCM (current) | Si5351 (after swap) |
+|---|---|---|
+| Native output rate at cmd=0 | 49.99490 Hz (−102 ppm) | 50.000000 Hz (exact) |
+| Integrator steady-state setpoint | −94 mppm (load-bearing) | ~0 mppm |
+| Free-run / loop-OFF behavior | Monitor tears (this doc) | Monitor clean — output is already at the FRC-clean rate |
+| Loop's job | Bridge the −102 ppm hardware gap *and* track reference drift | Track reference drift only |
+| Plant symmetry | Asymmetric (dec ~2× slower than inc) | Symmetric (single fractional divider) |
+
+**Action item for the Si5351 swap (Phase E of [`si5351-bench-bringup.md`](../../docs/si5351-bench-bringup.md)):** before re-engaging the closed-loop controller against Si5351, reset `INTEGRATOR_PRELOAD_MILLI_PPM` from −94000 to ~0. The MMCM-tuned preload is the wrong setpoint for the Si5351 plant and will cause the loop to slew the wrong direction at startup. The Phase 6 PI gains (`Kp=10`, `Ki=1`) are likely still in the right ballpark, but re-tune is expected — the symmetric Si5351 plant may permit cleaner gains than the asymmetric MMCM allowed.
+
+**Important consequence:** with Si5351 in place, the "loop locking is mandatory for monitor compat" rule above weakens significantly. Free-run produces an FRC-clean rate natively; the loop is still load-bearing for tracking real reference drift in production (when the reference is HDMI source vsync or external genlock-in, not a fixed synth ref), but the failure mode of "loop off → instant monitor tear" goes away. The "auto-enable loop at boot" item becomes less urgent and the loss-of-lock UX becomes a graceful-degradation problem instead of a hard-fail problem.
+
 ## Build provenance (working state)
 
 - **Branch:** `phase-e1-pll-spike`

@@ -1,6 +1,6 @@
 # Phase 8 — VDMA cadence cooperation (dual-loop handoff)
 
-**Status:** PASS (qualified) — 2026-05-19. Controller-side handoff validated; SOF-atomic VDMA frame-slip integration deferred to production.
+**Status:** PASS (qualified) — 2026-05-19. Controller-side handoff validated; SOF-atomic VDMA frame-slip integration deferred to production. **Visual-stability claims AMENDED 2026-05-19** (see footer): during the +1000 ppm bias portions, actual output drifts in real terms and the monitor will tear; the "stable picture" observation was MS2109-mediated. Controller-side slip behavior — slip-rate matching analytic prediction, settling between slips, recovery on bias removal — remains correct.
 
 **Goal:** prove the architectural handoff between the MMCM phase loop and the VDMA rate loop. When the rate offset exceeds what MMCM fine-PS can compensate (±500 ppm pull range), the controller saturates and must request a discrete frame slip from VDMA. After the slip, MMCM re-locks within its settling time.
 
@@ -87,6 +87,19 @@ The architectural piece that needed validating — *when does the controller dec
 2. The d71c994 firmware tried something similar (iter-4d-2 PARK loop) and produced visible seams — the lesson there was that PARK + firmware-driven writes are non-atomic at MM2S SOF. Real production must use Dynamic Genlock's INTERNAL frame-pointer arithmetic, not a firmware overlay.
 
 3. Once the VDMA slip mechanism is real, the spec's "MMCM holds lock between slips" criterion will be naturally satisfied — the slip actually resets the err and the loop's natural settling brings it back into the lock window.
+
+---
+
+## Amendment 2026-05-19 — MS2109 caveat (from E1.6)
+
+Picture stability observations during the bias period were taken with the MS2109 capture stick. The MS2109 absorbs FRC-ratio drift via its internal framebuffer resampling, which hid the real visual behavior:
+
+- **During `B +1000`**: the controller chases the synthetic bias by commanding the MMCM toward its negative rail. Output rate drifts at approximately the +1000 ppm bias minus what the actuator can absorb (~−500 ppm rail effort), netting roughly +500 ppm of *real* output drift relative to the 50.000 Hz target. The framestore's 6:5 ratio with the 60 Hz source breaks; on a real monitor, this would produce visible tearing within seconds of the `B` command. MS2109's resampling hid the tearing entirely. The *controller telemetry* (slip events, accumulator math) remains correct and is what this phase validates.
+- **After `B 0`**: as the loop re-acquires from the residual displacement, output transitions back toward 50.000 Hz. Monitor would show recovery from corrupted to clean over the ~30s re-acquire window.
+
+**What this phase actually validated:** the *control logic* — when MMCM saturates, the controller counts to the right number of frames and emits a slip event at the predicted cadence. That logic is correct. **What this phase did NOT validate:** that the picture is monitor-clean under sustained over-range disturbance. It can't, because the simulation uses a virtual slip rather than a real VDMA frame drop. Production VDMA integration (open item #1 in §"Implications for production") closes this gap.
+
+See [`phase_e1p6_baseline_root_cause.md`](phase_e1p6_baseline_root_cause.md) for the underlying investigation and [`phase_e1p8_source_rate_sensitivity.md`](phase_e1p8_source_rate_sensitivity.md) for the related architectural test that should complete before declaring the spike done.
 
 ## Build provenance
 

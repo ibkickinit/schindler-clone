@@ -83,3 +83,19 @@ set_false_path -to [get_pins {phase_b_bd_i/axi_sync_inputs_0/inst/pclk_locked_q1
 # get_pins even within curly braces). The wildcard match is unambiguous.
 set_false_path -to [get_pins -hier -filter {NAME =~ */vsync_timestamp_0/inst/ref_sync_reg*/D}]
 set_false_path -to [get_pins -hier -filter {NAME =~ */vsync_timestamp_0/inst/out_sync_reg*/D}]
+
+# ============================================================================
+# Phase E1.7 (2026-05-19): hold-margin pessimism for production reliability.
+#
+# Pre-E1.7 build had WNS=+0.309, WHS=+0.026 ns. The +0.026 ns is *marginal* —
+# industry rule of thumb is ≥+0.050 ns for reliable silicon. Worst hold paths
+# are internal to Xilinx VDMA's Dynamic Genlock state machine and VTC TX's
+# counter chains; route-delay-dominated intra-clock paths through high-fanout
+# BUFG networks. Symptom on the bench: intermittent UART hangs after sustained
+# warm operation (= predicted failure mode of marginal hold).
+#
+# Applying 50 ps of clock uncertainty for hold analysis forces the
+# placer/router to find these paths and either lengthen the route or relocate
+# the registers, yielding margin against silicon fast-corner variation.
+# Setup analysis is unaffected.
+set_clock_uncertainty -hold 0.050 [all_clocks]
