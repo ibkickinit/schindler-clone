@@ -285,11 +285,59 @@ static void cmd_phase(void)
     print_phase_delta(tso, tsr);
 }
 
+/* Phase 2 capture: emit N consecutive ts_ref edges as CSV rows. Blocks the
+ * telemetry loop until done (~16 s at 60 Hz for N=1000). Output format is
+ * CSV with header line so the host can ingest directly:
+ *
+ *   # phase2_capture N=1000 base_count=<x>
+ *   idx,ref_count,ts_ref_lo32,ts_ref_hi16
+ *   0,<count>,<lsb>,<msb>
+ *   ...
+ *
+ * Phase 3 will reuse this CSV format and add ts_out columns.
+ */
+static void cmd_capture(unsigned n)
+{
+    u32 last_count, this_count;
+    u64 ts;
+    if (n == 0 || n > 5000) n = 1000;
+
+    /* Establish baseline. */
+    ts = vts_read_ts(VTS_TS_REF_LO, VTS_TS_REF_HI, VTS_REF_COUNT, &last_count);
+    (void)ts;
+    if (last_count == 0) {
+        xil_printf("\r\n[C] WARNING: ts_ref_count=0 at start — Phase 2 reference may not be wired.\r\n");
+    }
+    xil_printf("\r\n# phase2_capture N=%u base_count=%u\r\n"
+               "idx,ref_count,ts_ref_lo32,ts_ref_hi16\r\n",
+               n, (unsigned)last_count);
+
+    for (unsigned i = 0; i < n; ++i) {
+        /* Wait for the next edge: ts_ref_count must advance. Tight polling
+         * loop — each tick is a 32-bit AXI read, ~10 cycles of PS overhead.
+         * At 60 Hz events ≈ 16.7 ms apart, we burn cycles but the host bus
+         * is dedicated to this for the duration of the capture. */
+        do {
+            ts = vts_read_ts(VTS_TS_REF_LO, VTS_TS_REF_HI, VTS_REF_COUNT, &this_count);
+        } while (this_count == last_count);
+        last_count = this_count;
+
+        xil_printf("%u,%u,%u,%u\r\n",
+                   i,
+                   (unsigned)this_count,
+                   (u32)(ts & 0xFFFFFFFFU),
+                   (u32)((ts >> 32) & 0xFFFFU));
+    }
+    xil_printf("# phase2_capture done N=%u\r\n", n);
+}
+
 static void cmd_help(void)
 {
-    xil_printf("\r\nPhase E1 Phase 1 UART commands:\r\n"
+    xil_printf("\r\nPhase E1 UART commands:\r\n"
                "  q   query: counter, ts_ref, ts_out, edge counts\r\n"
                "  p   phase: signed (ts_out - ts_ref) in ticks/ns\r\n"
+               "  c   capture 1000 ts_ref samples as CSV (Phase 2 evidence)\r\n"
+               "  C   capture 100 ts_ref samples as CSV (quick jitter check)\r\n"
                "  ?   this help\r\n");
 }
 
@@ -300,6 +348,8 @@ static void uart_poll_and_dispatch(void)
     switch (c) {
         case 'q': case 'Q': cmd_query(); break;
         case 'p': case 'P': cmd_phase(); break;
+        case 'c':           cmd_capture(1000); break;
+        case 'C':           cmd_capture(100);  break;
         case '?': case 'h': case 'H': cmd_help(); break;
         case '\r': case '\n': break;  /* silent on bare newline */
         default:

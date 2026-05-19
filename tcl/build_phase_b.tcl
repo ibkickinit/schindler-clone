@@ -62,6 +62,8 @@ add_files -norecurse [file join $project_root hdl scaler_coeffs_v.v]
 add_files -norecurse [file join $project_root hdl axi_sync_inputs.v]
 # Phase E1 Phase 1 — vsync timestamp instrument (48-bit counter + 2 edge-cap regs)
 add_files -norecurse [file join $project_root hdl vsync_timestamp.v]
+# Phase E1 Phase 2 — synthetic ~60 Hz reference (integer divider on FCLK_CLK1)
+add_files -norecurse [file join $project_root hdl synth_vsync_gen.v]
 # Coefficient hex files for $readmemh — Vivado adds them to source list so
 # they're visible from the OOC synth working directory.
 add_files -norecurse [file join $project_root hdl scaler_coeffs_h.hex]
@@ -557,11 +559,13 @@ connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]    [get_bd_pins axi_gpio
 # =============================================================================
 create_bd_cell -type module -reference vsync_timestamp vsync_timestamp_0
 
-# Tie ref_vsync_async low until Phase 2 brings up the synthetic reference.
-create_bd_cell -type ip -vlnv xilinx.com:ip:xlconstant ref_vsync_tielow
-set_property -dict [list CONFIG.CONST_WIDTH {1} CONFIG.CONST_VAL {0}] \
-    [get_bd_cells ref_vsync_tielow]
-connect_bd_net [get_bd_pins ref_vsync_tielow/dout] \
+# Phase E1 Phase 2 — synthetic ~60 Hz reference on FCLK_CLK1 (150 MHz / 2.5M).
+# 50% duty square wave; the rising edge into vsync_timestamp_0's 2-FF sync
+# is what gets timestamped as ts_ref. Replaces the Phase 1 xlconstant tie.
+create_bd_cell -type module -reference synth_vsync_gen synth_vsync_gen_0
+connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK1]          [get_bd_pins synth_vsync_gen_0/clk]
+connect_bd_net [get_bd_pins rst_mem/peripheral_aresetn] [get_bd_pins synth_vsync_gen_0/aresetn]
+connect_bd_net [get_bd_pins synth_vsync_gen_0/vsync_out] \
                [get_bd_pins vsync_timestamp_0/ref_vsync_async]
 
 # out_vsync_async ← v_tc_tx/vsync_out (parallel fan-out to the existing
