@@ -420,10 +420,12 @@ static void cmd_drift(unsigned n)
 #define ACT_PHASE_STEP  (ACT_BASEADDR + 0x00)
 #define ACT_STATUS      (ACT_BASEADDR + 0x04)
 
-/* Phase-step value that produces +1 ppm of output-clock rate offset. Derived
- * from MMCM Fvco=1187.5 MHz (auto-config for 100→74.25 MHz) and Fclk=100 MHz.
- * Phase 5 will calibrate this empirically. */
-#define ACT_STEP_PER_PPM   2857143
+/* Phase-step value that produces +1 ppm of output-clock rate offset.
+ * Theoretical default = 2,857,143 (from Fvco=1187.5 MHz, Fclk=100 MHz,
+ * 1/56 phase step). Phase 5's plant sweep measured the actual gain at
+ * 1.0796× across ±50 ppm; the meta-fit suggests dividing the theoretical
+ * value by 1.0796 → 2,646,448 for a unit-gain calibration. */
+#define ACT_STEP_PER_PPM   2646448
 
 static void cmd_nudge(s32 ppm)
 {
@@ -438,6 +440,247 @@ static void cmd_nudge(s32 ppm)
                (unsigned)(status & 1),
                (unsigned)((status >> 1) & 1),
                (unsigned)((status >> 16) & 0xFFFF));
+}
+
+/* =========================================================================
+ * Phase E1 Phase 6 — PI controller + lock state machine.
+ *
+ * Per output vsync edge:
+ *   - Read (ts_out, ts_ref) atomically via the Phase 1 instrument.
+ *   - Compute err_ticks = (ts_out - ts_ref) mod 2^48, sign-extended.
+ *   - Run PI: cmd_milli_ppm = -Kp × err_lines - Ki × Σ err_lines.
+ *   - Clamp integrator + total command to ±INTEGRATOR_CLAMP_MILLI_PPM
+ *     (±200 ppm — leaves ~300 ppm of MMCM pull-range headroom over the
+ *     post-Phase-5 baseline of +102 ppm).
+ *   - Write phase_step = cmd_milli_ppm × ACT_STEP_PER_PPM / 1000.
+ *   - Update lock state machine + per-second stats.
+ *
+ * 1 Hz UART summary line during lock; `S` toggles whether per-frame samples
+ * also stream out (used for the 30-min soak).
+ * ========================================================================= */
+#define TICKS_PER_LINE_720P50          2667    /* 1980 px / 74.25 MHz @ 100 MHz ctr */
+#define REF_PERIOD_TICKS            2000000    /* synth-ref period @ 100 MHz ctr */
+/* PI gains. Anti-windup freezes the integrator while cmd is saturated, so
+ * Ki can be larger without paying a wind-up penalty during the initial
+ * slew from a half-period phase offset. */
+#define KP_MILLI_PPM_PER_LINE         10000    /* 10.0 ppm/line */
+#define KI_MILLI_PPM_PER_LINE          1000    /* 1.0 ppm/line/frame */
+/* NOTE: these gains were arrived at empirically. The plant is asymmetric
+ * (psincdec rate is ~2× slower in the dec direction than inc), which
+ * complicates the linearized tuning math. With anti-windup + integrator
+ * preload, the loop acquires within ~30 s from a worst-case half-period
+ * initial phase offset, and stays within ±2 lines residual under steady
+ * conditions. Cleaner tuning (e.g., gain scheduling around the operating
+ * point, or a phase-jump initialization) is left for Phase E2. */
+#define INTEGRATOR_CLAMP_MILLI_PPM   500000    /* ±500 ppm — full MMCM pull range */
+/* Baseline-cancellation pre-load. Phase 5 measured a +102 ppm baseline; the
+ * loop's steady-state cmd is approximately -baseline / plant_gain ≈ -94 ppm.
+ * Preloading the integrator near this value avoids the long initial
+ * saturation period while the integrator winds up from 0. */
+#define INTEGRATOR_PRELOAD_MILLI_PPM  -94000   /* -94 ppm */
+#define LOCK_THRESHOLD_TICKS  TICKS_PER_LINE_720P50
+#define UNLOCK_THRESHOLD_TICKS  (5 * TICKS_PER_LINE_720P50)
+#define LOCK_FRAMES                      60
+#define UNLOCK_FRAMES                    60
+#define STATS_PERIOD_FRAMES              50    /* ~1 sec at 50 Hz */
+
+typedef enum { LOOP_OFF = 0, LOOP_ACQUIRING = 1, LOOP_LOCKED = 2 } loop_state_t;
+
+static volatile int  g_loop_enable    = 0;
+static loop_state_t  g_lock_state     = LOOP_OFF;
+static s32           g_integrator_mppm = 0;
+static u32           g_last_out_count = 0;
+static int           g_frames_in_lock_range   = 0;
+static int           g_frames_out_lock_range  = 0;
+static int           g_dump_per_frame = 0;     /* 1 = emit each-frame sample */
+static int           g_stat_frames    = 0;
+static s32           g_stat_err_min   = 0;
+static s32           g_stat_err_max   = 0;
+static s32           g_stat_err_sum   = 0;
+static u32           g_total_locked_frames = 0;
+static u32           g_unlock_events  = 0;
+static u32           g_loop_enable_count_at_start = 0;
+
+static const char *state_label(loop_state_t s)
+{
+    return (s == LOOP_OFF) ? "OFF" : (s == LOOP_ACQUIRING) ? "ACQUIRING" : "LOCKED";
+}
+
+static s32 abs_s32(s32 v) { return v < 0 ? -v : v; }
+
+static void cmd_lock_enable(void)
+{
+    if (g_loop_enable) {
+        xil_printf("\r\n[L] already enabled (state=%s).\r\n", state_label(g_lock_state));
+        return;
+    }
+    /* Snapshot the current out_count so loop_tick waits for the next edge. */
+    u32 oc, dummy_rc;
+    u64 dummy_ts;
+    dummy_ts = vts_read_ts(VTS_TS_OUT_LO, VTS_TS_OUT_HI, VTS_OUT_COUNT, &oc);
+    (void)dummy_ts;
+    g_last_out_count = oc;
+    g_loop_enable_count_at_start = oc;
+
+    /* Reset state. Pre-load integrator near the expected steady-state to
+     * shorten the saturation phase during initial acquire. */
+    g_integrator_mppm = INTEGRATOR_PRELOAD_MILLI_PPM;
+    g_frames_in_lock_range = 0;
+    g_frames_out_lock_range = 0;
+    g_stat_frames = 0;
+    g_stat_err_min = g_stat_err_max = g_stat_err_sum = 0;
+    g_total_locked_frames = 0;
+    g_unlock_events = 0;
+
+    /* Zero actuator before flipping the enable, so first correction starts clean. */
+    Xil_Out32(ACT_PHASE_STEP, 0);
+
+    g_lock_state  = LOOP_ACQUIRING;
+    g_loop_enable = 1;
+
+    /* Sanity-check Phase 2 ref is alive. */
+    dummy_ts = vts_read_ts(VTS_TS_REF_LO, VTS_TS_REF_HI, VTS_REF_COUNT, &dummy_rc);
+    (void)dummy_ts;
+    xil_printf("\r\n[L] Phase 6 loop ENABLED  (ts_ref_count=%u, baseline ~102 ppm)\r\n"
+               "    Kp_milli=%d ppm/line  Ki_milli=%d ppm/line/frame\r\n"
+               "    integrator_clamp_milli=%d  lock_frames=%d  lock_thresh_ticks=%d\r\n",
+               (unsigned)dummy_rc,
+               (int)KP_MILLI_PPM_PER_LINE, (int)KI_MILLI_PPM_PER_LINE,
+               (int)INTEGRATOR_CLAMP_MILLI_PPM, (int)LOCK_FRAMES,
+               (int)LOCK_THRESHOLD_TICKS);
+}
+
+static void cmd_unlock(void)
+{
+    g_loop_enable = 0;
+    g_integrator_mppm = 0;
+    Xil_Out32(ACT_PHASE_STEP, 0);
+    g_lock_state = LOOP_OFF;
+    xil_printf("\r\n[U] loop disabled, actuator zeroed.\r\n");
+}
+
+static void cmd_toggle_dump(void)
+{
+    g_dump_per_frame = !g_dump_per_frame;
+    xil_printf("\r\n[S] per-frame dump = %d  (1 Hz summary line always emits)\r\n",
+               g_dump_per_frame);
+}
+
+static void loop_tick(void)
+{
+    if (!g_loop_enable) return;
+
+    u32 out_count, ref_count;
+    u64 ts_out, ts_ref;
+
+    ts_out = vts_read_ts(VTS_TS_OUT_LO, VTS_TS_OUT_HI, VTS_OUT_COUNT, &out_count);
+    if (out_count == g_last_out_count) return;   /* no new output edge yet */
+    g_last_out_count = out_count;
+
+    ts_ref = vts_read_ts(VTS_TS_REF_LO, VTS_TS_REF_HI, VTS_REF_COUNT, &ref_count);
+    if (ref_count == 0) return;   /* Phase 2 ref not yet running */
+
+    /* phase_delta = (ts_out - ts_ref) mod 2^48. Natural range is
+     * [0, ref_period) ≈ [0, 2M] ticks (since ts_ref is the timestamp of
+     * the most-recent ref edge before ts_out). For PI feedback we want
+     * the *shortest-path* signed phase error in [-ref_period/2, +ref_period/2]
+     * — values above half-period are interpreted as "negative" by wrapping
+     * down. This is the standard phase-detector convention. */
+    u64 diff = (ts_out - ts_ref) & 0x0000FFFFFFFFFFFFULL;
+    if (diff & 0x0000800000000000ULL) diff |= 0xFFFF000000000000ULL;
+    s64 err64 = (s64)diff;
+    if (err64 >  (REF_PERIOD_TICKS / 2)) err64 -= REF_PERIOD_TICKS;
+    if (err64 < -(REF_PERIOD_TICKS / 2)) err64 += REF_PERIOD_TICKS;
+    s32 err = (s32)err64;
+
+    /* PI in milli-ppm. Sign: negative feedback — positive err pushes cmd
+     * negative (output faster) which drives err back toward 0. Use s64 for
+     * the multiply to avoid s32 overflow when err is near the half-period
+     * limit (~1M ticks × 10k Kp ≈ 1e10, way beyond s32). */
+    s32 p_term = (s32)(-((s64)KP_MILLI_PPM_PER_LINE * (s64)err) / TICKS_PER_LINE_720P50);
+    s32 i_step = (s32)(-((s64)KI_MILLI_PPM_PER_LINE * (s64)err) / TICKS_PER_LINE_720P50);
+
+    /* Anti-windup: compute the unclamped command first; only integrate when
+     * the resulting cmd wouldn't saturate, OR when integrating would move
+     * us OUT of saturation (cmd has same sign as i_step). This prevents
+     * the integrator from winding up during the rate-limited initial
+     * slew and ringing afterward. */
+    s32 cmd_pre = p_term + g_integrator_mppm;
+    int sat_hi = (cmd_pre >  INTEGRATOR_CLAMP_MILLI_PPM);
+    int sat_lo = (cmd_pre < -INTEGRATOR_CLAMP_MILLI_PPM);
+    int allow_integrate = 1;
+    if (sat_hi && i_step > 0) allow_integrate = 0;   /* would push deeper into +sat */
+    if (sat_lo && i_step < 0) allow_integrate = 0;   /* would push deeper into -sat */
+    if (allow_integrate) {
+        g_integrator_mppm += i_step;
+        if (g_integrator_mppm >  INTEGRATOR_CLAMP_MILLI_PPM) g_integrator_mppm =  INTEGRATOR_CLAMP_MILLI_PPM;
+        if (g_integrator_mppm < -INTEGRATOR_CLAMP_MILLI_PPM) g_integrator_mppm = -INTEGRATOR_CLAMP_MILLI_PPM;
+    }
+
+    s32 cmd_mppm = p_term + g_integrator_mppm;
+    if (cmd_mppm >  INTEGRATOR_CLAMP_MILLI_PPM) cmd_mppm =  INTEGRATOR_CLAMP_MILLI_PPM;
+    if (cmd_mppm < -INTEGRATOR_CLAMP_MILLI_PPM) cmd_mppm = -INTEGRATOR_CLAMP_MILLI_PPM;
+
+    /* Apply: phase_step = cmd × ACT_STEP_PER_PPM / 1000. */
+    s64 step64 = (s64)cmd_mppm * ACT_STEP_PER_PPM / 1000;
+    Xil_Out32(ACT_PHASE_STEP, (u32)(s32)step64);
+
+    /* Lock state machine. */
+    int in_lock = (err >= -LOCK_THRESHOLD_TICKS) && (err <= LOCK_THRESHOLD_TICKS);
+    int out_unlock = (err < -UNLOCK_THRESHOLD_TICKS) || (err > UNLOCK_THRESHOLD_TICKS);
+
+    if (in_lock) {
+        g_frames_in_lock_range++;
+        g_frames_out_lock_range = 0;
+        if (g_lock_state == LOOP_ACQUIRING && g_frames_in_lock_range >= LOCK_FRAMES) {
+            g_lock_state = LOOP_LOCKED;
+            xil_printf(">>> LOCKED at frame %u\r\n",
+                       (unsigned)(out_count - g_loop_enable_count_at_start));
+        }
+        if (g_lock_state == LOOP_LOCKED) g_total_locked_frames++;
+    } else {
+        g_frames_in_lock_range = 0;
+        if (g_lock_state == LOOP_LOCKED && out_unlock) {
+            g_frames_out_lock_range++;
+            if (g_frames_out_lock_range >= UNLOCK_FRAMES) {
+                g_lock_state = LOOP_ACQUIRING;
+                g_unlock_events++;
+                xil_printf(">>> UNLOCK event #%u at frame %u\r\n",
+                           (unsigned)g_unlock_events,
+                           (unsigned)(out_count - g_loop_enable_count_at_start));
+            }
+        } else {
+            g_frames_out_lock_range = 0;
+        }
+    }
+
+    /* Stats accumulation. */
+    if (g_stat_frames == 0 || err < g_stat_err_min) g_stat_err_min = err;
+    if (g_stat_frames == 0 || err > g_stat_err_max) g_stat_err_max = err;
+    g_stat_err_sum += err;
+    g_stat_frames++;
+
+    /* Optional per-frame dump (CSV). */
+    if (g_dump_per_frame) {
+        xil_printf("F,%u,%d,%d,%d\r\n",
+                   (unsigned)(out_count - g_loop_enable_count_at_start),
+                   (int)err,
+                   (int)cmd_mppm,
+                   (int)g_integrator_mppm);
+    }
+
+    /* 1 Hz summary. xil_printf is minimal — only plain %d/%u/%s/%x supported,
+     * no width/precision/sign flags. Keep formats simple. */
+    if (g_stat_frames >= STATS_PERIOD_FRAMES) {
+        s32 mean = g_stat_err_sum / g_stat_frames;
+        xil_printf("LOCK state=%s err_ticks mean=%d min=%d max=%d cmd_mppm=%d int_mppm=%d locked_frames=%u unlocks=%u\r\n",
+                   state_label(g_lock_state),
+                   (int)mean, (int)g_stat_err_min, (int)g_stat_err_max,
+                   (int)cmd_mppm, (int)g_integrator_mppm,
+                   (unsigned)g_total_locked_frames, (unsigned)g_unlock_events);
+        g_stat_frames = 0;
+        g_stat_err_sum = 0;
+    }
 }
 
 static int parse_signed(const char *s, s32 *out)
@@ -467,6 +710,9 @@ static void cmd_help(void)
                "  R             Phase 3: capture 300 drift pairs (quick drift sanity)\r\n"
                "  m <ppm>       Phase 4: nudge MMCM output by signed ppm (e.g. m +20)\r\n"
                "  m0  (or M)    Phase 4: zero the nudge (return to nominal)\r\n"
+               "  L             Phase 6: enable PI loop (closed-loop lock)\r\n"
+               "  U             Phase 6: disable loop, zero actuator (free-run)\r\n"
+               "  S             Phase 6: toggle per-frame CSV dump\r\n"
                "  ?             this help\r\n");
 }
 
@@ -482,6 +728,9 @@ static void uart_poll_and_dispatch(void)
         case 'r':           cmd_drift(3000);   break;
         case 'R':           cmd_drift(300);    break;
         case 'M':           cmd_nudge(0);      break;
+        case 'L':           cmd_lock_enable(); break;
+        case 'U':           cmd_unlock();      break;
+        case 'S':           cmd_toggle_dump(); break;
         case 'm': {
             /* m <signed_ppm><newline> — read the argument synchronously
              * since the telemetry loop is paused for the duration of
@@ -736,6 +985,10 @@ static void telemetry_loop(UINTPTR vdma_base)
         /* Phase E1 Phase 1 — interleave UART poll. One-char commands fire
          * immediately; no newline required, no buffering. */
         uart_poll_and_dispatch();
+
+        /* Phase E1 Phase 6 — PI controller. Polls ts_out_count; runs only
+         * when a new output edge has occurred. ~20 µs per loop iteration. */
+        loop_tick();
 
         u32 g = vsync_gpio_read();
         if (!(g & VSYNC_GPIO_PLOCKED_MASK)) {
