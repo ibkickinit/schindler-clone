@@ -24,6 +24,7 @@
 #include "xaxivdma.h"
 #include "xvtc.h"
 #include "xtime_l.h"   /* Phase D iter-4a: SCU timer for precise rate measurement */
+#include "xuartps_hw.h" /* Phase E1 Phase 1: non-blocking UART rx for q/p commands */
 
 // Phase C.1 (pivoted to 720p): output is 720p (1280×720) — scaler downscales
 // 1080p → 720p before storage. DDR3 holds 1280×720 frames. 480p was infeasible
@@ -127,6 +128,185 @@ static int vdma_setup_channel(int direction, UINTPTR *frame_addrs)
 static inline u32 vsync_gpio_read(void)
 {
     return Xil_In32(VSYNC_GPIO_BASEADDR);
+}
+
+/* =========================================================================
+ * Phase E1 Phase 1 — vsync_timestamp measurement instrument.
+ *
+ * 48-bit free-running counter at 100 MHz (10 ns/tick) and two edge-capture
+ * timestamps (ts_ref, ts_out) inside the FPGA. Read-only AXI-Lite slave.
+ * Register layout matches hdl/vsync_timestamp.v:
+ *   +0x00  counter[31:0]
+ *   +0x04  {16'h0, counter[47:32]}
+ *   +0x08  ts_ref[31:0]
+ *   +0x0C  {16'h0, ts_ref[47:32]}
+ *   +0x10  ts_out[31:0]
+ *   +0x14  {16'h0, ts_out[47:32]}
+ *   +0x18  ts_ref_count (32-bit edge tally)
+ *   +0x1C  ts_out_count (32-bit edge tally)
+ * ========================================================================= */
+#if defined(XPAR_VSYNC_TIMESTAMP_0_BASEADDR)
+#  define VTS_BASEADDR XPAR_VSYNC_TIMESTAMP_0_BASEADDR
+#elif defined(XPAR_VSYNC_TIMESTAMP_0_S_AXI_BASEADDR)
+#  define VTS_BASEADDR XPAR_VSYNC_TIMESTAMP_0_S_AXI_BASEADDR
+#elif defined(XPAR_PHASE_B_BD_VSYNC_TIMESTAMP_0_BASEADDR)
+#  define VTS_BASEADDR XPAR_PHASE_B_BD_VSYNC_TIMESTAMP_0_BASEADDR
+#else
+#  error "vsync_timestamp base address not found in xparameters.h"
+#endif
+
+#define VTS_CNT_LO     (VTS_BASEADDR + 0x00)
+#define VTS_CNT_HI     (VTS_BASEADDR + 0x04)
+#define VTS_TS_REF_LO  (VTS_BASEADDR + 0x08)
+#define VTS_TS_REF_HI  (VTS_BASEADDR + 0x0C)
+#define VTS_TS_OUT_LO  (VTS_BASEADDR + 0x10)
+#define VTS_TS_OUT_HI  (VTS_BASEADDR + 0x14)
+#define VTS_REF_COUNT  (VTS_BASEADDR + 0x18)
+#define VTS_OUT_COUNT  (VTS_BASEADDR + 0x1C)
+
+/* Coherent 48-bit read of the free-running counter.
+ * Read MSB→LSB→MSB; if MSB matches, the pair is coherent (LSB didn't roll
+ * over between reads). MSB advances every 2^32 ticks = 42.95 s. Loop almost
+ * always terminates first iteration. */
+static u64 vts_read_counter(void)
+{
+    u32 msb1, msb2, lsb;
+    do {
+        msb1 = Xil_In32(VTS_CNT_HI) & 0xFFFF;
+        lsb  = Xil_In32(VTS_CNT_LO);
+        msb2 = Xil_In32(VTS_CNT_HI) & 0xFFFF;
+    } while (msb1 != msb2);
+    return ((u64)msb2 << 32) | lsb;
+}
+
+/* Coherent 48-bit read of a captured timestamp + its edge counter.
+ * Read (count, lsb, msb, count); if count matches, the timestamp didn't
+ * change mid-read. Returns count via the out param. */
+static u64 vts_read_ts(u32 lo_addr, u32 hi_addr, u32 cnt_addr, u32 *count_out)
+{
+    u32 c1, c2, lsb, msb;
+    do {
+        c1  = Xil_In32(cnt_addr);
+        lsb = Xil_In32(lo_addr);
+        msb = Xil_In32(hi_addr) & 0xFFFF;
+        c2  = Xil_In32(cnt_addr);
+    } while (c1 != c2);
+    if (count_out) *count_out = c2;
+    return ((u64)msb << 32) | lsb;
+}
+
+/* Pretty-print a 48-bit value in hex as two 32-bit halves. xil_printf has no
+ * %llx, so we split. */
+static void print_u48_hex(u64 v)
+{
+    xil_printf("0x%04x%08x", (u32)((v >> 32) & 0xFFFF), (u32)(v & 0xFFFFFFFF));
+}
+
+/* Print signed phase delta `ts_out - ts_ref` in ticks and ns. Uses 64-bit
+ * signed arithmetic to handle wrap correctly across the 48-bit counter. */
+static void print_phase_delta(u64 ts_out, u64 ts_ref)
+{
+    /* 48-bit wrap-aware delta: extend to 64-bit signed two's-complement of
+     * the lower 48 bits. */
+    u64 d = (ts_out - ts_ref) & 0x0000FFFFFFFFFFFFULL;
+    if (d & 0x0000800000000000ULL) d |= 0xFFFF000000000000ULL;
+    s64 sd = (s64)d;
+    s64 ns = sd * 10;   /* 100 MHz counter -> 10 ns/tick */
+    char sign = (sd < 0) ? '-' : '+';
+    if (sd < 0) { sd = -sd; ns = -ns; }
+    /* xil_printf %d takes a 32-bit int; for typical sub-second deltas the
+     * value fits comfortably. Cap display at 32-bit signed range and flag
+     * if exceeded. */
+    if (sd > 0x7FFFFFFFLL) {
+        xil_printf("(phase delta exceeds 32-bit range: ticks=");
+        print_u48_hex((u64)sd);
+        xil_printf(" sign=%c)\r\n", sign);
+    } else {
+        xil_printf("phase = %c%u ticks  =  %c%u ns\r\n",
+                   sign, (u32)sd, sign, (u32)ns);
+    }
+}
+
+/* =========================================================================
+ * UART non-blocking input + minimal command dispatcher.
+ *
+ * Polled from telemetry_loop's hot path. One-character commands fire
+ * immediately on receipt (no newline required) — keeps the command set tiny.
+ *
+ * Commands:
+ *   q   query: print counter, ts_ref, ts_out, ts_ref_count, ts_out_count
+ *   p   phase: print signed (ts_out - ts_ref)
+ *   ?   help
+ * ========================================================================= */
+#if defined(XPAR_PS7_UART_1_BASEADDR)
+#  define UART_BASEADDR XPAR_PS7_UART_1_BASEADDR
+#elif defined(XPAR_XUARTPS_0_BASEADDR)
+#  define UART_BASEADDR XPAR_XUARTPS_0_BASEADDR
+#elif defined(XPAR_PS7_UART_0_BASEADDR)
+#  define UART_BASEADDR XPAR_PS7_UART_0_BASEADDR
+#else
+#  error "PS UART base address not found in xparameters.h"
+#endif
+
+static int uart_recv_nb(void)
+{
+    if (XUartPs_IsReceiveData(UART_BASEADDR)) {
+        return (int)(XUartPs_ReadReg(UART_BASEADDR, XUARTPS_FIFO_OFFSET) & 0xFF);
+    }
+    return -1;
+}
+
+static void cmd_query(void)
+{
+    u32 ref_count, out_count;
+    u64 cnt = vts_read_counter();
+    u64 tsr = vts_read_ts(VTS_TS_REF_LO, VTS_TS_REF_HI, VTS_REF_COUNT, &ref_count);
+    u64 tso = vts_read_ts(VTS_TS_OUT_LO, VTS_TS_OUT_HI, VTS_OUT_COUNT, &out_count);
+    xil_printf("\r\n[Q] vsync_timestamp @ 0x%08x\r\n", (unsigned)VTS_BASEADDR);
+    xil_printf("    counter = "); print_u48_hex(cnt); xil_printf(" (%u ticks ~ %u ms)\r\n",
+                                                                  (u32)(cnt & 0xFFFFFFFFU),
+                                                                  (u32)(cnt / 100000U));
+    xil_printf("    ts_ref  = "); print_u48_hex(tsr); xil_printf("  edges = %u\r\n", (unsigned)ref_count);
+    xil_printf("    ts_out  = "); print_u48_hex(tso); xil_printf("  edges = %u\r\n", (unsigned)out_count);
+}
+
+static void cmd_phase(void)
+{
+    u32 ref_count, out_count;
+    u64 tsr = vts_read_ts(VTS_TS_REF_LO, VTS_TS_REF_HI, VTS_REF_COUNT, &ref_count);
+    u64 tso = vts_read_ts(VTS_TS_OUT_LO, VTS_TS_OUT_HI, VTS_OUT_COUNT, &out_count);
+    xil_printf("\r\n[P] ts_out="); print_u48_hex(tso);
+    xil_printf(" (edges=%u)  ts_ref=", (unsigned)out_count); print_u48_hex(tsr);
+    xil_printf(" (edges=%u)\r\n    ", (unsigned)ref_count);
+    if (ref_count == 0) {
+        xil_printf("phase: ref_count=0 — ref_vsync not yet wired (Phase 2 adds it). "
+                   "Showing ts_out raw:\r\n    ");
+    }
+    print_phase_delta(tso, tsr);
+}
+
+static void cmd_help(void)
+{
+    xil_printf("\r\nPhase E1 Phase 1 UART commands:\r\n"
+               "  q   query: counter, ts_ref, ts_out, edge counts\r\n"
+               "  p   phase: signed (ts_out - ts_ref) in ticks/ns\r\n"
+               "  ?   this help\r\n");
+}
+
+static void uart_poll_and_dispatch(void)
+{
+    int c = uart_recv_nb();
+    if (c < 0) return;
+    switch (c) {
+        case 'q': case 'Q': cmd_query(); break;
+        case 'p': case 'P': cmd_phase(); break;
+        case '?': case 'h': case 'H': cmd_help(); break;
+        case '\r': case '\n': break;  /* silent on bare newline */
+        default:
+            xil_printf("UART: unknown cmd '%c' (0x%02x). Type ? for help.\r\n",
+                       (c >= 0x20 && c < 0x7f) ? c : '?', (unsigned)c);
+            break;
+    }
 }
 
 static int wait_for_aligned_source_vsync(void)
@@ -341,7 +521,14 @@ static void telemetry_loop(UINTPTR vdma_base)
     int src_count = 0, out_count = 0;
     int status_every = 60;
 
+    /* Print help once so the user sees the command set on first boot. */
+    cmd_help();
+
     while (1) {
+        /* Phase E1 Phase 1 — interleave UART poll. One-char commands fire
+         * immediately; no newline required, no buffering. */
+        uart_poll_and_dispatch();
+
         u32 g = vsync_gpio_read();
         if (!(g & VSYNC_GPIO_PLOCKED_MASK)) {
             xil_printf("TELEMETRY: source dropped (pLocked=0), waiting...\r\n");

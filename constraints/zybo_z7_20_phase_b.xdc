@@ -74,3 +74,12 @@ set_false_path -to [get_pins {phase_b_bd_i/axi_sync_inputs_0/inst/vsync_q1_reg/D
 set_false_path -to [get_pins {phase_b_bd_i/axi_sync_inputs_0/inst/plocked_q1_reg/D}]
 set_false_path -to [get_pins {phase_b_bd_i/axi_sync_inputs_0/inst/vsync_out_q1_reg/D}]
 set_false_path -to [get_pins {phase_b_bd_i/axi_sync_inputs_0/inst/pclk_locked_q1_reg/D}]
+
+# Phase E1 Phase 1: same CDC pattern in vsync_timestamp_0 — first FF of each
+# 3-FF synchronizer chain takes the async vsync signal. The post-sync logic
+# stays inside the FCLK_CLK0 domain. Use a hierarchical filter rather than
+# explicit bit-index syntax: get_pins {...reg[0]/D} drops the match silently
+# in Vivado 2025.2 (square brackets confuse TCL command-substitution inside
+# get_pins even within curly braces). The wildcard match is unambiguous.
+set_false_path -to [get_pins -hier -filter {NAME =~ */vsync_timestamp_0/inst/ref_sync_reg*/D}]
+set_false_path -to [get_pins -hier -filter {NAME =~ */vsync_timestamp_0/inst/out_sync_reg*/D}]

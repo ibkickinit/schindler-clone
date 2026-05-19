@@ -60,6 +60,8 @@ add_files -norecurse [file join $project_root hdl scaler_coeffs_h.v]
 add_files -norecurse [file join $project_root hdl scaler_coeffs_v.v]
 # Phase D iter-3 — firmware-side VTC alignment via AXI GPIO + 2-FF input sync
 add_files -norecurse [file join $project_root hdl axi_sync_inputs.v]
+# Phase E1 Phase 1 — vsync timestamp instrument (48-bit counter + 2 edge-cap regs)
+add_files -norecurse [file join $project_root hdl vsync_timestamp.v]
 # Coefficient hex files for $readmemh — Vivado adds them to source list so
 # they're visible from the OOC synth working directory.
 add_files -norecurse [file join $project_root hdl scaler_coeffs_h.hex]
@@ -416,8 +418,9 @@ connect_bd_net [get_bd_pins rst_pixclk_out/peripheral_reset] [get_bd_pins rgb2dv
 # AXI-Lite control path: PS GP0 → 1×2 Interconnect → VDMA, VTC
 # =============================================================================
 create_bd_cell -type ip -vlnv xilinx.com:ip:axi_interconnect axi_ic_lite
-# 3 master ports: VDMA, VTC, and new GPIO for firmware-side vsync alignment.
-set_property -dict [list CONFIG.NUM_SI {1} CONFIG.NUM_MI {3}] [get_bd_cells axi_ic_lite]
+# 4 master ports: VDMA, VTC, axi_gpio_0 (firmware-side vsync alignment),
+# vsync_timestamp (Phase E1 Phase 1 measurement instrument).
+set_property -dict [list CONFIG.NUM_SI {1} CONFIG.NUM_MI {4}] [get_bd_cells axi_ic_lite]
 connect_bd_intf_net [get_bd_intf_pins zynq_ps/M_AXI_GP0]     [get_bd_intf_pins axi_ic_lite/S00_AXI]
 connect_bd_intf_net [get_bd_intf_pins axi_ic_lite/M00_AXI]   [get_bd_intf_pins axi_vdma_0/S_AXI_LITE]
 connect_bd_intf_net [get_bd_intf_pins axi_ic_lite/M01_AXI]   [get_bd_intf_pins v_tc_tx/ctrl]
@@ -427,6 +430,7 @@ connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/S00_A
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/M00_ACLK]
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/M01_ACLK]
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/M02_ACLK]
+connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/M03_ACLK]
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_vdma_0/s_axi_lite_aclk]
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins v_tc_tx/s_axi_aclk]
 connect_bd_net [get_bd_pins rst_axi/interconnect_aresetn] [get_bd_pins axi_ic_lite/ARESETN]
@@ -434,6 +438,7 @@ connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_li
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_lite/M00_ARESETN]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_lite/M01_ARESETN]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_lite/M02_ARESETN]
+connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_lite/M03_ARESETN]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_vdma_0/axi_resetn]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins v_tc_tx/s_axi_aresetn]
 # Pixel-side reset wiring.
@@ -536,6 +541,39 @@ connect_bd_net [get_bd_pins gpio_in_concat/dout]                [get_bd_pins axi
 connect_bd_intf_net [get_bd_intf_pins axi_ic_lite/M02_AXI] [get_bd_intf_pins axi_gpio_0/S_AXI]
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]             [get_bd_pins axi_gpio_0/s_axi_aclk]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]    [get_bd_pins axi_gpio_0/s_axi_aresetn]
+
+# =============================================================================
+# Phase E1 Phase 1 — vsync_timestamp measurement instrument.
+#
+# 48-bit free-running counter on FCLK_CLK0 + two edge-capture registers latch
+# the counter on rising edges of ref_vsync_async and out_vsync_async. AXI-Lite
+# read-only slave at the next interconnect master port (M03). Firmware reads
+# (counter, ts_ref, ts_out, ts_ref_count, ts_out_count) via the 'q' / 'p'
+# UART commands to compute phase delta in 100 MHz counter ticks.
+#
+# Inputs for Phase 1:
+#   - ref_vsync_async ← xlconstant 1'b0  (Phase 2 wires synthetic 60 Hz divider)
+#   - out_vsync_async ← v_tc_tx/vsync_out (already used by axi_sync_inputs_0)
+# =============================================================================
+create_bd_cell -type module -reference vsync_timestamp vsync_timestamp_0
+
+# Tie ref_vsync_async low until Phase 2 brings up the synthetic reference.
+create_bd_cell -type ip -vlnv xilinx.com:ip:xlconstant ref_vsync_tielow
+set_property -dict [list CONFIG.CONST_WIDTH {1} CONFIG.CONST_VAL {0}] \
+    [get_bd_cells ref_vsync_tielow]
+connect_bd_net [get_bd_pins ref_vsync_tielow/dout] \
+               [get_bd_pins vsync_timestamp_0/ref_vsync_async]
+
+# out_vsync_async ← v_tc_tx/vsync_out (parallel fan-out to the existing
+# axis_to_vid_io_0 and axi_sync_inputs_0 consumers).
+connect_bd_net [get_bd_pins v_tc_tx/vsync_out] \
+               [get_bd_pins vsync_timestamp_0/out_vsync_async]
+
+# AXI-Lite slave on M03.
+connect_bd_intf_net [get_bd_intf_pins axi_ic_lite/M03_AXI] \
+                    [get_bd_intf_pins vsync_timestamp_0/s_axi]
+connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]          [get_bd_pins vsync_timestamp_0/s_axi_aclk]
+connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn] [get_bd_pins vsync_timestamp_0/s_axi_aresetn]
 
 # =============================================================================
 # Phase D iter-3n — ILA instrumentation on scaler_top output and axis_to_vid_io
