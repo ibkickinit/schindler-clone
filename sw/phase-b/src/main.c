@@ -316,10 +316,26 @@ static void cmd_capture(unsigned n)
         /* Wait for the next edge: ts_ref_count must advance. Tight polling
          * loop — each tick is a 32-bit AXI read, ~10 cycles of PS overhead.
          * At 60 Hz events ≈ 16.7 ms apart, we burn cycles but the host bus
-         * is dedicated to this for the duration of the capture. */
+         * is dedicated to this for the duration of the capture.
+         *
+         * Phase E1.7 (2026-05-19): hard timeout to prevent the firmware
+         * from hanging forever when ref edges aren't coming (e.g., ref_mux
+         * in mask mode, synth_vsync_gen not running, or host typeahead
+         * accidentally triggers capture in a degraded state). Before the
+         * timeout was added, a stray 'c' character in the UART buffer
+         * could lock the firmware in an infinite poll. */
+        XTime t_start; XTime_GetTime(&t_start);
+        const u64 timeout_ticks = COUNTS_PER_SECOND / 5;  /* 200 ms */
+        int timed_out = 0;
         do {
             ts = vts_read_ts(VTS_TS_REF_LO, VTS_TS_REF_HI, VTS_REF_COUNT, &this_count);
+            XTime t_now; XTime_GetTime(&t_now);
+            if ((u64)(t_now - t_start) > timeout_ticks) { timed_out = 1; break; }
         } while (this_count == last_count);
+        if (timed_out) {
+            xil_printf("# phase2_capture ABORT i=%u — no ref edge in 200 ms\r\n", i);
+            return;
+        }
         last_count = this_count;
 
         xil_printf("%u,%u,%u,%u\r\n",
@@ -362,10 +378,20 @@ static void cmd_drift(unsigned n)
                n, (unsigned)last_out_count);
 
     for (unsigned i = 0; i < n; ++i) {
-        /* Wait for the next output edge. */
+        /* Wait for the next output edge. Phase E1.7 timeout — see cmd_capture
+         * above for rationale. */
+        XTime t_start; XTime_GetTime(&t_start);
+        const u64 timeout_ticks = COUNTS_PER_SECOND / 5;  /* 200 ms */
+        int timed_out = 0;
         do {
             ts_out = vts_read_ts(VTS_TS_OUT_LO, VTS_TS_OUT_HI, VTS_OUT_COUNT, &this_out_count);
+            XTime t_now; XTime_GetTime(&t_now);
+            if ((u64)(t_now - t_start) > timeout_ticks) { timed_out = 1; break; }
         } while (this_out_count == last_out_count);
+        if (timed_out) {
+            xil_printf("# phase3_capture ABORT i=%u — no out edge in 200 ms\r\n", i);
+            return;
+        }
         last_out_count = this_out_count;
 
         /* Snapshot the most-recent ref edge (whatever happened most recently
@@ -1381,6 +1407,16 @@ int main(void)
 
     xil_printf("\r\n=== Schindler 2.0 — Phase B.1 ===\r\n");
     xil_printf("VDMA + VTC bare-metal init\r\n");
+
+    /* Phase E1.7 (2026-05-19): drain any typeahead garbage from the UART RX
+     * FIFO before the main loop starts processing commands. Without this,
+     * stale bytes from the host's send buffer (left over from previous JTAG
+     * sessions or terminal experiments) fire commands at boot — most
+     * dangerously a 'c' or 'C' triggering cmd_capture, which (pre-E1.7)
+     * could spin forever waiting for ref edges. */
+    while (XUartPs_IsReceiveData(UART_BASEADDR)) {
+        (void)XUartPs_ReadReg(UART_BASEADDR, XUARTPS_FIFO_OFFSET);
+    }
 
     /* Phase 7: boot with reference selector = SYNC (synthetic ref). This
      * keeps the Phase 6 'L' behavior unchanged — `L` engages a loop that's
