@@ -1,0 +1,346 @@
+TELEMETRY: src=72 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+
+[L] Phase 6 loop ENABLED  (ts_ref_count=36166, baseline ~102 ppm)
+    Kp_milli=10000 ppm/line  Ki_milli=1000 ppm/line/frame
+    integrator_clamp_milli=500000  lock_frames=60  lock_thresh_ticks=2667
+TELEMETRY: src=72 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err_ticks mean=-550970 min=-562565 max=-539377 cmd_mppm=500000 int_mppm=-94000 locked_frames=0 unlocks=0 ref_idle=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err_ticks mean=-527308 min=-538903 max=-515715 cmd_mppm=500000 int_mppm=-94000 locked_frames=0 unlocks=0 ref_idle=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err_ticks mean=-503647 min=-515242 max=-492054 cmd_mppm=500000 int_mppm=-94000 locked_frames=0 unlocks=0 ref_idle=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err_ticks mean=-479985 min=-491580 max=-468392 cmd_mppm=500000 int_mppm=-94000 locked_frames=0 unlocks=0 ref_idle=0
+LOCK state=ACQUIRING err_ticks mean=-456324 min=-467919 max=-444730 cmd_mppm=500000 int_mppm=-94000 locked_frames=0 unlocks=0 ref_idle=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err_ticks mean=-432662 min=-444257 max=-421069 cmd_mppm=500000 int_mppm=-94000 locked_frames=0 unlocks=0 ref_idle=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err_ticks mean=-409000 min=-420595 max=-397407 cmd_mppm=500000 int_mppm=-94000 locked_frames=0 unlocks=0 ref_idle=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err_ticks mean=-385339 min=-396934 max=-373745 cmd_mppm=500000 int_mppm=-94000 locked_frames=0 unlocks=0 ref_idle=0
+TELEMETRY: src=71 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err_ticks mean=-361677 min=-373272 max=-350084 cmd_mppm=500000 int_mppm=-94000 locked_frames=0 unlocks=0 ref_idle=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err_ticks mean=-338015 min=-349610 max=-326422 cmd_mppm=500000 int_mppm=-94000 locked_frames=0 unlocks=0 ref_idle=0
+LOCK state=ACQUIRING err_ticks mean=-314354 min=-325949 max=-302760 cmd_mppm=500000 int_mppm=-94000 locked_frames=0 unlocks=0 ref_idle=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err_ticks mean=-290692 min=-302287 max=-279099 cmd_mppm=500000 int_mppm=-94000 locked_frames=0 unlocks=0 ref_idle=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err_ticks mean=-267030 min=-278625 max=-255437 cmd_mppm=500000 int_mppm=-94000 locked_frames=0 unlocks=0 ref_idle=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err_ticks mean=-243369 min=-254964 max=-231775 cmd_mppm=500000 int_mppm=-94000 locked_frames=0 unlocks=0 ref_idle=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err_ticks mean=-219707 min=-231302 max=-208114 cmd_mppm=500000 int_mppm=-94000 locked_frames=0 unlocks=0 ref_idle=0
+LOCK state=ACQUIRING err_ticks mean=-196045 min=-207640 max=-184452 cmd_mppm=500000 int_mppm=-94000 locked_frames=0 unlocks=0 ref_idle=0
+TELEMETRY: src=75 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err_ticks mean=-172384 min=-183979 max=-160790 cmd_mppm=500000 int_mppm=-94000 locked_frames=0 unlocks=0 ref_idle=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err_ticks mean=-148722 min=-160317 max=-137129 cmd_mppm=500000 int_mppm=18591 locked_frames=0 unlocks=0 ref_idle=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err_ticks mean=-125060 min=-136655 max=-113467 cmd_mppm=500000 int_mppm=109890 locked_frames=0 unlocks=0 ref_idle=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err_ticks mean=-101399 min=-112994 max=-89806 cmd_mppm=500000 int_mppm=183977 locked_frames=0 unlocks=0 ref_idle=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err_ticks mean=-77737 min=-89332 max=-66144 cmd_mppm=500000 int_mppm=269379 locked_frames=0 unlocks=0 ref_idle=0
+LOCK state=ACQUIRING err_ticks mean=-54076 min=-65670 max=-42482 cmd_mppm=500000 int_mppm=348529 locked_frames=0 unlocks=0 ref_idle=0
+TELEMETRY: src=75 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err_ticks mean=-30414 min=-42009 max=-18821 cmd_mppm=500000 int_mppm=434257 locked_frames=0 unlocks=0 ref_idle=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err_ticks mean=-6755 min=-18347 max=4814 cmd_mppm=462105 int_mppm=480155 locked_frames=0 unlocks=0 ref_idle=0
+TELEMETRY: src=71 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err_ticks mean=16337 min=5283 max=26518 cmd_mppm=74455 int_mppm=173885 locked_frames=0 unlocks=0 ref_idle=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err_ticks mean=29110 min=26847 max=29690 cmd_mppm=-479475 int_mppm=-371849 locked_frames=0 unlocks=0 ref_idle=0
+LOCK state=ACQUIRING err_ticks mean=27044 min=25447 max=28641 cmd_mppm=-500000 int_mppm=-413559 locked_frames=0 unlocks=0 ref_idle=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err_ticks mean=23785 min=22188 max=25382 cmd_mppm=-500000 int_mppm=-422196 locked_frames=0 unlocks=0 ref_idle=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err_ticks mean=20525 min=18928 max=22122 cmd_mppm=-500000 int_mppm=-429953 locked_frames=0 unlocks=0 ref_idle=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err_ticks mean=17265 min=15668 max=18863 cmd_mppm=-500000 int_mppm=-443242 locked_frames=0 unlocks=0 ref_idle=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err_ticks mean=14005 min=12408 max=15603 cmd_mppm=-500000 int_mppm=-453988 locked_frames=0 unlocks=0 ref_idle=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err_ticks mean=10745 min=9148 max=12343 cmd_mppm=-500000 int_mppm=-466429 locked_frames=0 unlocks=0 ref_idle=0
+LOCK state=ACQUIRING err_ticks mean=7485 min=5888 max=9083 cmd_mppm=-500000 int_mppm=-480129 locked_frames=0 unlocks=0 ref_idle=0
+TELEMETRY: src=74 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err_ticks mean=4225 min=2628 max=5823 cmd_mppm=-500000 int_mppm=-490422 locked_frames=0 unlocks=0 ref_idle=0
+TELEMETRY: src=71 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err_ticks mean=966 min=-628 max=2563 cmd_mppm=-495048 int_mppm=-497402 locked_frames=0 unlocks=0 ref_idle=0
+>>> LOCKED at frame 1759
+TELEMETRY: src=74 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=LOCKED err_ticks mean=-2239 min=-3737 max=-693 cmd_mppm=-441436 int_mppm=-455447 locked_frames=24 unlocks=0 ref_idle=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=LOCKED err_ticks mean=-5109 min=-6293 max=-3795 cmd_mppm=-336090 int_mppm=-359685 locked_frames=24 unlocks=0 ref_idle=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=LOCKED err_ticks mean=-7087 min=-7541 max=-6334 cmd_mppm=-198566 int_mppm=-226841 locked_frames=24 unlocks=0 ref_idle=0
+LOCK state=LOCKED err_ticks mean=-7024 min=-7545 max=-5857 cmd_mppm=-73208 int_mppm=-95169 locked_frames=24 unlocks=0 ref_idle=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=LOCKED err_ticks mean=-3123 min=-5777 max=-60 cmd_mppm=-36407 int_mppm=-36631 locked_frames=44 unlocks=0 ref_idle=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=LOCKED err_ticks mean=2650 min=68 max=4601 cmd_mppm=-103548 int_mppm=-86297 locked_frames=67 unlocks=0 ref_idle=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=LOCKED err_ticks mean=5352 min=4653 max=5622 cmd_mppm=-207610 int_mppm=-186606 locked_frames=67 unlocks=0 ref_idle=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=LOCKED err_ticks mean=5171 min=4533 max=5596 cmd_mppm=-300536 int_mppm=-283540 locked_frames=67 unlocks=0 ref_idle=0
+LOCK state=LOCKED err_ticks mean=3550 min=2508 max=4500 cmd_mppm=-359482 int_mppm=-350079 locked_frames=71 unlocks=0 ref_idle=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+
+[s] reference mask = 1  (1 = force ref to 0, simulate ref loss)
+LOCK state=LOCKED err_ticks mean=1303 min=124 max=2462 cmd_mppm=-374954 int_mppm=-374490 locked_frames=121 unlocks=0 ref_idle=1
+TELEMETRY: src=73 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=LOCKED err_ticks mean=-1081 min=-2198 max=75 cmd_mppm=-345999 int_mppm=-354240 locked_frames=171 unlocks=0 ref_idle=51
+TELEMETRY: src=73 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=LOCKED err_ticks mean=-3198 min=-4040 max=-2241 cmd_mppm=-279159 int_mppm=-294307 locked_frames=182 unlocks=0 ref_idle=101
+TELEMETRY: src=73 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+>>> HOLDOVER engaged at out_count=42060 (integrator frozen at -210712 mppm)
+LOCK state=HOLDOVER err_ticks mean=-4556 min=-4818 max=-4068 cmd_mppm=-210712 int_mppm=-210712 locked_frames=182 unlocks=0 ref_idle=151
+TELEMETRY: src=72 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=HOLDOVER err_ticks mean=-4999 min=-5175 max=-4824 cmd_mppm=-210712 int_mppm=-210712 locked_frames=182 unlocks=0 ref_idle=201
+LOCK state=HOLDOVER err_ticks mean=-5357 min=-5533 max=-5182 cmd_mppm=-210712 int_mppm=-210712 locked_frames=182 unlocks=0 ref_idle=251
+TELEMETRY: src=72 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=HOLDOVER err_ticks mean=-5715 min=-5891 max=-5540 cmd_mppm=-210712 int_mppm=-210712 locked_frames=182 unlocks=0 ref_idle=301
+TELEMETRY: src=72 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=HOLDOVER err_ticks mean=-6073 min=-6249 max=-5899 cmd_mppm=-210712 int_mppm=-210712 locked_frames=182 unlocks=0 ref_idle=351
+TELEMETRY: src=72 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=HOLDOVER err_ticks mean=-6432 min=-6607 max=-6257 cmd_mppm=-210712 int_mppm=-210712 locked_frames=182 unlocks=0 ref_idle=401
+TELEMETRY: src=73 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=HOLDOVER err_ticks mean=-6790 min=-6966 max=-6615 cmd_mppm=-210712 int_mppm=-210712 locked_frames=182 unlocks=0 ref_idle=451
+LOCK state=HOLDOVER err_ticks mean=-7148 min=-7324 max=-6973 cmd_mppm=-210712 int_mppm=-210712 locked_frames=182 unlocks=0 ref_idle=501
+TELEMETRY: src=73 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=HOLDOVER err_ticks mean=-7506 min=-7682 max=-7331 cmd_mppm=-210712 int_mppm=-210712 locked_frames=182 unlocks=0 ref_idle=551
+TELEMETRY: src=73 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=HOLDOVER err_ticks mean=-7864 min=-8040 max=-7689 cmd_mppm=-210712 int_mppm=-210712 locked_frames=182 unlocks=0 ref_idle=601
+TELEMETRY: src=72 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=HOLDOVER err_ticks mean=-8222 min=-8398 max=-8047 cmd_mppm=-210712 int_mppm=-210712 locked_frames=182 unlocks=0 ref_idle=651
+TELEMETRY: src=73 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=HOLDOVER err_ticks mean=-8580 min=-8756 max=-8405 cmd_mppm=-210712 int_mppm=-210712 locked_frames=182 unlocks=0 ref_idle=701
+TELEMETRY: src=72 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=HOLDOVER err_ticks mean=-8938 min=-9114 max=-8763 cmd_mppm=-210712 int_mppm=-210712 locked_frames=182 unlocks=0 ref_idle=751
+LOCK state=HOLDOVER err_ticks mean=-9296 min=-9472 max=-9121 cmd_mppm=-210712 int_mppm=-210712 locked_frames=182 unlocks=0 ref_idle=801
+TELEMETRY: src=71 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=HOLDOVER err_ticks mean=-9654 min=-9830 max=-9479 cmd_mppm=-210712 int_mppm=-210712 locked_frames=182 unlocks=0 ref_idle=851
+TELEMETRY: src=72 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=HOLDOVER err_ticks mean=-10012 min=-10188 max=-9837 cmd_mppm=-210712 int_mppm=-210712 locked_frames=182 unlocks=0 ref_idle=901
+TELEMETRY: src=73 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=HOLDOVER err_ticks mean=-10370 min=-10546 max=-10195 cmd_mppm=-210712 int_mppm=-210712 locked_frames=182 unlocks=0 ref_idle=951
+TELEMETRY: src=73 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=HOLDOVER err_ticks mean=-10728 min=-10904 max=-10553 cmd_mppm=-210712 int_mppm=-210712 locked_frames=182 unlocks=0 ref_idle=1001
+LOCK state=HOLDOVER err_ticks mean=-11086 min=-11262 max=-10911 cmd_mppm=-210712 int_mppm=-210712 locked_frames=182 unlocks=0 ref_idle=1051
+TELEMETRY: src=75 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=HOLDOVER err_ticks mean=-11444 min=-11620 max=-11269 cmd_mppm=-210712 int_mppm=-210712 locked_frames=182 unlocks=0 ref_idle=1101
+TELEMETRY: src=71 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=HOLDOVER err_ticks mean=-11802 min=-11978 max=-11627 cmd_mppm=-210712 int_mppm=-210712 locked_frames=182 unlocks=0 ref_idle=1151
+TELEMETRY: src=74 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=HOLDOVER err_ticks mean=-12160 min=-12336 max=-11985 cmd_mppm=-210712 int_mppm=-210712 locked_frames=182 unlocks=0 ref_idle=1201
+TELEMETRY: src=72 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+
+[s] reference mask = 0  (1 = force ref to 0, simulate ref loss)
+LOCK state=HOLDOVER err_ticks mean=-12519 min=-12694 max=-12344 cmd_mppm=-210712 int_mppm=-210712 locked_frames=182 unlocks=0 ref_idle=1251
+>>> HOLDOVER released at out_count=43161 — re-acquiring
+TELEMETRY: src=71 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err_ticks mean=-10944 min=-12827 max=-7054 cmd_mppm=20904 int_mppm=-5545 locked_frames=182 unlocks=0 ref_idle=0
+LOCK state=ACQUIRING err_ticks mean=-365 min=-6801 max=5339 cmd_mppm=-18704 int_mppm=1314 locked_frames=182 unlocks=0 ref_idle=0
+TELEMETRY: src=74 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err_ticks mean=7731 min=5499 max=8797 cmd_mppm=-176598 int_mppm=-143614 locked_frames=182 unlocks=0 ref_idle=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err_ticks mean=8475 min=7785 max=8817 cmd_mppm=-331681 int_mppm=-302491 locked_frames=182 unlocks=0 ref_idle=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err_ticks mean=6566 min=5247 max=7744 cmd_mppm=-445246 int_mppm=-425573 locked_frames=182 unlocks=0 ref_idle=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err_ticks mean=3675 min=2111 max=5188 cmd_mppm=-500000 int_mppm=-492804 locked_frames=182 unlocks=0 ref_idle=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err_ticks mean=450 min=-1140 max=2046 cmd_mppm=-490632 int_mppm=-494906 locked_frames=182 unlocks=0 ref_idle=0
+>>> LOCKED at frame 3851
+LOCK state=LOCKED err_ticks mean=-2729 min=-4195 max=-1204 cmd_mppm=-428037 int_mppm=-443766 locked_frames=206 unlocks=0 ref_idle=0
+TELEMETRY: src=71 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=LOCKED err_ticks mean=-5504 min=-6609 max=-4251 cmd_mppm=-315806 int_mppm=-340586 locked_frames=206 unlocks=0 ref_idle=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=LOCKED err_ticks mean=-7260 min=-7549 max=-6646 cmd_mppm=-176246 int_mppm=-204491 locked_frames=206 unlocks=0 ref_idle=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=LOCKED err_ticks mean=-6702 min=-7526 max=-5175 cmd_mppm=-59451 int_mppm=-78854 locked_frames=206 unlocks=0 ref_idle=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=LOCKED err_ticks mean=-2177 min=-5080 max=930 cmd_mppm=-41541 int_mppm=-38054 locked_frames=234 unlocks=0 ref_idle=0
+LOCK state=LOCKED err_ticks mean=3336 min=1050 max=4971 cmd_mppm=-119220 int_mppm=-100582 locked_frames=249 unlocks=0 ref_idle=0
+TELEMETRY: src=74 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=LOCKED err_ticks mean=5474 min=5010 max=5625 cmd_mppm=-223941 int_mppm=-203188 locked_frames=249 unlocks=0 ref_idle=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=LOCKED err_ticks mean=4985 min=4258 max=5523 cmd_mppm=-312603 int_mppm=-296638 locked_frames=249 unlocks=0 ref_idle=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=LOCKED err_ticks mean=3222 min=2143 max=4222 cmd_mppm=-365066 int_mppm=-357031 locked_frames=261 unlocks=0 ref_idle=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=LOCKED err_ticks mean=924 min=-259 max=2096 cmd_mppm=-373362 int_mppm=-374333 locked_frames=311 unlocks=0 ref_idle=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=LOCKED err_ticks mean=-1449 min=-2541 max=-307 cmd_mppm=-337662 int_mppm=-347189 locked_frames=361 unlocks=0 ref_idle=0
+LOCK state=LOCKED err_ticks mean=-3488 min=-4264 max=-2582 cmd_mppm=-265834 int_mppm=-281822 locked_frames=364 unlocks=0 ref_idle=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=LOCKED err_ticks mean=-4669 min=-4829 max=-4289 cmd_mppm=-176292 int_mppm=-194297 locked_frames=364 unlocks=0 ref_idle=0
+TELEMETRY: src=71 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=LOCKED err_ticks mean=-4251 min=-4795 max=-3345 cmd_mppm=-102080 int_mppm=-114622 locked_frames=364 unlocks=0 ref_idle=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=LOCKED err_ticks mean=-1733 min=-3292 max=-30 cmd_mppm=-82032 int_mppm=-82144 locked_frames=403 unlocks=0 ref_idle=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=LOCKED err_ticks mean=1560 min=41 max=2812 cmd_mppm=-121915 int_mppm=-111372 locked_frames=449 unlocks=0 ref_idle=0
+TELEMETRY: src=71 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=LOCKED err_ticks mean=3444 min=2850 max=3748 cmd_mppm=-189973 int_mppm=-175920 locked_frames=449 unlocks=0 ref_idle=0
+ free
+[R] reference = FREE_RUN (integrator zeroed, actuator zeroed)
+LOCK state=FREE_RUN err_ticks mean=3556 min=3200 max=3750 cmd_mppm=0 int_mppm=0 locked_frames=449 unlocks=0 ref_idle=1
+TELEMETRY: src=72 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=FREE_RUN err_ticks mean=8404 min=3404 max=13404 cmd_mppm=0 int_mppm=0 locked_frames=449 unlocks=0 ref_idle=51
+TELEMETRY: src=73 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=FREE_RUN err_ticks mean=18608 min=13608 max=23608 cmd_mppm=0 int_mppm=0 locked_frames=449 unlocks=0 ref_idle=101
+TELEMETRY: src=73 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=FREE_RUN err_ticks mean=28812 min=23812 max=33812 cmd_mppm=0 int_mppm=0 locked_frames=449 unlocks=0 ref_idle=151
+TELEMETRY: src=72 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=FREE_RUN err_ticks mean=39016 min=34016 max=44016 cmd_mppm=0 int_mppm=0 locked_frames=449 unlocks=0 ref_idle=201
+LOCK state=FREE_RUN err_ticks mean=49220 min=44220 max=54220 cmd_mppm=0 int_mppm=0 locked_frames=449 unlocks=0 ref_idle=251
+TELEMETRY: src=74 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=FREE_RUN err_ticks mean=59424 min=54425 max=64425 cmd_mppm=0 int_mppm=0 locked_frames=449 unlocks=0 ref_idle=301
+TELEMETRY: src=71 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=FREE_RUN err_ticks mean=69628 min=64629 max=74629 cmd_mppm=0 int_mppm=0 locked_frames=449 unlocks=0 ref_idle=351
+TELEMETRY: src=74 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=FREE_RUN err_ticks mean=79832 min=74833 max=84833 cmd_mppm=0 int_mppm=0 locked_frames=449 unlocks=0 ref_idle=401
+TELEMETRY: src=73 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=FREE_RUN err_ticks mean=90036 min=85037 max=95037 cmd_mppm=0 int_mppm=0 locked_frames=449 unlocks=0 ref_idle=451
+TELEMETRY: src=73 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=FREE_RUN err_ticks mean=100240 min=95241 max=105241 cmd_mppm=0 int_mppm=0 locked_frames=449 unlocks=0 ref_idle=501
+LOCK state=FREE_RUN err_ticks mean=110444 min=105445 max=115445 cmd_mppm=0 int_mppm=0 locked_frames=449 unlocks=0 ref_idle=551
+TELEMETRY: src=73 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=FREE_RUN err_ticks mean=120649 min=115649 max=125649 cmd_mppm=0 int_mppm=0 locked_frames=449 unlocks=0 ref_idle=601
+TELEMETRY: src=73 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=FREE_RUN err_ticks mean=130853 min=125853 max=135853 cmd_mppm=0 int_mppm=0 locked_frames=449 unlocks=0 ref_idle=651
+TELEMETRY: src=71 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=FREE_RUN err_ticks mean=141057 min=136057 max=146057 cmd_mppm=0 int_mppm=0 locked_frames=449 unlocks=0 ref_idle=701
+TELEMETRY: src=72 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=FREE_RUN err_ticks mean=151261 min=146261 max=156261 cmd_mppm=0 int_mppm=0 locked_frames=449 unlocks=0 ref_idle=751
+LOCK state=FREE_RUN err_ticks mean=161465 min=156465 max=166465 cmd_mppm=0 int_mppm=0 locked_frames=449 unlocks=0 ref_idle=801
+TELEMETRY: src=73 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=FREE_RUN err_ticks mean=171669 min=166669 max=176669 cmd_mppm=0 int_mppm=0 locked_frames=449 unlocks=0 ref_idle=851
+TELEMETRY: src=72 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=FREE_RUN err_ticks mean=181873 min=176874 max=186873 cmd_mppm=0 int_mppm=0 locked_frames=449 unlocks=0 ref_idle=901
+TELEMETRY: src=72 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=FREE_RUN err_ticks mean=192077 min=187078 max=197078 cmd_mppm=0 int_mppm=0 locked_frames=449 unlocks=0 ref_idle=951
+TELEMETRY: src=72 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=FREE_RUN err_ticks mean=202281 min=197282 max=207282 cmd_mppm=0 int_mppm=0 locked_frames=449 unlocks=0 ref_idle=1001
+TELEMETRY: src=72 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=FREE_RUN err_ticks mean=212485 min=207486 max=217486 cmd_mppm=0 int_mppm=0 locked_frames=449 unlocks=0 ref_idle=1051
+LOCK state=FREE_RUN err_ticks mean=222689 min=217690 max=227690 cmd_mppm=0 int_mppm=0 locked_frames=449 unlocks=0 ref_idle=1101
+TELEMETRY: src=73 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=FREE_RUN err_ticks mean=232893 min=227894 max=237894 cmd_mppm=0 int_mppm=0 locked_frames=449 unlocks=0 ref_idle=1151
+TELEMETRY: src=73 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=FREE_RUN err_ticks mean=243098 min=238098 max=248098 cmd_mppm=0 int_mppm=0 locked_frames=449 unlocks=0 ref_idle=1201
+TELEMETRY: src=73 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+ sync
+[R] reference = SYNC (synthetic Phase 2)
+LOCK state=ACQUIRING err_ticks mean=253299 min=248302 max=258177 cmd_mppm=-500000 int_mppm=-94000 locked_frames=449 unlocks=0 ref_idle=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err_ticks mean=256515 min=254917 max=258112 cmd_mppm=-500000 int_mppm=-94000 locked_frames=449 unlocks=0 ref_idle=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err_ticks mean=253255 min=251658 max=254852 cmd_mppm=-500000 int_mppm=-94000 locked_frames=449 unlocks=0 ref_idle=0
+LOCK state=ACQUIRING err_ticks mean=249995 min=248398 max=251593 cmd_mppm=-500000 int_mppm=-94000 locked_frames=449 unlocks=0 ref_idle=0
+TELEMETRY: src=74 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err_ticks mean=246735 min=245138 max=248333 cmd_mppm=-500000 int_mppm=-94000 locked_frames=449 unlocks=0 ref_idle=0
+TELEMETRY: src=74 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err_ticks mean=243475 min=241878 max=245073 cmd_mppm=-500000 int_mppm=-94000 locked_frames=449 unlocks=0 ref_idle=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err_ticks mean=240215 min=238618 max=241813 cmd_mppm=-500000 int_mppm=-94000 locked_frames=449 unlocks=0 ref_idle=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err_ticks mean=236955 min=235358 max=238553 cmd_mppm=-500000 int_mppm=-94000 locked_frames=449 unlocks=0 ref_idle=0
+LOCK state=ACQUIRING err_ticks mean=233696 min=232098 max=235293 cmd_mppm=-500000 int_mppm=-94000 locked_frames=449 unlocks=0 ref_idle=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err_ticks mean=230436 min=228839 max=232033 cmd_mppm=-500000 int_mppm=-94000 locked_frames=449 unlocks=0 ref_idle=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err_ticks mean=227176 min=225579 max=228774 cmd_mppm=-500000 int_mppm=-94000 locked_frames=449 unlocks=0 ref_idle=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err_ticks mean=223916 min=222319 max=225514 cmd_mppm=-500000 int_mppm=-94000 locked_frames=449 unlocks=0 ref_idle=0
+TELEMETRY: src=71 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err_ticks mean=220656 min=219059 max=222254 cmd_mppm=-500000 int_mppm=-94000 locked_frames=449 unlocks=0 ref_idle=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err_ticks mean=217396 min=215799 max=218994 cmd_mppm=-500000 int_mppm=-94000 locked_frames=449 unlocks=0 ref_idle=0
+LOCK state=ACQUIRING err_ticks mean=214136 min=212539 max=215734 cmd_mppm=-500000 int_mppm=-94000 locked_frames=449 unlocks=0 ref_idle=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err_ticks mean=210877 min=209279 max=212474 cmd_mppm=-500000 int_mppm=-94000 locked_frames=449 unlocks=0 ref_idle=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err_ticks mean=207617 min=206020 max=209214 cmd_mppm=-500000 int_mppm=-94000 locked_frames=449 unlocks=0 ref_idle=0
+TELEMETRY: src=74 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err_ticks mean=204357 min=202760 max=205954 cmd_mppm=-500000 int_mppm=-94000 locked_frames=449 unlocks=0 ref_idle=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err_ticks mean=201097 min=199500 max=202695 cmd_mppm=-500000 int_mppm=-94000 locked_frames=449 unlocks=0 ref_idle=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err_ticks mean=197837 min=196240 max=199435 cmd_mppm=-500000 int_mppm=-94000 locked_frames=449 unlocks=0 ref_idle=0
+LOCK state=ACQUIRING err_ticks mean=194577 min=192980 max=196175 cmd_mppm=-500000 int_mppm=-94000 locked_frames=449 unlocks=0 ref_idle=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err_ticks mean=191317 min=189720 max=192915 cmd_mppm=-500000 int_mppm=-94000 locked_frames=449 unlocks=0 ref_idle=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err_ticks mean=188058 min=186460 max=189655 cmd_mppm=-500000 int_mppm=-94000 locked_frames=449 unlocks=0 ref_idle=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err_ticks mean=184798 min=183201 max=186395 cmd_mppm=-500000 int_mppm=-94000 locked_frames=449 unlocks=0 ref_idle=0
+TELEMETRY: src=71 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err_ticks mean=181538 min=179941 max=183135 cmd_mppm=-500000 int_mppm=-94000 locked_frames=449 unlocks=0 ref_idle=0
+LOCK state=ACQUIRING err_ticks mean=178278 min=176681 max=179876 cmd_mppm=-500000 int_mppm=-94000 locked_frames=449 unlocks=0 ref_idle=0
+TELEMETRY: src=71 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err_ticks mean=175018 min=173421 max=176616 cmd_mppm=-500000 int_mppm=-94000 locked_frames=449 unlocks=0 ref_idle=0
+TELEMETRY: src=71 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err_ticks mean=171758 min=170161 max=173356 cmd_mppm=-500000 int_mppm=-94000 locked_frames=449 unlocks=0 ref_idle=0
+TELEMETRY: src=71 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err_ticks mean=168498 min=166901 max=170096 cmd_mppm=-500000 int_mppm=-94000 locked_frames=449 unlocks=0 ref_idle=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err_ticks mean=165238 min=163641 max=166836 cmd_mppm=-500000 int_mppm=-94000 locked_frames=449 unlocks=0 ref_idle=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err_ticks mean=161979 min=160381 max=163576 cmd_mppm=-500000 int_mppm=-94000 locked_frames=449 unlocks=0 ref_idle=0
+LOCK state=ACQUIRING err_ticks mean=158719 min=157122 max=160316 cmd_mppm=-500000 int_mppm=-94000 locked_frames=449 unlocks=0 ref_idle=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err_ticks mean=155459 min=153862 max=157057 cmd_mppm=-500000 int_mppm=-94000 locked_frames=449 unlocks=0 ref_idle=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err_ticks mean=152199 min=150602 max=153797 cmd_mppm=-500000 int_mppm=-94000 locked_frames=449 unlocks=0 ref_idle=0
+TELEMETRY: src=74 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err_ticks mean=148939 min=147342 max=150537 cmd_mppm=-500000 int_mppm=-94000 locked_frames=449 unlocks=0 ref_idle=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err_ticks mean=145679 min=144082 max=147277 cmd_mppm=-500000 int_mppm=-94000 locked_frames=449 unlocks=0 ref_idle=0
+LOCK state=ACQUIRING err_ticks mean=142419 min=140822 max=144017 cmd_mppm=-500000 int_mppm=-94000 locked_frames=449 unlocks=0 ref_idle=0
+TELEMETRY: src=74 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err_ticks mean=139160 min=137562 max=140757 cmd_mppm=-500000 int_mppm=-94000 locked_frames=449 unlocks=0 ref_idle=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err_ticks mean=135900 min=134303 max=137497 cmd_mppm=-500000 int_mppm=-94000 locked_frames=449 unlocks=0 ref_idle=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err_ticks mean=132640 min=131043 max=134238 cmd_mppm=-500000 int_mppm=-94000 locked_frames=449 unlocks=0 ref_idle=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err_ticks mean=129380 min=127783 max=130978 cmd_mppm=-500000 int_mppm=-94000 locked_frames=449 unlocks=0 ref_idle=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+LOCK state=ACQUIRING err_ticks mean=126120 min=124523 max=127718 cmd_mppm=-500000 int_mppm=-94000 locked_frames=449 unlocks=0 ref_idle=0
+LOCK state=ACQUIRING err_ticks mean=122860 min=121263 max=124458 cmd_mppm=-500000 int_mppm=-94000 locked_frames=449 unlocks=0 ref_idle=0
+TELEMETRY: src=69 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+LOCK state=ACQUIRING err_ticks mean=119600 min=118003 max=121198 cmd_mppm=-500000 int_mppm=-94000 locked_frames=449 unlocks=0 ref_idle=0
+TELEMETRY: src=73 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+LOCK state=ACQUIRING err_ticks mean=116341 min=114743 max=117938 cmd_mppm=-500000 int_mppm=-94000 locked_frames=449 unlocks=0 ref_idle=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+
+[U] loop disabled, actuator zeroed.
+TELEMETRY: src=72 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=2 WRFRMSTORE=0
+TELEMETRY: src=71 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=1 WRFRMSTORE=0
+TELEMETRY: src=71 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=0 WRFRMSTORE=0
+TELEMETRY: src=72 out=60  RDFRMSTORE=0 WRFRMSTORE=0

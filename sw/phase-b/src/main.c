@@ -484,14 +484,22 @@ static void cmd_nudge(s32 ppm)
 #define UNLOCK_FRAMES                    60
 #define STATS_PERIOD_FRAMES              50    /* ~1 sec at 50 Hz */
 
-typedef enum { LOOP_OFF = 0, LOOP_ACQUIRING = 1, LOOP_LOCKED = 2 } loop_state_t;
+typedef enum {
+    LOOP_OFF       = 0,
+    LOOP_FREE_RUN  = 1,  /* Phase 7: ref_select=free, integrator forced 0 */
+    LOOP_ACQUIRING = 2,
+    LOOP_LOCKED    = 3,
+    LOOP_HOLDOVER  = 4,  /* Phase 7: was LOCKED, ref edges stopped, freeze integrator */
+} loop_state_t;
 
 static volatile int  g_loop_enable    = 0;
 static loop_state_t  g_lock_state     = LOOP_OFF;
 static s32           g_integrator_mppm = 0;
 static u32           g_last_out_count = 0;
+static u32           g_last_ref_count = 0;
 static int           g_frames_in_lock_range   = 0;
 static int           g_frames_out_lock_range  = 0;
+static int           g_frames_since_ref_edge  = 0;   /* Phase 7: holdover trigger */
 static int           g_dump_per_frame = 0;     /* 1 = emit each-frame sample */
 static int           g_stat_frames    = 0;
 static s32           g_stat_err_min   = 0;
@@ -503,7 +511,14 @@ static u32           g_loop_enable_count_at_start = 0;
 
 static const char *state_label(loop_state_t s)
 {
-    return (s == LOOP_OFF) ? "OFF" : (s == LOOP_ACQUIRING) ? "ACQUIRING" : "LOCKED";
+    switch (s) {
+        case LOOP_OFF:       return "OFF";
+        case LOOP_FREE_RUN:  return "FREE_RUN";
+        case LOOP_ACQUIRING: return "ACQUIRING";
+        case LOOP_LOCKED:    return "LOCKED";
+        case LOOP_HOLDOVER:  return "HOLDOVER";
+        default:             return "?";
+    }
 }
 
 static s32 abs_s32(s32 v) { return v < 0 ? -v : v; }
@@ -566,6 +581,92 @@ static void cmd_toggle_dump(void)
                g_dump_per_frame);
 }
 
+/* =========================================================================
+ * Phase E1 Phase 7 — reference selector and ref-mask.
+ *
+ * axi_gpio_refsel is an output-only 4-bit GPIO at one of the IC slots
+ * (varies by build; resolved via XPAR_*). The bits map to ref_mux's ctrl:
+ *   bit 0: sel[0]  — together with sel[1] selects which source feeds ref
+ *   bit 1: sel[1]
+ *      sel=00: free-run (1'b0)
+ *      sel=01: synthetic reference (Phase 2 FCLK_CLK1 divider)
+ *      sel=10, 11: reserved (future external refs)
+ *   bit 2: mask  — when 1, force ref to 0 (used to simulate ref loss)
+ *   bit 3: reserved
+ *
+ * AXI GPIO data register is at base+0x00; tri-state at base+0x04 (default
+ * 0=output). We never read this GPIO; we only write the control word.
+ * ========================================================================= */
+#if defined(XPAR_AXI_GPIO_REFSEL_BASEADDR)
+#  define REFSEL_BASEADDR XPAR_AXI_GPIO_REFSEL_BASEADDR
+#elif defined(XPAR_AXI_GPIO_REFSEL_S_AXI_BASEADDR)
+#  define REFSEL_BASEADDR XPAR_AXI_GPIO_REFSEL_S_AXI_BASEADDR
+#elif defined(XPAR_PHASE_B_BD_AXI_GPIO_REFSEL_BASEADDR)
+#  define REFSEL_BASEADDR XPAR_PHASE_B_BD_AXI_GPIO_REFSEL_BASEADDR
+#else
+#  error "axi_gpio_refsel base address not found in xparameters.h"
+#endif
+#define REFSEL_DATA (REFSEL_BASEADDR + 0x00)
+#define REFSEL_TRI  (REFSEL_BASEADDR + 0x04)
+
+#define REFSEL_FREE   0x0    /* sel=00 mask=0 */
+#define REFSEL_SYNC   0x1    /* sel=01 mask=0 */
+#define REFSEL_MASK_BIT 0x4  /* OR with current to mask the output */
+
+static u8 g_ref_select = REFSEL_FREE;   /* boot: free-run (safe — no edges) */
+static int g_ref_masked = 0;
+static u32 g_last_loop_baseline_ppm_mppm = 0;   /* for the HOLDOVER message */
+
+static void refsel_write(u8 sel, int masked)
+{
+    /* Tri-state register defaults to 0 (output) at reset for axi_gpio in
+     * all-outputs mode. Make it explicit anyway for safety. */
+    Xil_Out32(REFSEL_TRI, 0);
+    u32 word = (sel & 0x3) | (masked ? REFSEL_MASK_BIT : 0);
+    Xil_Out32(REFSEL_DATA, word);
+}
+
+static void cmd_ref_select(const char *arg)
+{
+    while (*arg == ' ') ++arg;
+    if (arg[0] == 'f' || arg[0] == 'F') {
+        g_ref_select = REFSEL_FREE;
+        /* In FREE-RUN mode: integrator forced to zero, no edges arrive,
+         * loop is effectively passive. Reset state machine. */
+        g_integrator_mppm = 0;
+        Xil_Out32(ACT_PHASE_STEP, 0);
+        g_lock_state = LOOP_FREE_RUN;
+        g_frames_in_lock_range = 0;
+        g_frames_out_lock_range = 0;
+        g_frames_since_ref_edge = 0;
+        refsel_write(g_ref_select, g_ref_masked);
+        xil_printf("\r\n[R] reference = FREE_RUN (integrator zeroed, actuator zeroed)\r\n");
+    } else if (arg[0] == 's' || arg[0] == 'S') {
+        g_ref_select = REFSEL_SYNC;
+        refsel_write(g_ref_select, g_ref_masked);
+        /* If the loop is enabled, transition state machine to ACQUIRING. */
+        if (g_loop_enable) {
+            g_lock_state = LOOP_ACQUIRING;
+            g_frames_in_lock_range = 0;
+            g_frames_out_lock_range = 0;
+            g_frames_since_ref_edge = 0;
+            /* Re-prime the integrator near the steady-state operating point. */
+            g_integrator_mppm = INTEGRATOR_PRELOAD_MILLI_PPM;
+        }
+        xil_printf("\r\n[R] reference = SYNC (synthetic Phase 2)\r\n");
+    } else {
+        xil_printf("\r\nUART: 'r <free|sync>' — got '%s'\r\n", arg);
+    }
+}
+
+static void cmd_toggle_ref_mask(void)
+{
+    g_ref_masked = !g_ref_masked;
+    refsel_write(g_ref_select, g_ref_masked);
+    xil_printf("\r\n[s] reference mask = %d  (1 = force ref to 0, simulate ref loss)\r\n",
+               g_ref_masked);
+}
+
 static void loop_tick(void)
 {
     if (!g_loop_enable) return;
@@ -578,79 +679,117 @@ static void loop_tick(void)
     g_last_out_count = out_count;
 
     ts_ref = vts_read_ts(VTS_TS_REF_LO, VTS_TS_REF_HI, VTS_REF_COUNT, &ref_count);
-    if (ref_count == 0) return;   /* Phase 2 ref not yet running */
+    if (ref_count == 0) return;   /* ref not yet running */
 
-    /* phase_delta = (ts_out - ts_ref) mod 2^48. Natural range is
-     * [0, ref_period) ≈ [0, 2M] ticks (since ts_ref is the timestamp of
-     * the most-recent ref edge before ts_out). For PI feedback we want
-     * the *shortest-path* signed phase error in [-ref_period/2, +ref_period/2]
-     * — values above half-period are interpreted as "negative" by wrapping
-     * down. This is the standard phase-detector convention. */
+    /* Phase 7 — track ref-edge liveness. If ref_count doesn't advance for
+     * ~3 ref periods, treat as ref-loss. */
+    if (ref_count == g_last_ref_count) {
+        g_frames_since_ref_edge++;
+    } else {
+        g_frames_since_ref_edge = 0;
+    }
+    g_last_ref_count = ref_count;
+
+    /* Compute the shortest-path signed phase error in counter ticks.
+     * phase_delta = (ts_out - ts_ref) mod 2^48 is naturally in [0, ref_period)
+     * during normal operation (ts_ref updates with each ref edge). But when
+     * the ref is masked or lost (HOLDOVER), ts_ref freezes while ts_out keeps
+     * advancing — the raw difference grows unbounded. Use a proper modular
+     * reduction (not a single-iteration if/else) so the normalization
+     * survives ref-loss intervals. C99 % for negative dividends truncates
+     * toward zero, so the conditional touch-ups handle the sign. */
     u64 diff = (ts_out - ts_ref) & 0x0000FFFFFFFFFFFFULL;
     if (diff & 0x0000800000000000ULL) diff |= 0xFFFF000000000000ULL;
     s64 err64 = (s64)diff;
+    err64 = err64 % REF_PERIOD_TICKS;
     if (err64 >  (REF_PERIOD_TICKS / 2)) err64 -= REF_PERIOD_TICKS;
-    if (err64 < -(REF_PERIOD_TICKS / 2)) err64 += REF_PERIOD_TICKS;
+    else if (err64 < -(REF_PERIOD_TICKS / 2)) err64 += REF_PERIOD_TICKS;
     s32 err = (s32)err64;
 
-    /* PI in milli-ppm. Sign: negative feedback — positive err pushes cmd
-     * negative (output faster) which drives err back toward 0. Use s64 for
-     * the multiply to avoid s32 overflow when err is near the half-period
-     * limit (~1M ticks × 10k Kp ≈ 1e10, way beyond s32). */
-    s32 p_term = (s32)(-((s64)KP_MILLI_PPM_PER_LINE * (s64)err) / TICKS_PER_LINE_720P50);
-    s32 i_step = (s32)(-((s64)KI_MILLI_PPM_PER_LINE * (s64)err) / TICKS_PER_LINE_720P50);
-
-    /* Anti-windup: compute the unclamped command first; only integrate when
-     * the resulting cmd wouldn't saturate, OR when integrating would move
-     * us OUT of saturation (cmd has same sign as i_step). This prevents
-     * the integrator from winding up during the rate-limited initial
-     * slew and ringing afterward. */
-    s32 cmd_pre = p_term + g_integrator_mppm;
-    int sat_hi = (cmd_pre >  INTEGRATOR_CLAMP_MILLI_PPM);
-    int sat_lo = (cmd_pre < -INTEGRATOR_CLAMP_MILLI_PPM);
-    int allow_integrate = 1;
-    if (sat_hi && i_step > 0) allow_integrate = 0;   /* would push deeper into +sat */
-    if (sat_lo && i_step < 0) allow_integrate = 0;   /* would push deeper into -sat */
-    if (allow_integrate) {
-        g_integrator_mppm += i_step;
-        if (g_integrator_mppm >  INTEGRATOR_CLAMP_MILLI_PPM) g_integrator_mppm =  INTEGRATOR_CLAMP_MILLI_PPM;
-        if (g_integrator_mppm < -INTEGRATOR_CLAMP_MILLI_PPM) g_integrator_mppm = -INTEGRATOR_CLAMP_MILLI_PPM;
+    /* Phase 7 — state-machine transitions for FREE_RUN / HOLDOVER triggered
+     * by ref-edge liveness. State entry from FREE_RUN/UNLOCKED is handled
+     * by cmd_lock_enable / cmd_ref_select; the in_lock/out_unlock transitions
+     * for ACQUIRING ↔ LOCKED happen further down based on |err|. */
+    int ref_lost = (g_frames_since_ref_edge > 150);  /* ~3 ref periods @ 50 Hz */
+    if (ref_lost) {
+        if (g_lock_state == LOOP_LOCKED || g_lock_state == LOOP_ACQUIRING) {
+            g_lock_state = LOOP_HOLDOVER;
+            g_last_loop_baseline_ppm_mppm = g_integrator_mppm;
+            xil_printf(">>> HOLDOVER engaged at out_count=%u (integrator frozen at %d mppm)\r\n",
+                       (unsigned)out_count, (int)g_integrator_mppm);
+        }
+    } else if (g_lock_state == LOOP_HOLDOVER) {
+        g_lock_state = LOOP_ACQUIRING;
+        g_frames_in_lock_range = 0;
+        g_frames_out_lock_range = 0;
+        xil_printf(">>> HOLDOVER released at out_count=%u — re-acquiring\r\n",
+                   (unsigned)out_count);
     }
 
-    s32 cmd_mppm = p_term + g_integrator_mppm;
-    if (cmd_mppm >  INTEGRATOR_CLAMP_MILLI_PPM) cmd_mppm =  INTEGRATOR_CLAMP_MILLI_PPM;
-    if (cmd_mppm < -INTEGRATOR_CLAMP_MILLI_PPM) cmd_mppm = -INTEGRATOR_CLAMP_MILLI_PPM;
+    /* Compute command per current state. */
+    s32 cmd_mppm = 0;
+    if (g_lock_state == LOOP_FREE_RUN) {
+        g_integrator_mppm = 0;
+        cmd_mppm = 0;
+    } else if (g_lock_state == LOOP_HOLDOVER) {
+        /* Freeze integrator at last value; do not update on err. */
+        cmd_mppm = g_integrator_mppm;
+    } else {
+        /* ACQUIRING or LOCKED: standard PI controller. Sign convention: negative
+         * feedback — positive err pushes cmd negative (output faster). Use s64
+         * for the multiply (KP × |err near half-period| overflows s32). */
+        s32 p_term = (s32)(-((s64)KP_MILLI_PPM_PER_LINE * (s64)err) / TICKS_PER_LINE_720P50);
+        s32 i_step = (s32)(-((s64)KI_MILLI_PPM_PER_LINE * (s64)err) / TICKS_PER_LINE_720P50);
+
+        /* Conditional-integration anti-windup: don't push the integrator deeper
+         * into saturation when cmd is already saturated. */
+        s32 cmd_pre = p_term + g_integrator_mppm;
+        int sat_hi = (cmd_pre >  INTEGRATOR_CLAMP_MILLI_PPM);
+        int sat_lo = (cmd_pre < -INTEGRATOR_CLAMP_MILLI_PPM);
+        int allow_integrate = 1;
+        if (sat_hi && i_step > 0) allow_integrate = 0;
+        if (sat_lo && i_step < 0) allow_integrate = 0;
+        if (allow_integrate) {
+            g_integrator_mppm += i_step;
+            if (g_integrator_mppm >  INTEGRATOR_CLAMP_MILLI_PPM) g_integrator_mppm =  INTEGRATOR_CLAMP_MILLI_PPM;
+            if (g_integrator_mppm < -INTEGRATOR_CLAMP_MILLI_PPM) g_integrator_mppm = -INTEGRATOR_CLAMP_MILLI_PPM;
+        }
+        cmd_mppm = p_term + g_integrator_mppm;
+        if (cmd_mppm >  INTEGRATOR_CLAMP_MILLI_PPM) cmd_mppm =  INTEGRATOR_CLAMP_MILLI_PPM;
+        if (cmd_mppm < -INTEGRATOR_CLAMP_MILLI_PPM) cmd_mppm = -INTEGRATOR_CLAMP_MILLI_PPM;
+    }
 
     /* Apply: phase_step = cmd × ACT_STEP_PER_PPM / 1000. */
     s64 step64 = (s64)cmd_mppm * ACT_STEP_PER_PPM / 1000;
     Xil_Out32(ACT_PHASE_STEP, (u32)(s32)step64);
 
-    /* Lock state machine. */
-    int in_lock = (err >= -LOCK_THRESHOLD_TICKS) && (err <= LOCK_THRESHOLD_TICKS);
-    int out_unlock = (err < -UNLOCK_THRESHOLD_TICKS) || (err > UNLOCK_THRESHOLD_TICKS);
-
-    if (in_lock) {
-        g_frames_in_lock_range++;
-        g_frames_out_lock_range = 0;
-        if (g_lock_state == LOOP_ACQUIRING && g_frames_in_lock_range >= LOCK_FRAMES) {
-            g_lock_state = LOOP_LOCKED;
-            xil_printf(">>> LOCKED at frame %u\r\n",
-                       (unsigned)(out_count - g_loop_enable_count_at_start));
-        }
-        if (g_lock_state == LOOP_LOCKED) g_total_locked_frames++;
-    } else {
-        g_frames_in_lock_range = 0;
-        if (g_lock_state == LOOP_LOCKED && out_unlock) {
-            g_frames_out_lock_range++;
-            if (g_frames_out_lock_range >= UNLOCK_FRAMES) {
-                g_lock_state = LOOP_ACQUIRING;
-                g_unlock_events++;
-                xil_printf(">>> UNLOCK event #%u at frame %u\r\n",
-                           (unsigned)g_unlock_events,
+    /* In ACQUIRING / LOCKED only: update the |err|-based lock detection. */
+    if (g_lock_state == LOOP_ACQUIRING || g_lock_state == LOOP_LOCKED) {
+        int in_lock    = (err >= -LOCK_THRESHOLD_TICKS) && (err <= LOCK_THRESHOLD_TICKS);
+        int out_unlock = (err < -UNLOCK_THRESHOLD_TICKS) || (err > UNLOCK_THRESHOLD_TICKS);
+        if (in_lock) {
+            g_frames_in_lock_range++;
+            g_frames_out_lock_range = 0;
+            if (g_lock_state == LOOP_ACQUIRING && g_frames_in_lock_range >= LOCK_FRAMES) {
+                g_lock_state = LOOP_LOCKED;
+                xil_printf(">>> LOCKED at frame %u\r\n",
                            (unsigned)(out_count - g_loop_enable_count_at_start));
             }
+            if (g_lock_state == LOOP_LOCKED) g_total_locked_frames++;
         } else {
-            g_frames_out_lock_range = 0;
+            g_frames_in_lock_range = 0;
+            if (g_lock_state == LOOP_LOCKED && out_unlock) {
+                g_frames_out_lock_range++;
+                if (g_frames_out_lock_range >= UNLOCK_FRAMES) {
+                    g_lock_state = LOOP_ACQUIRING;
+                    g_unlock_events++;
+                    xil_printf(">>> UNLOCK event #%u at frame %u\r\n",
+                               (unsigned)g_unlock_events,
+                               (unsigned)(out_count - g_loop_enable_count_at_start));
+                }
+            } else {
+                g_frames_out_lock_range = 0;
+            }
         }
     }
 
@@ -660,24 +799,20 @@ static void loop_tick(void)
     g_stat_err_sum += err;
     g_stat_frames++;
 
-    /* Optional per-frame dump (CSV). */
     if (g_dump_per_frame) {
         xil_printf("F,%u,%d,%d,%d\r\n",
                    (unsigned)(out_count - g_loop_enable_count_at_start),
-                   (int)err,
-                   (int)cmd_mppm,
-                   (int)g_integrator_mppm);
+                   (int)err, (int)cmd_mppm, (int)g_integrator_mppm);
     }
 
-    /* 1 Hz summary. xil_printf is minimal — only plain %d/%u/%s/%x supported,
-     * no width/precision/sign flags. Keep formats simple. */
     if (g_stat_frames >= STATS_PERIOD_FRAMES) {
         s32 mean = g_stat_err_sum / g_stat_frames;
-        xil_printf("LOCK state=%s err_ticks mean=%d min=%d max=%d cmd_mppm=%d int_mppm=%d locked_frames=%u unlocks=%u\r\n",
+        xil_printf("LOCK state=%s err_ticks mean=%d min=%d max=%d cmd_mppm=%d int_mppm=%d locked_frames=%u unlocks=%u ref_idle=%d\r\n",
                    state_label(g_lock_state),
                    (int)mean, (int)g_stat_err_min, (int)g_stat_err_max,
                    (int)cmd_mppm, (int)g_integrator_mppm,
-                   (unsigned)g_total_locked_frames, (unsigned)g_unlock_events);
+                   (unsigned)g_total_locked_frames, (unsigned)g_unlock_events,
+                   (int)g_frames_since_ref_edge);
         g_stat_frames = 0;
         g_stat_err_sum = 0;
     }
@@ -706,13 +841,15 @@ static void cmd_help(void)
                "  p             phase: signed (ts_out - ts_ref) in ticks/ns\r\n"
                "  c             Phase 2: capture 1000 ts_ref samples as CSV\r\n"
                "  C             Phase 2: capture 100 ts_ref samples (quick jitter)\r\n"
-               "  r             Phase 3: capture 3000 drift pairs (~60 s)\r\n"
-               "  R             Phase 3: capture 300 drift pairs (quick drift sanity)\r\n"
+               "  d             Phase 3: capture 3000 drift pairs (~60 s)\r\n"
+               "  D             Phase 3: capture 300 drift pairs (quick drift sanity)\r\n"
                "  m <ppm>       Phase 4: nudge MMCM output by signed ppm (e.g. m +20)\r\n"
                "  m0  (or M)    Phase 4: zero the nudge (return to nominal)\r\n"
                "  L             Phase 6: enable PI loop (closed-loop lock)\r\n"
                "  U             Phase 6: disable loop, zero actuator (free-run)\r\n"
                "  S             Phase 6: toggle per-frame CSV dump\r\n"
+               "  r <free|sync> Phase 7: select reference source\r\n"
+               "  s             Phase 7: toggle ref-mask (simulate ref loss)\r\n"
                "  ?             this help\r\n");
 }
 
@@ -725,12 +862,29 @@ static void uart_poll_and_dispatch(void)
         case 'p': case 'P': cmd_phase(); break;
         case 'c':           cmd_capture(1000); break;
         case 'C':           cmd_capture(100);  break;
-        case 'r':           cmd_drift(3000);   break;
-        case 'R':           cmd_drift(300);    break;
+        case 'd':           cmd_drift(3000);   break;
+        case 'D':           cmd_drift(300);    break;
         case 'M':           cmd_nudge(0);      break;
         case 'L':           cmd_lock_enable(); break;
         case 'U':           cmd_unlock();      break;
         case 'S':           cmd_toggle_dump(); break;
+        case 's':           cmd_toggle_ref_mask(); break;
+        case 'r': {
+            /* r <free|sync>  — Phase 7 reference selector */
+            char buf[16];
+            unsigned bi = 0;
+            int timeout_ticks = 100000000;
+            while (bi + 1 < sizeof(buf) && timeout_ticks > 0) {
+                int ch = uart_recv_nb();
+                if (ch < 0) { --timeout_ticks; continue; }
+                if (ch == '\r' || ch == '\n') break;
+                buf[bi++] = (char)ch;
+                xil_printf("%c", ch);
+            }
+            buf[bi] = '\0';
+            cmd_ref_select(buf);
+            break;
+        }
         case 'm': {
             /* m <signed_ppm><newline> — read the argument synchronously
              * since the telemetry loop is paused for the duration of
@@ -1115,6 +1269,14 @@ int main(void)
 
     xil_printf("\r\n=== Schindler 2.0 — Phase B.1 ===\r\n");
     xil_printf("VDMA + VTC bare-metal init\r\n");
+
+    /* Phase 7: boot with reference selector = SYNC (synthetic ref). This
+     * keeps the Phase 6 'L' behavior unchanged — `L` engages a loop that's
+     * locking to the Phase 2 divider. Use `r free` to switch to free-run
+     * at runtime. */
+    g_ref_select = REFSEL_SYNC;
+    g_ref_masked = 0;
+    refsel_write(g_ref_select, g_ref_masked);
 
     /* Compute frame addresses in DDR3 (triple buffer).
      *

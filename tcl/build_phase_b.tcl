@@ -66,6 +66,8 @@ add_files -norecurse [file join $project_root hdl vsync_timestamp.v]
 add_files -norecurse [file join $project_root hdl synth_vsync_gen.v]
 # Phase E1 Phase 4 — MMCM psincdec rate actuator (Bresenham PSEN generator)
 add_files -norecurse [file join $project_root hdl mmcm_psincdec_actuator.v]
+# Phase E1 Phase 7 — reference mux (4:1 + maskable) for ref selector / holdover
+add_files -norecurse [file join $project_root hdl ref_mux.v]
 # Coefficient hex files for $readmemh — Vivado adds them to source list so
 # they're visible from the OOC synth working directory.
 add_files -norecurse [file join $project_root hdl scaler_coeffs_h.hex]
@@ -430,7 +432,7 @@ create_bd_cell -type ip -vlnv xilinx.com:ip:axi_interconnect axi_ic_lite
 # 5 master ports: VDMA, VTC, axi_gpio_0 (firmware-side vsync alignment),
 # vsync_timestamp (Phase 1 measurement instrument),
 # mmcm_psincdec_actuator (Phase 4 rate actuator).
-set_property -dict [list CONFIG.NUM_SI {1} CONFIG.NUM_MI {5}] [get_bd_cells axi_ic_lite]
+set_property -dict [list CONFIG.NUM_SI {1} CONFIG.NUM_MI {6}] [get_bd_cells axi_ic_lite]
 connect_bd_intf_net [get_bd_intf_pins zynq_ps/M_AXI_GP0]     [get_bd_intf_pins axi_ic_lite/S00_AXI]
 connect_bd_intf_net [get_bd_intf_pins axi_ic_lite/M00_AXI]   [get_bd_intf_pins axi_vdma_0/S_AXI_LITE]
 connect_bd_intf_net [get_bd_intf_pins axi_ic_lite/M01_AXI]   [get_bd_intf_pins v_tc_tx/ctrl]
@@ -442,6 +444,7 @@ connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/M01_A
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/M02_ACLK]
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/M03_ACLK]
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/M04_ACLK]
+connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/M05_ACLK]
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_vdma_0/s_axi_lite_aclk]
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins v_tc_tx/s_axi_aclk]
 connect_bd_net [get_bd_pins rst_axi/interconnect_aresetn] [get_bd_pins axi_ic_lite/ARESETN]
@@ -451,6 +454,7 @@ connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_li
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_lite/M02_ARESETN]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_lite/M03_ARESETN]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_lite/M04_ARESETN]
+connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_lite/M05_ARESETN]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_vdma_0/axi_resetn]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins v_tc_tx/s_axi_aresetn]
 # Pixel-side reset wiring.
@@ -575,8 +579,37 @@ create_bd_cell -type module -reference vsync_timestamp vsync_timestamp_0
 create_bd_cell -type module -reference synth_vsync_gen synth_vsync_gen_0
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK1]          [get_bd_pins synth_vsync_gen_0/clk]
 connect_bd_net [get_bd_pins rst_mem/peripheral_aresetn] [get_bd_pins synth_vsync_gen_0/aresetn]
-connect_bd_net [get_bd_pins synth_vsync_gen_0/vsync_out] \
+
+# Phase E1 Phase 7 — reference mux. synth_vsync_gen output goes through here
+# on its way to vsync_timestamp's ref_vsync_async input. axi_gpio_refsel's
+# 4-bit output port drives the mux's `ctrl` (sel + mask + reserved). Future
+# external reference inputs (Si5351 vsync, HDMI source vsync) wire into
+# ref_ext0/ref_ext1; tied low for now.
+create_bd_cell -type module -reference ref_mux ref_mux_0
+connect_bd_net [get_bd_pins synth_vsync_gen_0/vsync_out] [get_bd_pins ref_mux_0/ref_synth]
+
+# Tie unused ref inputs low until the corresponding hardware arrives.
+create_bd_cell -type ip -vlnv xilinx.com:ip:xlconstant ref_ext_tielow
+set_property -dict [list CONFIG.CONST_WIDTH {1} CONFIG.CONST_VAL {0}] [get_bd_cells ref_ext_tielow]
+connect_bd_net [get_bd_pins ref_ext_tielow/dout] [get_bd_pins ref_mux_0/ref_ext0]
+connect_bd_net [get_bd_pins ref_ext_tielow/dout] [get_bd_pins ref_mux_0/ref_ext1]
+
+# Mux output → vsync_timestamp's reference input.
+connect_bd_net [get_bd_pins ref_mux_0/ref_out] \
                [get_bd_pins vsync_timestamp_0/ref_vsync_async]
+
+# Output-only AXI GPIO carrying the mux's 4-bit ctrl bus on M05.
+create_bd_cell -type ip -vlnv xilinx.com:ip:axi_gpio axi_gpio_refsel
+set_property -dict [list \
+    CONFIG.C_GPIO_WIDTH    {4} \
+    CONFIG.C_ALL_OUTPUTS   {1} \
+    CONFIG.C_IS_DUAL       {0} \
+    CONFIG.C_INTERRUPT_PRESENT {0} \
+] [get_bd_cells axi_gpio_refsel]
+connect_bd_net [get_bd_pins axi_gpio_refsel/gpio_io_o] [get_bd_pins ref_mux_0/ctrl]
+connect_bd_intf_net [get_bd_intf_pins axi_ic_lite/M05_AXI] [get_bd_intf_pins axi_gpio_refsel/S_AXI]
+connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]            [get_bd_pins axi_gpio_refsel/s_axi_aclk]
+connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_gpio_refsel/s_axi_aresetn]
 
 # out_vsync_async ← v_tc_tx/vsync_out (parallel fan-out to the existing
 # axis_to_vid_io_0 and axi_sync_inputs_0 consumers).
