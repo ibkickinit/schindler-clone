@@ -97,7 +97,14 @@ Phase3_capture sessions still fire from residual typeahead, but they progress cl
 
 ## Step 5 — Reproducibility
 
-Not yet performed (single build at this point). The build is committed; Justin can re-implement with a different seed to verify WHS stability across runs.
+Re-implemented with `STEPS.PLACE_DESIGN.ARGS.DIRECTIVE = ExtraTimingOpt` (different placement strategy) and compared:
+
+| Build | Directive | WNS | WHS reported (with +0.050 uncert) | WHS intrinsic |
+|---|---|---|---|---|
+| 1 | Default | +0.361 ns | +0.019 ns | **+0.069 ns** |
+| 2 | ExtraTimingOpt | +0.338 ns | +0.008 ns | **+0.058 ns** |
+
+Spread: ~11 ps WHS across the two implementations. **Both clear the +0.050 ns industry threshold.** Per the spec's failure criterion ("wildly varying, e.g., one run +0.080, next +0.030"), this is convergent — confidence is high that future builds will continue to clear the floor.
 
 ## Pass criteria
 
