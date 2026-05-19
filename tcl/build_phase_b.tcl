@@ -64,6 +64,8 @@ add_files -norecurse [file join $project_root hdl axi_sync_inputs.v]
 add_files -norecurse [file join $project_root hdl vsync_timestamp.v]
 # Phase E1 Phase 2 — synthetic ~60 Hz reference (integer divider on FCLK_CLK1)
 add_files -norecurse [file join $project_root hdl synth_vsync_gen.v]
+# Phase E1 Phase 4 — MMCM psincdec rate actuator (Bresenham PSEN generator)
+add_files -norecurse [file join $project_root hdl mmcm_psincdec_actuator.v]
 # Coefficient hex files for $readmemh — Vivado adds them to source list so
 # they're visible from the OOC synth working directory.
 add_files -norecurse [file join $project_root hdl scaler_coeffs_h.hex]
@@ -140,12 +142,17 @@ puts "STAGE_OK: Zynq PS configured"
 # Hardcoded to 720p output. If we ever need to switch output resolution
 # at runtime, clk_wiz needs dynamic-reconfig wiring + firmware.
 create_bd_cell -type ip -vlnv xilinx.com:ip:clk_wiz clk_wiz_pixclk_out
+# Phase E1 Phase 4: CLKOUT1_USE_FINE_PS=true enables the MMCM dynamic
+# phase-shift port (psen / psincdec / psdone) on CLKOUT1. The mmcm_psincdec_
+# actuator drives these. Glitch-free rate adjustment, ±100s of ppm range.
 set_property -dict [list \
     CONFIG.PRIMITIVE {MMCM} \
     CONFIG.PRIM_IN_FREQ {100.000} \
     CONFIG.CLKOUT1_REQUESTED_OUT_FREQ {74.250} \
     CONFIG.USE_LOCKED {true} \
     CONFIG.USE_RESET {true} \
+    CONFIG.USE_DYN_PHASE_SHIFT {true} \
+    CONFIG.CLK_OUT1_USE_FINE_PS_GUI {true} \
 ] [get_bd_cells clk_wiz_pixclk_out]
 # clk_in1 ← dvi2rgb_0/PixelClk is wired AFTER dvi2rgb_0 is created
 # (search for "GENLOCK_WIRE" below).
@@ -420,9 +427,10 @@ connect_bd_net [get_bd_pins rst_pixclk_out/peripheral_reset] [get_bd_pins rgb2dv
 # AXI-Lite control path: PS GP0 → 1×2 Interconnect → VDMA, VTC
 # =============================================================================
 create_bd_cell -type ip -vlnv xilinx.com:ip:axi_interconnect axi_ic_lite
-# 4 master ports: VDMA, VTC, axi_gpio_0 (firmware-side vsync alignment),
-# vsync_timestamp (Phase E1 Phase 1 measurement instrument).
-set_property -dict [list CONFIG.NUM_SI {1} CONFIG.NUM_MI {4}] [get_bd_cells axi_ic_lite]
+# 5 master ports: VDMA, VTC, axi_gpio_0 (firmware-side vsync alignment),
+# vsync_timestamp (Phase 1 measurement instrument),
+# mmcm_psincdec_actuator (Phase 4 rate actuator).
+set_property -dict [list CONFIG.NUM_SI {1} CONFIG.NUM_MI {5}] [get_bd_cells axi_ic_lite]
 connect_bd_intf_net [get_bd_intf_pins zynq_ps/M_AXI_GP0]     [get_bd_intf_pins axi_ic_lite/S00_AXI]
 connect_bd_intf_net [get_bd_intf_pins axi_ic_lite/M00_AXI]   [get_bd_intf_pins axi_vdma_0/S_AXI_LITE]
 connect_bd_intf_net [get_bd_intf_pins axi_ic_lite/M01_AXI]   [get_bd_intf_pins v_tc_tx/ctrl]
@@ -433,6 +441,7 @@ connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/M00_A
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/M01_ACLK]
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/M02_ACLK]
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/M03_ACLK]
+connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/M04_ACLK]
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_vdma_0/s_axi_lite_aclk]
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins v_tc_tx/s_axi_aclk]
 connect_bd_net [get_bd_pins rst_axi/interconnect_aresetn] [get_bd_pins axi_ic_lite/ARESETN]
@@ -441,6 +450,7 @@ connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_li
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_lite/M01_ARESETN]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_lite/M02_ARESETN]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_lite/M03_ARESETN]
+connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_lite/M04_ARESETN]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_vdma_0/axi_resetn]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins v_tc_tx/s_axi_aresetn]
 # Pixel-side reset wiring.
@@ -578,6 +588,34 @@ connect_bd_intf_net [get_bd_intf_pins axi_ic_lite/M03_AXI] \
                     [get_bd_intf_pins vsync_timestamp_0/s_axi]
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]          [get_bd_pins vsync_timestamp_0/s_axi_aclk]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn] [get_bd_pins vsync_timestamp_0/s_axi_aresetn]
+
+# =============================================================================
+# Phase E1 Phase 4 — MMCM phase-shift rate actuator.
+#
+# Drives clk_wiz_pixclk_out's psen/psincdec ports via a Bresenham-style
+# accumulator. Writing a signed `phase_step` value via AXI-Lite produces a
+# continuous stream of PSEN pulses, each shifting the MMCM output phase by
+# ~1/56 of a VCO period. Cumulative phase walk = output rate offset, range
+# roughly ±100s of ppm depending on MMCM PSDONE latency. Glitch-free; no
+# MMCM reset cycle.
+# =============================================================================
+create_bd_cell -type module -reference mmcm_psincdec_actuator mmcm_psincdec_actuator_0
+
+# psen/psincdec → clk_wiz_pixclk_out MMCM. psdone returned by the IP.
+# psclk = FCLK_CLK0 (same as clk_in1 — keeps PSEN/PSINCDEC/PSDONE in one
+# clock domain, avoids CDC inside the actuator).
+connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]                  [get_bd_pins clk_wiz_pixclk_out/psclk]
+connect_bd_net [get_bd_pins mmcm_psincdec_actuator_0/psen]      [get_bd_pins clk_wiz_pixclk_out/psen]
+connect_bd_net [get_bd_pins mmcm_psincdec_actuator_0/psincdec]  [get_bd_pins clk_wiz_pixclk_out/psincdec]
+connect_bd_net [get_bd_pins clk_wiz_pixclk_out/psdone]          [get_bd_pins mmcm_psincdec_actuator_0/psdone]
+
+# AXI-Lite slave on M04.
+connect_bd_intf_net [get_bd_intf_pins axi_ic_lite/M04_AXI] \
+                    [get_bd_intf_pins mmcm_psincdec_actuator_0/s_axi]
+connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]          [get_bd_pins mmcm_psincdec_actuator_0/s_axi_aclk]
+connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn] [get_bd_pins mmcm_psincdec_actuator_0/s_axi_aresetn]
+# clk_wiz_pixclk_out's PSCLK port is the same as clk_in1 (FCLK_CLK0) — the
+# IP routes its psclk internally; no separate wire needed.
 
 # =============================================================================
 # Phase D iter-3n — ILA instrumentation on scaler_top output and axis_to_vid_io

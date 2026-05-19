@@ -385,16 +385,89 @@ static void cmd_drift(unsigned n)
     xil_printf("# phase3_capture done N=%u\r\n", n);
 }
 
+/* =========================================================================
+ * Phase E1 Phase 4 — MMCM psincdec rate actuator.
+ *
+ * The actuator HDL implements a Bresenham accumulator at FCLK_CLK0 (100 MHz):
+ * every cycle, accumulator += |phase_step|; on overflow, one PSEN pulse with
+ * PSINCDEC = sign(phase_step). Each PSEN pulse shifts the MMCM CLKOUT1 phase
+ * by ~1/56 of the VCO period (~15.04 ps at Fvco=1187.5 MHz). Stream of
+ * pulses produces an apparent rate offset on the output clock.
+ *
+ * Register map (matches hdl/mmcm_psincdec_actuator.v):
+ *   +0x00  phase_step (signed RW). 0 = no shifting.
+ *   +0x04  status (RO): bit0=psdone live, bit1=pulse_in_flight,
+ *                      bits[31:16]=pulse_count since reset
+ *
+ * Calibration:
+ *   ppm = (phase_step / 2^32) * Fclk * (1 / (56 * Fvco)) * 1e6
+ *       = phase_step * 100e6 / 2^32 / (56 * 1187.5e6) * 1e6
+ *       = phase_step * ~3.50e-7 ppm/step
+ *   ⇒ phase_step per +1 ppm ≈ 2,857,143  (coincidence with the Phase 2
+ *     divisor for FCLK_CLK1 — same arithmetic family.)
+ * Phase 5 will refine this number empirically via plant sweep.
+ * ========================================================================= */
+#if defined(XPAR_MMCM_PSINCDEC_ACTUATOR_0_BASEADDR)
+#  define ACT_BASEADDR XPAR_MMCM_PSINCDEC_ACTUATOR_0_BASEADDR
+#elif defined(XPAR_MMCM_PSINCDEC_ACTUATOR_0_S_AXI_BASEADDR)
+#  define ACT_BASEADDR XPAR_MMCM_PSINCDEC_ACTUATOR_0_S_AXI_BASEADDR
+#elif defined(XPAR_PHASE_B_BD_MMCM_PSINCDEC_ACTUATOR_0_BASEADDR)
+#  define ACT_BASEADDR XPAR_PHASE_B_BD_MMCM_PSINCDEC_ACTUATOR_0_BASEADDR
+#else
+#  error "mmcm_psincdec_actuator base address not found in xparameters.h"
+#endif
+
+#define ACT_PHASE_STEP  (ACT_BASEADDR + 0x00)
+#define ACT_STATUS      (ACT_BASEADDR + 0x04)
+
+/* Phase-step value that produces +1 ppm of output-clock rate offset. Derived
+ * from MMCM Fvco=1187.5 MHz (auto-config for 100→74.25 MHz) and Fclk=100 MHz.
+ * Phase 5 will calibrate this empirically. */
+#define ACT_STEP_PER_PPM   2857143
+
+static void cmd_nudge(s32 ppm)
+{
+    s32 step = ppm * ACT_STEP_PER_PPM;
+    Xil_Out32(ACT_PHASE_STEP, (u32)step);
+    u32 readback = Xil_In32(ACT_PHASE_STEP);
+    u32 status   = Xil_In32(ACT_STATUS);
+    xil_printf("\r\n[M] requested %d ppm  -> phase_step = %d (0x%08x)\r\n",
+               (int)ppm, (int)step, (unsigned)readback);
+    xil_printf("    status = 0x%08x  (psdone=%u pif=%u pulses=%u)\r\n",
+               (unsigned)status,
+               (unsigned)(status & 1),
+               (unsigned)((status >> 1) & 1),
+               (unsigned)((status >> 16) & 0xFFFF));
+}
+
+static int parse_signed(const char *s, s32 *out)
+{
+    int neg = 0;
+    s32 v = 0;
+    while (*s == ' ') ++s;
+    if (*s == '-') { neg = 1; ++s; }
+    else if (*s == '+') { ++s; }
+    if (*s < '0' || *s > '9') return 0;
+    while (*s >= '0' && *s <= '9') {
+        v = v * 10 + (*s - '0');
+        ++s;
+    }
+    *out = neg ? -v : v;
+    return 1;
+}
+
 static void cmd_help(void)
 {
     xil_printf("\r\nPhase E1 UART commands:\r\n"
-               "  q   query: counter, ts_ref, ts_out, edge counts\r\n"
-               "  p   phase: signed (ts_out - ts_ref) in ticks/ns\r\n"
-               "  c   Phase 2: capture 1000 ts_ref samples as CSV\r\n"
-               "  C   Phase 2: capture 100 ts_ref samples (quick jitter check)\r\n"
-               "  r   Phase 3: capture 3000 (ts_out, ts_ref) pairs for drift fit\r\n"
-               "  R   Phase 3: capture 300 pairs (quick drift sanity)\r\n"
-               "  ?   this help\r\n");
+               "  q             query: counter, ts_ref, ts_out, edge counts\r\n"
+               "  p             phase: signed (ts_out - ts_ref) in ticks/ns\r\n"
+               "  c             Phase 2: capture 1000 ts_ref samples as CSV\r\n"
+               "  C             Phase 2: capture 100 ts_ref samples (quick jitter)\r\n"
+               "  r             Phase 3: capture 3000 drift pairs (~60 s)\r\n"
+               "  R             Phase 3: capture 300 drift pairs (quick drift sanity)\r\n"
+               "  m <ppm>       Phase 4: nudge MMCM output by signed ppm (e.g. m +20)\r\n"
+               "  m0  (or M)    Phase 4: zero the nudge (return to nominal)\r\n"
+               "  ?             this help\r\n");
 }
 
 static void uart_poll_and_dispatch(void)
@@ -408,6 +481,33 @@ static void uart_poll_and_dispatch(void)
         case 'C':           cmd_capture(100);  break;
         case 'r':           cmd_drift(3000);   break;
         case 'R':           cmd_drift(300);    break;
+        case 'M':           cmd_nudge(0);      break;
+        case 'm': {
+            /* m <signed_ppm><newline> — read the argument synchronously
+             * since the telemetry loop is paused for the duration of
+             * subsequent commands anyway. ~1 s timeout on input. */
+            char buf[16];
+            unsigned bi = 0;
+            int saw_digit = 0;
+            int timeout_ticks = 100000000;  /* ~1 s at 100 MHz spin */
+            while (bi + 1 < sizeof(buf) && timeout_ticks > 0) {
+                int ch = uart_recv_nb();
+                if (ch < 0) { --timeout_ticks; continue; }
+                if (ch == '\r' || ch == '\n') break;
+                buf[bi++] = (char)ch;
+                if ((ch >= '0' && ch <= '9') || ch == '-' || ch == '+') saw_digit = 1;
+                /* Echo so the user sees what was typed. */
+                xil_printf("%c", ch);
+            }
+            buf[bi] = '\0';
+            s32 ppm;
+            if (saw_digit && parse_signed(buf, &ppm)) {
+                cmd_nudge(ppm);
+            } else {
+                xil_printf("\r\nUART: 'm <signed_ppm>' (e.g. 'm +20'). Got '%s'\r\n", buf);
+            }
+            break;
+        }
         case '?': case 'h': case 'H': cmd_help(); break;
         case '\r': case '\n': break;  /* silent on bare newline */
         default:
