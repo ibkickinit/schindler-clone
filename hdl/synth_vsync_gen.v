@@ -13,11 +13,21 @@
 // with DIVISOR=2,500,000, the period was a perfectly-stable 1,750,000 ticks
 // = 17.5 ms = 57.143 Hz, exactly what FCLK_CLK1=142.857 MHz / 2.5M predicts.
 //
-// We chose DIVISOR=2,857,143 to target ~50 Hz instead — to match the output
-// vsync (720p50 default at d71c994), so Phase 4–6's MMCM phase loop has a
-// ref-vs-output rate gap well inside its ±500 ppm pull range. Effective ref
-// rate = 142.857 MHz / 2,857,143 = 49.999999... Hz, sub-ppm offset from a
-// perfect 50 Hz.
+// We chose DIVISOR=2,857,143 to target exactly 50 Hz. Effective ref rate =
+// 142.857 MHz / 2,857,143 = 49.999999... Hz, sub-ppm offset from perfect 50.
+//
+// IMPORTANT (Phase E1.6 finding, 2026-05-19): fine-PS-enabled MMCM at integer
+// MULT cannot produce exactly 74.25 MHz from 100 MHz; closest is M=49/D=6/O=11
+// = 74.2424 MHz (-102 ppm). The +102 ppm "baseline" the Phase E1 loop tracks
+// is NOT a parasitic effect to be eliminated — it is *load-bearing*. The loop
+// pulls the MMCM output up to 50.000 Hz exactly so that Phase D's Dynamic
+// Genlock sees a clean 6:5 source(60Hz):output(50Hz) ratio. Without the loop
+// locked, output stays at 49.99490 Hz and the 1.20012:1 ratio drifts faster
+// than 3 framestores can absorb → catastrophic monitor tearing. Verified
+// bench 2026-05-19: with DIVISOR=2,857,434 (synth ref matched to MMCM rate,
+// "eliminating the baseline") the loop locks but the monitor stays corrupted;
+// reverting to 2,857,143 + loop-locked produces clean picture. Bottom line:
+// keep DIVISOR at 2,857,143; the loop's -94 ppm steady-state cmd is correct.
 //
 // Per ground-up plan §4 Phase 2 footnote: this synthetic reference and the
 // pixel-clock MMCM both descend from the TE0720's onboard ~33.333 MHz
@@ -36,7 +46,7 @@
 `timescale 1ns / 1ps
 
 module synth_vsync_gen #(
-    parameter integer DIVISOR = 2_857_143  // FCLK_CLK1 (142.857 MHz) / 50 Hz
+    parameter integer DIVISOR = 2_857_143  // FCLK_CLK1 / 50.000 Hz exact (Phase 7/8 value; matches monitor's expected vsync rate)
 )(
     input  wire clk,        // FCLK_CLK1, 150 MHz
     input  wire aresetn,    // active-low reset, sync to clk

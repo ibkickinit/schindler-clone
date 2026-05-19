@@ -147,6 +147,13 @@ create_bd_cell -type ip -vlnv xilinx.com:ip:clk_wiz clk_wiz_pixclk_out
 # Phase E1 Phase 4: CLKOUT1_USE_FINE_PS=true enables the MMCM dynamic
 # phase-shift port (psen / psincdec / psdone) on CLKOUT1. The mmcm_psincdec_
 # actuator drives these. Glitch-free rate adjustment, ±100s of ppm range.
+#
+# Phase E1.6 (2026-05-19): the auto-picked M=49/D=6/O=11 gives 74.2424 MHz
+# (-102 ppm vs nominal 74.25). This is the irreducible minimum for an
+# integer-MULT MMCM solver fed by 100 MHz FCLK_CLK0; fractional MULT is
+# disallowed when fine-PS is enabled, and M ≤ 64 in the IP. The +102 ppm
+# baseline observed Phase 4+ is the loop legitimately tracking this offset.
+# See tests/phase-e1/phase_e1p6_baseline_root_cause.md for the search.
 set_property -dict [list \
     CONFIG.PRIMITIVE {MMCM} \
     CONFIG.PRIM_IN_FREQ {100.000} \

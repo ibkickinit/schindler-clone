@@ -473,11 +473,11 @@ static void cmd_nudge(s32 ppm)
  * conditions. Cleaner tuning (e.g., gain scheduling around the operating
  * point, or a phase-jump initialization) is left for Phase E2. */
 #define INTEGRATOR_CLAMP_MILLI_PPM   500000    /* ±500 ppm — full MMCM pull range */
-/* Baseline-cancellation pre-load. Phase 5 measured a +102 ppm baseline; the
- * loop's steady-state cmd is approximately -baseline / plant_gain ≈ -94 ppm.
- * Preloading the integrator near this value avoids the long initial
- * saturation period while the integrator winds up from 0. */
-#define INTEGRATOR_PRELOAD_MILLI_PPM  -94000   /* -94 ppm */
+/* Baseline-cancellation pre-load. With synth_vsync_gen DIVISOR=2_857_143 (50
+ * Hz exact synth ref) and MMCM auto-picked at 49.99490 Hz natural, the loop's
+ * steady-state cmd is approximately -baseline / plant_gain ≈ -94 ppm. Preload
+ * near this value to avoid the long initial saturation phase from acquire. */
+#define INTEGRATOR_PRELOAD_MILLI_PPM  -94000   /* -94 ppm (Phase 7/8 value) */
 #define LOCK_THRESHOLD_TICKS  TICKS_PER_LINE_720P50
 #define UNLOCK_THRESHOLD_TICKS  (5 * TICKS_PER_LINE_720P50)
 #define LOCK_FRAMES                      60
