@@ -486,28 +486,96 @@ static void cmd_nudge(s32 ppm)
  * ========================================================================= */
 #define TICKS_PER_LINE_720P50          2667    /* 1980 px / 74.25 MHz @ 100 MHz ctr */
 #define REF_PERIOD_TICKS            2000000    /* synth-ref period @ 100 MHz ctr */
-/* PI gains. Anti-windup freezes the integrator while cmd is saturated, so
- * Ki can be larger without paying a wind-up penalty during the initial
- * slew from a half-period phase offset. */
-#define KP_MILLI_PPM_PER_LINE         10000    /* 10.0 ppm/line */
-#define KI_MILLI_PPM_PER_LINE          1000    /* 1.0 ppm/line/frame */
-/* NOTE: these gains were arrived at empirically. The plant is asymmetric
- * (psincdec rate is ~2× slower in the dec direction than inc), which
- * complicates the linearized tuning math. With anti-windup + integrator
- * preload, the loop acquires within ~30 s from a worst-case half-period
- * initial phase offset, and stays within ±2 lines residual under steady
- * conditions. Cleaner tuning (e.g., gain scheduling around the operating
- * point, or a phase-jump initialization) is left for Phase E2. */
+
+/* Phase E2.2 — three-mode lock (SNAP / SMOOTH / FILM). Inspired by the
+ * RT4K's Frame Lock / Gen Lock / Triple Buffer triplet plus the broader
+ * pro-FRC pattern. The PI gains and acquire thresholds shift per mode so
+ * the same loop can be tuned for different downstream priorities:
+ *
+ *   SNAP   — fastest acquire + tightest tracking. Suited for video games
+ *            and interactive sources where input-to-display latency matters
+ *            more than visible step-changes during lock. High Kp + Ki.
+ *
+ *   SMOOTH — the Phase 6/7 defaults. Balanced acquire + steady-state.
+ *            Suitable for general-purpose desktop / media use.
+ *
+ *   FILM   — slowest acquire + lowest steady-state command jitter. Suited
+ *            for 24p / cinema content where smooth motion is paramount and
+ *            any per-frame actuator step is potentially visible. Low Kp,
+ *            very low Ki, longer in-lock window before LOCKED is declared.
+ *
+ * Kp / Ki are in milli-ppm per line per (frame for Ki). Empirically the
+ * SMOOTH defaults of Kp=10000, Ki=1000 are the Phase 6 calibration; SNAP
+ * and FILM are scaled relative to that under the assumption the asymmetric
+ * MMCM plant's dec-direction slowness is the binding constraint (so the
+ * effective bandwidth is bounded above by ~3× SMOOTH for stability).
+ *
+ * Per-mode INTEGRATOR_CLAMP is kept fixed at ±500 ppm (full MMCM pull range)
+ * — narrowing the clamp in SNAP would just rate-limit it during a large
+ * initial step, which is the opposite of what SNAP wants. */
+
+typedef struct {
+    const char *name;
+    s32         kp_mppm_per_line;
+    s32         ki_mppm_per_line;
+    u32         lock_threshold_ticks;       /* per-frame |err| below this → in-lock */
+    u32         unlock_threshold_ticks;     /* per-frame |err| above this → unlock candidate */
+    u32         lock_frames;                /* consecutive in-lock frames → LOCKED */
+    u32         unlock_frames;              /* consecutive unlock-candidate frames → ACQUIRING */
+} lock_mode_t;
+
+static const lock_mode_t MODE_SNAP = {
+    "SNAP",
+    30000,    /* Kp = 30.0 ppm/line — aggressive proportional response */
+    5000,     /* Ki = 5.0 ppm/line/frame — fast integrator wind-up */
+    2667,     /* lock window = 1 line */
+    13335,    /* unlock window = 5 lines */
+    30,       /* declare LOCKED after 30 consecutive in-lock frames (~0.6 sec @ 50 Hz) */
+    60        /* require 60 unlock-candidate frames before falling back */
+};
+
+static const lock_mode_t MODE_SMOOTH = {
+    "SMOOTH",
+    10000,    /* Kp = 10.0 ppm/line (Phase 6 calibration) */
+    1000,     /* Ki = 1.0 ppm/line/frame */
+    2667,     /* lock window = 1 line */
+    13335,    /* unlock window = 5 lines */
+    60,       /* Phase 6 default */
+    60
+};
+
+static const lock_mode_t MODE_FILM = {
+    "FILM",
+    3000,     /* Kp = 3.0 ppm/line — minimum visible step change */
+    300,      /* Ki = 0.3 ppm/line/frame — slow integrator */
+    1333,     /* lock window = 0.5 line (tighter — film content is sensitive) */
+    13335,    /* unlock window = 5 lines */
+    150,      /* declare LOCKED after 150 frames (~3 sec @ 50 Hz) — patient */
+    60
+};
+
+/* Active mode. Default = SMOOTH (Phase 6/7 baseline). */
+static const lock_mode_t *g_active_mode = &MODE_SMOOTH;
+
+/* Convenience macros that resolve to the active mode's fields. The existing
+ * loop_tick code references these by their original names; this is a
+ * drop-in indirection. */
+#define KP_MILLI_PPM_PER_LINE     (g_active_mode->kp_mppm_per_line)
+#define KI_MILLI_PPM_PER_LINE     (g_active_mode->ki_mppm_per_line)
+#define LOCK_THRESHOLD_TICKS      ((s32)g_active_mode->lock_threshold_ticks)
+#define UNLOCK_THRESHOLD_TICKS    ((s32)g_active_mode->unlock_threshold_ticks)
+#define LOCK_FRAMES               (g_active_mode->lock_frames)
+#define UNLOCK_FRAMES             (g_active_mode->unlock_frames)
+
 #define INTEGRATOR_CLAMP_MILLI_PPM   500000    /* ±500 ppm — full MMCM pull range */
 /* Baseline-cancellation pre-load. With synth_vsync_gen DIVISOR=2_857_143 (50
  * Hz exact synth ref) and MMCM auto-picked at 49.99490 Hz natural, the loop's
  * steady-state cmd is approximately -baseline / plant_gain ≈ -94 ppm. Preload
  * near this value to avoid the long initial saturation phase from acquire. */
 #define INTEGRATOR_PRELOAD_MILLI_PPM  -94000   /* -94 ppm (Phase 7/8 value) */
-#define LOCK_THRESHOLD_TICKS  TICKS_PER_LINE_720P50
-#define UNLOCK_THRESHOLD_TICKS  (5 * TICKS_PER_LINE_720P50)
-#define LOCK_FRAMES                      60
-#define UNLOCK_FRAMES                    60
+/* LOCK_THRESHOLD_TICKS / UNLOCK_THRESHOLD_TICKS / LOCK_FRAMES /
+ * UNLOCK_FRAMES are now per-mode (see lock_mode_t / MODE_SNAP/SMOOTH/FILM
+ * structs above). Macros indirect through g_active_mode. */
 #define STATS_PERIOD_FRAMES              50    /* ~1 sec at 50 Hz */
 
 typedef enum {
@@ -594,13 +662,50 @@ static void cmd_lock_enable(void)
     /* Sanity-check Phase 2 ref is alive. */
     dummy_ts = vts_read_ts(VTS_TS_REF_LO, VTS_TS_REF_HI, VTS_REF_COUNT, &dummy_rc);
     (void)dummy_ts;
-    xil_printf("\r\n[L] Phase 6 loop ENABLED  (ts_ref_count=%u, baseline ~102 ppm)\r\n"
+    xil_printf("\r\n[L] Phase 6 loop ENABLED  (ts_ref_count=%u, mode=%s)\r\n"
                "    Kp_milli=%d ppm/line  Ki_milli=%d ppm/line/frame\r\n"
-               "    integrator_clamp_milli=%d  lock_frames=%d  lock_thresh_ticks=%d\r\n",
+               "    integrator_clamp_milli=%d  lock_frames=%u  lock_thresh_ticks=%d\r\n",
                (unsigned)dummy_rc,
+               g_active_mode->name,
                (int)KP_MILLI_PPM_PER_LINE, (int)KI_MILLI_PPM_PER_LINE,
-               (int)INTEGRATOR_CLAMP_MILLI_PPM, (int)LOCK_FRAMES,
+               (int)INTEGRATOR_CLAMP_MILLI_PPM, (unsigned)LOCK_FRAMES,
                (int)LOCK_THRESHOLD_TICKS);
+}
+
+/* Phase E2.2 — runtime mode selection. Switching mode resets the in-/out-
+ * lock frame counters so the new mode's lock_frames count starts fresh,
+ * but leaves the integrator value alone (the new mode's gains apply
+ * starting on the next loop tick). Loop state stays whatever it was —
+ * if currently LOCKED, the loop continues running with the new gains. */
+static void cmd_lock_mode(const char *arg)
+{
+    while (*arg == ' ') ++arg;
+    const lock_mode_t *new_mode = NULL;
+    if (arg[0] == 's' || arg[0] == 'S') {
+        if (arg[1] == 'm' || arg[1] == 'M') new_mode = &MODE_SMOOTH;
+        else                                new_mode = &MODE_SNAP;
+    } else if (arg[0] == 'f' || arg[0] == 'F') {
+        new_mode = &MODE_FILM;
+    }
+    if (new_mode == NULL) {
+        xil_printf("\r\n[O] usage: o <snap|smooth|film>. Got '%s'.\r\n"
+                   "     Active: %s (Kp=%d, Ki=%d, lock_frames=%u)\r\n",
+                   arg, g_active_mode->name,
+                   (int)KP_MILLI_PPM_PER_LINE, (int)KI_MILLI_PPM_PER_LINE,
+                   (unsigned)LOCK_FRAMES);
+        return;
+    }
+    g_active_mode = new_mode;
+    g_frames_in_lock_range  = 0;
+    g_frames_out_lock_range = 0;
+    xil_printf("\r\n[O] lock mode = %s  (Kp=%d.%03d, Ki=%d.%03d, lock_frames=%u, lock_thresh=%d t)\r\n",
+               g_active_mode->name,
+               g_active_mode->kp_mppm_per_line / 1000,
+               g_active_mode->kp_mppm_per_line % 1000,
+               g_active_mode->ki_mppm_per_line / 1000,
+               g_active_mode->ki_mppm_per_line % 1000,
+               (unsigned)g_active_mode->lock_frames,
+               (int)g_active_mode->lock_threshold_ticks);
 }
 
 static void cmd_unlock(void)
@@ -976,7 +1081,8 @@ static void loop_tick(void)
         /* bias_accum/slip_offset are s64 — print only the low 32 bits.
          * For the +1000 ppm validation case the accumulator never exceeds
          * a few minutes' worth of ticks (well under 2^31). */
-        xil_printf("LOCK state=%s err=%d/%d/%d cmd=%d int=%d locked=%u unlocks=%u ref_idle=%d bias=%d slips=%u sat=%d acc=%d slip_off=%d\r\n",
+        xil_printf("LOCK mode=%s state=%s err=%d/%d/%d cmd=%d int=%d locked=%u unlocks=%u ref_idle=%d bias=%d slips=%u sat=%d acc=%d slip_off=%d\r\n",
+                   g_active_mode->name,
                    state_label(g_lock_state),
                    (int)mean, (int)g_stat_err_min, (int)g_stat_err_max,
                    (int)cmd_mppm, (int)g_integrator_mppm,
@@ -1042,6 +1148,7 @@ static void cmd_help(void)
                "  r <free|sync|src> Phase 7 + E2.1: select reference source\r\n"
                "  s             Phase 7: toggle ref-mask (simulate ref loss)\r\n"
                "  n <M> <N>     E2.1: src_vsync_divider ratio (output = src×M/N)\r\n"
+               "  o <snap|smooth|film> E2.2: select lock mode (default SMOOTH)\r\n"
                "  B <ppm>       Phase 8: inject ref-rate bias (saturation/slip test)\r\n"
                "  ?             this help\r\n");
 }
@@ -1113,6 +1220,22 @@ static void uart_poll_and_dispatch(void)
             }
             buf[bi] = '\0';
             cmd_srcdiv_set(buf);
+            break;
+        }
+        case 'o': case 'O': {
+            /* o <snap|smooth|film>  — E2.2 lock mode selection. */
+            char buf[16];
+            unsigned bi = 0;
+            int timeout_ticks = 100000000;
+            while (bi + 1 < sizeof(buf) && timeout_ticks > 0) {
+                int ch = uart_recv_nb();
+                if (ch < 0) { --timeout_ticks; continue; }
+                if (ch == '\r' || ch == '\n') break;
+                buf[bi++] = (char)ch;
+                xil_printf("%c", ch);
+            }
+            buf[bi] = '\0';
+            cmd_lock_mode(buf);
             break;
         }
         case 'm': {
