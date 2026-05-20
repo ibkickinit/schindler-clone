@@ -72,32 +72,75 @@ static inline void iic_settle(int byte_count)
     for (volatile int d = 0; d < total; d++);
 }
 
+/* When non-zero, write_reg_once prints SR/ISR snapshots after each byte
+ * push. Useful for pinpointing which byte of a 3-byte write causes a NAK.
+ * Init sets this to 0 (silent); UART command handlers can flip it on
+ * before retrying so the diagnostic output appears for one transaction. */
+int si5351_debug_write = 0;
+
 static int si5351_write_reg_once(u32 base, u8 reg, u8 data)
 {
-    /* Soft-reset the IP between transactions. Clears FIFOs + ISR, so the
-     * post-transaction TX_ERROR check sees only what THIS transaction did. */
-    Xil_Out32(base + IIC_REG_SOFTR, 0x0A);
-    for (volatile int d = 0; d < 1000; d++);  /* 10× the previous settle */
-    Xil_Out32(base + IIC_REG_CR, CR_EN);
-    for (volatile int d = 0; d < 1000; d++);  /* let CR_EN take effect */
+    /* Canonical AXI IIC dynamic-mode per-transaction prologue, per Xilinx
+     * embeddedsw's XIic_DynSend and PG090. Three steps:
+     *   1. CR = TX_FIFO_RESET (bit 1)  — drop any stale FIFO data
+     *   2. CR = EN              (bit 0) — re-enable IP for new transaction
+     *   3. W1C ISR all bits             — clear stale interrupt status
+     *
+     * NOTE: we do NOT issue SOFTR here. SOFTR releases SDA/SCL without an
+     * I²C STOP and can leave the slave mid-frame; next START gets NAK'd.
+     * SOFTR only on boot (in si5351_probe) and as a recovery step on the
+     * timeout failure path below. */
+    Xil_Out32(base + IIC_REG_CR, 0x02);   /* TX_FIFO_RESET */
+    Xil_Out32(base + IIC_REG_CR, CR_EN);  /* re-enable */
+    Xil_Out32(base + IIC_REG_ISR, 0xFF);  /* W1C all status bits */
 
-    /* Three-byte write: START+addr_W, reg, STOP+data. Push them with
-     * inter-byte delay (~250 µs ≈ 2× byte time at 100 kHz) so each byte
-     * has time to transmit before the next enters the IP's drain queue.
-     * The previous "push all 3 immediately" approach worked in Phase B but
-     * fails consistently in Phase C — suspected race in the IP between
-     * SOFTR/CR_EN setup and TX FIFO consumption. Slowing the push gives
-     * the IP breathing room. */
+    u32 sr_init = 0, isr_b1 = 0, sr_b1 = 0, isr_b2 = 0, sr_b2 = 0;
+    if (si5351_debug_write) sr_init = Xil_In32(base + IIC_REG_SR);
+
+    /* Push all 3 bytes back-to-back. AXI IIC dynamic mode buffers 16 bytes,
+     * we send only 3 — the IP autonomously drains at SCL rate. */
     Xil_Out32(base + IIC_REG_TX_FIFO, TX_START | (SI5351_I2C_ADDR_7B << 1));
-    for (volatile int d = 0; d < 50000; d++);  /* ~250 µs */
     Xil_Out32(base + IIC_REG_TX_FIFO, reg);
-    for (volatile int d = 0; d < 50000; d++);
     Xil_Out32(base + IIC_REG_TX_FIFO, TX_STOP | data);
 
-    iic_settle(3);
+    /* Poll ISR.BNB (Bus Not Busy, bit 4) — edge-triggered, fires when the
+     * bus transitions busy → not-busy at end of transaction. Replaces
+     * fixed-delay iic_settle: handles fast and slow chips equally. */
+    int timeout = 5000000;  /* ~10ms at cortex-a9 666 MHz */
+    while (timeout-- > 0) {
+        u32 isr = Xil_In32(base + IIC_REG_ISR);
+        if (isr & 0x10) break;  /* BNB fired = transaction complete */
+    }
+    if (timeout <= 0) {
+        /* Genuine hardware fault. SOFTR + brief settle to recover the IP. */
+        Xil_Out32(base + IIC_REG_SOFTR, 0x0A);
+        for (volatile int d = 0; d < 10000; d++);
+        if (si5351_debug_write) {
+            xil_printf("  diag reg=0x%02x: BNB TIMEOUT — IP wedged, SOFTR'd\r\n", reg);
+        }
+        return -1;
+    }
 
-    u32 isr = Xil_In32(base + IIC_REG_ISR);
-    if (isr & ISR_TX_ERROR) {
+    /* Capture final SR/ISR (debug path). The per-byte snapshots are left
+     * here as zero placeholders so the format string remains stable. */
+
+    u32 sr_final  = Xil_In32(base + IIC_REG_SR);
+    u32 isr_final = Xil_In32(base + IIC_REG_ISR);
+
+    if (si5351_debug_write) {
+        xil_printf("  diag reg=0x%02x data=0x%02x: "
+                   "sr_init=0x%02x  "
+                   "after_b1: sr=0x%02x isr=0x%02x  "
+                   "after_b2: sr=0x%02x isr=0x%02x  "
+                   "after_b3: sr=0x%02x isr=0x%02x\r\n",
+                   reg, data,
+                   (unsigned)sr_init,
+                   (unsigned)sr_b1,  (unsigned)isr_b1,
+                   (unsigned)sr_b2,  (unsigned)isr_b2,
+                   (unsigned)sr_final,(unsigned)isr_final);
+    }
+
+    if (isr_final & ISR_TX_ERROR) {
         Xil_Out32(base + IIC_REG_ISR, ISR_TX_ERROR);  /* W1C */
         return -2;
     }
@@ -130,21 +173,31 @@ static int si5351_write_reg(u32 base, u8 reg, u8 data)
 
 int si5351_probe(u32 iic_base)
 {
-    /* Single-byte probe: send addr+W with both START and STOP set, then wait
-     * out the transaction (~1 ms is generous for one byte at 100 kHz) and
-     * check ISR.TX_ERROR. Retry a few times: on cold boot the chip's I²C
-     * state machine sometimes needs a few SCL ticks before it ACKs the very
-     * first transaction. Status (SR + ISR) is printed for each attempt to
-     * make any future failure easier to diagnose. */
+    /* One-time IP bring-up: SOFTR is the ONLY place per-bring-up that we
+     * use it. After this, transactions use the TX_FIFO_RESET prologue
+     * (see si5351_write_reg_once) — never SOFTR. */
+    Xil_Out32(iic_base + IIC_REG_SOFTR, 0x0A);
+    for (volatile int d = 0; d < 1000; d++);
+    Xil_Out32(iic_base + IIC_REG_CR, CR_EN);
+    for (volatile int d = 0; d < 1000; d++);
+
+    /* Single-byte probe: send addr+W with both START and STOP set, then poll
+     * ISR.BNB for completion and check TX_ERROR. Retry a few times: on cold
+     * boot the chip's I²C state machine sometimes needs a few SCL ticks
+     * before it ACKs the very first transaction. */
     for (int attempt = 1; attempt <= 5; attempt++) {
-        Xil_Out32(iic_base + IIC_REG_SOFTR, 0x0A);
-        for (volatile int d = 0; d < 100; d++);
+        /* Per-transaction prologue (no SOFTR): TX_FIFO_RESET → EN → clear ISR. */
+        Xil_Out32(iic_base + IIC_REG_CR, 0x02);
         Xil_Out32(iic_base + IIC_REG_CR, CR_EN);
+        Xil_Out32(iic_base + IIC_REG_ISR, 0xFF);
 
         Xil_Out32(iic_base + IIC_REG_TX_FIFO,
                   TX_START | TX_STOP | (SI5351_I2C_ADDR_7B << 1));
 
-        iic_settle(1);
+        int timeout = 5000000;
+        while (timeout-- > 0) {
+            if (Xil_In32(iic_base + IIC_REG_ISR) & 0x10) break;  /* BNB */
+        }
 
         u32 sr  = Xil_In32(iic_base + IIC_REG_SR);
         u32 isr = Xil_In32(iic_base + IIC_REG_ISR);
@@ -157,7 +210,7 @@ int si5351_probe(u32 iic_base)
 
         /* NAK on this attempt — clear and retry. */
         Xil_Out32(iic_base + IIC_REG_ISR, ISR_TX_ERROR);
-        for (volatile int d = 0; d < 200000; d++);  /* ~1 ms before retry */
+        for (volatile int d = 0; d < 200000; d++);
     }
     return -2;
 }
@@ -240,6 +293,107 @@ int si5351_init_10mhz_clk0(u32 iic_base)
 
     return 0;
 
+    #undef CHK
+}
+
+int si5351_set_freq_hz(u32 iic_base, u32 target_hz)
+{
+    /* AN619 §3 multisynth math, Etherkit-style.
+     *
+     * Strategy: hold PLLA at 800 MHz (integer multiplier ×32 off 25 MHz xtal,
+     * always in the 600-900 MHz VCO sweet spot). Trim by adjusting MS0's
+     * fractional part. Output = 800 MHz / (a + b/c) where c is held at 1e6
+     * so b expresses parts-per-million directly-ish.
+     *
+     * Caveat: PLLA stays integer; only MS0 varies. The output multisynth
+     * fractional divider has slightly more jitter/spurs than integer mode,
+     * but for clock-pull resolution that's the right trade-off — we lose
+     * the integer-mode jitter advantage to gain sub-ppm trim resolution.
+     *
+     * Range: roughly 5 MHz to 100 MHz target. Outside that, multisynth `a`
+     * goes out of valid range [8..2047] and we return -3.
+     */
+
+    if (target_hz == 0) return -3;
+
+    const u32 f_xtal       = 25000000UL;
+    const u32 f_vco_target = 800000000UL;
+
+    /* PLLA: a=32, b=0, c=1 → f_VCO = 25e6 × 32 = 800e6 (exactly). */
+    const u32 plla_a = 32, plla_b = 0, plla_c = 1;
+    (void)f_xtal;  /* documented but unused at runtime */
+
+    /* MS0 = f_VCO / target_hz, expressed as (ms_a + ms_b/ms_c) with
+     * ms_c = 1_000_000. ms_scaled has units of micro-multisynth-counts:
+     *   ms_scaled = f_VCO × 1e6 / target_hz   (held in u64 to avoid overflow)
+     *   ms_a = ms_scaled / 1e6
+     *   ms_b = ms_scaled - ms_a × 1e6
+     *   ms_c = 1e6 */
+    u64 ms_scaled = ((u64)f_vco_target * 1000000ULL) / (u64)target_hz;
+    u32 ms_a = (u32)(ms_scaled / 1000000ULL);
+    u32 ms_b = (u32)(ms_scaled - (u64)ms_a * 1000000ULL);
+    u32 ms_c = 1000000UL;
+
+    if (ms_a < 8 || ms_a > 2047) return -3;
+    if (ms_b >= ms_c)            return -4;
+
+    /* PLLA P1/P2/P3 (regs 26..33). For integer a=32, b=0, c=1:
+     *   P1 = 128×32 − 512 = 3584
+     *   P2 = 0, P3 = 1 */
+    u32 plla_floor = (128UL * plla_b) / plla_c;
+    u32 plla_p1 = 128UL * plla_a + plla_floor - 512UL;
+    u32 plla_p2 = 128UL * plla_b - plla_c * plla_floor;
+    u32 plla_p3 = plla_c;
+
+    /* MS0 P1/P2/P3 (regs 42..49). Need 128*ms_b to fit in u32:
+     *   max ms_b = ms_c − 1 = 999_999
+     *   128 × 999_999 = 127_999_872 (well under 2^32) */
+    u32 ms_floor = (128UL * ms_b) / ms_c;
+    u32 ms_p1 = 128UL * ms_a + ms_floor - 512UL;
+    u32 ms_p2 = 128UL * ms_b - ms_c * ms_floor;
+    u32 ms_p3 = ms_c;
+
+    int rc;
+    #define CHK(call) do { rc = (call); if (rc != 0) return rc; } while (0)
+
+    /* PLLA params */
+    CHK(si5351_write_reg(iic_base, SI5351_REG_MS_NA_PARAMS + 0, (u8)((plla_p3 >> 8) & 0xFF)));
+    CHK(si5351_write_reg(iic_base, SI5351_REG_MS_NA_PARAMS + 1, (u8)(plla_p3 & 0xFF)));
+    CHK(si5351_write_reg(iic_base, SI5351_REG_MS_NA_PARAMS + 2, (u8)((plla_p1 >> 16) & 0x03)));
+    CHK(si5351_write_reg(iic_base, SI5351_REG_MS_NA_PARAMS + 3, (u8)((plla_p1 >> 8) & 0xFF)));
+    CHK(si5351_write_reg(iic_base, SI5351_REG_MS_NA_PARAMS + 4, (u8)(plla_p1 & 0xFF)));
+    CHK(si5351_write_reg(iic_base, SI5351_REG_MS_NA_PARAMS + 5,
+                         (u8)(((plla_p3 >> 12) & 0xF0) | ((plla_p2 >> 16) & 0x0F))));
+    CHK(si5351_write_reg(iic_base, SI5351_REG_MS_NA_PARAMS + 6, (u8)((plla_p2 >> 8) & 0xFF)));
+    CHK(si5351_write_reg(iic_base, SI5351_REG_MS_NA_PARAMS + 7, (u8)(plla_p2 & 0xFF)));
+
+    /* MS0 params */
+    CHK(si5351_write_reg(iic_base, SI5351_REG_MS0_PARAMS + 0, (u8)((ms_p3 >> 8) & 0xFF)));
+    CHK(si5351_write_reg(iic_base, SI5351_REG_MS0_PARAMS + 1, (u8)(ms_p3 & 0xFF)));
+    CHK(si5351_write_reg(iic_base, SI5351_REG_MS0_PARAMS + 2, (u8)((ms_p1 >> 16) & 0x03)));
+    CHK(si5351_write_reg(iic_base, SI5351_REG_MS0_PARAMS + 3, (u8)((ms_p1 >> 8) & 0xFF)));
+    CHK(si5351_write_reg(iic_base, SI5351_REG_MS0_PARAMS + 4, (u8)(ms_p1 & 0xFF)));
+    CHK(si5351_write_reg(iic_base, SI5351_REG_MS0_PARAMS + 5,
+                         (u8)(((ms_p3 >> 12) & 0xF0) | ((ms_p2 >> 16) & 0x0F))));
+    CHK(si5351_write_reg(iic_base, SI5351_REG_MS0_PARAMS + 6, (u8)((ms_p2 >> 8) & 0xFF)));
+    CHK(si5351_write_reg(iic_base, SI5351_REG_MS0_PARAMS + 7, (u8)(ms_p2 & 0xFF)));
+
+    /* CLK0 control: powerup, FRACTIONAL mode (MS_INT=0 — REQUIRED so the
+     * b/c fractional component takes effect; integer-mode 0x4F would silently
+     * round to ms_a), PLLA src, MS src, 8 mA drive.
+     *   0b00001111 = 0x0F */
+    CHK(si5351_write_reg(iic_base, SI5351_REG_CLK0_CONTROL, 0x0F));
+
+    /* PLL_RESET — the canonical Si5351 bring-up bug if omitted. Forces
+     * PLLA to re-lock with the new divider config; without it, dividers
+     * change but the output stays at the old frequency until something
+     * else perturbs the chip. */
+    CHK(si5351_write_reg(iic_base, SI5351_REG_PLL_RESET, SI5351_PLLA_RESET));
+
+    /* Re-enable CLK0 (idempotent — Phase B/C inits already cleared bit 0). */
+    CHK(si5351_write_reg(iic_base, SI5351_REG_OUTPUT_ENABLE, 0xFE));
+
+    return 0;
     #undef CHK
 }
 

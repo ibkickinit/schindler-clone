@@ -15,6 +15,7 @@
  */
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include "xil_printf.h"
 #include "xil_cache.h"
@@ -894,15 +895,78 @@ int main(void)
         while (1) { for (volatile int d = 0; d < 200000000; d++); }
     }
     xil_printf("Si5351 init OK — CLK0 should now be at 25.000 MHz.\r\n");
-    xil_printf("Phase C check: LD3 should light if clk_wiz_si5351 PLL locks.\r\n\r\n");
+    xil_printf("Phase D ready. UART commands:\r\n");
+    xil_printf("  f <ppm>  : set Si5351 CLK0 to (25 MHz + ppm offset)\r\n");
+    xil_printf("             e.g.  f +50    f -50    f 0    f +1000\r\n");
+    xil_printf("  i        : print last set frequency\r\n");
+    xil_printf("  ?        : this help\r\n\r\n");
 
-    /* Heartbeat loop. Nothing to do but print so the user knows firmware
-     * is alive and didn't crash post-init. */
-    int beat = 0;
+    /* ===========================================================
+     * UART command poll loop (Phase D).
+     *
+     * Non-blocking RX from PS UART_1 (Zybo's USB-UART, 115200 8N1).
+     * Lines are accumulated into cmd_buf and executed on CR/LF.
+     * =========================================================== */
+
+    #define UART1_BASE          XPAR_PS7_UART_1_BASEADDR
+    #define UART_SR_OFFSET      0x002C
+    #define UART_FIFO_OFFSET    0x0030
+    #define UART_SR_RX_EMPTY    0x00000002U
+
+    char cmd_buf[64];
+    int  cmd_len = 0;
+    s32  last_ppm = 0;
+
     while (1) {
-        for (volatile int d = 0; d < 200000000; d++);  /* ~1 s */
-        beat++;
-        xil_printf("alive %d\r\n", beat);
+        /* Drain any available RX bytes (FIFO holds 64 bytes). */
+        while (!(Xil_In32(UART1_BASE + UART_SR_OFFSET) & UART_SR_RX_EMPTY)) {
+            char c = (char)(Xil_In32(UART1_BASE + UART_FIFO_OFFSET) & 0xFF);
+
+            if (c == '\r' || c == '\n') {
+                if (cmd_len > 0) {
+                    cmd_buf[cmd_len] = 0;
+                    /* Echo so user sees what they typed. */
+                    xil_printf("\r\n> %s\r\n", cmd_buf);
+
+                    if (cmd_buf[0] == 'f' && cmd_buf[1] == ' ') {
+                        extern int si5351_debug_write;
+                        si5351_debug_write = 1;  /* one-shot diagnostic */
+                        s32 ppm = (s32)atoi(&cmd_buf[2]);
+                        /* target_hz = 25_000_000 + 25 × ppm. At 25 MHz, 1 ppm = 25 Hz exactly.
+                         * Use signed-aware math then cast: target stays positive in our test range. */
+                        s32 delta = ppm * 25;
+                        u32 target_hz = (u32)((s32)25000000 + delta);
+                        xil_printf("=== diag: si5351_set_freq_hz(%u) ===\r\n", (unsigned)target_hz);
+                        int rc = si5351_set_freq_hz(IIC_ADV7393_BASE, target_hz);
+                        si5351_debug_write = 0;
+                        if (rc == 0) {
+                            xil_printf("OK: CLK0 = %u Hz (ppm offset = %d)\r\n",
+                                       (unsigned)target_hz, (int)ppm);
+                            last_ppm = ppm;
+                        } else {
+                            xil_printf("FAIL: si5351_set_freq_hz returned %d\r\n", rc);
+                        }
+                    } else if (cmd_buf[0] == 'i') {
+                        xil_printf("last ppm = %d  (target = %u Hz)\r\n",
+                                   (int)last_ppm, (unsigned)((s32)25000000 + last_ppm * 25));
+                    } else if (cmd_buf[0] == '?') {
+                        xil_printf("commands:\r\n"
+                                   "  f <ppm>  : set Si5351 CLK0 freq offset\r\n"
+                                   "  i        : info\r\n"
+                                   "  ?        : help\r\n");
+                    } else {
+                        xil_printf("unknown command: '%s'\r\n", cmd_buf);
+                    }
+                }
+                cmd_len = 0;
+            } else if (cmd_len < (int)sizeof(cmd_buf) - 1) {
+                cmd_buf[cmd_len++] = c;
+            }
+            /* else: overflow — silently drop until newline */
+        }
+
+        /* Brief idle so we don't spin at full CPU; ~1 ms */
+        for (volatile int d = 0; d < 200000; d++);
     }
     /* unreachable */
     adv7393_probe();

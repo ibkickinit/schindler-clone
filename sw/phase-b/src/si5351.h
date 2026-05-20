@@ -31,6 +31,21 @@ int si5351_probe(u32 iic_base);
  *   ACKs. Useful when the chip's expected address (0x60) is unreachable. */
 void si5351_scan_bus(u32 iic_base);
 
+/* Set CLK0 to an arbitrary frequency between roughly 5 MHz and 100 MHz.
+ *
+ * Recomputes PLLA and MS0 register values from scratch using AN619 §3 math
+ * (the "Etherkit set_freq" pattern). Picks a PLLA multiplier that keeps the
+ * VCO in 600–900 MHz, then sets MS0 = PLLA_freq / target_hz with both
+ * PLLA and MS0 expressed in a + b/c form with c = 1,000,000. CLK0 output
+ * is left enabled (CLK0_OEB clear) and driven in fractional mode (MS_INT=0).
+ *
+ * After each call, PLLA is soft-reset so the new divider configuration
+ * actually takes effect — Si5351's most common bring-up gotcha.
+ *
+ * Returns 0 on success, negative on any register-write NAK or on a target
+ * frequency the math can't represent. */
+int si5351_set_freq_hz(u32 iic_base, u32 target_hz);
+
 /* Cold-init the chip and bring up CLK0 at exactly 10.000 MHz.
  *   Crystal = 25 MHz (JESSINIE breakout), PLLA × 24 → 600 MHz,
  *   Multisynth 0 ÷ 60 → 10 MHz. Integer mode, 8 mA drive, no invert.
