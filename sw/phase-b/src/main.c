@@ -557,6 +557,14 @@ static const lock_mode_t MODE_FILM = {
 /* Active mode. Default = SMOOTH (Phase 6/7 baseline). */
 static const lock_mode_t *g_active_mode = &MODE_SMOOTH;
 
+/* Phase E2 jitter rejection — file-scope so cmd_lock_enable can reset on
+ * loop re-enable, and so loop_tick can mutate them across invocations.
+ * Declared here (before cmd_lock_enable's use). */
+#define ERR_MEDIAN_WINDOW 5
+static s32 err_hist[ERR_MEDIAN_WINDOW] = {0};
+static int err_hist_idx = 0;
+static int err_hist_count = 0;
+
 /* Phase E2.4 — VTC output-mode struct moved here from later in the file so
  * cmd_info() (which prints g_active_output_mode->name etc.) can see the
  * type declaration. The actual MODE_720P50/720P60 const data + vtc_setup
@@ -667,6 +675,13 @@ static void cmd_lock_enable(void)
     g_frames_out_lock_range = 0;
     g_stat_frames = 0;
     g_stat_err_min = g_stat_err_max = g_stat_err_sum = 0;
+
+    /* Phase E2 jitter rejection — clear the err-median history so the loop
+     * starts fresh. Without this, stale samples from a previous lock attempt
+     * would bias the first few PI updates. */
+    for (int i = 0; i < ERR_MEDIAN_WINDOW; i++) err_hist[i] = 0;
+    err_hist_idx = 0;
+    err_hist_count = 0;
     g_total_locked_frames = 0;
     g_unlock_events = 0;
     g_bias_accum_ticks = 0;
@@ -1189,7 +1204,32 @@ static void loop_tick(void)
     err64 = err64 % REF_PERIOD_TICKS;
     if (err64 >  (REF_PERIOD_TICKS / 2)) err64 -= REF_PERIOD_TICKS;
     else if (err64 < -(REF_PERIOD_TICKS / 2)) err64 += REF_PERIOD_TICKS;
-    s32 err = (s32)err64;
+    s32 err_raw = (s32)err64;
+
+    /* Phase E2 jitter rejection (2026-05-19): median-filter raw err over a
+     * 5-sample window. With Bresenham-derived ref (src_vsync_divider), the
+     * inter-pulse spacing varies between 1 source period and 2 source
+     * periods (e.g., M/N=2500/2997 → 80%/20% mix). Per-cycle err shows
+     * ±1 source period of jitter dominating the small phase-drift signal
+     * we want to track. Median over 5 samples rejects the outlier "long"
+     * intervals while preserving the mean, so the PI controller sees a
+     * smooth phase signal. err_hist is reset in cmd_lock_enable. */
+    err_hist[err_hist_idx] = err_raw;
+    err_hist_idx = (err_hist_idx + 1) % ERR_MEDIAN_WINDOW;
+    if (err_hist_count < ERR_MEDIAN_WINDOW) err_hist_count++;
+
+    s32 sorted[ERR_MEDIAN_WINDOW];
+    int n = err_hist_count;
+    for (int i = 0; i < n; i++) sorted[i] = err_hist[i];
+    for (int i = 0; i < n - 1; i++) {
+        for (int j = i + 1; j < n; j++) {
+            if (sorted[j] < sorted[i]) {
+                s32 t = sorted[i]; sorted[i] = sorted[j]; sorted[j] = t;
+            }
+        }
+    }
+    s32 err = sorted[n / 2];  /* median; for n<5 (warming), returns the
+                                middle of available samples. */
 
     /* Phase 7 — state-machine transitions for FREE_RUN / HOLDOVER triggered
      * by ref-edge liveness. State entry from FREE_RUN/UNLOCKED is handled
