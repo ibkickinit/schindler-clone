@@ -194,6 +194,39 @@ connect_bd_net [get_bd_pins clk_wiz_adv7393/clk_out1] [get_bd_ports adv7393_clki
 connect_bd_net [get_bd_pins clk_wiz_ref/locked] [get_bd_ports hdmi_rx_hpd]
 
 # =============================================================================
+# Phase E2 Phase C (2026-05-20): Si5351A external clock INPUT.
+# =============================================================================
+# Brings the Si5351's CLK0 output (10 MHz, configured in firmware via I²C)
+# into the FPGA on Pmod JB Pin 7 = PACKAGE_PIN Y7 (MRCC, bank 13, constrained
+# in XDC). Routes it through a dedicated MMCM (clk_wiz_si5351) to verify
+# that an external clock source can be the source-of-truth for a downstream
+# pixel-clock domain.
+#
+# Output: 100 MHz on clk_wiz_si5351/clk_out1 — value not load-bearing for
+# Phase C-lite (just a "did the MMCM lock onto the external clock?" test).
+# Phase D/E will re-tune output to the actual pixel-clock rate.
+#
+# The 'locked' signal is what we observe at the bench. Wired to LD3 below
+# (formerly hdmi_tx_hpd) so it's visually observable. CDC into the FCLK_CLK0
+# domain is intentionally skipped here — `locked` is a slow, stable indicator
+# (asserts once at boot, then stays high), so the LED's natural debouncing
+# is sufficient. Phase D/E will need a proper CDC'd path if firmware ever
+# polls this — likely an axi_sync_inputs_0 expansion at that time.
+create_bd_port -dir I -type clk -freq_hz 10000000 si5351_clkin
+create_bd_cell -type ip -vlnv xilinx.com:ip:clk_wiz clk_wiz_si5351
+set_property -dict [list \
+    CONFIG.PRIMITIVE {MMCM} \
+    CONFIG.PRIM_IN_FREQ {10.000} \
+    CONFIG.CLKOUT1_REQUESTED_OUT_FREQ {100.000} \
+    CONFIG.USE_LOCKED {true} \
+    CONFIG.USE_RESET {true} \
+    CONFIG.RESET_PORT {reset} \
+    CONFIG.RESET_TYPE {ACTIVE_HIGH} \
+] [get_bd_cells clk_wiz_si5351]
+connect_bd_net [get_bd_ports si5351_clkin] [get_bd_pins clk_wiz_si5351/clk_in1]
+connect_bd_net [get_bd_ports btn_rst]      [get_bd_pins clk_wiz_si5351/reset]
+
+# =============================================================================
 # dvi2rgb (HDMI RX)
 # =============================================================================
 create_bd_cell -type ip -vlnv digilentinc.com:ip:dvi2rgb dvi2rgb_0
@@ -571,9 +604,15 @@ connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK1] [get_bd_pins axi_sc_mem/aclk]
 connect_bd_net [get_bd_pins rst_mem/peripheral_aresetn] [get_bd_pins axi_sc_mem/aresetn]
 
 # =============================================================================
-# LED composition: leds = {hdmi_tx_hpd, vid_out_locked, rx_locked, mmcm_locked}
+# LED composition. Phase E2 iter (2026-05-20) takeover of LD3:
+#   leds = {si5351_locked, vid_out_locked, rx_locked, mmcm_locked}
 #
-# LD2 now shows v_axi4s_vid_out's `locked` status — high when the TX-side AXIS-
+# LD3 was hdmi_tx_hpd previously; in this Phase-C-lite test build it shows
+# clk_wiz_si5351/locked instead — the headline pass criterion for the Si5351
+# external-clock-input experiment. When Phase C is signed off, revert LD3 to
+# hdmi_tx_hpd (or refactor to expose both via a wider GPIO).
+#
+# LD2 shows v_axi4s_vid_out's `locked` status — high when the TX-side AXIS-
 # to-pixel adapter has aligned to both the AXIS data stream from VDMA and the
 # vtiming_in strobes from the VTC. This is the most diagnostic single signal
 # for "is the AXIS pipeline producing valid video to rgb2dvi" — without it,
@@ -587,11 +626,11 @@ set_property -dict [list \
     CONFIG.IN2_WIDTH {1} \
     CONFIG.IN3_WIDTH {1} \
 ] [get_bd_cells led_concat]
-connect_bd_net [get_bd_pins clk_wiz_ref/locked]    [get_bd_pins led_concat/In0]
-connect_bd_net [get_bd_pins dvi2rgb_0/pLocked]    [get_bd_pins led_concat/In1]
+connect_bd_net [get_bd_pins clk_wiz_ref/locked]      [get_bd_pins led_concat/In0]
+connect_bd_net [get_bd_pins dvi2rgb_0/pLocked]       [get_bd_pins led_concat/In1]
 connect_bd_net [get_bd_pins v_tc_tx/active_video_out] [get_bd_pins led_concat/In2]
-connect_bd_net [get_bd_ports hdmi_tx_hpd]         [get_bd_pins led_concat/In3]
-connect_bd_net [get_bd_pins led_concat/dout]      [get_bd_ports leds]
+connect_bd_net [get_bd_pins clk_wiz_si5351/locked]   [get_bd_pins led_concat/In3]
+connect_bd_net [get_bd_pins led_concat/dout]         [get_bd_ports leds]
 
 # =============================================================================
 # Phase D iter-3 — firmware-side VTC alignment via AXI GPIO + CDC
