@@ -38,7 +38,9 @@
 #define BYTES_PP          3
 #define STRIDE            (FRAME_W * BYTES_PP)
 #define FRAME_BYTES       (STRIDE * FRAME_H)
-#define NUM_FRAMES        3
+#define NUM_FRAMES        5   /* Outcome 2.5 (2026-05-20): 3→5 to absorb static
+                                 phase offset by moving reader/writer collision
+                                 out of visible frame. Matches BD's c_num_fstores. */
 #define FRAME_BUF_BASE    0x10000000U
 
 static XAxiVdma vdma;
