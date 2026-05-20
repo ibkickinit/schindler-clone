@@ -50,9 +50,13 @@
 `timescale 1ns / 1ps
 
 module src_vsync_divider #(
-    parameter integer COUNT_WIDTH = 8,                    // enough for ratios up to 255:1
-    parameter [COUNT_WIDTH-1:0] DEFAULT_M = 8'd1,        // numerator   (output count)
-    parameter [COUNT_WIDTH-1:0] DEFAULT_N = 8'd1         // denominator (source count)
+    // Phase P1-3 (2026-05-19): widened COUNT_WIDTH 8→16. NTSC's irreducible
+    // 50000/59940 = 2500/2997 ratio exceeds 8 bits but fits comfortably in
+    // 16. Any reasonable FRC ratio fits in 16 bits (max GCD-reduced ratio
+    // for common video rates is well under 65535).
+    parameter integer COUNT_WIDTH = 16,                    // ratios up to 65535:1
+    parameter [COUNT_WIDTH-1:0] DEFAULT_M = 16'd1,        // numerator   (output count)
+    parameter [COUNT_WIDTH-1:0] DEFAULT_N = 16'd1         // denominator (source count)
 )(
     input  wire                       clk,                  // FCLK_CLK0 (100 MHz)
     input  wire                       aresetn,              // active-low, sync to clk

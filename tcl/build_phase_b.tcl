@@ -642,9 +642,11 @@ connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_gpio_
 # (M=1, N=1 → passthrough), so the divider works at boot before firmware
 # writes anything.
 create_bd_cell -type ip -vlnv xilinx.com:ip:axi_gpio axi_gpio_srcdiv
+# Phase P1-3 (2026-05-19): widened from 8 to 16 bits per channel so NTSC's
+# irreducible 2500/2997 ratio (and similar) can be expressed.
 set_property -dict [list \
-    CONFIG.C_GPIO_WIDTH    {8} \
-    CONFIG.C_GPIO2_WIDTH   {8} \
+    CONFIG.C_GPIO_WIDTH    {16} \
+    CONFIG.C_GPIO2_WIDTH   {16} \
     CONFIG.C_ALL_OUTPUTS   {1} \
     CONFIG.C_ALL_OUTPUTS_2 {1} \
     CONFIG.C_IS_DUAL       {1} \

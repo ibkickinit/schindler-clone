@@ -777,10 +777,13 @@ static void cmd_toggle_dump(void)
 #define SRCDIV_N_DATA (SRCDIV_BASEADDR + 0x08)
 #define SRCDIV_N_TRI  (SRCDIV_BASEADDR + 0x0C)
 
-static u8 g_srcdiv_m = 1;  /* default: passthrough 1:1 */
-static u8 g_srcdiv_n = 1;
+/* Phase P1-3 (2026-05-19): widened from u8 to u16 to support NTSC's
+ * irreducible 2500/2997 ratio (and similar). axi_gpio_srcdiv now 16 bits
+ * per channel. */
+static u16 g_srcdiv_m = 1;  /* default: passthrough 1:1 */
+static u16 g_srcdiv_n = 1;
 
-static void srcdiv_write(u8 m, u8 n)
+static void srcdiv_write(u16 m, u16 n)
 {
     Xil_Out32(SRCDIV_M_TRI, 0);
     Xil_Out32(SRCDIV_N_TRI, 0);
@@ -876,16 +879,18 @@ static u32 frc_gcd(u32 a, u32 b)
  * Returns 0 if source rate would require up-conversion (M > N — not
  * supported by src_vsync_divider's current HDL) or if reduced terms
  * exceed 8 bits. */
-static int compute_frc_ratio(u32 src_mhz, u32 out_mhz, u8 *m_out, u8 *n_out)
+static int compute_frc_ratio(u32 src_mhz, u32 out_mhz, u16 *m_out, u16 *n_out)
 {
     if (src_mhz == 0 || out_mhz == 0) return 0;
     if (out_mhz > src_mhz) return 0;  /* up-conversion not supported */
     u32 g = frc_gcd(out_mhz, src_mhz);
     u32 m = out_mhz / g;
     u32 n = src_mhz / g;
-    if (m == 0 || m > 255 || n == 0 || n > 255) return 0;
-    *m_out = (u8)m;
-    *n_out = (u8)n;
+    /* Phase P1-3 (2026-05-19): widened cap from 255 to 65535 — divider's
+     * GPIO is now 16 bits per channel. NTSC's 2500/2997 fits. */
+    if (m == 0 || m > 65535 || n == 0 || n > 65535) return 0;
+    *m_out = (u16)m;
+    *n_out = (u16)n;
     return 1;
 }
 
@@ -905,7 +910,7 @@ static void cmd_auto_frc(void)
                src_mhz / 1000, src_mhz % 1000,
                g_output_target_mhz / 1000, g_output_target_mhz % 1000);
 
-    u8 m = 0, n = 0;
+    u16 m = 0, n = 0;
     if (!compute_frc_ratio(src_mhz, g_output_target_mhz, &m, &n)) {
         xil_printf("[A] FAILED: cannot derive M/N (src < out, or reduced terms > 255).\r\n"
                    "    Current divider supports M ≤ N (down-conversion only). For\r\n"
@@ -945,16 +950,16 @@ static void cmd_srcdiv_set(const char *arg)
     while (*arg == ' ') ++arg;
     while (*arg >= '0' && *arg <= '9') { n = n * 10 + (*arg - '0'); ++arg; }
 
-    if (m == 0 || n == 0 || m > 255 || n > 255) {
-        xil_printf("\r\n[N] usage: n <M> <N>  (1..255 each). Got M=%u N=%u\r\n", m, n);
+    if (m == 0 || n == 0 || m > 65535 || n > 65535) {
+        xil_printf("\r\n[N] usage: n <M> <N>  (1..65535 each). Got M=%u N=%u\r\n", m, n);
         return;
     }
     if (m > n) {
         xil_printf("\r\n[N] reject: M (%u) > N (%u). Divider is down-conversion only.\r\n", m, n);
         return;
     }
-    g_srcdiv_m = (u8)m;
-    g_srcdiv_n = (u8)n;
+    g_srcdiv_m = (u16)m;
+    g_srcdiv_n = (u16)n;
     srcdiv_write(g_srcdiv_m, g_srcdiv_n);
     xil_printf("\r\n[N] src_vsync_divider M/N = %u/%u  (ref rate = source × %u/%u)\r\n",
                m, n, m, n);
@@ -1414,20 +1419,48 @@ static int wait_for_aligned_source_vsync(void)
  * Returns 0 if pLocked drops mid-measurement (source disconnected). */
 static u32 measure_source_rate_mhz(int target_edges)
 {
+    /* Phase E1.8 followup (P0-1, 2026-05-19): edge-align the start of the
+     * timing window. The previous implementation captured t_start BEFORE
+     * the first rising edge, so the measured interval was (N-1) source
+     * periods PLUS a startup wait X ∈ [0, T). The formula treated it as
+     * N intervals, producing a systematic +X/(N×T) bias — expected
+     * +1/(2N-1) on average, or +8400 ppm at N=60. Observed in practice
+     * as a +2733 ppm reading against a known ~60 Hz source.
+     *
+     * Fix: wait for the first rising edge, THEN capture t_start. Count
+     * `target_edges` more rising edges (i.e., target_edges intervals),
+     * then capture t_end. The measured interval is now exactly N
+     * periods, formula gives 1/T = correct rate. */
     int prev    = !!(vsync_gpio_read() & VSYNC_GPIO_VSYNC_MASK);
-    int edges   = 0;
     int timeout = 200000000;  /* ~few seconds at PS clock */
-    XTime t_start, t_end;
-    XTime_GetTime(&t_start);
-    while (edges < target_edges) {
+
+    /* Synchronize to the first rising edge. */
+    while (1) {
         u32 g = vsync_gpio_read();
         if (!(g & VSYNC_GPIO_PLOCKED_MASK)) return 0;  /* source dropped */
+        int cur = !!(g & VSYNC_GPIO_VSYNC_MASK);
+        if (cur && !prev) break;  /* first rising edge — measurement starts now */
+        prev = cur;
+        if (--timeout < 0) return 0;
+    }
+
+    XTime t_start, t_end;
+    XTime_GetTime(&t_start);
+
+    /* Count target_edges further rising edges (= target_edges intervals
+     * from the edge we just locked onto). */
+    int edges = 0;
+    timeout = 200000000;
+    while (edges < target_edges) {
+        u32 g = vsync_gpio_read();
+        if (!(g & VSYNC_GPIO_PLOCKED_MASK)) return 0;
         int cur = !!(g & VSYNC_GPIO_VSYNC_MASK);
         if (cur && !prev) edges++;
         prev = cur;
         if (--timeout < 0) return 0;
     }
     XTime_GetTime(&t_end);
+
     u64 ticks = (u64)(t_end - t_start);
     if (ticks == 0) return 0;
     /* rate_mHz = (edges * 1000 * COUNTS_PER_SECOND) / ticks  (all u64 math). */

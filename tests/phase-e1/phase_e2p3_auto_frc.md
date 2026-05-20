@@ -28,7 +28,7 @@ refsel_write(REFSEL_SRC)      ← Phase E2.1 mux selection
 | Source rate | M/N | Notes |
 |---|---|---|
 | 50.000 Hz | 1/1 | passthrough |
-| 59.940 Hz (NTSC) | 50000/59940 = 250/2997 | reduced terms too large → REJECTED |
+| 59.940 Hz (NTSC) | 50000/59940 = 2500/2997 | now SUPPORTED after P1-3 widened M/N to 16 bits |
 | 60.000 Hz | 5/6 | the canonical case |
 | 72.000 Hz | 25/36 | |
 | 75.000 Hz | 2/3 | |
@@ -36,7 +36,7 @@ refsel_write(REFSEL_SRC)      ← Phase E2.1 mux selection
 | 120.000 Hz | 5/12 | |
 | < 50.000 Hz | — | REJECTED (M > N, up-conversion needs Mackin) |
 
-Note: NTSC's 59.940 Hz (= 60000/1001 in exact terms) produces an irreducible ratio (250/2997 = 50000/59940 in lowest terms). The 8-bit M/N inputs can't hold this. Workarounds:
+Note: NTSC's 59.940 Hz (= 60000/1001 in exact terms) produces an irreducible 2500/2997 ratio. **After Phase P1-3 (2026-05-19), the divider's M/N inputs are 16 bits each**, so this ratio is now supported directly — `a` against a 59.94 Hz source returns M/N = 2500/2997 and the loop locks to source × 2500/2997 = 50.000 Hz exactly. Previously-needed workarounds:
 
 1. **Lock to nearest matching integer source** — pretend the source is at 60.000 Hz, set M/N=5/6, let the loop's ±500 ppm pull range absorb the ~1000 ppm offset (it can — barely; this is the spike approach).
 2. **Widen the divider's M/N width to 16 bits** — `250/2997` fits in 12 bits. Trivial HDL change.
