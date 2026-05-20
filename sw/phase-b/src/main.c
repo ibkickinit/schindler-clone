@@ -976,6 +976,10 @@ static u32 g_output_target_mhz = 50000;  /* 50.000 Hz */
 /* Forward declaration — defined later in the file (Phase D iter-4a section). */
 static u32 measure_source_rate_mhz(int target_edges);
 
+/* Phase E2.5 forward decls — used by cmd_auto_frc for post-'a' VTC re-alignment. */
+static int wait_for_aligned_source_vsync(void);
+static int vtc_setup(const vtc_mode_t *m);
+
 /* Phase E2.4 — source format detector (v_tc_rx). Direct register access (same
  * approach as vtc_setup — Xilinx XVtc driver has historically caused Data
  * Aborts on this config so we bypass it). Detector reports HxV active, HxV
@@ -1178,10 +1182,39 @@ static void cmd_auto_frc(void)
         g_frames_since_ref_edge = 0;
         g_integrator_mppm = INTEGRATOR_PRELOAD_MILLI_PPM;
     }
-    xil_printf("[A] APPLIED: M/N = %u/%u → ref = source × %u/%u (= %u.%03u Hz target)\r\n"
-               "    ref_mux now in SRC mode. Send 'L' to engage loop if not already.\r\n",
+    xil_printf("[A] APPLIED: M/N = %u/%u → ref = source × %u/%u (= %u.%03u Hz target)\r\n",
                (unsigned)m, (unsigned)n, (unsigned)m, (unsigned)n,
                g_output_target_mhz/1000, g_output_target_mhz%1000);
+
+    /* Phase E2.5 — VTC re-alignment after ref-mode switch.
+     *
+     * Without this, VTC TX's vsync_out fires at an arbitrary phase relative
+     * to source vsync; the framestore phase between S2MM (writes at source
+     * rate) and MM2S (reads at output rate, locked to source × M/N) lands
+     * wherever it started at boot. Symptom: static framestore wraparound
+     * mid-screen, regardless of how well the loop locks rate.
+     *
+     * Re-running the Phase D boot-time alignment dance (poll for next
+     * source vsync edge, then immediately re-run vtc_setup to fire the
+     * CTL write within the source's vsync HIGH window) puts VTC TX's
+     * first vsync within ~μs of source vsync — same alignment that boot
+     * achieves.
+     *
+     * Caveat: this is done while VDMA is already running. The CTL write
+     * may glitch one or two output frames as VTC re-times itself; that's
+     * acceptable for a one-time post-'a' realignment.
+     */
+    xil_printf("[A] Re-aligning VTC TX to source vsync...\r\n");
+    if (wait_for_aligned_source_vsync() != XST_SUCCESS) {
+        xil_printf("[A] WARNING: source vsync not stable for alignment; VTC un-realigned.\r\n");
+    } else {
+        /* CRITICAL: no printfs between the wait return and the CTL write. */
+        if (vtc_setup(g_active_output_mode) != XST_SUCCESS) {
+            xil_printf("\r\n[A] WARNING: vtc_setup failed during realignment.\r\n");
+        } else {
+            xil_printf("\r\n[A] VTC realigned. ref_mux in SRC mode. Send 'L' if not already.\r\n");
+        }
+    }
 }
 
 /* Phase E2.1 — set source-divider M/N ratio. Output rate = source × M/N.
