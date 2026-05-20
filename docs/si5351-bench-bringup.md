@@ -74,15 +74,20 @@ If the breakout has its own pull-ups, fine — they'll parallel down. Verify on 
 
 Si5351 CLK0 → a Zybo Z7-20 clock-capable input pin. **Must be MRCC or SRCC** (multi-region or single-region clock capable), otherwise BUFG inference fails.
 
-**Action item: verify pin choice against the Zybo Z7-20 schematic and Vivado pin report.** A reasonable candidate is on PMOD JC (JC1 / JC2 are often MRCC on Zybo); pick a pin that's documented as MRCC and not already in use.
+**MRCC pin chosen 2026-05-20: Pmod JB Pin 7 = PACKAGE_PIN Y7.**
 
-Constraint preview (placeholder pin name — update after schematic check):
+- Physical position: **Pmod JB Pin 7** (bottom-row, outer-left looking at the connector with HDMI ports facing you). Nearest GND: **Pmod JB Pin 11**.
+- Vivado: `Y7` = `IO_L13P_T2_MRCC_13` (bank 13, LVCMOS33, MRCC clock-capable). Free on Zybo Z7-20 — JB pmod has no board-managed functions, no PS DDR / QSPI mux. Differential partner `Y6` (Pmod JB Pin 8) is available if LVDS-sourcing is wanted later.
+- ⚠️ Digilent's master XDC calls Y7 "JB5" using signal-index (signals 5-8 land at physical pins 7-10 because pins 5+6 are GND/VCC). **At the bench, use physical pin numbers — "Pmod JB Pin 7" — to avoid wiring into GND by accident.**
+
+Constraint (committed in `constraints/zybo_z7_20_phase_b.xdc`):
 
 ```xdc
-set_property PACKAGE_PIN <MRCC_PIN> [get_ports si5351_clkin]
-set_property IOSTANDARD LVCMOS33  [get_ports si5351_clkin]
-create_clock -period <ns> -name si5351_clkin [get_ports si5351_clkin]
+set_property -dict { PACKAGE_PIN Y7 IOSTANDARD LVCMOS33 } [get_ports si5351_clkin]
 ```
+
+`create_clock` is declared inside the BD by the new clk_wiz_si5351 IP
+(input rate set when we configure it). No `-period` in the XDC.
 
 The period depends on what frequency Phase B drives the Si5351 to — typically start with 10 MHz (cleanly testable on a scope) or 27 MHz (matches ADV7393's CLKIN as a sanity benchmark), then push up to the actual pixel-clock rate later.
 

@@ -91,3 +91,19 @@ set_property -dict { PACKAGE_PIN U15 IOSTANDARD LVCMOS33 PULLUP TRUE } [get_port
 # is fine for ADV7393's 3.3V CMOS clock input. No pull resistor needed for
 # a clock signal — slew is what matters, drive is FAST by default.
 set_property -dict { PACKAGE_PIN T14 IOSTANDARD LVCMOS33 SLEW FAST DRIVE 12 } [get_ports adv7393_clkin]
+
+# ============================================================================
+# Phase E2 Phase C (2026-05-20): Si5351A external clock INPUT to FPGA.
+# Wire at bench:
+#   Si5351 breakout CLK0 SMA -> coax -> SMA-to-jumper ->
+#     Pmod JB Pin 7 (= PACKAGE_PIN Y7), plus return to Pmod JB Pin 11 (GND).
+# Y7 / Pmod JB Pin 7 is IO_L13P_T2_MRCC_13 — MRCC clock-capable, bank 13,
+# LVCMOS33-clean. Required for BUFG/MMCM CLKIN routing; non-MRCC pins fail
+# synthesis when a clk_wiz consumes them.
+# NOTE: Y7 is "jb[4]" in Digilent's master XDC; their friendly name "JB5"
+# means SIGNAL-INDEX 5, which maps to PHYSICAL pin 7 (Pmod pins 5+6 are
+# GND/VCC). Always describe at the bench by physical pin number.
+# create_clock period set when the BD's clk_wiz_si5351 declares its input
+# frequency, so we do NOT add a -period constraint here.
+# ============================================================================
+set_property -dict { PACKAGE_PIN Y7 IOSTANDARD LVCMOS33 } [get_ports si5351_clkin]
