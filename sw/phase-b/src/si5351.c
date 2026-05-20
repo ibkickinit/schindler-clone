@@ -72,33 +72,58 @@ static inline void iic_settle(int byte_count)
     for (volatile int d = 0; d < total; d++);
 }
 
-static int si5351_write_reg(u32 base, u8 reg, u8 data)
+static int si5351_write_reg_once(u32 base, u8 reg, u8 data)
 {
-    /* Soft-reset the IP between transactions. The library wedge we saw in
-     * the ADV7393 session was specific to its state machine; resetting
-     * before each transaction is the bulletproof pattern. SOFTR also clears
-     * ISR, so the post-transaction TX_ERROR check is reliable. */
+    /* Soft-reset the IP between transactions. Clears FIFOs + ISR, so the
+     * post-transaction TX_ERROR check sees only what THIS transaction did. */
     Xil_Out32(base + IIC_REG_SOFTR, 0x0A);
-    for (volatile int d = 0; d < 100; d++);
+    for (volatile int d = 0; d < 1000; d++);  /* 10× the previous settle */
     Xil_Out32(base + IIC_REG_CR, CR_EN);
+    for (volatile int d = 0; d < 1000; d++);  /* let CR_EN take effect */
 
-    /* Three-byte write: START+addr_W, reg, STOP+data. */
+    /* Three-byte write: START+addr_W, reg, STOP+data. Push them with
+     * inter-byte delay (~250 µs ≈ 2× byte time at 100 kHz) so each byte
+     * has time to transmit before the next enters the IP's drain queue.
+     * The previous "push all 3 immediately" approach worked in Phase B but
+     * fails consistently in Phase C — suspected race in the IP between
+     * SOFTR/CR_EN setup and TX FIFO consumption. Slowing the push gives
+     * the IP breathing room. */
     Xil_Out32(base + IIC_REG_TX_FIFO, TX_START | (SI5351_I2C_ADDR_7B << 1));
+    for (volatile int d = 0; d < 50000; d++);  /* ~250 µs */
     Xil_Out32(base + IIC_REG_TX_FIFO, reg);
+    for (volatile int d = 0; d < 50000; d++);
     Xil_Out32(base + IIC_REG_TX_FIFO, TX_STOP | data);
 
     iic_settle(3);
 
     u32 isr = Xil_In32(base + IIC_REG_ISR);
     if (isr & ISR_TX_ERROR) {
-        u32 sr = Xil_In32(base + IIC_REG_SR);
         Xil_Out32(base + IIC_REG_ISR, ISR_TX_ERROR);  /* W1C */
-        xil_printf("si5351_write_reg: NAK on reg 0x%02x  (SR=0x%02x ISR=0x%02x)\r\n",
-                   reg, (unsigned)sr, (unsigned)isr);
         return -2;
     }
 
     return 0;
+}
+
+static int si5351_write_reg(u32 base, u8 reg, u8 data)
+{
+    /* Retry up to 3 times; the chip's I²C state machine occasionally NAKs
+     * the first transaction after probe and recovers on retry. Same pattern
+     * we saw in si5351_probe(). */
+    for (int attempt = 1; attempt <= 3; attempt++) {
+        int rc = si5351_write_reg_once(base, reg, data);
+        if (rc == 0) return 0;
+        if (attempt < 3) {
+            for (volatile int d = 0; d < 200000; d++);  /* ~1 ms before retry */
+        } else {
+            u32 sr  = Xil_In32(base + IIC_REG_SR);
+            u32 isr = Xil_In32(base + IIC_REG_ISR);
+            xil_printf("si5351_write_reg: NAK on reg 0x%02x after 3 tries  "
+                       "(last SR=0x%02x ISR=0x%02x)\r\n",
+                       reg, (unsigned)sr, (unsigned)isr);
+        }
+    }
+    return -2;
 }
 
 /* ----- public API ---------------------------------------------------------- */
@@ -211,6 +236,83 @@ int si5351_init_10mhz_clk0(u32 iic_base)
     CHK(si5351_write_reg(iic_base, SI5351_REG_PLL_RESET, SI5351_PLLA_RESET));
 
     /* 8. Enable CLK0 (clear bit 0 of reg 3). CLK1/CLK2 stay disabled. */
+    CHK(si5351_write_reg(iic_base, SI5351_REG_OUTPUT_ENABLE, 0xFE));
+
+    return 0;
+
+    #undef CHK
+}
+
+void si5351_scan_bus(u32 iic_base)
+{
+    int found = 0;
+    xil_printf("\r\nI²C bus scan (addrs 0x03..0x77):\r\n");
+    for (u8 addr = 0x03; addr <= 0x77; addr++) {
+        Xil_Out32(iic_base + IIC_REG_SOFTR, 0x0A);
+        for (volatile int d = 0; d < 1000; d++);
+        Xil_Out32(iic_base + IIC_REG_CR, CR_EN);
+
+        Xil_Out32(iic_base + IIC_REG_TX_FIFO,
+                  TX_START | TX_STOP | (addr << 1));
+
+        iic_settle(1);
+
+        u32 isr = Xil_In32(iic_base + IIC_REG_ISR);
+        if (!(isr & ISR_TX_ERROR)) {
+            xil_printf("  ACK at 0x%02x\r\n", addr);
+            found++;
+        }
+        Xil_Out32(iic_base + IIC_REG_ISR, ISR_TX_ERROR);
+    }
+    xil_printf("Scan done: %d address(es) responded.\r\n", found);
+}
+
+int si5351_init_25mhz_clk0(u32 iic_base)
+{
+    /* Same architecture as the 10 MHz variant, retuned for 25 MHz output.
+     *   PLLA = 25 MHz × 24 = 600 MHz (in 600-900 MHz range).
+     *     a=24, b=0, c=1 → P1=2560, P2=0, P3=1 (identical to 10 MHz case).
+     *   MS0  = 600 MHz ÷ 24 = 25 MHz.
+     *     a=24, b=0, c=1 → P1=128·24 − 512 = 2560, P2=0, P3=1.
+     *   CLK0 control + reset + enable identical.
+     *
+     * Output equals input crystal frequency — degenerate-looking but correct,
+     * and the PLL is fully engaged (any small drift in the crystal is filtered
+     * by the PLL loop). */
+
+    int rc;
+    #define CHK(call) do { rc = (call); if (rc != 0) return rc; } while (0)
+
+    CHK(si5351_write_reg(iic_base, SI5351_REG_OUTPUT_ENABLE, 0xFF));
+
+    for (u8 r = 16; r <= 23; r++) {
+        CHK(si5351_write_reg(iic_base, r, 0x80));
+    }
+
+    CHK(si5351_write_reg(iic_base, SI5351_REG_XTAL_CL, SI5351_XTAL_LOAD_10PF));
+
+    /* PLLA: P1=2560 → bits[15:8]=0x0A, [7:0]=0x00. Same as 10 MHz variant. */
+    CHK(si5351_write_reg(iic_base, SI5351_REG_MS_NA_PARAMS + 0, 0x00));
+    CHK(si5351_write_reg(iic_base, SI5351_REG_MS_NA_PARAMS + 1, 0x01));
+    CHK(si5351_write_reg(iic_base, SI5351_REG_MS_NA_PARAMS + 2, 0x00));
+    CHK(si5351_write_reg(iic_base, SI5351_REG_MS_NA_PARAMS + 3, 0x0A));
+    CHK(si5351_write_reg(iic_base, SI5351_REG_MS_NA_PARAMS + 4, 0x00));
+    CHK(si5351_write_reg(iic_base, SI5351_REG_MS_NA_PARAMS + 5, 0x00));
+    CHK(si5351_write_reg(iic_base, SI5351_REG_MS_NA_PARAMS + 6, 0x00));
+    CHK(si5351_write_reg(iic_base, SI5351_REG_MS_NA_PARAMS + 7, 0x00));
+
+    /* MS0: a=24, b=0, c=1 → P1=2560 → bits[15:8]=0x0A, [7:0]=0x00. */
+    CHK(si5351_write_reg(iic_base, SI5351_REG_MS0_PARAMS + 0, 0x00));
+    CHK(si5351_write_reg(iic_base, SI5351_REG_MS0_PARAMS + 1, 0x01));
+    CHK(si5351_write_reg(iic_base, SI5351_REG_MS0_PARAMS + 2, 0x00));
+    CHK(si5351_write_reg(iic_base, SI5351_REG_MS0_PARAMS + 3, 0x0A));
+    CHK(si5351_write_reg(iic_base, SI5351_REG_MS0_PARAMS + 4, 0x00));
+    CHK(si5351_write_reg(iic_base, SI5351_REG_MS0_PARAMS + 5, 0x00));
+    CHK(si5351_write_reg(iic_base, SI5351_REG_MS0_PARAMS + 6, 0x00));
+    CHK(si5351_write_reg(iic_base, SI5351_REG_MS0_PARAMS + 7, 0x00));
+
+    CHK(si5351_write_reg(iic_base, SI5351_REG_CLK0_CONTROL, 0x4F));
+    CHK(si5351_write_reg(iic_base, SI5351_REG_PLL_RESET, SI5351_PLLA_RESET));
     CHK(si5351_write_reg(iic_base, SI5351_REG_OUTPUT_ENABLE, 0xFE));
 
     return 0;

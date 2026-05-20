@@ -880,20 +880,21 @@ int main(void)
 
     int rc = si5351_probe(IIC_ADV7393_BASE);
     if (rc != 0) {
-        xil_printf("Si5351 PROBE FAIL (rc=%d). Halting init.\r\n", rc);
-        xil_printf("Possible causes: chip address != 0x60 (try ADDR strap to 0x61),\r\n"
-                   "                  pull-ups missing, or chip not powered.\r\n");
+        xil_printf("Si5351 PROBE FAIL at 0x60 (rc=%d).\r\n", rc);
+        xil_printf("Running full bus scan to find what's reachable...\r\n");
+        si5351_scan_bus(IIC_ADV7393_BASE);
+        xil_printf("\r\nHalting init. Check scan results above.\r\n");
         while (1) { for (volatile int d = 0; d < 200000000; d++); }
     }
     xil_printf("Si5351 probe OK (chip acks at 0x60)\r\n");
 
-    rc = si5351_init_10mhz_clk0(IIC_ADV7393_BASE);
+    rc = si5351_init_25mhz_clk0(IIC_ADV7393_BASE);
     if (rc != 0) {
         xil_printf("Si5351 INIT FAIL (rc=%d). Some register write got NAK or timeout.\r\n", rc);
         while (1) { for (volatile int d = 0; d < 200000000; d++); }
     }
-    xil_printf("Si5351 init OK — CLK0 should now be at 10.000 MHz.\r\n");
-    xil_printf("Scope CLK0 (SMA or header pin). Phase B pass: 10 MHz ± 500 Hz.\r\n\r\n");
+    xil_printf("Si5351 init OK — CLK0 should now be at 25.000 MHz.\r\n");
+    xil_printf("Phase C check: LD3 should light if clk_wiz_si5351 PLL locks.\r\n\r\n");
 
     /* Heartbeat loop. Nothing to do but print so the user knows firmware
      * is alive and didn't crash post-init. */
