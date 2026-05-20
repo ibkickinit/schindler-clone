@@ -865,16 +865,51 @@ int main(void)
      * Phase B.1; future phases that touch frames from the PS will revisit. */
     Xil_DCacheDisable();
 
-    /* Phase G iter1: probe ADV7393 BEFORE the HDMI pLocked wait. ADV7393 is
-     * on a separate PSU + I2C bus, independent of HDMI source. Running first
-     * means we still get the I2C result even if no HDMI source is plugged in
-     * (firmware would otherwise hang at "pLocked never stable after 10s"). */
-    /* iter1 scope-capture mode: loop probe forever so SDA/SCL traffic is
-     * easy to capture on bench scope. HDMI pipeline never starts in this
-     * mode; revert this loop once ADV7393 is detected. */
+    /* Phase G iter1.6 (2026-05-20): bypass the XIic library and hammer the
+     * AXI IIC IP's registers directly. The iter1 build's probe sees ~10s
+     * per NAK and shows NO traffic on the SDA/SCL scope — indicating the
+     * XIic library is timing out on some internal condition without ever
+     * putting bytes on the wire. This mode does the bare minimum: soft-
+     * reset, enable, push a START+addr+STOP triplet, tight repeat. If the
+     * IP is electrically functional, scope will see continuous I²C frames.
+     * If not, scope sees nothing — isolating the failure to the IP itself.
+     *
+     * AXI IIC register offsets (per PG090):
+     *   0x040 SOFTR  — Soft Reset Register (write 0x0A to reset)
+     *   0x100 CR     — Control Register (bit 0 = Enable IP, bit 2 = Master)
+     *   0x104 SR     — Status Register (read-only)
+     *   0x108 TX_FIFO — TX FIFO (bit 9 = STOP, bit 8 = START, bits 7:0 = data)
+     *
+     * Loop just keeps writing START+0x54+STOP (= START + addr 0x2A in W
+     * direction + STOP) to TX_FIFO. After a brief wait, repeat. Even on
+     * a NAK from the chip, the IP should drive 9 SCL pulses + emit the
+     * STOP condition — that's what scope should see. */
+    xil_printf("\r\niter1.6 SCOPE-BANG mode: continuous AXI IIC hammer\r\n");
+    xil_printf("  Writing START+0x54+STOP to TX_FIFO in a tight loop.\r\n");
+    xil_printf("  Expect visible SDA/SCL traffic on scope if IP is alive.\r\n");
+    xil_printf("  Will print SR (status reg) every 1000 iterations for triage.\r\n\r\n");
+
+    int loop_count = 0;
     while (1) {
-        adv7393_probe();
-        for (volatile int d = 0; d < 50000000; d++) { /* ~0.5s spacing */ }
+        /* Soft reset the IP — write key 0x0A to SOFTR */
+        Xil_Out32(IIC_ADV7393_BASE + 0x040, 0x0A);
+        /* Tiny wait for reset to settle (a few cycles) */
+        for (volatile int d = 0; d < 100; d++);
+        /* Enable IP + master mode */
+        Xil_Out32(IIC_ADV7393_BASE + 0x100, 0x01);
+        /* Push START + addr(0x2A)<<1|W = 0x54 + STOP into TX_FIFO.
+         * Single byte with both START (bit 8) and STOP (bit 9) flags. */
+        Xil_Out32(IIC_ADV7393_BASE + 0x108, 0x300 | 0x54);
+        /* Brief wait — long enough for IP to attempt transaction (~150us
+         * at 100 kHz × 9 bits + start/stop), short enough that we hammer
+         * the bus continuously. */
+        for (volatile int d = 0; d < 200000; d++);  /* ~1 ms */
+        /* Status diagnostic every 1000 iterations */
+        if (++loop_count >= 1000) {
+            u32 sr = Xil_In32(IIC_ADV7393_BASE + 0x104);
+            xil_printf("iter1.6: SR=0x%08x  (iter %d)\r\n", (unsigned)sr, loop_count);
+            loop_count = 0;
+        }
     }
     /* unreachable */
     adv7393_probe();

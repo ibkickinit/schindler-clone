@@ -248,3 +248,57 @@ With confirmed IP capability, try:
 | (subsequent) `docs/adv7393-bench-bringup.md` | Update status from "PAUSED — three open checks" to "PAUSED — IP-level diagnosis needed; bench checks all pass" |
 
 Branch: `phase-g-iter1`. No changes to BD or constraints in this session.
+
+---
+
+## ADDENDUM — iter1.6 result (later same session)
+
+After writing the original conclusion, we ran the iter1.6 firmware
+(direct-register-bang of AXI IIC, no XIic library). The bench results
+update both the firmware-side and chip-side hypothesis.
+
+### What iter1.6 showed
+
+| Observation | Value |
+|---|---|
+| Bus has continuous, clean traffic | ✅ Yes |
+| SCL period | 10 µs (100 kHz, correct) |
+| Address byte transmitted | `01010100` MSB-first = 0x54 = 0x2A 7-bit + W ✅ |
+| SR (Status Register) value, sampled every 1000 iter | `0x000000C4` stable |
+| **9th SCL pulse (ACK slot): SDA behavior** | **Stays HIGH — no ACK from chip** ❌ |
+
+### Updated diagnosis
+
+The original Hypothesis 1 (AXI IIC IP wiring/config issue) is **partially
+wrong**. The IP is healthy at the register level; it can drive SDA/SCL,
+emit START/STOP, transmit the address byte correctly at 100 kHz. The
+problem was the **XIic library was getting wedged**, not the IP itself.
+Bypassing the library exposes a fully-functional master.
+
+The original Hypothesis 2 (chip damaged) is now **confirmed within the
+limits of this test.** Scope shows the chip is NOT pulling SDA low during
+the ACK slot, despite a correctly-formed address byte arriving with valid
+timing. Most likely root cause: chip damage during the JE6 short earlier
+in the session (or earlier bench stress).
+
+### Final action plan
+
+1. **Order a fresh ADV7393 breakout.** This chip is presumed damaged.
+2. **When the new chip arrives, retry with iter1.6 firmware first.**
+   That demonstrates whether the new chip ACKs cleanly — a definitive
+   chip-side validation without library complications.
+3. **If new chip ACKs: switch to a proper `XIic_Send`-based probe**
+   but keep the soft-reset-before-every-transaction pattern from iter1.6.
+   The XIic library wedge was likely related to the IP being in a stuck
+   state at init; soft-resetting before each transaction is more robust
+   than the library's "init once, transact many" assumption.
+4. **Hardware safety: add a 1kΩ series resistor on RESETB.** Between
+   JE6 and chip pin 20. Future manual reset pulses won't short the
+   Zybo's 3.3V rail.
+
+### Firmware committed this iteration
+
+`sw/phase-b/src/main.c` — replaced the XIic-based probe with the
+iter1.6 direct-register-bang loop. Boot banner advertises the mode;
+SR is printed every 1000 iterations for triage. This firmware should
+stay in place until the new chip arrives and proves out the swap.
