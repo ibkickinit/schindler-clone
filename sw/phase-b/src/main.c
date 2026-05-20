@@ -565,6 +565,29 @@ static s32 err_hist[ERR_MEDIAN_WINDOW] = {0};
 static int err_hist_idx = 0;
 static int err_hist_count = 0;
 
+/* Phase E2 session 2 review §3a — achieved-rate logger. Track the last 50
+ * inter-output-edge tick deltas; median (per-second) reports the actual
+ * MMCM output rate independent of commanded. Discriminates Hypothesis A
+ * (actuator delivering what's commanded → loop at rate-lock) from
+ * Hypothesis B (slew-limited actuator pinned → cmd at rail, achieved
+ * much smaller). u64 history is overkill (deltas fit in u32) but matches
+ * the ts_out width. */
+#define ACH_RATE_WINDOW 50
+static u32 ach_rate_hist[ACH_RATE_WINDOW] = {0};
+static int ach_rate_idx = 0;
+static int ach_rate_count = 0;
+static u64 g_last_ts_out_for_rate = 0;
+static s32 g_last_ach_rate_ppm = 0;     /* last computed achieved-rate, ppm vs nominal */
+
+/* Phase E2 session 2 review §3c — phase-error histogram for the last
+ * sample window (resets on cmd_lock_enable). Bucket size 10000 ticks
+ * = ~3.75 lines @ 720p50. Range ±1M ticks → 200 buckets. */
+#define ERR_HIST_BUCKETS    201   /* odd — center bucket = exactly 0 */
+#define ERR_HIST_BUCKET_W   10000 /* ticks per bucket */
+#define ERR_HIST_HALF_RANGE (ERR_HIST_BUCKETS / 2 * ERR_HIST_BUCKET_W)
+static u16 g_err_hist[ERR_HIST_BUCKETS] = {0};
+static u32 g_err_hist_total = 0;
+
 /* Phase E2.4 — VTC output-mode struct moved here from later in the file so
  * cmd_info() (which prints g_active_output_mode->name etc.) can see the
  * type declaration. The actual MODE_720P50/720P60 const data + vtc_setup
@@ -682,6 +705,16 @@ static void cmd_lock_enable(void)
     for (int i = 0; i < ERR_MEDIAN_WINDOW; i++) err_hist[i] = 0;
     err_hist_idx = 0;
     err_hist_count = 0;
+
+    /* Phase E2 session 2 review §3a/§3c — clear achieved-rate window and
+     * err histogram so the soak starts from a clean slate. */
+    for (int i = 0; i < ACH_RATE_WINDOW; i++) ach_rate_hist[i] = 0;
+    ach_rate_idx = 0;
+    ach_rate_count = 0;
+    g_last_ts_out_for_rate = 0;
+    g_last_ach_rate_ppm = 0;
+    for (int i = 0; i < ERR_HIST_BUCKETS; i++) g_err_hist[i] = 0;
+    g_err_hist_total = 0;
     g_total_locked_frames = 0;
     g_unlock_events = 0;
     g_bias_accum_ticks = 0;
@@ -848,6 +881,33 @@ static void refsel_write(u8 sel, int masked)
 /* Phase E2 bench-diagnostic: 't' command toggles the iter-4a measurement
  * source between real source vsync (default) and synth_vsync_gen's known
  * 50.000 Hz. Used to validate iter-4a accuracy independently of source. */
+/* Phase E2 session 2 review §3c — dump phase-error histogram. Bucketed
+ * 10000 ticks per bucket, range ±1M ticks. Only prints non-zero buckets
+ * to keep the output digestible. Helps discriminate Hypothesis A (tight
+ * distribution at +200k = stuck-phase-after-lock) from Hypothesis B
+ * (broad distribution = loop hunting against slew limit). */
+static void cmd_err_histogram(void)
+{
+    xil_printf("\r\n[H] err histogram (%u samples since loop enable / last 'h' reset)\r\n"
+               "    bucket width = %d ticks; range = ±%d ticks\r\n"
+               "    center_ticks : count\r\n",
+               (unsigned)g_err_hist_total,
+               (int)ERR_HIST_BUCKET_W,
+               (int)ERR_HIST_HALF_RANGE);
+    int printed = 0;
+    for (int i = 0; i < ERR_HIST_BUCKETS; i++) {
+        if (g_err_hist[i] == 0) continue;
+        s32 center = (i - ERR_HIST_BUCKETS / 2) * ERR_HIST_BUCKET_W;
+        xil_printf("    %d : %u\r\n", (int)center, (unsigned)g_err_hist[i]);
+        printed++;
+    }
+    if (printed == 0) xil_printf("    (empty — loop not yet engaged or just reset)\r\n");
+    /* Reset for next 'h' interval. */
+    for (int i = 0; i < ERR_HIST_BUCKETS; i++) g_err_hist[i] = 0;
+    g_err_hist_total = 0;
+    xil_printf("[H] histogram reset.\r\n");
+}
+
 static void cmd_toggle_iter4a_test(void)
 {
     g_iter4a_test_active = !g_iter4a_test_active;
@@ -1169,6 +1229,16 @@ static void loop_tick(void)
     if (out_count == g_last_out_count) return;   /* no new output edge yet */
     g_last_out_count = out_count;
 
+    /* Phase E2 session 2 review §3a — track inter-output-edge tick delta to
+     * compute achieved rate. Skip the first invocation (no baseline). */
+    if (g_last_ts_out_for_rate != 0) {
+        u32 dt = (u32)(ts_out - g_last_ts_out_for_rate);
+        ach_rate_hist[ach_rate_idx] = dt;
+        ach_rate_idx = (ach_rate_idx + 1) % ACH_RATE_WINDOW;
+        if (ach_rate_count < ACH_RATE_WINDOW) ach_rate_count++;
+    }
+    g_last_ts_out_for_rate = ts_out;
+
     ts_ref = vts_read_ts(VTS_TS_REF_LO, VTS_TS_REF_HI, VTS_REF_COUNT, &ref_count);
     if (ref_count == 0) return;   /* ref not yet running */
 
@@ -1368,6 +1438,15 @@ static void loop_tick(void)
     g_stat_err_sum += err;
     g_stat_frames++;
 
+    /* Phase E2 session 2 review §3c — update phase-error histogram. */
+    {
+        s32 b_idx = (err + ERR_HIST_HALF_RANGE) / ERR_HIST_BUCKET_W;
+        if (b_idx < 0) b_idx = 0;
+        if (b_idx >= ERR_HIST_BUCKETS) b_idx = ERR_HIST_BUCKETS - 1;
+        if (g_err_hist[b_idx] < 65535) g_err_hist[b_idx]++;
+        g_err_hist_total++;
+    }
+
     if (g_dump_per_frame) {
         xil_printf("F,%u,%d,%d,%d\r\n",
                    (unsigned)(out_count - g_loop_enable_count_at_start),
@@ -1376,14 +1455,45 @@ static void loop_tick(void)
 
     if (g_stat_frames >= STATS_PERIOD_FRAMES) {
         s32 mean = g_stat_err_sum / g_stat_frames;
+
+        /* Phase E2 session 2 review §3a — compute median of last ACH_RATE_WINDOW
+         * inter-output-edge deltas, convert to ppm vs nominal (50 Hz output
+         * → 2,000,000 ticks at 100 MHz counter). Median rejects single-cycle
+         * jitter; window averages over Bresenham pattern cycles. */
+        s32 ach_rate_ppm = 0;
+        if (ach_rate_count > 0) {
+            u32 sorted[ACH_RATE_WINDOW];
+            int n = ach_rate_count;
+            for (int i = 0; i < n; i++) sorted[i] = ach_rate_hist[i];
+            for (int i = 0; i < n - 1; i++) {
+                for (int j = i + 1; j < n; j++) {
+                    if (sorted[j] < sorted[i]) {
+                        u32 t = sorted[i]; sorted[i] = sorted[j]; sorted[j] = t;
+                    }
+                }
+            }
+            u32 median_dt = sorted[n / 2];
+            /* Nominal output period in counter ticks. */
+            u32 nominal_dt = (g_output_target_mhz > 0)
+                             ? (u32)(100000000ULL * 1000ULL / g_output_target_mhz)
+                             : 2000000U;  /* fallback 50 Hz */
+            s64 diff = (s64)median_dt - (s64)nominal_dt;
+            /* ppm = diff / nominal × 1e6. Note: positive diff = SLOWER than
+             * nominal (longer period) → negative ppm offset. Invert sign so
+             * positive ppm means faster (rate higher than nominal). */
+            ach_rate_ppm = (s32)(-(diff * 1000000LL) / (s64)nominal_dt);
+        }
+        g_last_ach_rate_ppm = ach_rate_ppm;
+
         /* bias_accum/slip_offset are s64 — print only the low 32 bits.
          * For the +1000 ppm validation case the accumulator never exceeds
          * a few minutes' worth of ticks (well under 2^31). */
-        xil_printf("LOCK mode=%s state=%s err=%d/%d/%d cmd=%d int=%d locked=%u unlocks=%u ref_idle=%d bias=%d slips=%u sat=%d acc=%d slip_off=%d\r\n",
+        xil_printf("LOCK mode=%s state=%s err=%d/%d/%d cmd=%d int=%d ach_rate=%d locked=%u unlocks=%u ref_idle=%d bias=%d slips=%u sat=%d acc=%d slip_off=%d\r\n",
                    g_active_mode->name,
                    state_label(g_lock_state),
                    (int)mean, (int)g_stat_err_min, (int)g_stat_err_max,
                    (int)cmd_mppm, (int)g_integrator_mppm,
+                   (int)ach_rate_ppm,
                    (unsigned)g_total_locked_frames, (unsigned)g_unlock_events,
                    (int)g_frames_since_ref_edge,
                    (int)g_bias_mppm,
@@ -1449,6 +1559,7 @@ static void cmd_help(void)
                "  a             E2.3: auto-FRC (measure source, set M/N, ref=src)\r\n"
                "  o <snap|smooth|film> E2.2: select lock mode (default SMOOTH)\r\n"
                "  i             E2.4: info dump (source format + output + loop state)\r\n"
+               "  h             diag: dump err histogram (last interval, then reset)\r\n"
                "  t             diag: toggle iter-4a source (real vs synth 50 Hz)\r\n"
                "  B <ppm>       Phase 8: inject ref-rate bias (saturation/slip test)\r\n"
                "  ?             this help\r\n");
@@ -1526,6 +1637,7 @@ static void uart_poll_and_dispatch(void)
         case 'a': case 'A':       cmd_auto_frc();    break;
         case 'i': case 'I':       cmd_info();        break;
         case 't': case 'T':       cmd_toggle_iter4a_test(); break;
+        case 'h': case 'H':       cmd_err_histogram(); break;
         case 'o': case 'O': {
             /* o <snap|smooth|film>  — E2.2 lock mode selection. */
             char buf[16];
@@ -1568,7 +1680,7 @@ static void uart_poll_and_dispatch(void)
             }
             break;
         }
-        case '?': case 'h': case 'H': cmd_help(); break;
+        case '?':                 cmd_help(); break;  /* h/H reclaimed for histogram (E2.5 instr) */
         case '\r': case '\n': break;  /* silent on bare newline */
         default:
             xil_printf("UART: unknown cmd '%c' (0x%02x). Type ? for help.\r\n",
