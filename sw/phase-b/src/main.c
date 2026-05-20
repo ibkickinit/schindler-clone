@@ -26,6 +26,7 @@
 #include "xtime_l.h"   /* Phase D iter-4a: SCU timer for precise rate measurement */
 #include "xiic.h"      /* Phase G iter1: AXI I2C for ADV7393 chip config */
 #include "xiic_l.h"    /* low-level polled API: XIic_Send / XIic_Recv */
+#include "si5351.h"    /* Phase E2: direct AXI IIC driver for Si5351A clock gen */
 
 // Phase C.1 (pivoted to 720p): output is 720p (1280×720) — scaler downscales
 // 1080p → 720p before storage. DDR3 holds 1280×720 frames. 480p was infeasible
@@ -865,51 +866,42 @@ int main(void)
      * Phase B.1; future phases that touch frames from the PS will revisit. */
     Xil_DCacheDisable();
 
-    /* Phase E2 iter1 (2026-05-20): Si5351A Phase A — chip alive.
+    /* Phase E2 iter2 (2026-05-20): Si5351A Phase B — synth 10 MHz on CLK0.
      *
-     * Direct-register-bang variant of the iter1.6 probe, retargeted at the
-     * Si5351A on the same AXI IIC bus that previously hosted the (now-dead)
-     * ADV7393. Si5351A's default I²C address is 0x60 (7-bit). The transmit
-     * byte for a write transaction is therefore 0x60<<1 | W = 0xC0.
+     * Phase A (chip alive at 0x60) is now firmware-confirmed by si5351_probe(),
+     * not a separate hammer-loop build. After probe, the cold-init sequence
+     * configures PLLA = 25 MHz × 24 = 600 MHz and Multisynth 0 ÷ 60 = 10 MHz,
+     * then enables CLK0. CLK1 and CLK2 stay powered down.
      *
-     * Same IP register map (PG090):
-     *   0x040 SOFTR  — Soft Reset Register (write 0x0A to reset)
-     *   0x100 CR     — Control Register (bit 0 = Enable IP, bit 2 = Master)
-     *   0x104 SR     — Status Register (read-only)
-     *   0x108 TX_FIFO — TX FIFO (bit 9 = STOP, bit 8 = START, bits 7:0 = data)
-     *
-     * Pass criterion: scope SDA on the 9th SCL pulse — should dip LOW for one
-     * bit time (the Si5351's ACK). If it stays HIGH, chip didn't ACK — try
-     * 0x61 (some breakouts strap the ADDR pin differently). */
-    xil_printf("\r\nPhase E2 iter1 Si5351 PROBE: continuous AXI IIC hammer at 0x60\r\n");
-    xil_printf("  Writing START+0xC0+STOP to TX_FIFO in a tight loop.\r\n");
-    xil_printf("  Scope the 9th SCL pulse: SDA low = chip ACK = Phase A PASS.\r\n");
-    xil_printf("  Will print SR (status reg) every 1000 iterations for triage.\r\n\r\n");
+     * Pass criterion: scope (or frequency counter) on CLK0 reads 10.000 MHz
+     * within ±50 ppm = ±500 Hz. JESSINIE's 25 MHz crystal datasheet drift is
+     * typically ±20-30 ppm, so a healthy chip lands inside that window. */
+    xil_printf("\r\n=== Phase E2: Si5351 bring-up ===\r\n");
 
-    int loop_count = 0;
+    int rc = si5351_probe(IIC_ADV7393_BASE);
+    if (rc != 0) {
+        xil_printf("Si5351 PROBE FAIL (rc=%d). Halting init.\r\n", rc);
+        xil_printf("Possible causes: chip address != 0x60 (try ADDR strap to 0x61),\r\n"
+                   "                  pull-ups missing, or chip not powered.\r\n");
+        while (1) { for (volatile int d = 0; d < 200000000; d++); }
+    }
+    xil_printf("Si5351 probe OK (chip acks at 0x60)\r\n");
+
+    rc = si5351_init_10mhz_clk0(IIC_ADV7393_BASE);
+    if (rc != 0) {
+        xil_printf("Si5351 INIT FAIL (rc=%d). Some register write got NAK or timeout.\r\n", rc);
+        while (1) { for (volatile int d = 0; d < 200000000; d++); }
+    }
+    xil_printf("Si5351 init OK — CLK0 should now be at 10.000 MHz.\r\n");
+    xil_printf("Scope CLK0 (SMA or header pin). Phase B pass: 10 MHz ± 500 Hz.\r\n\r\n");
+
+    /* Heartbeat loop. Nothing to do but print so the user knows firmware
+     * is alive and didn't crash post-init. */
+    int beat = 0;
     while (1) {
-        /* Soft reset the IP — write key 0x0A to SOFTR */
-        Xil_Out32(IIC_ADV7393_BASE + 0x040, 0x0A);
-        /* Tiny wait for reset to settle (a few cycles) */
-        for (volatile int d = 0; d < 100; d++);
-        /* Enable IP + master mode */
-        Xil_Out32(IIC_ADV7393_BASE + 0x100, 0x01);
-        /* Push START + addr(0x60)<<1|W = 0xC0 + STOP into TX_FIFO.
-         * Single byte with both START (bit 8) and STOP (bit 9) flags. */
-        Xil_Out32(IIC_ADV7393_BASE + 0x108, 0x300 | 0xC0);
-        /* Brief wait — long enough for IP to attempt transaction (~150us
-         * at 100 kHz × 9 bits + start/stop), short enough that we hammer
-         * the bus continuously. */
-        for (volatile int d = 0; d < 200000; d++);  /* ~1 ms */
-        /* Status diagnostic every 1000 iterations.
-         * Healthy SR with ACK: bit 7=TX FIFO empty, others quiet.
-         * If we see the same 0xC4 pattern as ADV7393 NAK testing, chip
-         * isn't ACKing either — try 0x61, or check pull-ups. */
-        if (++loop_count >= 1000) {
-            u32 sr = Xil_In32(IIC_ADV7393_BASE + 0x104);
-            xil_printf("Si5351 probe: SR=0x%08x  (iter %d)\r\n", (unsigned)sr, loop_count);
-            loop_count = 0;
-        }
+        for (volatile int d = 0; d < 200000000; d++);  /* ~1 s */
+        beat++;
+        xil_printf("alive %d\r\n", beat);
     }
     /* unreachable */
     adv7393_probe();
