@@ -778,6 +778,8 @@ static void cmd_toggle_dump(void)
 #define REFSEL_EXT0   0x2    /* sel=10 — reserved (Si5351 / analog recovery) */
 #define REFSEL_SRC    0x3    /* sel=11 — Phase E2.1 src_vsync_divider output */
 #define REFSEL_MASK_BIT 0x4  /* OR with current to mask the output */
+#define REFSEL_ITER4A_TEST_BIT 0x8  /* Phase E2 diagnostic: bit 3 → swap iter-4a
+                                     * source (0=dvi2rgb vsync, 1=synth 50 Hz). */
 
 /* Phase E2.1 — src_vsync_divider M/N control via axi_gpio_srcdiv.
  * ch0 (offset +0x00) = M (numerator, 8 bits)
@@ -814,6 +816,7 @@ static void srcdiv_write(u16 m, u16 n)
 
 static u8 g_ref_select = REFSEL_FREE;   /* boot: free-run (safe — no edges) */
 static int g_ref_masked = 0;
+static int g_iter4a_test_active = 0;    /* Phase E2 diagnostic: bit 3 of refsel GPIO */
 static u32 g_last_loop_baseline_ppm_mppm = 0;   /* for the HOLDOVER message */
 
 static void refsel_write(u8 sel, int masked)
@@ -821,8 +824,22 @@ static void refsel_write(u8 sel, int masked)
     /* Tri-state register defaults to 0 (output) at reset for axi_gpio in
      * all-outputs mode. Make it explicit anyway for safety. */
     Xil_Out32(REFSEL_TRI, 0);
-    u32 word = (sel & 0x3) | (masked ? REFSEL_MASK_BIT : 0);
+    u32 word = (sel & 0x3)
+             | (masked ? REFSEL_MASK_BIT : 0)
+             | (g_iter4a_test_active ? REFSEL_ITER4A_TEST_BIT : 0);
     Xil_Out32(REFSEL_DATA, word);
+}
+
+/* Phase E2 bench-diagnostic: 't' command toggles the iter-4a measurement
+ * source between real source vsync (default) and synth_vsync_gen's known
+ * 50.000 Hz. Used to validate iter-4a accuracy independently of source. */
+static void cmd_toggle_iter4a_test(void)
+{
+    g_iter4a_test_active = !g_iter4a_test_active;
+    refsel_write(g_ref_select, g_ref_masked);
+    xil_printf("\r\n[T] iter-4a source = %s\r\n"
+               "    Run 'a' to measure; expected ~50.000 Hz if test mode, source rate otherwise.\r\n",
+               g_iter4a_test_active ? "TEST (synth_vsync_gen 50 Hz)" : "SOURCE (dvi2rgb vsync)");
 }
 
 static void cmd_ref_select(const char *arg)
@@ -1043,6 +1060,8 @@ static void cmd_info(void)
                (int)g_integrator_mppm, INTEGRATOR_PRELOAD_MILLI_PPM);
     xil_printf("    locked f : %u  unlocks: %u\r\n",
                (unsigned)g_total_locked_frames, (unsigned)g_unlock_events);
+    xil_printf("    iter4a src: %s\r\n",
+               g_iter4a_test_active ? "TEST (synth 50 Hz)" : "SOURCE (dvi2rgb vsync)");
 }
 
 /* Phase E2.3 — auto-FRC: measure source rate, derive M/N for the configured
@@ -1390,6 +1409,7 @@ static void cmd_help(void)
                "  a             E2.3: auto-FRC (measure source, set M/N, ref=src)\r\n"
                "  o <snap|smooth|film> E2.2: select lock mode (default SMOOTH)\r\n"
                "  i             E2.4: info dump (source format + output + loop state)\r\n"
+               "  t             diag: toggle iter-4a source (real vs synth 50 Hz)\r\n"
                "  B <ppm>       Phase 8: inject ref-rate bias (saturation/slip test)\r\n"
                "  ?             this help\r\n");
 }
@@ -1465,6 +1485,7 @@ static void uart_poll_and_dispatch(void)
         }
         case 'a': case 'A':       cmd_auto_frc();    break;
         case 'i': case 'I':       cmd_info();        break;
+        case 't': case 'T':       cmd_toggle_iter4a_test(); break;
         case 'o': case 'O': {
             /* o <snap|smooth|film>  — E2.2 lock mode selection. */
             char buf[16];
@@ -1599,6 +1620,15 @@ static u32 measure_source_rate_mhz(int target_edges)
 
     XTime t_start, t_end;
     XTime_GetTime(&t_start);
+
+    /* Phase E2 diagnostic followup (2026-05-19): the original P0-1 fix
+     * forgot to update `prev` after the sync `break`. Result: first
+     * iteration of the next loop sees cur=1, prev=0 and immediately
+     * counts the sync edge AS the first edge of the timed window —
+     * spans only (N-1) source periods, formula treats as N → +1/(N-1)
+     * bias = +16950 ppm at N=60. Observed +16940 ppm in bench test.
+     * Set prev=1 explicitly here to prevent the false edge-count. */
+    prev = 1;
 
     /* Count target_edges further rising edges (= target_edges intervals
      * from the edge we just locked onto). */

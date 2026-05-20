@@ -69,6 +69,7 @@ add_files -norecurse [file join $project_root hdl mmcm_psincdec_actuator.v]
 # Phase E1 Phase 7 — reference mux (4:1 + maskable) for ref selector / holdover
 add_files -norecurse [file join $project_root hdl ref_mux.v]
 add_files -norecurse [file join $project_root hdl src_vsync_divider.v]
+add_files -norecurse [file join $project_root hdl iter4a_test_mux.v]
 # Coefficient hex files for $readmemh — Vivado adds them to source list so
 # they're visible from the OOC synth working directory.
 add_files -norecurse [file join $project_root hdl scaler_coeffs_h.hex]
@@ -538,7 +539,13 @@ connect_bd_net [get_bd_pins led_concat/dout]      [get_bd_ports leds]
 create_bd_cell -type module -reference axi_sync_inputs axi_sync_inputs_0
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]              [get_bd_pins axi_sync_inputs_0/axi_clk]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]     [get_bd_pins axi_sync_inputs_0/axi_rstn]
-connect_bd_net [get_bd_pins dvi2rgb_0/vid_pVSync]           [get_bd_pins axi_sync_inputs_0/vsync_async]
+# Phase E2 bench-diagnostic (2026-05-19): the iter4a_test_mux is instantiated
+# below (after synth_vsync_gen + axi_gpio_refsel exist). It sits between
+# dvi2rgb_0/vid_pVSync and axi_sync_inputs_0/vsync_async. Default
+# (axi_gpio_refsel/ctrl[3]=0) preserves the original behavior (source-vsync
+# to iter-4a path); ctrl[3]=1 swaps in the synth_vsync_gen's 50 Hz signal
+# for measurement calibration. axi_sync_inputs_0/vsync_async is wired
+# later from iter4a_test_mux_0/muxed.
 connect_bd_net [get_bd_pins dvi2rgb_0/pLocked]              [get_bd_pins axi_sync_inputs_0/plocked_async]
 # Phase D iter-4d-1: output-side observability for FRC cadence engine
 connect_bd_net [get_bd_pins v_tc_tx/vsync_out]              [get_bd_pins axi_sync_inputs_0/vsync_out_async]
@@ -642,6 +649,15 @@ connect_bd_net [get_bd_pins axi_gpio_refsel/gpio_io_o] [get_bd_pins ref_mux_0/ct
 connect_bd_intf_net [get_bd_intf_pins axi_ic_lite/M05_AXI] [get_bd_intf_pins axi_gpio_refsel/S_AXI]
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]            [get_bd_pins axi_gpio_refsel/s_axi_aclk]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_gpio_refsel/s_axi_aresetn]
+
+# Phase E2 bench-diagnostic — iter4a_test_mux. Now that synth_vsync_gen and
+# axi_gpio_refsel both exist, instantiate the mux. ctrl bus is shared with
+# ref_mux_0 (gpio_io_o fans out to both); iter4a_test_mux only uses ctrl[3].
+create_bd_cell -type module -reference iter4a_test_mux iter4a_test_mux_0
+connect_bd_net [get_bd_pins dvi2rgb_0/vid_pVSync]        [get_bd_pins iter4a_test_mux_0/src_vsync]
+connect_bd_net [get_bd_pins synth_vsync_gen_0/vsync_out] [get_bd_pins iter4a_test_mux_0/test_vsync]
+connect_bd_net [get_bd_pins axi_gpio_refsel/gpio_io_o]   [get_bd_pins iter4a_test_mux_0/ctrl]
+connect_bd_net [get_bd_pins iter4a_test_mux_0/muxed]     [get_bd_pins axi_sync_inputs_0/vsync_async]
 
 # Phase E2.1 — runtime M/N control for src_vsync_divider. Dual-channel AXI
 # GPIO: ch0[7:0] = M (numerator), ch1[7:0] = N (denominator). Output rate
