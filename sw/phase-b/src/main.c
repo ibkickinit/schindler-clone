@@ -851,6 +851,89 @@ static void cmd_ref_select(const char *arg)
     }
 }
 
+/* Phase E2.3 — current output target rate, in milli-Hz. Hardcoded to 720p50
+ * for the spike (matches vtc_setup(&MODE_720P50) in main). When firmware
+ * grows runtime output-mode switching, this global gets updated alongside
+ * vtc_setup. */
+static u32 g_output_target_mhz = 50000;  /* 50.000 Hz */
+
+/* Forward declaration — defined later in the file (Phase D iter-4a section). */
+static u32 measure_source_rate_mhz(int target_edges);
+
+/* Phase E2.3 — Euclidean GCD for reducing M/N to lowest terms. */
+static u32 frc_gcd(u32 a, u32 b)
+{
+    while (b != 0) {
+        u32 t = b;
+        b = a % b;
+        a = t;
+    }
+    return a;
+}
+
+/* Phase E2.3 — compute reduced M/N where output_rate = source × M/N.
+ * Returns 1 if a valid (M ≤ N, both fit in 8 bits) ratio exists.
+ * Returns 0 if source rate would require up-conversion (M > N — not
+ * supported by src_vsync_divider's current HDL) or if reduced terms
+ * exceed 8 bits. */
+static int compute_frc_ratio(u32 src_mhz, u32 out_mhz, u8 *m_out, u8 *n_out)
+{
+    if (src_mhz == 0 || out_mhz == 0) return 0;
+    if (out_mhz > src_mhz) return 0;  /* up-conversion not supported */
+    u32 g = frc_gcd(out_mhz, src_mhz);
+    u32 m = out_mhz / g;
+    u32 n = src_mhz / g;
+    if (m == 0 || m > 255 || n == 0 || n > 255) return 0;
+    *m_out = (u8)m;
+    *n_out = (u8)n;
+    return 1;
+}
+
+/* Phase E2.3 — auto-FRC: measure source rate, derive M/N for the configured
+ * output, apply via src_vsync_divider, and switch the loop reference to
+ * source-vsync mode. One-shot; firmware doesn't auto-retrigger on source
+ * rate change (manual 'a' refresh covers that for now). */
+static void cmd_auto_frc(void)
+{
+    xil_printf("\r\n[A] auto-FRC: measuring source rate (~1 s) ...\r\n");
+    u32 src_mhz = measure_source_rate_mhz(60);
+    if (src_mhz == 0) {
+        xil_printf("[A] FAILED: source rate measurement returned 0 (pLocked dropped or no edges).\r\n");
+        return;
+    }
+    xil_printf("[A] source = %u.%03u Hz; output target = %u.%03u Hz\r\n",
+               src_mhz / 1000, src_mhz % 1000,
+               g_output_target_mhz / 1000, g_output_target_mhz % 1000);
+
+    u8 m = 0, n = 0;
+    if (!compute_frc_ratio(src_mhz, g_output_target_mhz, &m, &n)) {
+        xil_printf("[A] FAILED: cannot derive M/N (src < out, or reduced terms > 255).\r\n"
+                   "    Current divider supports M ≤ N (down-conversion only). For\r\n"
+                   "    src=%u.%03u → out=%u.%03u, set output mode lower than source\r\n"
+                   "    or wait for Mackin up-conversion (Phase E3).\r\n",
+                   src_mhz/1000, src_mhz%1000,
+                   g_output_target_mhz/1000, g_output_target_mhz%1000);
+        return;
+    }
+    /* Apply M/N to the divider, then point the ref mux at the source path. */
+    g_srcdiv_m = m;
+    g_srcdiv_n = n;
+    srcdiv_write(m, n);
+    g_ref_select = REFSEL_SRC;
+    refsel_write(g_ref_select, g_ref_masked);
+    if (g_loop_enable) {
+        g_lock_state = LOOP_ACQUIRING;
+        g_frames_in_lock_range  = 0;
+        g_frames_out_lock_range = 0;
+        g_frames_since_ref_edge = 0;
+        g_integrator_mppm = INTEGRATOR_PRELOAD_MILLI_PPM;
+    }
+    xil_printf("[A] APPLIED: M/N = %u/%u → ref = source × %u/%u (= %u.%03u Hz target)\r\n"
+               "    ref_mux now in SRC mode. Send 'L' to engage loop if not already.\r\n",
+               (unsigned)m, (unsigned)n, (unsigned)m, (unsigned)n,
+               g_output_target_mhz/1000, g_output_target_mhz%1000);
+}
+
 /* Phase E2.1 — set source-divider M/N ratio. Output rate = source × M/N.
  * Constraints (enforced here): both > 0, M ≤ N (down-conversion only;
  * src_vsync_divider's HDL doesn't support M > N). */
@@ -1148,6 +1231,7 @@ static void cmd_help(void)
                "  r <free|sync|src> Phase 7 + E2.1: select reference source\r\n"
                "  s             Phase 7: toggle ref-mask (simulate ref loss)\r\n"
                "  n <M> <N>     E2.1: src_vsync_divider ratio (output = src×M/N)\r\n"
+               "  a             E2.3: auto-FRC (measure source, set M/N, ref=src)\r\n"
                "  o <snap|smooth|film> E2.2: select lock mode (default SMOOTH)\r\n"
                "  B <ppm>       Phase 8: inject ref-rate bias (saturation/slip test)\r\n"
                "  ?             this help\r\n");
@@ -1222,6 +1306,7 @@ static void uart_poll_and_dispatch(void)
             cmd_srcdiv_set(buf);
             break;
         }
+        case 'a': case 'A':       cmd_auto_frc();    break;
         case 'o': case 'O': {
             /* o <snap|smooth|film>  — E2.2 lock mode selection. */
             char buf[16];
