@@ -320,6 +320,10 @@ set_property -dict [list \
     CONFIG.GEN_F0_VFRAME_SIZE {750} \
 ] [get_bd_cells v_tc_tx]
 
+# Phase E2.4 — v_tc_rx instantiation moved below (after axi_ic_lite + axi_gpio
+# blocks) so its M07_AXI connect_bd_intf_net works. The bus interconnect
+# needs to exist before we connect to its master ports.
+
 # =============================================================================
 # Custom AXIS → vid_io adapter (replaces v_axi4s_vid_out)
 # =============================================================================
@@ -437,12 +441,13 @@ connect_bd_net [get_bd_pins rst_pixclk_out/peripheral_reset] [get_bd_pins rgb2dv
 # AXI-Lite control path: PS GP0 → 1×2 Interconnect → VDMA, VTC
 # =============================================================================
 create_bd_cell -type ip -vlnv xilinx.com:ip:axi_interconnect axi_ic_lite
-# 7 master ports: VDMA, VTC, axi_gpio_0 (firmware-side vsync alignment),
+# 8 master ports: VDMA, VTC TX, axi_gpio_0 (firmware-side vsync alignment),
 # vsync_timestamp (Phase 1 measurement instrument),
 # mmcm_psincdec_actuator (Phase 4 rate actuator),
 # axi_gpio_refsel (Phase 7 reference selector),
-# axi_gpio_srcdiv (Phase E2.1 source-vsync divider M/N control).
-set_property -dict [list CONFIG.NUM_SI {1} CONFIG.NUM_MI {7}] [get_bd_cells axi_ic_lite]
+# axi_gpio_srcdiv (Phase E2.1 source-vsync divider M/N control),
+# v_tc_rx (Phase E2.4 source format detector).
+set_property -dict [list CONFIG.NUM_SI {1} CONFIG.NUM_MI {8}] [get_bd_cells axi_ic_lite]
 connect_bd_intf_net [get_bd_intf_pins zynq_ps/M_AXI_GP0]     [get_bd_intf_pins axi_ic_lite/S00_AXI]
 connect_bd_intf_net [get_bd_intf_pins axi_ic_lite/M00_AXI]   [get_bd_intf_pins axi_vdma_0/S_AXI_LITE]
 connect_bd_intf_net [get_bd_intf_pins axi_ic_lite/M01_AXI]   [get_bd_intf_pins v_tc_tx/ctrl]
@@ -456,6 +461,7 @@ connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/M03_A
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/M04_ACLK]
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/M05_ACLK]
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/M06_ACLK]
+connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/M07_ACLK]
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_vdma_0/s_axi_lite_aclk]
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins v_tc_tx/s_axi_aclk]
 connect_bd_net [get_bd_pins rst_axi/interconnect_aresetn] [get_bd_pins axi_ic_lite/ARESETN]
@@ -467,6 +473,7 @@ connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_li
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_lite/M04_ARESETN]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_lite/M05_ARESETN]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_lite/M06_ARESETN]
+connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_lite/M07_ARESETN]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_vdma_0/axi_resetn]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins v_tc_tx/s_axi_aresetn]
 # Pixel-side reset wiring.
@@ -657,6 +664,47 @@ connect_bd_net [get_bd_pins axi_gpio_srcdiv/gpio2_io_o] [get_bd_pins src_vsync_d
 connect_bd_intf_net [get_bd_intf_pins axi_ic_lite/M06_AXI] [get_bd_intf_pins axi_gpio_srcdiv/S_AXI]
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]            [get_bd_pins axi_gpio_srcdiv/s_axi_aclk]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_gpio_srcdiv/s_axi_aresetn]
+
+# =============================================================================
+# Phase E2.4 — source format detector (v_tc_rx)
+# =============================================================================
+# Reads dvi2rgb's hsync/vsync/active_video and detects HxV active/total +
+# sync polarities. Firmware queries via UART 'i' and reports source format
+# alongside output mode + loop state. Generator side disabled (detect-only).
+create_bd_cell -type ip -vlnv xilinx.com:ip:v_tc v_tc_rx
+set_property -dict [list \
+    CONFIG.enable_detection {true} \
+    CONFIG.enable_generation {false} \
+    CONFIG.MAX_CLOCKS_PER_LINE {4096} \
+    CONFIG.MAX_LINES_PER_FRAME {4096} \
+] [get_bd_cells v_tc_rx]
+
+# Clock domain: source PixelClk from dvi2rgb. Reset/clken held high (firmware
+# checks dvi2rgb pLocked before trusting detector outputs — the detector
+# itself doesn't need an explicit reset on the pixel clock).
+connect_bd_net [get_bd_pins dvi2rgb_0/PixelClk] [get_bd_pins v_tc_rx/clk]
+create_bd_cell -type ip -vlnv xilinx.com:ip:xlconstant v_tc_rx_high
+set_property -dict [list CONFIG.CONST_WIDTH {1} CONFIG.CONST_VAL {1}] [get_bd_cells v_tc_rx_high]
+connect_bd_net [get_bd_pins v_tc_rx_high/dout] [get_bd_pins v_tc_rx/resetn]
+connect_bd_net [get_bd_pins v_tc_rx_high/dout] [get_bd_pins v_tc_rx/clken]
+connect_bd_net [get_bd_pins v_tc_rx_high/dout] [get_bd_pins v_tc_rx/det_clken]
+
+# Detector timing inputs from dvi2rgb. The detector can derive HxV active +
+# HxV total + polarities from hsync+vsync+active_video alone. dvi2rgb does
+# NOT expose hblank/vblank, so those tie low (the detector loses the
+# FP/Sync/BP breakdown but keeps the totals — sufficient for UI reporting).
+connect_bd_net [get_bd_pins dvi2rgb_0/vid_pHSync] [get_bd_pins v_tc_rx/hsync_in]
+connect_bd_net [get_bd_pins dvi2rgb_0/vid_pVSync] [get_bd_pins v_tc_rx/vsync_in]
+connect_bd_net [get_bd_pins dvi2rgb_0/vid_pVDE]   [get_bd_pins v_tc_rx/active_video_in]
+create_bd_cell -type ip -vlnv xilinx.com:ip:xlconstant v_tc_rx_low
+set_property -dict [list CONFIG.CONST_WIDTH {1} CONFIG.CONST_VAL {0}] [get_bd_cells v_tc_rx_low]
+connect_bd_net [get_bd_pins v_tc_rx_low/dout] [get_bd_pins v_tc_rx/hblank_in]
+connect_bd_net [get_bd_pins v_tc_rx_low/dout] [get_bd_pins v_tc_rx/vblank_in]
+
+# AXI-Lite control on M07.
+connect_bd_intf_net [get_bd_intf_pins axi_ic_lite/M07_AXI] [get_bd_intf_pins v_tc_rx/ctrl]
+connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]            [get_bd_pins v_tc_rx/s_axi_aclk]
+connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins v_tc_rx/s_axi_aresetn]
 
 # out_vsync_async ← v_tc_tx/vsync_out (parallel fan-out to the existing
 # axis_to_vid_io_0 and axi_sync_inputs_0 consumers).

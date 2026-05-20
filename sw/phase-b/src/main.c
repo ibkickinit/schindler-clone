@@ -557,6 +557,27 @@ static const lock_mode_t MODE_FILM = {
 /* Active mode. Default = SMOOTH (Phase 6/7 baseline). */
 static const lock_mode_t *g_active_mode = &MODE_SMOOTH;
 
+/* Phase E2.4 — VTC output-mode struct moved here from later in the file so
+ * cmd_info() (which prints g_active_output_mode->name etc.) can see the
+ * type declaration. The actual MODE_720P50/720P60 const data + vtc_setup
+ * stay where they are; only the typedef + the g_active_output_mode global
+ * are forward-declared here. */
+typedef struct {
+    const char *name;
+    u32 h_active;
+    u32 v_active;
+    u32 h_total;
+    u32 v_total;
+    u32 h_front;   /* HFront porch  */
+    u32 h_sync;    /* HSync width   */
+    u32 v_front;   /* VFront porch  */
+    u32 v_sync;    /* VSync width   */
+} vtc_mode_t;
+
+extern const vtc_mode_t MODE_720P60;
+extern const vtc_mode_t MODE_720P50;
+static const vtc_mode_t *g_active_output_mode = &MODE_720P50;  /* updated by vtc_setup */
+
 /* Convenience macros that resolve to the active mode's fields. The existing
  * loop_tick code references these by their original names; this is a
  * drop-in indirection. */
@@ -863,6 +884,40 @@ static u32 g_output_target_mhz = 50000;  /* 50.000 Hz */
 /* Forward declaration — defined later in the file (Phase D iter-4a section). */
 static u32 measure_source_rate_mhz(int target_edges);
 
+/* Phase E2.4 — source format detector (v_tc_rx). Direct register access (same
+ * approach as vtc_setup — Xilinx XVtc driver has historically caused Data
+ * Aborts on this config so we bypass it). Detector reports HxV active, HxV
+ * total, sync starts/ends, and polarities via memory-mapped registers.
+ *
+ * Register offsets from xvtc_hw.h: 0x20 DASIZE, 0x24 DTSTAT, 0x2C DPOL,
+ * 0x30 DHSIZE, 0x34 DVSIZE, 0x38 DHSYNC, 0x3C DVBHOFF, 0x40 DVSYNC. */
+#if defined(XPAR_V_TC_RX_BASEADDR)
+#  define VTC_RX_BASEADDR XPAR_V_TC_RX_BASEADDR
+#elif defined(XPAR_V_TC_1_BASEADDR)
+#  define VTC_RX_BASEADDR XPAR_V_TC_1_BASEADDR
+#elif defined(XPAR_VTC_1_BASEADDR)
+#  define VTC_RX_BASEADDR XPAR_VTC_1_BASEADDR
+#elif defined(XPAR_PHASE_B_BD_V_TC_RX_BASEADDR)
+#  define VTC_RX_BASEADDR XPAR_PHASE_B_BD_V_TC_RX_BASEADDR
+#else
+#  error "v_tc_rx base address not found in xparameters.h"
+#endif
+
+#define VTC_RX_CTL     (VTC_RX_BASEADDR + 0x000)
+#define VTC_RX_DASIZE  (VTC_RX_BASEADDR + 0x020)
+#define VTC_RX_DTSTAT  (VTC_RX_BASEADDR + 0x024)
+#define VTC_RX_DPOL    (VTC_RX_BASEADDR + 0x02C)
+#define VTC_RX_DHSIZE  (VTC_RX_BASEADDR + 0x030)
+#define VTC_RX_DVSIZE  (VTC_RX_BASEADDR + 0x034)
+#define VTC_RX_DHSYNC  (VTC_RX_BASEADDR + 0x038)
+#define VTC_RX_DVSYNC  (VTC_RX_BASEADDR + 0x040)
+
+static void vtc_rx_init(void)
+{
+    /* CTL = SW | DE = 0x9 enables the core and the detector. */
+    Xil_Out32(VTC_RX_CTL, 0x00000009);
+}
+
 /* Phase E2.3 — Euclidean GCD for reducing M/N to lowest terms. */
 static u32 frc_gcd(u32 a, u32 b)
 {
@@ -892,6 +947,102 @@ static int compute_frc_ratio(u32 src_mhz, u32 out_mhz, u16 *m_out, u16 *n_out)
     *m_out = (u16)m;
     *n_out = (u16)n;
     return 1;
+}
+
+/* Phase E2.4 — comprehensive source + output + loop status dump.
+ *
+ * Reads v_tc_rx detector registers for source format, the tracked
+ * g_active_output_mode for output VTC config, the synth_vsync_gen / src
+ * divider state for ref derivation, and the loop state for runtime info.
+ * One-shot — emitted on UART 'i'. Intended for UI consumption (machine-
+ * parseable lines) and human triage. */
+static void cmd_info(void)
+{
+    /* --- Source side (v_tc_rx) --- */
+    u32 dt_stat  = Xil_In32(VTC_RX_DTSTAT);
+    u32 dt_asize = Xil_In32(VTC_RX_DASIZE);
+    u32 dt_pol   = Xil_In32(VTC_RX_DPOL);
+    u32 dt_hsize = Xil_In32(VTC_RX_DHSIZE);
+    u32 dt_vsize = Xil_In32(VTC_RX_DVSIZE);
+    u32 dt_hsync = Xil_In32(VTC_RX_DHSYNC);
+    u32 dt_vsync = Xil_In32(VTC_RX_DVSYNC);
+
+    u32 h_active = dt_asize & 0xFFFF;
+    u32 v_active = (dt_asize >> 16) & 0xFFFF;
+    u32 h_total  = dt_hsize & 0xFFFF;
+    u32 v_total  = dt_vsize & 0xFFFF;
+    u32 h_sync_start = dt_hsync & 0xFFFF;
+    u32 h_sync_end   = (dt_hsync >> 16) & 0xFFFF;
+    u32 v_sync_start = dt_vsync & 0xFFFF;
+    u32 v_sync_end   = (dt_vsync >> 16) & 0xFFFF;
+    int locked   = !!(dt_stat & 0x1);  /* bit 0 = detector locked */
+    int hsync_pol = !!(dt_pol & 0x08);
+    int vsync_pol = !!(dt_pol & 0x04);
+    int avid_pol  = !!(dt_pol & 0x10);
+
+    /* Measure current source rate too (uses the post-P0-1-fix iter-4a path). */
+    u32 src_rate_mhz = (vsync_gpio_read() & VSYNC_GPIO_PLOCKED_MASK)
+                       ? measure_source_rate_mhz(30)
+                       : 0;
+
+    xil_printf("\r\n[I] SOURCE\r\n");
+    if (!(vsync_gpio_read() & VSYNC_GPIO_PLOCKED_MASK)) {
+        xil_printf("    pLocked  : NO (dvi2rgb not synced to source HDMI)\r\n");
+    } else {
+        xil_printf("    pLocked  : YES\r\n");
+        xil_printf("    detector : %s\r\n", locked ? "LOCKED" : "unlocked");
+        xil_printf("    HxV act  : %ux%u\r\n", (unsigned)h_active, (unsigned)v_active);
+        xil_printf("    HxV tot  : %ux%u\r\n", (unsigned)h_total, (unsigned)v_total);
+        xil_printf("    H sync   : start=%u end=%u  pol=%s\r\n",
+                   (unsigned)h_sync_start, (unsigned)h_sync_end,
+                   hsync_pol ? "POS" : "NEG");
+        xil_printf("    V sync   : start=%u end=%u  pol=%s\r\n",
+                   (unsigned)v_sync_start, (unsigned)v_sync_end,
+                   vsync_pol ? "POS" : "NEG");
+        xil_printf("    AV pol   : %s\r\n", avid_pol ? "POS" : "NEG");
+        if (src_rate_mhz > 0) {
+            xil_printf("    rate     : %u.%03u Hz\r\n",
+                       src_rate_mhz / 1000, src_rate_mhz % 1000);
+            /* Pixel clock = HTOTAL × VTOTAL × frame_rate. Compute in u64 to
+             * avoid overflow; report in kHz to fit a u32 print. */
+            if (h_total > 0 && v_total > 0) {
+                u64 pclk_hz = (u64)h_total * (u64)v_total * (u64)src_rate_mhz / 1000ULL;
+                xil_printf("    pclk     : %u.%03u MHz (= HTOTAL×VTOTAL×rate)\r\n",
+                           (unsigned)(pclk_hz / 1000000ULL),
+                           (unsigned)((pclk_hz / 1000ULL) % 1000ULL));
+            }
+        } else {
+            xil_printf("    rate     : (measurement unavailable)\r\n");
+        }
+    }
+
+    /* --- Output side (firmware-tracked VTC config) --- */
+    const vtc_mode_t *om = g_active_output_mode;
+    xil_printf("[I] OUTPUT\r\n");
+    xil_printf("    mode     : %s  (%ux%u, HTOTAL=%u VTOTAL=%u)\r\n",
+               om->name, (unsigned)om->h_active, (unsigned)om->v_active,
+               (unsigned)om->h_total, (unsigned)om->v_total);
+    xil_printf("    target   : %u.%03u Hz\r\n",
+               g_output_target_mhz / 1000, g_output_target_mhz % 1000);
+
+    /* --- Loop + ref state --- */
+    static const char *refsel_label[4] = {"FREE", "SYNC", "EXT0", "SRC"};
+    xil_printf("[I] LOOP\r\n");
+    xil_printf("    state    : %s\r\n", state_label(g_lock_state));
+    xil_printf("    mode     : %s (Kp=%d.%03d, Ki=%d.%03d)\r\n",
+               g_active_mode->name,
+               g_active_mode->kp_mppm_per_line / 1000,
+               g_active_mode->kp_mppm_per_line % 1000,
+               g_active_mode->ki_mppm_per_line / 1000,
+               g_active_mode->ki_mppm_per_line % 1000);
+    xil_printf("    ref      : %s (mask=%d)\r\n",
+               refsel_label[g_ref_select & 0x3], g_ref_masked);
+    xil_printf("    src M/N  : %u/%u\r\n",
+               (unsigned)g_srcdiv_m, (unsigned)g_srcdiv_n);
+    xil_printf("    int_mppm : %d  (preload %d)\r\n",
+               (int)g_integrator_mppm, INTEGRATOR_PRELOAD_MILLI_PPM);
+    xil_printf("    locked f : %u  unlocks: %u\r\n",
+               (unsigned)g_total_locked_frames, (unsigned)g_unlock_events);
 }
 
 /* Phase E2.3 — auto-FRC: measure source rate, derive M/N for the configured
@@ -1238,6 +1389,7 @@ static void cmd_help(void)
                "  n <M> <N>     E2.1: src_vsync_divider ratio (output = src×M/N)\r\n"
                "  a             E2.3: auto-FRC (measure source, set M/N, ref=src)\r\n"
                "  o <snap|smooth|film> E2.2: select lock mode (default SMOOTH)\r\n"
+               "  i             E2.4: info dump (source format + output + loop state)\r\n"
                "  B <ppm>       Phase 8: inject ref-rate bias (saturation/slip test)\r\n"
                "  ?             this help\r\n");
 }
@@ -1312,6 +1464,7 @@ static void uart_poll_and_dispatch(void)
             break;
         }
         case 'a': case 'A':       cmd_auto_frc();    break;
+        case 'i': case 'I':       cmd_info();        break;
         case 'o': case 'O': {
             /* o <snap|smooth|film>  — E2.2 lock mode selection. */
             char buf[16];
@@ -1650,22 +1803,14 @@ static void telemetry_loop(UINTPTR vdma_base)
  * below ~29.7 MHz at 24p / ~37.1 MHz at 30p — currently the IP would
  * refuse the configuration). For 720p50 the same 74.25 MHz pixel clock
  * works with stock IP — only the V-frame-rate math changes via wider H. */
-typedef struct {
-    const char *name;
-    u32 h_active;
-    u32 v_active;
-    u32 h_total;
-    u32 v_total;
-    u32 h_front;   /* HFront porch  */
-    u32 h_sync;    /* HSync width   */
-    u32 v_front;   /* VFront porch  */
-    u32 v_sync;    /* VSync width   */
-} vtc_mode_t;
-
-static const vtc_mode_t MODE_720P60 = {
+/* vtc_mode_t typedef + g_active_output_mode forward-declared above (near
+ * lock_mode_t) so cmd_info can use them. Definitions of MODE_720P60 /
+ * MODE_720P50 below; note no `static` so the extern declaration above
+ * resolves. */
+const vtc_mode_t MODE_720P60 = {
     "720p60", 1280, 720, 1650, 750,  110, 40,  5, 5
 };
-static const vtc_mode_t MODE_720P50 = {
+const vtc_mode_t MODE_720P50 = {
     "720p50", 1280, 720, 1980, 750,  440, 40,  5, 5
 };
 
@@ -1678,7 +1823,11 @@ static int vtc_setup(const vtc_mode_t *m)
      * Pixel clock = 74.25 MHz from clk_wiz_pixclk_out (unchanged across modes).
      * HSync + VSync polarity: POSITIVE per CEA-861 720p spec.
      */
-    UINTPTR base = XPAR_VTC_0_BASEADDR;
+    /* Phase E2.4: must use explicit XPAR_V_TC_TX_BASEADDR. Adding v_tc_rx
+     * caused Vivado to remap XPAR_VTC_0_BASEADDR to the new IP (the detector),
+     * which would misconfigure the OUTPUT generator if we kept the generic
+     * name. See memory note xilinx_xpar_vtc_aliasing.md. */
+    UINTPTR base = XPAR_V_TC_TX_BASEADDR;
     const u32 H_ACTIVE = m->h_active, V_ACTIVE = m->v_active;
     const u32 H_TOTAL  = m->h_total,  V_TOTAL  = m->v_total;
     const u32 H_SYNC_START   = H_ACTIVE + m->h_front;
@@ -1726,6 +1875,9 @@ static int vtc_setup(const vtc_mode_t *m)
             | 0x02             /* RU register-update enable      */
             | 0x04             /* GE generator enable            */
             | 0x07F7EF00);     /* source-select bits (all-from-gen) */
+
+    /* Phase E2.4 — track the active output mode for 'i' reporting. */
+    g_active_output_mode = m;
 
     return XST_SUCCESS;
 }
@@ -1836,6 +1988,12 @@ int main(void)
      * Switch to MODE_720P60 to revert. */
     if (vtc_setup(&MODE_720P50) != XST_SUCCESS) return -1;
     xil_printf("VTC aligned to source vsync\r\n");
+
+    /* Phase E2.4 — bring up the source-format detector (v_tc_rx). It runs
+     * independently of the output VTC; firmware queries on 'i' command. */
+    vtc_rx_init();
+    xil_printf("VTC RX detector enabled (source format reporting on 'i')\r\n");
+
     sleep(1);  /* give VTC time to start pulsing fsync before VDMA reset */
 
     /* --- VDMA ------------------------------------------------------------- */
