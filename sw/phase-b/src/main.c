@@ -865,28 +865,25 @@ int main(void)
      * Phase B.1; future phases that touch frames from the PS will revisit. */
     Xil_DCacheDisable();
 
-    /* Phase G iter1.6 (2026-05-20): bypass the XIic library and hammer the
-     * AXI IIC IP's registers directly. The iter1 build's probe sees ~10s
-     * per NAK and shows NO traffic on the SDA/SCL scope — indicating the
-     * XIic library is timing out on some internal condition without ever
-     * putting bytes on the wire. This mode does the bare minimum: soft-
-     * reset, enable, push a START+addr+STOP triplet, tight repeat. If the
-     * IP is electrically functional, scope will see continuous I²C frames.
-     * If not, scope sees nothing — isolating the failure to the IP itself.
+    /* Phase E2 iter1 (2026-05-20): Si5351A Phase A — chip alive.
      *
-     * AXI IIC register offsets (per PG090):
+     * Direct-register-bang variant of the iter1.6 probe, retargeted at the
+     * Si5351A on the same AXI IIC bus that previously hosted the (now-dead)
+     * ADV7393. Si5351A's default I²C address is 0x60 (7-bit). The transmit
+     * byte for a write transaction is therefore 0x60<<1 | W = 0xC0.
+     *
+     * Same IP register map (PG090):
      *   0x040 SOFTR  — Soft Reset Register (write 0x0A to reset)
      *   0x100 CR     — Control Register (bit 0 = Enable IP, bit 2 = Master)
      *   0x104 SR     — Status Register (read-only)
      *   0x108 TX_FIFO — TX FIFO (bit 9 = STOP, bit 8 = START, bits 7:0 = data)
      *
-     * Loop just keeps writing START+0x54+STOP (= START + addr 0x2A in W
-     * direction + STOP) to TX_FIFO. After a brief wait, repeat. Even on
-     * a NAK from the chip, the IP should drive 9 SCL pulses + emit the
-     * STOP condition — that's what scope should see. */
-    xil_printf("\r\niter1.6 SCOPE-BANG mode: continuous AXI IIC hammer\r\n");
-    xil_printf("  Writing START+0x54+STOP to TX_FIFO in a tight loop.\r\n");
-    xil_printf("  Expect visible SDA/SCL traffic on scope if IP is alive.\r\n");
+     * Pass criterion: scope SDA on the 9th SCL pulse — should dip LOW for one
+     * bit time (the Si5351's ACK). If it stays HIGH, chip didn't ACK — try
+     * 0x61 (some breakouts strap the ADDR pin differently). */
+    xil_printf("\r\nPhase E2 iter1 Si5351 PROBE: continuous AXI IIC hammer at 0x60\r\n");
+    xil_printf("  Writing START+0xC0+STOP to TX_FIFO in a tight loop.\r\n");
+    xil_printf("  Scope the 9th SCL pulse: SDA low = chip ACK = Phase A PASS.\r\n");
     xil_printf("  Will print SR (status reg) every 1000 iterations for triage.\r\n\r\n");
 
     int loop_count = 0;
@@ -897,17 +894,20 @@ int main(void)
         for (volatile int d = 0; d < 100; d++);
         /* Enable IP + master mode */
         Xil_Out32(IIC_ADV7393_BASE + 0x100, 0x01);
-        /* Push START + addr(0x2A)<<1|W = 0x54 + STOP into TX_FIFO.
+        /* Push START + addr(0x60)<<1|W = 0xC0 + STOP into TX_FIFO.
          * Single byte with both START (bit 8) and STOP (bit 9) flags. */
-        Xil_Out32(IIC_ADV7393_BASE + 0x108, 0x300 | 0x54);
+        Xil_Out32(IIC_ADV7393_BASE + 0x108, 0x300 | 0xC0);
         /* Brief wait — long enough for IP to attempt transaction (~150us
          * at 100 kHz × 9 bits + start/stop), short enough that we hammer
          * the bus continuously. */
         for (volatile int d = 0; d < 200000; d++);  /* ~1 ms */
-        /* Status diagnostic every 1000 iterations */
+        /* Status diagnostic every 1000 iterations.
+         * Healthy SR with ACK: bit 7=TX FIFO empty, others quiet.
+         * If we see the same 0xC4 pattern as ADV7393 NAK testing, chip
+         * isn't ACKing either — try 0x61, or check pull-ups. */
         if (++loop_count >= 1000) {
             u32 sr = Xil_In32(IIC_ADV7393_BASE + 0x104);
-            xil_printf("iter1.6: SR=0x%08x  (iter %d)\r\n", (unsigned)sr, loop_count);
+            xil_printf("Si5351 probe: SR=0x%08x  (iter %d)\r\n", (unsigned)sr, loop_count);
             loop_count = 0;
         }
     }
