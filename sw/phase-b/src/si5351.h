@@ -26,6 +26,12 @@
  *   Returns 0 if chip ACKs, negative on NAK / timeout. */
 int si5351_probe(u32 iic_base);
 
+/* Read one register from the chip. Used to verify writes took effect, and
+ * to poll Register 0 SYS_INIT bit. Returns 0 on success, negative on NAK
+ * or no-data. Reads via the canonical I²C "write reg index, RESTART, read"
+ * sequence using AXI IIC dynamic mode. */
+int si5351_read_reg(u32 iic_base, u8 reg, u8 *out_data);
+
 /* Bench-debug: probe every 7-bit address 0x03..0x77 (skipping I²C reserved
  *   ranges 0x00-0x02 and 0x78-0x7F). Prints a line for each address that
  *   ACKs. Useful when the chip's expected address (0x60) is unreachable. */

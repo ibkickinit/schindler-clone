@@ -84,7 +84,7 @@ Per `signal-flow.md` diagram 2 — genlock + dual SYNC OUT.
 
 ### Slow Control + Clock Generation
 - **Chip 1:** RP2040 — microcontroller for autosense slow-control, PGA gain commands, Si5351 register writes, status reporting to Zynq PS — Raspberry Pi — ~$1 — 📋 (verify on-hand from prior projects)
-- **Chip 2:** **Si5351A-B-GT** (or similar) — 3-channel programmable clock generator; ch0 → FPGA master, ch1+ch2 reserved — Skyworks/Silicon Labs — ~$2 — 📋 production
+- **Chip 2 (genlock clock gen):** **Si5351A-B-GT** — 3-channel programmable clock generator; ch0 → FPGA master, ch1+ch2 reserved — Skyworks/Silicon Labs — ~$2 — 📋 production. **I²C address 0x60.** **Held as the B-variant** (has the analog VCXO; no A0 address-select pin) pending the genlock-steering decision — see 2026-05-20 changelog + [`pin-budget.md`](pin-budget.md) § 5. ⚠️ **Address-collision note:** the RF-subsystem Si5351 (§ 7) historically carried this same `Si5351A-B-GT` part number and therefore the same 0x60 address. **Resolution:** RF chip moves to the Si5351A 16-QFN (A0→0x61); this genlock chip stays 0x60. The two-segment I²C plan (segment B) also keeps them collision-free regardless.
 - **Eval boards:** **Adafruit 2045** Si5351 breakout ×2 — 🔬
 
 ### Genlock Loop Core
@@ -270,7 +270,7 @@ Built into every V1 carrier as a standard subsystem. Adds an RF modulated output
 ### Modulator + carrier generation
 - **AM modulator (primary):** `ADL5391ACPZ-R7` — Analog Devices, DC–2.0 GHz analog multiplier, modern symmetric-core architecture, 16-LFCSP, 7" reel cut for single qty — ~$15 single qty / ~$18 at qty 100 — 📋
 - **AM modulator (fallback):** `AD835ARZ` — Analog Devices, 250 MHz four-quadrant multiplier, 8-SOIC, classic part with abundant reference designs — ~$25 at qty 100 — 📋 (order one of each for bench eval)
-- **RF carrier gen:** `Si5351A-B-GT` — dedicated to RF subsystem (separate from genlock Si5351 to avoid cross-coupling) + 25 MHz crystal — Skyworks/Silicon Labs — ~$2 — 📋
+- **RF carrier gen:** **Si5351A 16-QFN variant, A0 pin strapped high → I²C address 0x61** — dedicated to RF subsystem (separate from genlock Si5351 to avoid cross-coupling) + 25 MHz crystal — Skyworks/Silicon Labs — ~$2 — 📋. ⚠️ **Address-collision fix (2026-05-20):** previously spec'd as `Si5351A-B-GT`, which collides with the genlock Si5351 (§ 2) at 0x60. The Si5351A 16-QFN (and 20-QFN) carry the A0 LSB-select pin — strap high for 0x61. RF needs no VCXO (fixed carriers), so dropping the B-variant costs nothing here. See [`pin-budget.md`](pin-budget.md) § 4.
 - **Si5351 channel allocation:** ch1 = video carrier (Ch3 61.25 MHz / Ch4 67.25 MHz), ch2 = audio pilot CW (Ch3 65.75 MHz / Ch4 71.75 MHz), ch0 free.
 
 ### RF chain
@@ -374,5 +374,5 @@ Built into every V1 unit (Base + Broadcast). No daughter card, no mezzanine conn
 - **RJ45 mag jack** — specific part TBD (consider Pulse / Bel Fuse).
 - **USB-C connector** — specific part TBD (consider Amphenol or Wurth).
 - **Chassis vendor** — Hammond / Bud / Italtronic class — final selection TBD.
-- **Si5351 production variant** vs `Si5351A-B-GT` placeholder — confirm at schematic phase.
+- **Si5351 production variants — RESOLVED 2026-05-20:** genlock = `Si5351A-B-GT` @ 0x60 (B-variant held for VCXO option, pending genlock-steering bench decision); RF = Si5351A 16-QFN, A0→0x61. See § 2, § 7, and [`pin-budget.md`](pin-budget.md) § 4–5.
 - **RP2040 board form factor** — bare chip on carrier vs YD-RP2040 / SparkFun / Adafruit feather module — TBD.

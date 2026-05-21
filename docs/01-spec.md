@@ -118,7 +118,7 @@ TPG + 4 still image buffers selectable as input source via the source mux (along
 - **TPD12S016PWR** — second instance on output side for ESD/level shift.
 - HDMI Type A panel-mount connector.
 - I²C control from TE0720 PS.
-- **Bus sharing:** ADV7511 and ADV7393 share the same parallel YCbCr 4:2:2 bus from FPGA — both accept that format. Saves ~16 PL pins. Trade-off: HDMI out tracks analog out (same content). For independent cadence on HDMI vs analog, future revision can split buses.
+- **Bus architecture (updated 2026-05-20 — split adopted):** the ADV7511 (HDMI out) and ADV7393 (analog out) now run **separate parallel buses** — a dedicated full-width (~24-bit) bus to the ADV7511 and a narrowed 16-bit-muxed YCbCr 4:2:2 bus to the ADV7393. Cost ~+16 PL pins (funded by the I²C consolidation — see [`pin-budget.md`](pin-budget.md)). **This unlocks independent cadence on HDMI vs analog** — e.g. 1080p60 out the HDMI while NTSC composite runs its own 5:2 pulldown off the same source. *(Prior design shared one bus to save ~16 pins, which forced "HDMI out tracks analog out, same content"; that limitation is removed.)*
 
 ### 3.3 Composite / component / S-Video input [All SKUs]
 
@@ -163,7 +163,7 @@ Auto-sensing reference input across LTC / black burst / tri-level sync.
 
 **Signal classification + clock generation:**
 - **RP2040** (carrier, dedicated to genlock) — owns slow-control: autosense decision, PGA gain commands, Si5351 register writes, status reporting to Zynq PS over UART. ~$1.
-- **Si5351A-B-GT** (Skyworks/Silicon Labs) — programmable clock generator. ch0 → FPGA master clock; ch1/ch2 reserved for future GPSDO 10 MHz distribution. ~$2.
+- **Si5351A-B-GT** (Skyworks/Silicon Labs) — programmable clock generator. ch0 → FPGA master clock; ch1/ch2 reserved for future GPSDO 10 MHz distribution. ~$2. **I²C address 0x60** (I²C segment B — see [`pin-budget.md`](pin-budget.md)). **Held as the B-variant** for its analog VCXO. **PARKED — master-clock steering method:** I²C-register-write-only (loop pushes divider updates over I²C) vs the B-variant's analog VCXO (continuous voltage-pull, finer/faster, lower residual jitter). Decide by bench-measuring I²C-only loop jitter once the genlock chain is up (Phase G). Holding the B at zero cost preserves the VCXO option (asymmetric-risk-safe). If I²C-only proves clean enough, this chip can drop to the Si5351A 16-QFN like the RF chip.
 
 **FPGA-side logic (all SKUs):**
 - Autosense classifier (LTC biphase mark / BB 15.734 kHz / tri-level pulse signature) running on the 20 MSPS ADC stream.
@@ -196,7 +196,7 @@ Adds an RF modulated output on NTSC Ch3 or Ch4 (operator-selectable) for 1970s c
 
 HDMI and SDI remain independently live; not part of the analog-output mode mux.
 
-**Architecture:** ADL5391 analog multiplier (DSB-AM modulation) + dedicated Si5351 for RF carriers (separate from genlock Si5351 to avoid cross-coupling) + silent CW audio pilot at video_carrier + 4.5 MHz + 5th-order LC bandpass (56–73 MHz, covers Ch3 + Ch4) + ERA-3SM+ MMIC amp + 50→75 Ω minimum-loss pad + ESD + F-connector + shield can.
+**Architecture:** ADL5391 analog multiplier (DSB-AM modulation) + dedicated Si5351 for RF carriers (separate from genlock Si5351 to avoid cross-coupling; **Si5351A 16-QFN, A0→0x61** to clear the 0x60 collision with the genlock chip — see [`pin-budget.md`](pin-budget.md) § 4) + silent CW audio pilot at video_carrier + 4.5 MHz + 5th-order LC bandpass (56–73 MHz, covers Ch3 + Ch4) + ERA-3SM+ MMIC amp + 50→75 Ω minimum-loss pad + ESD + F-connector + shield can.
 
 Mini SKU: ADL5391 + dedicated Si5351 + ERA-3 + bandpass passives + F-connector + shield can all unpopulated at assembly.
 
@@ -454,9 +454,9 @@ Full menu hierarchy in [`ui-menu.md`](ui-menu.md).
 
 ## 18. Expansion header — design rule
 
-- 2× 20-pin (or 1× 40-pin) 2.54 mm header on the carrier exposes unused TE0720 PL pins + 3.3 V / 5 V / GND rails + I²C bus tap + (optional) SPI bus tap.
-- Preserves field-upgrade and prototype-extension paths for future add-on boards or experimental modules.
-- ~$5 in connector + minimal PCB area. Insurance against early architectural lock-in.
+- **Bus-tap-primary** (re-scoped 2026-05-20). A 2.54 mm header on the carrier exposes the **I²C bus tap + (optional) SPI bus tap + 3.3 V / 5 V / GND rails**, plus whatever **spare PL pins remain after stuffing**. The bus taps cost no new PL pins and are the durable value of the header; the spare-PL-pin count is **stuffing-dependent**, not fixed.
+- **PL-pin reality (see [`pin-budget.md`](pin-budget.md)):** Pro full-stuffing uses ~129–138 of 152 PL I/O, leaving only **~14–23 free PL pins** — not the full 40 a 2×20-pin header implies. **Mini** stuffing (no SDI, no dual SYNC OUT, no per-connector LED drivers) frees ~30+ pins, so a fuller PL-pin header is realistic there. Size the header for the bus taps + rails as the guaranteed contents; treat exposed PL pins as a stuffing-variant bonus.
+- Preserves field-upgrade and prototype-extension paths for future add-on boards or experimental modules. ~$5 in connector + minimal PCB area. Insurance against early architectural lock-in.
 
 ---
 

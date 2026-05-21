@@ -196,15 +196,22 @@ connect_bd_net [get_bd_pins clk_wiz_ref/locked] [get_bd_ports hdmi_rx_hpd]
 # =============================================================================
 # Phase E2 Phase C (2026-05-20): Si5351A external clock INPUT.
 # =============================================================================
-# Brings the Si5351's CLK0 output (10 MHz, configured in firmware via I²C)
+# Brings the Si5351's CLK0 output (25 MHz, configured in firmware via I²C)
 # into the FPGA on Pmod JB Pin 7 = PACKAGE_PIN Y7 (MRCC, bank 13, constrained
-# in XDC). Routes it through a dedicated MMCM (clk_wiz_si5351) to verify
+# in XDC). Routes it through a dedicated PLL (clk_wiz_si5351) to verify
 # that an external clock source can be the source-of-truth for a downstream
 # pixel-clock domain.
 #
+# Why 25 MHz at the FPGA pin (not the 10 MHz of Phase B): the PLLE2_ADV
+# primitive on Zynq-7020 has a 19 MHz minimum input frequency. 10 MHz is
+# below spec and Vivado rejects it. 25 MHz is the simplest higher-frequency
+# Si5351 output (PLLA × 24 / MS0 × 24 = 25 MHz, both integer ratios off the
+# 25 MHz xtal). Phase B's 10 MHz Si5351 output was scope-validated; this
+# build retunes to 25 MHz via si5351_init_25mhz_clk0() in firmware.
+#
 # Output: 100 MHz on clk_wiz_si5351/clk_out1 — value not load-bearing for
-# Phase C-lite (just a "did the MMCM lock onto the external clock?" test).
-# Phase D/E will re-tune output to the actual pixel-clock rate.
+# Phase C-lite (just a "did the PLL lock onto the external clock?" test).
+# Phase D/E will re-tune to the actual pixel-clock rate.
 #
 # The 'locked' signal is what we observe at the bench. Wired to LD3 below
 # (formerly hdmi_tx_hpd) so it's visually observable. CDC into the FCLK_CLK0
@@ -212,11 +219,17 @@ connect_bd_net [get_bd_pins clk_wiz_ref/locked] [get_bd_ports hdmi_rx_hpd]
 # (asserts once at boot, then stays high), so the LED's natural debouncing
 # is sufficient. Phase D/E will need a proper CDC'd path if firmware ever
 # polls this — likely an axi_sync_inputs_0 expansion at that time.
-create_bd_port -dir I -type clk -freq_hz 10000000 si5351_clkin
+create_bd_port -dir I -type clk -freq_hz 25000000 si5351_clkin
 create_bd_cell -type ip -vlnv xilinx.com:ip:clk_wiz clk_wiz_si5351
+# PRIMITIVE=PLL (not MMCM): Zynq-7020 only has 4 MMCME2_ADV primitives and
+# all 4 are claimed by clk_wiz_pixclk_out + clk_wiz_ref + clk_wiz_adv7393 +
+# dvi2rgb's internal recovery MMCM. A 5th MMCM fails place_design with
+# DRC UTLZ-1. The PLLE2_ADV pool is parallel and has free slots. PLL has
+# fewer outputs/features than MMCM (1 output, no fine phase shift) but is
+# plenty for this lock-test use.
 set_property -dict [list \
-    CONFIG.PRIMITIVE {MMCM} \
-    CONFIG.PRIM_IN_FREQ {10.000} \
+    CONFIG.PRIMITIVE {PLL} \
+    CONFIG.PRIM_IN_FREQ {25.000} \
     CONFIG.CLKOUT1_REQUESTED_OUT_FREQ {100.000} \
     CONFIG.USE_LOCKED {true} \
     CONFIG.USE_RESET {true} \

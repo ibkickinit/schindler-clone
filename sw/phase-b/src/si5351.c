@@ -12,6 +12,7 @@
 #include "si5351.h"
 #include "xil_io.h"
 #include "xil_printf.h"
+#include "xiic_l.h"   /* XIic_Send / XIic_Recv polled */
 
 /* AXI IIC register offsets (PG090). */
 #define IIC_REG_GIE         0x01C  /* Global Interrupt Enable */
@@ -78,66 +79,96 @@ static inline void iic_settle(int byte_count)
  * before retrying so the diagnostic output appears for one transaction. */
 int si5351_debug_write = 0;
 
+/* AXI IIC ISR bit definitions (PG090 §"Interrupt Status Register"). */
+#define ISR_BNB             0x10   /* Bus Not Busy edge */
+#define ISR_TX_FIFO_EMPTY   0x04   /* TX FIFO became empty */
+
+/* Wait for transaction completion via IISR.BNB poll. BNB is edge-triggered,
+ * fires when bus transitions busy→not-busy (i.e., after STOP is driven).
+ * This is the canonical XIic_DynSend completion-detection bit — far more
+ * reliable than fixed-delay iic_settle which can return before clock-stretching
+ * slaves finish. Returns 0 on completion, -1 on timeout.
+ *
+ * Timeout chosen large (50ms) to accommodate worst-case clock-stretching
+ * during Si5351 SYS_INIT — chip may stretch SCL for hundreds of µs per ACK
+ * cycle while NVM→RAM copy is in progress. */
+static int wait_for_bnb(u32 base)
+{
+    const int LIMIT = 25000000;  /* ~50 ms at cortex-a9 666MHz with volatile-loop overhead */
+    for (int i = 0; i < LIMIT; i++) {
+        u32 isr = Xil_In32(base + IIC_REG_ISR);
+        if (isr & ISR_BNB) {
+            Xil_Out32(base + IIC_REG_ISR, ISR_BNB);  /* W1C the BNB latch */
+            return 0;
+        }
+    }
+    return -1;
+}
+
+/* Library-based write — replaces broken hand-rolled register pokes.
+ * Bench evidence 2026-05-21: hand-rolled si5351_write_reg_once only put
+ * 2 bytes on the wire (addr+W, reg pointer) — data byte was dropped.
+ * Chip ACKed both bytes, returned "OK", but internal RAM never updated.
+ * XIic_Send is bench-validated to push all 3 bytes correctly and chip
+ * reads back the written value. */
+static int si5351_lib_write_reg(u32 base, u8 reg, u8 data)
+{
+    u8 buf[2] = {reg, data};
+    int sent = XIic_Send(base, SI5351_I2C_ADDR_7B, buf, 2, XIIC_STOP);
+    return (sent == 2) ? 0 : -2;
+}
+
 static int si5351_write_reg_once(u32 base, u8 reg, u8 data)
 {
-    /* Canonical AXI IIC dynamic-mode per-transaction prologue, per Xilinx
-     * embeddedsw's XIic_DynSend and PG090. Three steps:
-     *   1. CR = TX_FIFO_RESET (bit 1)  — drop any stale FIFO data
-     *   2. CR = EN              (bit 0) — re-enable IP for new transaction
-     *   3. W1C ISR all bits             — clear stale interrupt status
+    /* Per-transaction full-IP-reset prologue (SOFTR). This is the SAME
+     * pattern that si5351_scan_bus() uses and that bench-validated as
+     * reliable on 2026-05-20.
      *
-     * NOTE: we do NOT issue SOFTR here. SOFTR releases SDA/SCL without an
-     * I²C STOP and can leave the slave mid-frame; next START gets NAK'd.
-     * SOFTR only on boot (in si5351_probe) and as a recovery step on the
-     * timeout failure path below. */
-    Xil_Out32(base + IIC_REG_CR, 0x02);   /* TX_FIFO_RESET */
-    Xil_Out32(base + IIC_REG_CR, CR_EN);  /* re-enable */
-    Xil_Out32(base + IIC_REG_ISR, 0xFF);  /* W1C all status bits */
+     * The "canonical no-SOFTR" prologue (CR=0x03 → CR=0x01 → W1C ISR)
+     * was tried twice (commits 1ddfa4c and post-1ddfa4c CR=0x03 fix) and
+     * failed both times: TX_FIFO never drains, BNB poll exits with
+     * TX_ERROR=1, chip NAKs. Whatever IP/bus state the SOFTR clears,
+     * the no-SOFTR pattern is leaving behind on THIS hardware (JESSINIE
+     * Si5351A breakout + Zybo Z7-20 AXI IIC IP).
+     *
+     * Theoretical concern about per-transaction SOFTR is "if chip is
+     * mid-frame, SOFTR releases without STOP and confuses slave." That
+     * concern doesn't apply here — failing transactions never get past
+     * the address byte, so there's no mid-frame to corrupt. Root-cause
+     * for why no-SOFTR fails is a TODO but does not block control. */
+    Xil_Out32(base + IIC_REG_SOFTR, 0x0A);
+    for (volatile int d = 0; d < 1000; d++);
+    Xil_Out32(base + IIC_REG_CR, CR_EN);
 
-    u32 sr_init = 0, isr_b1 = 0, sr_b1 = 0, isr_b2 = 0, sr_b2 = 0;
-    if (si5351_debug_write) sr_init = Xil_In32(base + IIC_REG_SR);
-
-    /* Push all 3 bytes back-to-back. AXI IIC dynamic mode buffers 16 bytes,
-     * we send only 3 — the IP autonomously drains at SCL rate. */
+    /* Push all 3 bytes back-to-back with NO delay between them. Critical:
+     * inter-byte gaps in dynamic mode hold the bus busy waiting for the
+     * next byte — the Si5351 has an inter-byte timeout and NAKs the next
+     * byte if we delay >~500 µs. Earlier per-byte diagnostic snapshots
+     * inserted 1 ms gaps and caused ~70% NAK rate; with back-to-back
+     * pushes the same firmware achieved zero-NAK init. */
     Xil_Out32(base + IIC_REG_TX_FIFO, TX_START | (SI5351_I2C_ADDR_7B << 1));
     Xil_Out32(base + IIC_REG_TX_FIFO, reg);
     Xil_Out32(base + IIC_REG_TX_FIFO, TX_STOP | data);
 
-    /* Poll ISR.BNB (Bus Not Busy, bit 4) — edge-triggered, fires when the
-     * bus transitions busy → not-busy at end of transaction. Replaces
-     * fixed-delay iic_settle: handles fast and slow chips equally. */
-    int timeout = 5000000;  /* ~10ms at cortex-a9 666 MHz */
-    while (timeout-- > 0) {
-        u32 isr = Xil_In32(base + IIC_REG_ISR);
-        if (isr & 0x10) break;  /* BNB fired = transaction complete */
-    }
-    if (timeout <= 0) {
-        /* Genuine hardware fault. SOFTR + brief settle to recover the IP. */
-        Xil_Out32(base + IIC_REG_SOFTR, 0x0A);
-        for (volatile int d = 0; d < 10000; d++);
-        if (si5351_debug_write) {
-            xil_printf("  diag reg=0x%02x: BNB TIMEOUT — IP wedged, SOFTR'd\r\n", reg);
-        }
-        return -1;
-    }
-
-    /* Capture final SR/ISR (debug path). The per-byte snapshots are left
-     * here as zero placeholders so the format string remains stable. */
+    /* Poll BNB for true transaction completion (not fixed delay).
+     * If we return before STOP is driven, the IP keeps clocking SCL trying
+     * to drain the FIFO — that's the "SCL squarewave forever" bug. */
+    int wait_rc = wait_for_bnb(base);
 
     u32 sr_final  = Xil_In32(base + IIC_REG_SR);
     u32 isr_final = Xil_In32(base + IIC_REG_ISR);
 
     if (si5351_debug_write) {
         xil_printf("  diag reg=0x%02x data=0x%02x: "
-                   "sr_init=0x%02x  "
-                   "after_b1: sr=0x%02x isr=0x%02x  "
-                   "after_b2: sr=0x%02x isr=0x%02x  "
-                   "after_b3: sr=0x%02x isr=0x%02x\r\n",
-                   reg, data,
-                   (unsigned)sr_init,
-                   (unsigned)sr_b1,  (unsigned)isr_b1,
-                   (unsigned)sr_b2,  (unsigned)isr_b2,
-                   (unsigned)sr_final,(unsigned)isr_final);
+                   "wait_rc=%d sr=0x%02x isr=0x%02x\r\n",
+                   reg, data, wait_rc, (unsigned)sr_final, (unsigned)isr_final);
+    }
+
+    if (wait_rc != 0) {
+        /* Transaction never completed — chip clock-stretched past our timeout
+         * or IP is wedged. Force-reset IP for next attempt. */
+        Xil_Out32(base + IIC_REG_SOFTR, 0x0A);
+        return -1;
     }
 
     if (isr_final & ISR_TX_ERROR) {
@@ -150,69 +181,53 @@ static int si5351_write_reg_once(u32 base, u8 reg, u8 data)
 
 static int si5351_write_reg(u32 base, u8 reg, u8 data)
 {
-    /* Retry up to 3 times; the chip's I²C state machine occasionally NAKs
-     * the first transaction after probe and recovers on retry. Same pattern
-     * we saw in si5351_probe(). */
-    for (int attempt = 1; attempt <= 3; attempt++) {
-        int rc = si5351_write_reg_once(base, reg, data);
-        if (rc == 0) return 0;
-        if (attempt < 3) {
-            for (volatile int d = 0; d < 200000; d++);  /* ~1 ms before retry */
-        } else {
-            u32 sr  = Xil_In32(base + IIC_REG_SR);
-            u32 isr = Xil_In32(base + IIC_REG_ISR);
-            xil_printf("si5351_write_reg: NAK on reg 0x%02x after 3 tries  "
-                       "(last SR=0x%02x ISR=0x%02x)\r\n",
-                       reg, (unsigned)sr, (unsigned)isr);
-        }
+    /* Routes through XIic library — see si5351_lib_write_reg comment for
+     * why hand-rolled register pokes were abandoned. */
+    int rc = si5351_lib_write_reg(base, reg, data);
+    if (rc != 0) {
+        xil_printf("si5351_write_reg: XIic_Send failed for reg 0x%02x\r\n", reg);
     }
-    return -2;
+    return rc;
 }
 
 /* ----- public API ---------------------------------------------------------- */
 
 int si5351_probe(u32 iic_base)
 {
-    /* One-time IP bring-up: SOFTR is the ONLY place per-bring-up that we
-     * use it. After this, transactions use the TX_FIFO_RESET prologue
-     * (see si5351_write_reg_once) — never SOFTR. */
-    Xil_Out32(iic_base + IIC_REG_SOFTR, 0x0A);
-    for (volatile int d = 0; d < 1000; d++);
-    Xil_Out32(iic_base + IIC_REG_CR, CR_EN);
-    for (volatile int d = 0; d < 1000; d++);
-
-    /* Single-byte probe: send addr+W with both START and STOP set, then poll
-     * ISR.BNB for completion and check TX_ERROR. Retry a few times: on cold
-     * boot the chip's I²C state machine sometimes needs a few SCL ticks
-     * before it ACKs the very first transaction. */
+    /* Library-based probe via 1-byte read of Device Status (reg 0).
+     * If chip ACKs and returns a byte → present. Avoids mixing hand-rolled
+     * register pokes with XIic library init, which causes IP-state conflicts. */
+    u8 dev_status = 0;
     for (int attempt = 1; attempt <= 5; attempt++) {
-        /* Per-transaction prologue (no SOFTR): TX_FIFO_RESET → EN → clear ISR. */
-        Xil_Out32(iic_base + IIC_REG_CR, 0x02);
-        Xil_Out32(iic_base + IIC_REG_CR, CR_EN);
-        Xil_Out32(iic_base + IIC_REG_ISR, 0xFF);
-
-        Xil_Out32(iic_base + IIC_REG_TX_FIFO,
-                  TX_START | TX_STOP | (SI5351_I2C_ADDR_7B << 1));
-
-        int timeout = 5000000;
-        while (timeout-- > 0) {
-            if (Xil_In32(iic_base + IIC_REG_ISR) & 0x10) break;  /* BNB */
+        u8 reg = 0;
+        int sent = XIic_Send(iic_base, SI5351_I2C_ADDR_7B, &reg, 1, XIIC_REPEATED_START);
+        if (sent == 1) {
+            int recvd = XIic_Recv(iic_base, SI5351_I2C_ADDR_7B, &dev_status, 1, XIIC_STOP);
+            if (recvd == 1) {
+                xil_printf("si5351_probe attempt %d: ACK  Device Status=0x%02x "
+                           "(SYS_INIT=%d LOL_A=%d LOS=%d REVID=%d)\r\n",
+                           attempt, dev_status,
+                           (dev_status >> 7) & 1, (dev_status >> 5) & 1,
+                           (dev_status >> 4) & 1, dev_status & 0x03);
+                return 0;
+            }
         }
-
-        u32 sr  = Xil_In32(iic_base + IIC_REG_SR);
-        u32 isr = Xil_In32(iic_base + IIC_REG_ISR);
-        xil_printf("si5351_probe attempt %d: SR=0x%02x ISR=0x%02x\r\n",
-                   attempt, (unsigned)sr, (unsigned)isr);
-
-        if (!(isr & ISR_TX_ERROR)) {
-            return 0;  /* ACK */
-        }
-
-        /* NAK on this attempt — clear and retry. */
-        Xil_Out32(iic_base + IIC_REG_ISR, ISR_TX_ERROR);
+        xil_printf("si5351_probe attempt %d: sent=%d  NAK/no-data\r\n", attempt, sent);
         for (volatile int d = 0; d < 200000; d++);
     }
     return -2;
+}
+
+int si5351_read_reg(u32 iic_base, u8 reg, u8 *out_data)
+{
+    /* Library-based read. Same rationale as si5351_lib_write_reg:
+     * hand-rolled register pokes didn't actually do the RESTART path
+     * (only 2 bytes on wire instead of 4). XIic library handles the
+     * full read sequence correctly. */
+    int sent  = XIic_Send(iic_base, SI5351_I2C_ADDR_7B, &reg, 1, XIIC_REPEATED_START);
+    if (sent != 1) return -2;
+    int recvd = XIic_Recv(iic_base, SI5351_I2C_ADDR_7B, out_data, 1, XIIC_STOP);
+    return (recvd == 1) ? 0 : -3;
 }
 
 int si5351_init_10mhz_clk0(u32 iic_base)
@@ -439,9 +454,12 @@ int si5351_init_25mhz_clk0(u32 iic_base)
 
     CHK(si5351_write_reg(iic_base, SI5351_REG_OUTPUT_ENABLE, 0xFF));
 
-    for (u8 r = 16; r <= 23; r++) {
-        CHK(si5351_write_reg(iic_base, r, 0x80));
-    }
+    /* Skip the AN619-recommended "powerdown all drivers" loop (regs 16-23 = 0x80).
+     * Etherkit, Adafruit, and other community libraries omit this — the chip
+     * disabled via reg 3 = 0xFF is already silent, and writing 0x80 then 0x4F
+     * to reg 16 is a redundant double-write. On bench 2026-05-21 the powerdown
+     * write to reg 0x10 reliably NAK'd (10/10) while reg 3 succeeded; going
+     * direct to the real CLK_CTRL value avoids the issue entirely. */
 
     CHK(si5351_write_reg(iic_base, SI5351_REG_XTAL_CL, SI5351_XTAL_LOAD_10PF));
 

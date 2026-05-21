@@ -879,6 +879,15 @@ int main(void)
      * typically ±20-30 ppm, so a healthy chip lands inside that window. */
     xil_printf("\r\n=== Phase E2: Si5351 bring-up ===\r\n");
 
+    /* Initialize XIic library — driver now routes all writes/reads through
+     * XIic_Send / XIic_Recv after we determined hand-rolled register pokes
+     * were silently dropping the third byte of each transaction. */
+    if (adv7393_iic_init() != XST_SUCCESS) {
+        xil_printf("AXI IIC init FAILED — Si5351 path unreachable\r\n");
+        while (1) { for (volatile int d = 0; d < 200000000; d++); }
+    }
+    xil_printf("AXI IIC initialized (XIic library)\r\n");
+
     int rc = si5351_probe(IIC_ADV7393_BASE);
     if (rc != 0) {
         xil_printf("Si5351 PROBE FAIL at 0x60 (rc=%d).\r\n", rc);
@@ -889,7 +898,12 @@ int main(void)
     }
     xil_printf("Si5351 probe OK (chip acks at 0x60)\r\n");
 
-    rc = si5351_init_25mhz_clk0(IIC_ADV7393_BASE);
+    /* DIAGNOSTIC: skip auto-init. Use UART W/X commands to configure chip
+     * step-by-step so we can isolate which register write wedges the chip.
+     * Restore si5351_init_25mhz_clk0() call once we know the safe sequence. */
+    xil_printf("AUTO-INIT SKIPPED — use W/X commands manually.\r\n");
+    rc = 0; (void)rc;
+    if (0) si5351_init_25mhz_clk0(IIC_ADV7393_BASE);  /* unused, keeps symbol alive */
     if (rc != 0) {
         xil_printf("Si5351 INIT FAIL (rc=%d). Some register write got NAK or timeout.\r\n", rc);
         while (1) { for (volatile int d = 0; d < 200000000; d++); }
@@ -929,8 +943,6 @@ int main(void)
                     xil_printf("\r\n> %s\r\n", cmd_buf);
 
                     if (cmd_buf[0] == 'f' && cmd_buf[1] == ' ') {
-                        extern int si5351_debug_write;
-                        si5351_debug_write = 1;  /* one-shot diagnostic */
                         s32 ppm = (s32)atoi(&cmd_buf[2]);
                         /* target_hz = 25_000_000 + 25 × ppm. At 25 MHz, 1 ppm = 25 Hz exactly.
                          * Use signed-aware math then cast: target stays positive in our test range. */
@@ -938,7 +950,6 @@ int main(void)
                         u32 target_hz = (u32)((s32)25000000 + delta);
                         xil_printf("=== diag: si5351_set_freq_hz(%u) ===\r\n", (unsigned)target_hz);
                         int rc = si5351_set_freq_hz(IIC_ADV7393_BASE, target_hz);
-                        si5351_debug_write = 0;
                         if (rc == 0) {
                             xil_printf("OK: CLK0 = %u Hz (ppm offset = %d)\r\n",
                                        (unsigned)target_hz, (int)ppm);
@@ -949,6 +960,136 @@ int main(void)
                     } else if (cmd_buf[0] == 'i') {
                         xil_printf("last ppm = %d  (target = %u Hz)\r\n",
                                    (int)last_ppm, (unsigned)((s32)25000000 + last_ppm * 25));
+                    } else if (cmd_buf[0] == 'p') {
+                        /* Re-probe single-byte addr at 0x60. Tells us if chip
+                         * still ACKs after idle / after init / after failed `f`. */
+                        int rc = si5351_probe(IIC_ADV7393_BASE);
+                        xil_printf("probe rc=%d\r\n", rc);
+                    } else if (cmd_buf[0] == 'W' && cmd_buf[1] == ' ') {
+                        /* XIic library WRITE for testing.
+                         * Syntax: W <hex_reg> <hex_val>  e.g. "W 1b ab" */
+                        static int xiic_initted_w = 0;
+                        if (!xiic_initted_w) {
+                            if (adv7393_iic_init() == XST_SUCCESS) xiic_initted_w = 1;
+                        }
+                        if (xiic_initted_w) {
+                            u32 r = 0, vv = 0;
+                            const char *q = &cmd_buf[2];
+                            while (*q == ' ') q++;
+                            while (*q && *q != ' ') {
+                                char c = *q++;
+                                if (c >= '0' && c <= '9') r = r*16 + (c - '0');
+                                else if (c >= 'a' && c <= 'f') r = r*16 + (c - 'a' + 10);
+                                else if (c >= 'A' && c <= 'F') r = r*16 + (c - 'A' + 10);
+                            }
+                            while (*q == ' ') q++;
+                            while (*q) {
+                                char c = *q++;
+                                if (c >= '0' && c <= '9') vv = vv*16 + (c - '0');
+                                else if (c >= 'a' && c <= 'f') vv = vv*16 + (c - 'a' + 10);
+                                else if (c >= 'A' && c <= 'F') vv = vv*16 + (c - 'A' + 10);
+                                else break;
+                            }
+                            u8 buf[2] = {(u8)r, (u8)vv};
+                            int sent = XIic_Send(IIC_ADV7393_BASE, 0x60, buf, 2, XIIC_STOP);
+                            xil_printf("XIic write reg 0x%02x = 0x%02x: sent=%d\r\n",
+                                       (unsigned)r, (unsigned)vv, sent);
+                        }
+                    } else if (cmd_buf[0] == 'X' && cmd_buf[1] == ' ') {
+                        /* Library-based read using XIic_Send + XIic_Recv.
+                         * Battle-tested Xilinx implementation. If this works
+                         * where our hand-rolled register pokes don't, the bug
+                         * is in our framing. If this also fails, chip is the
+                         * issue. */
+                        static int xiic_initted = 0;
+                        if (!xiic_initted) {
+                            if (adv7393_iic_init() != XST_SUCCESS) {
+                                xil_printf("XIic init failed\r\n");
+                            } else {
+                                xiic_initted = 1;
+                            }
+                        }
+                        if (xiic_initted) {
+                            u32 r = 0;
+                            const char *q = &cmd_buf[2];
+                            while (*q == ' ') q++;
+                            while (*q) {
+                                char c = *q++;
+                                if (c >= '0' && c <= '9') r = r*16 + (c - '0');
+                                else if (c >= 'a' && c <= 'f') r = r*16 + (c - 'a' + 10);
+                                else if (c >= 'A' && c <= 'F') r = r*16 + (c - 'A' + 10);
+                                else break;
+                            }
+                            u8 reg = (u8)r, val = 0xAA;
+                            int sent = XIic_Send(IIC_ADV7393_BASE, 0x60, &reg, 1, XIIC_REPEATED_START);
+                            int recvd = XIic_Recv(IIC_ADV7393_BASE, 0x60, &val, 1, XIIC_STOP);
+                            xil_printf("XIic read reg 0x%02x: sent=%d recvd=%d val=0x%02x\r\n",
+                                       (unsigned)r, sent, recvd, val);
+                        }
+                    } else if (cmd_buf[0] == 'R') {
+                        /* Bare 2-byte read with NO pre-write. Tests if AXI IIC
+                         * read direction works at all (independent of RESTART).
+                         * Sequence: START+addr+R, then STOP+count=1. Chip drives
+                         * whatever its internal register pointer points at. */
+                        u32 base = IIC_ADV7393_BASE;
+                        Xil_Out32(base + 0x040, 0x0A);  /* SOFTR */
+                        for (volatile int d = 0; d < 1000; d++);
+                        Xil_Out32(base + 0x120, 0x0F);  /* RFD = 15 (RX FIFO depth) — REQUIRED for reads */
+                        Xil_Out32(base + 0x100, 0x02);  /* CR = TX_FIFO_RESET */
+                        Xil_Out32(base + 0x100, 0x01);  /* CR = EN (matches XIic_DynInit) */
+                        Xil_Out32(base + 0x108, 0x100 | (0x60 << 1) | 1);  /* START + addr+R */
+                        Xil_Out32(base + 0x108, 0x200 | 1);                /* STOP + count */
+                        /* Poll BNB up to 50ms */
+                        u32 isr_seen = 0;
+                        for (int i = 0; i < 25000000; i++) {
+                            u32 isr = Xil_In32(base + 0x020);
+                            if (isr & 0x10) { isr_seen = isr; break; }
+                        }
+                        u32 sr = Xil_In32(base + 0x104);
+                        u32 isr_final = Xil_In32(base + 0x020);
+                        xil_printf("bare-read: SR=0x%02x ISR=0x%02x (BNB-on-poll=%s)\r\n",
+                                   (unsigned)sr, (unsigned)isr_final,
+                                   isr_seen ? "yes" : "TIMEOUT");
+                        if (!(sr & 0x40)) {  /* RX_FIFO_EMPTY clear → data present */
+                            u8 v = (u8)Xil_In32(base + 0x10C);
+                            xil_printf("  RX byte = 0x%02x\r\n", (unsigned)v);
+                        } else {
+                            xil_printf("  RX_FIFO empty (no data byte received)\r\n");
+                        }
+                    } else if (cmd_buf[0] == 'r' && cmd_buf[1] == ' ') {
+                        /* Read a single register. Usage: r <hex_reg>
+                         *   r 0   → Device Status (bit 7 = SYS_INIT)
+                         *   r 10  → CLK0_CTRL (should be 0x4F after init)
+                         *   r 3   → OEB (should be 0xFE after init = CLK0 enabled) */
+                        u32 r = 0;
+                        const char *p = &cmd_buf[2];
+                        while (*p == ' ') p++;
+                        while (*p) {
+                            char c = *p++;
+                            if (c >= '0' && c <= '9') r = r*16 + (c - '0');
+                            else if (c >= 'a' && c <= 'f') r = r*16 + (c - 'a' + 10);
+                            else if (c >= 'A' && c <= 'F') r = r*16 + (c - 'A' + 10);
+                            else break;
+                        }
+                        u8 v;
+                        int rc = si5351_read_reg(IIC_ADV7393_BASE, (u8)r, &v);
+                        u32 dbg_sr  = Xil_In32(IIC_ADV7393_BASE + 0x104);
+                        u32 dbg_isr = Xil_In32(IIC_ADV7393_BASE + 0x020);
+                        if (rc == 0) {
+                            xil_printf("reg 0x%02x = 0x%02x  (binary ", (unsigned)r, v);
+                            for (int b = 7; b >= 0; b--) {
+                                xil_printf("%c", (v & (1 << b)) ? '1' : '0');
+                            }
+                            xil_printf(")\r\n");
+                            if (r == 0) {
+                                xil_printf("  SYS_INIT=%d LOL_B=%d LOL_A=%d LOS=%d REVID=%d\r\n",
+                                           (v >> 7) & 1, (v >> 6) & 1, (v >> 5) & 1,
+                                           (v >> 4) & 1, v & 0x03);
+                            }
+                        } else {
+                            xil_printf("read FAIL rc=%d  SR=0x%02x ISR=0x%02x\r\n",
+                                       rc, (unsigned)dbg_sr, (unsigned)dbg_isr);
+                        }
                     } else if (cmd_buf[0] == '?') {
                         xil_printf("commands:\r\n"
                                    "  f <ppm>  : set Si5351 CLK0 freq offset\r\n"
