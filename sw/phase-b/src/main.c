@@ -449,14 +449,17 @@ static inline void color_matrix_saturation(u16 sat_q15)
 #  error "AXI GPIO 2 (diag counters) base address not found in xparameters.h"
 #endif
 
-static inline void diag_counters_read(u16 *h_in, u16 *v_in, u16 *v_emit, u16 *mm2s_tlast)
+/* iter5 (2026-05-22): repurposed [63:48] slot. Was mm2s_tlast (always 0).
+ * Now scaler_v's m_axis_tlast handshake count per source frame — the A2
+ * disambiguator. Caller param renamed for clarity. */
+static inline void diag_counters_read(u16 *h_in, u16 *v_in, u16 *v_emit, u16 *v_out_tlast)
 {
     u32 ch1 = Xil_In32(DIAG_GPIO_BASEADDR + 0x00);
     u32 ch2 = Xil_In32(DIAG_GPIO_BASEADDR + 0x08);
-    if (h_in)       *h_in       = (u16)(ch1 & 0xFFFFu);
-    if (v_in)       *v_in       = (u16)((ch1 >> 16) & 0xFFFFu);
-    if (v_emit)     *v_emit     = (u16)(ch2 & 0xFFFFu);
-    if (mm2s_tlast) *mm2s_tlast = (u16)((ch2 >> 16) & 0xFFFFu);
+    if (h_in)        *h_in        = (u16)(ch1 & 0xFFFFu);
+    if (v_in)        *v_in        = (u16)((ch1 >> 16) & 0xFFFFu);
+    if (v_emit)      *v_emit      = (u16)(ch2 & 0xFFFFu);
+    if (v_out_tlast) *v_out_tlast = (u16)((ch2 >> 16) & 0xFFFFu);
 }
 
 /* iter4e: v_tc_rx detector. Per PG016 register map:
@@ -693,19 +696,24 @@ static inline void vdma_mm2s_set_park_mode(UINTPTR vdma_base)
  * we'd see in slot 0's tail" reference). */
 static void dump_slot_bytes(u32 slot_idx, u32 row_start, u32 row_end)
 {
-    /* iter4h Path 2: slot stride matches new firmware layout = S2MM 747 active rows + 1 guard row. */
-    const u32 S2MM_DATA_BYTES = (FRAME_H + 27) * STRIDE;
-    const u32 SLOT_STRIDE_BYTES = S2MM_DATA_BYTES + STRIDE;
+    /* iter5 slot layout: FRAME_BYTES of S2MM-written rows + STRIDE of guard.
+     * Matches the firmware addr math at main() line ~1104-1108. The old
+     * iter4h +27 over-allocate stride here was a stale leftover; it placed
+     * slot N base ~100 KB past where S2MM actually writes for N≥1. */
+    const u32 SLOT_STRIDE_BYTES = FRAME_BYTES + STRIDE;
     volatile u8 *slot = (volatile u8 *)(FRAME_BUF_BASE + slot_idx * SLOT_STRIDE_BYTES);
     xil_printf("\r\nDDR3 DUMP: slot=%u rows=%u..%u  base=0x%08x\r\n",
                (unsigned)slot_idx, (unsigned)row_start, (unsigned)row_end,
                (unsigned)(FRAME_BUF_BASE + slot_idx * SLOT_STRIDE_BYTES));
-    /* Sample 6 cols spaced across the active 1920 px width — one within each
-     * of the first 6 SMPTE bars (~274 px / bar at 1080p). This distinguishes
-     * "top of color bars" (each col = its own bar's color) from "PLUGE area"
-     * (uniform gray-ish across cols) from "reverse bars" (different per-col
-     * colors). iter5 widened from 1280→1920 columns. */
-    static const u32 SAMPLE_COLS[6] = { 100, 400, 700, 1000, 1300, 1600 };
+    /* 6 cols spaced across the 1280-pixel-wide scaler OUTPUT (= what S2MM
+     * writes to each slot row). Each col lands in a distinct SMPTE color
+     * bar (each bar ≈ 183 px at 1280 wide): white / yellow / cyan / green /
+     * magenta / red. A row showing 6 distinct bar colors is from the TOP
+     * (main-bars region); a row showing mostly uniform black/dim values is
+     * from the BOTTOM (PLUGE region). This is the fingerprint test for
+     * the bottom-bars artifact: slot row 694..719 (expected PLUGE) showing
+     * 6 distinct bar colors = frame K+1 top leaking into frame K bottom. */
+    static const u32 SAMPLE_COLS[6] = { 90, 270, 460, 640, 820, 1010 };
     for (u32 row = row_start; row <= row_end; row++) {
         u32 row_base = row * STRIDE;
         xil_printf("  row %3u  ", (unsigned)row);
@@ -722,7 +730,14 @@ static void dump_slot_bytes(u32 slot_idx, u32 row_start, u32 row_end)
 static void telemetry_loop(UINTPTR vdma_base)
 {
     (void)vdma_base;
-    int did_ddr_dump = 0;     /* iter4h: dump DDR3 once after steady state */
+    /* iter4 (2026-05-22): two-shot DDR dump for A1/A2 disambiguation. With
+     * Osee on the motion source, dump 1 (at first DIAG ≈ 1s after boot) and
+     * dump 2 (at 4th DIAG ≈ 4s after boot) sample the slot ~3s apart. If
+     * slot 0 rows 694-719 are byte-identical between dumps → A1 (stale prior
+     * write, frozen). If they shift to track the motion source → A2 (live
+     * frame K+1 leak). */
+    int ddr_dump_count = 0;       /* 0=none yet, 1=did first, 2=done */
+    int diag_iter      = 0;       /* incremented at each DIAG print */
 
     u32 rate_mHz = measure_source_rate_mhz(60);
     src_regime_t regime = classify_rate(rate_mHz);
@@ -774,8 +789,8 @@ static void telemetry_loop(UINTPTR vdma_base)
                 u32 park = Xil_In32(vdma_base + 0x28);
                 int rdstore = (int)((park >> 16) & 0x1F);
                 int wrstore = (int)((park >> 24) & 0x1F);
-                u16 h_in, v_in, v_emit, mm2s;
-                diag_counters_read(&h_in, &v_in, &v_emit, &mm2s);
+                u16 h_in, v_in, v_emit, v_out_tlast;
+                diag_counters_read(&h_in, &v_in, &v_emit, &v_out_tlast);
                 u32 s2mm_sr = Xil_In32(vdma_base + 0x34);
                 u32 mm2s_sr = Xil_In32(vdma_base + 0x04);
                 /* iter4g: clear error bits (W1C) so next interval's read
@@ -787,16 +802,22 @@ static void telemetry_loop(UINTPTR vdma_base)
                 /* IRQFrameCount field (bits 23:16) — track increments. */
                 u32 s2mm_frmcnt = (s2mm_sr >> 16) & 0xFFu;
                 u32 mm2s_frmcnt = (mm2s_sr >> 16) & 0xFFu;
-                /* iter5 step1 EOLEarly debug: counter slots repurposed in
-                 * scaler_bypass_1080p — h_in = px-per-line, v_in = lines-per-
-                 * frame, v_emit = max px-per-line observed. mm2s unchanged
-                 * (output-side TLAST count from axis_to_vid_io). Clean 1080p
-                 * source should show px=1920 lines=1080 maxpx=1920. */
-                xil_printf("DIAG: px=%u lines=%u maxpx=%u mm2s=%u  "
+                /* DIAG fields (scaler_top counters, snapshotted at TUSER):
+                 *   h_in        = scaler_h s_axis_tlast count  (= src rows)
+                 *   v_in        = scaler_v s_axis_tlast count  (= src rows)
+                 *   v_emit      = scaler_v v_cross count       (= 720 expect)
+                 *   v_out_tlast = scaler_v m_axis_tlast count  (iter5 NEW)
+                 *
+                 * iter5 (2026-05-22) A2 disambiguator:
+                 *   v_out_tlast == 720 → scaler emits cleanly; bug is in
+                 *     S2MM slot-advance timing (A2-S2MM).
+                 *   v_out_tlast <  720 → scaler aborts last ~26 emits at
+                 *     frame boundary (A2-scaler). */
+                xil_printf("DIAG: h_in=%u v_in=%u v_emit=%u v_out_tlast=%u  "
                            "S2MM_SR=0x%08x[%s%s%s%s%s frmcnt=%u] "
                            "MM2S_SR=0x%08x[%s%s%s%s%s frmcnt=%u]  "
                            "RDSTORE=%d WRSTORE=%d  src=%d out=%d\r\n",
-                           (unsigned)h_in, (unsigned)v_in, (unsigned)v_emit, (unsigned)mm2s,
+                           (unsigned)h_in, (unsigned)v_in, (unsigned)v_emit, (unsigned)v_out_tlast,
                            /* iter4h relabel: bit 12 is FrmCnt_Irq (benign), bit 15 is real EOLLate */
                            (unsigned)s2mm_sr,
                            (s2mm_sr & 0x80)   ? "SOFEarly " : "",
@@ -827,19 +848,29 @@ static void telemetry_loop(UINTPTR vdma_base)
                 out_count = 0;
                 phase_last_src = 0;
 
-                /* iter5: one-shot DDR3 dump after the first DIAG print so
-                 * pipeline has hit steady state. Frame layout scales with
-                 * FRAME_H (1080 here). Same iter4h +27 over-allocate pattern:
-                 *  - slot 0 rows 1050..1080 (MM2S read range tail — should be
-                 *    correct PLUGE / frame N data)
-                 *  - slot 0 rows 1080..1107 (S2MM spillover — should stay zero
-                 *    if VSIZE over-allocate has same fix effect at 1080p)
-                 *  - slot 1 rows 0..8 (reference for frame N+1's top). */
-                if (!did_ddr_dump) {
+                /* iter4 (2026-05-22): two-shot DDR3 dump for A1/A2
+                 * disambiguation. Run Osee on input 2 (motion) so the source
+                 * varies over time. Dump #1 fires at first DIAG (~1s),
+                 * dump #2 fires at fourth DIAG (~4s) — ~3s apart, plenty for
+                 * the motion loop to shift the source content.
+                 *
+                 *  - A1 (stale prior-write): slot 0 rows 694-719 will be
+                 *    byte-identical between dumps. The slot tail is frozen
+                 *    from whichever frame last wrote that region before the
+                 *    early-TUSER abort started clobbering.
+                 *  - A2 (live frame K+1 leak): slot 0 rows 694-719 will
+                 *    shift between dumps — tracking what frame K+1's row 0+
+                 *    area looks like at each dump moment in the motion loop. */
+                diag_iter++;
+                int trigger = (ddr_dump_count == 0 && diag_iter >= 1) ? 1 :
+                              (ddr_dump_count == 1 && diag_iter >= 4) ? 2 : 0;
+                if (trigger) {
+                    xil_printf("\r\n=== DDR3 DUMP #%d (diag_iter=%d) ===\r\n",
+                               trigger, diag_iter);
                     dump_slot_bytes(0, FRAME_H - 30, FRAME_H);
                     dump_slot_bytes(0, FRAME_H,      FRAME_H + 27);
                     dump_slot_bytes(1, 0, 8);
-                    did_ddr_dump = 1;
+                    ddr_dump_count = trigger;
                 }
             }
         }
@@ -1016,8 +1047,13 @@ static int vtc_setup(const vtc_mode_t *m)
     const u32 V_SYNC_START   = V_ACTIVE + m->v_front;
     const u32 V_BACK_START   = V_SYNC_START + m->v_sync;
 
-    xil_printf("VTC: configuring %s (HTOTAL=%u VTOTAL=%u)\r\n",
-               m->name, (unsigned)H_TOTAL, (unsigned)V_TOTAL);
+    /* iter2 2026-05-21: printf MOVED to after CTL register write below.
+     * Caller spec at main() lines 1156-1168 demands no printfs between
+     * wait_for_aligned_source_vsync() and the CTL write. The internal printf
+     * here was violating that rule (115200 baud × ~40 chars ≈ 3.5 ms delay
+     * = ~227 source lines of misalignment at 1080p60 source). Suspected
+     * cause of the deterministic ~50-line vertical wraparound visible at
+     * the bottom of the output frame. */
 
     /* Generator Active Size (active sizes, F0)         offset 0x60 */
     Xil_Out32(base + 0x60, (V_ACTIVE << 16) | H_ACTIVE);
@@ -1056,6 +1092,10 @@ static int vtc_setup(const vtc_mode_t *m)
             | 0x02             /* RU register-update enable      */
             | 0x04             /* GE generator enable            */
             | 0x07F7EF00);     /* source-select bits (all-from-gen) */
+
+    /* Now safe to printf — CTL write committed, alignment locked. */
+    xil_printf("VTC: configuring %s (HTOTAL=%u VTOTAL=%u)\r\n",
+               m->name, (unsigned)H_TOTAL, (unsigned)V_TOTAL);
 
     return XST_SUCCESS;
 }

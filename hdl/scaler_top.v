@@ -58,7 +58,11 @@ module scaler_top #(
      *   [31:16] = scaler_v input TLAST count per source frame
      *   [47:32] = scaler_v emit (v_cross) count per source frame
      * All on aclk domain (pclk_in); CDC happens in top-level wiring. */
-    output wire [47:0] diag_counts
+    output wire [47:0] diag_counts,
+    /* iter5 (2026-05-22) DIAG: scaler_v m_axis_tlast handshake count per
+     * source frame. Wired into BD's diag_concat/In1 slot (formerly the dead
+     * axis_to_vid_io_0/mm2s_tlast_snap which always read 0). */
+    output wire [15:0] out_tlast_snap
 );
     /* 2-FF synchronizers on each bit. Marked ASYNC_REG for the placer. */
     (* ASYNC_REG = "TRUE" *) reg [15:0] in_w_q1, in_w_q2;
@@ -92,6 +96,7 @@ module scaler_top #(
     wire [15:0] scaler_h_in_tlast_snap;
     wire [15:0] scaler_v_in_tlast_snap;
     wire [15:0] scaler_v_emit_snap;
+    wire [15:0] scaler_v_out_tlast_snap;
 
     scaler_h #(
         .IN_W_DEFAULT (IN_W_DEFAULT),
@@ -135,11 +140,13 @@ module scaler_top #(
         .m_axis_tlast  (m_axis_tlast),
         .m_axis_tuser  (m_axis_tuser),
         .in_h_runtime  (in_h_eff),
-        .in_tlast_count_snap (scaler_v_in_tlast_snap),
-        .emit_count_snap     (scaler_v_emit_snap)
+        .in_tlast_count_snap  (scaler_v_in_tlast_snap),
+        .emit_count_snap      (scaler_v_emit_snap),
+        .out_tlast_count_snap (scaler_v_out_tlast_snap)
     );
 
-    assign diag_counts = {scaler_v_emit_snap, scaler_v_in_tlast_snap, scaler_h_in_tlast_snap};
+    assign diag_counts   = {scaler_v_emit_snap, scaler_v_in_tlast_snap, scaler_h_in_tlast_snap};
+    assign out_tlast_snap = scaler_v_out_tlast_snap;
 endmodule
 
 `default_nettype wire

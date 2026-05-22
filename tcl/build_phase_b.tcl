@@ -65,6 +65,7 @@ add_files -norecurse [file join $project_root hdl scaler_coeffs_h.v]
 add_files -norecurse [file join $project_root hdl scaler_coeffs_v.v]
 # Phase D iter-3 — firmware-side VTC alignment via AXI GPIO + 2-FF input sync
 add_files -norecurse [file join $project_root hdl axi_sync_inputs.v]
+add_files -norecurse [file join $project_root hdl vsync_cdc_pulse.v]   ;# iter6: s2mm_fsync pulse gen
 # Coefficient hex files for $readmemh — Vivado adds them to source list so
 # they're visible from the OOC synth working directory.
 add_files -norecurse [file join $project_root hdl scaler_coeffs_h.hex]
@@ -249,15 +250,18 @@ set_property -dict [list \
     CONFIG.c_include_internal_genlock {1} \
     CONFIG.c_mm2s_genlock_repeat_en {1} \
     CONFIG.c_use_mm2s_fsync {1} \
-    CONFIG.c_flush_on_fsync {0} \
+    CONFIG.c_flush_on_fsync {1} \
 ] [get_bd_cells axi_vdma_0]
-# iter4h Path 2 result (2026-05-17): VSIZE over-allocate in firmware
-# (VSIZE=747 instead of 720) eliminates the bottom-bars artifact without
-# needing s2mm_fsync wiring. fsync wiring was tested and merely shifted
-# the bug by 1 row, not fixed it. S2MM uses TUSER on AXIS for frame
-# boundary detection (default Xilinx video pipeline pattern). Keep
-# c_use_s2mm_fsync=0 (default for axi_vdma_v6_3).
-set_property -dict [list CONFIG.c_use_s2mm_fsync {0}] [get_bd_cells axi_vdma_0]
+# iter6 (2026-05-22): re-enable S2MM external fsync after iter5 confirmed
+# the leak is on S2MM's side (scaler emits 720 TLASTs/frame cleanly via
+# v_out_tlast counter). Wire s2mm_fsync to dvi2rgb_0/vid_pVSync below.
+# Hypothesis: S2MM's TUSER-on-AXIS frame-detect has ~27 rows of internal
+# pipeline lag → first 27 rows of frame K+1 land in slot K's tail. Hard
+# fsync from source vsync edge bypasses the AXIS-side detect entirely.
+# Previous iter4h Fix B tested this and reported "shifted bug by 1 row" —
+# ambiguous between leak-size-1 (huge win) and position-shift-of-1 (no
+# improvement). Bench will tell.
+set_property -dict [list CONFIG.c_use_s2mm_fsync {1}] [get_bd_cells axi_vdma_0]
 # iter5 (2026-05-17): c_num_fstores 3 → 5. Drift headroom per
 # [[xilinx-vdma-drift-limits]]. At 1080p RGB this is ~14 MB extra DDR3;
 # well within Zybo's 1 GB. FrameDelay=1 + 3 framestores was brittle under
@@ -398,10 +402,8 @@ connect_bd_net [get_bd_pins clk_wiz_pixclk_out/clk_out1]         [get_bd_pins co
 # clk_wiz_pixclk_out/(2200*1125) = 60.000 Hz. Slow walk vs source is
 # acceptable; Phase D (FRC) will handle proper rate-matching.
 connect_bd_net [get_bd_pins v_tc_tx/fsync_out] [get_bd_pins axi_vdma_0/mm2s_fsync]
-# S2MM fsync was tested in iter4h and rejected — over-allocating S2MM VSIZE
-# in firmware (747 instead of 720) is the actual fix for the bottom-bars
-# artifact. S2MM uses TUSER on AXIS for frame boundary, no fsync needed.
-# See memory: schindler-bottom-bars-artifact.
+# iter6 (2026-05-22): S2MM external fsync wired further below, after
+# rst_axi is created. Search for "s2mm_fsync_pulse_gen" to find it.
 
 # =============================================================================
 # rgb2dvi (HDMI TX) — same MMCM/kClkRange=2 lessons as Phase A
@@ -565,6 +567,24 @@ connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK1] [get_bd_pins axi_sc_mem/aclk]
 connect_bd_net [get_bd_pins rst_mem/peripheral_aresetn] [get_bd_pins axi_sc_mem/aresetn]
 
 # =============================================================================
+# iter6 (2026-05-22): S2MM external fsync from a 1-cycle pulse on source
+# vsync rising edge. PG020 says fsync_in is edge-triggered, but tying the
+# raw vid_pVSync level (high for ~5 lines) risks multiple internal fsync
+# events per source frame. Use the existing vsync_cdc_pulse module to emit
+# exactly one pclk_in-domain pulse per rising edge. With c_flush_on_fsync=1
+# (set in axi_vdma_0 config above) S2MM aborts any in-flight transfer and
+# re-anchors slot pointer at the pulse — bypassing the AXIS-side TUSER
+# detection that was lagging by ~27 rows (the bottom-bars artifact root
+# cause). Both vid_pVSync and S2MM's s_axis_s2mm_aclk are pclk_in domain,
+# so the pulse_out drives s2mm_fsync directly without CDC.
+# =============================================================================
+create_bd_cell -type module -reference vsync_cdc_pulse s2mm_fsync_pulse_gen
+connect_bd_net $pclk_in                                      [get_bd_pins s2mm_fsync_pulse_gen/dst_clk]
+connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]      [get_bd_pins s2mm_fsync_pulse_gen/dst_rstn]
+connect_bd_net [get_bd_pins dvi2rgb_0/vid_pVSync]            [get_bd_pins s2mm_fsync_pulse_gen/vsync_async]
+connect_bd_net [get_bd_pins s2mm_fsync_pulse_gen/pulse_out]  [get_bd_pins axi_vdma_0/s2mm_fsync]
+
+# =============================================================================
 # LED composition: leds = {hdmi_tx_hpd, vid_out_locked, rx_locked, mmcm_locked}
 #
 # LD2 now shows v_axi4s_vid_out's `locked` status — high when the TX-side AXIS-
@@ -608,13 +628,17 @@ connect_bd_net [get_bd_pins dvi2rgb_0/pLocked]              [get_bd_pins axi_syn
 # Phase D iter-4d-1: output-side observability for FRC cadence engine
 connect_bd_net [get_bd_pins v_tc_tx/vsync_out]              [get_bd_pins axi_sync_inputs_0/vsync_out_async]
 connect_bd_net [get_bd_pins clk_wiz_pixclk_out/locked]      [get_bd_pins axi_sync_inputs_0/pclk_locked_async]
-# iter4g DIAG: 64-bit counter bus = scaler_0/diag_counts (48-bit, low) +
-# axis_to_vid_io_0/mm2s_tlast_snap (16-bit, high). CDC'd in axi_sync_inputs.
+# iter4g/iter5 DIAG: 64-bit counter bus.
+#   [47:0]  = scaler_0/diag_counts  (h_in_tlast | v_in_tlast | v_emit)
+#   [63:48] = scaler_0/out_tlast_snap  — scaler_v m_axis_tlast handshake count.
+#             iter5 2026-05-22: replaces axis_to_vid_io_0/mm2s_tlast_snap
+#             which always read 0 (MM2S doesn't assert TLAST on its m_axis).
+#             Same GPIO field; firmware label updated.
 create_bd_cell -type ip -vlnv xilinx.com:ip:xlconcat diag_concat
 set_property -dict [list CONFIG.NUM_PORTS {2} CONFIG.IN0_WIDTH {48} CONFIG.IN1_WIDTH {16}] \
     [get_bd_cells diag_concat]
-connect_bd_net [get_bd_pins scaler_0/diag_counts]               [get_bd_pins diag_concat/In0]
-connect_bd_net [get_bd_pins axis_to_vid_io_0/mm2s_tlast_snap]   [get_bd_pins diag_concat/In1]
+connect_bd_net [get_bd_pins scaler_0/diag_counts]    [get_bd_pins diag_concat/In0]
+connect_bd_net [get_bd_pins scaler_0/out_tlast_snap] [get_bd_pins diag_concat/In1]
 connect_bd_net [get_bd_pins diag_concat/dout]                   [get_bd_pins axi_sync_inputs_0/diag_counts_async]
 
 # AXI GPIO — input-only, 4 bits:
