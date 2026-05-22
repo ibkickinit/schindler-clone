@@ -53,10 +53,16 @@ module scaler_v #(
     input  wire [11:0] in_h_runtime,
 
     /* iter4g DIAG: per-frame counter snapshots, latched at TUSER.
-     *   in_tlast_count_snap  - how many TLASTs came IN from scaler_h
-     *   emit_count_snap      - how many v_cross/emits OUT to S2MM */
+     *   in_tlast_count_snap   - how many TLASTs came IN from scaler_h
+     *   emit_count_snap       - how many v_cross/emits triggered (internal)
+     *   out_tlast_count_snap  - how many TLASTs went OUT on m_axis (iter5
+     *                           2026-05-22): disambiguates A2-scaler from
+     *                           A2-S2MM. 720 = scaler emits cleanly → bug
+     *                           is downstream; <720 = scaler aborts emits
+     *                           at frame boundary → bug is in scaler_v. */
     output reg  [15:0] in_tlast_count_snap,
-    output reg  [15:0] emit_count_snap
+    output reg  [15:0] emit_count_snap,
+    output reg  [15:0] out_tlast_count_snap
 );
     // Line buffers — 4 separate arrays, Vivado infers 4 BRAMs (1 each).
     reg [23:0] lbuf0 [0:IN_W-1];
@@ -76,6 +82,7 @@ module scaler_v #(
      * the *_snap outputs above. */
     reg [15:0] in_tlast_count;
     reg [15:0] emit_count;
+    reg [15:0] out_tlast_count;
 
     // Vertical accumulator
     reg  [11:0] v_accum;
@@ -200,6 +207,8 @@ module scaler_v #(
             in_tlast_count_snap  <= 16'd0;
             emit_count           <= 16'd0;
             emit_count_snap      <= 16'd0;
+            out_tlast_count      <= 16'd0;
+            out_tlast_count_snap <= 16'd0;
         end else begin
             // -----------------------------------------------------------------
             // INPUT side (lbuf write + v_accum tracking)
@@ -220,10 +229,13 @@ module scaler_v #(
                      * change between frames takes effect here, not mid-frame. */
                     in_h_active    <= in_h_runtime;
                     /* iter4g DIAG: snapshot + reset per-frame counters. */
-                    in_tlast_count_snap <= in_tlast_count;
-                    in_tlast_count      <= s_axis_tlast ? 16'd1 : 16'd0;
-                    emit_count_snap     <= emit_count;
-                    emit_count          <= 16'd0;
+                    in_tlast_count_snap  <= in_tlast_count;
+                    in_tlast_count       <= s_axis_tlast ? 16'd1 : 16'd0;
+                    emit_count_snap      <= emit_count;
+                    emit_count           <= 16'd0;
+                    /* iter5 (2026-05-22) DIAG: snapshot output TLAST count. */
+                    out_tlast_count_snap <= out_tlast_count;
+                    out_tlast_count      <= 16'd0;
                 end
                 /* iter4g DIAG: count input TLAST events (non-TUSER cycle).
                  * Doing this OUTSIDE the v_cross gate so we count the raw
@@ -298,6 +310,14 @@ module scaler_v #(
                 end else begin
                     stage0_valid_q <= 1'b0;
                 end
+            end
+
+            /* iter5 (2026-05-22) DIAG: count completed output TLAST
+             * handshakes. Independent of pipe_advance / TUSER reset above:
+             * if both fire same cycle, last-write-wins → next frame gets
+             * +1 of charge; tolerable ±1 jitter for the 720-vs-694 verdict. */
+            if (m_axis_tvalid && m_axis_tready && m_axis_tlast) begin
+                out_tlast_count <= out_tlast_count + 16'd1;
             end
         end
     end

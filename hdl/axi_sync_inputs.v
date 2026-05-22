@@ -27,24 +27,30 @@ module axi_sync_inputs (
      * synchronizer is technically racy for multi-bit busses but acceptable
      * for slow-changing snapshots that firmware reads multiple times to
      * detect stability.
-     *   [15:0]  scaler_h input TLAST (per source frame)
-     *   [31:16] scaler_v input TLAST (per source frame)
-     *   [47:32] scaler_v emit (per source frame)
-     *   [63:48] axis_to_vid_io input TLAST (per OUTPUT frame) */
+     *   [15:0]  scaler_h input TLAST  (per source frame)
+     *   [31:16] scaler_v input TLAST  (per source frame)
+     *   [47:32] scaler_v emit         (per source frame)
+     *   [63:48] scaler_v output TLAST (per source frame, iter5 2026-05-22;
+     *                                  formerly axis_to_vid_io mm2s_tlast
+     *                                  which always read 0) */
     input  wire [63:0] diag_counts_async,
 
     output wire vsync_sync,             // axi_clk-domain levels
     output wire plocked_sync,
     output wire vsync_out_sync,
     output wire pclk_locked_sync,
-    output wire [47:0] diag_counts_sync
+    output wire [63:0] diag_counts_sync
 );
 
+    /* iter5 (2026-05-22) — widened diag CDC from 48 → 64 bits to match the
+     * declared input width. Old 48-bit regs silently truncated upper 16 bits
+     * (which was harmless when [63:48] was the dead mm2s_tlast field but
+     * blocked the new scaler_v out_tlast snapshot from reaching firmware. */
     (* ASYNC_REG = "TRUE" *) reg vsync_q1, vsync_q2;
     (* ASYNC_REG = "TRUE" *) reg plocked_q1, plocked_q2;
     (* ASYNC_REG = "TRUE" *) reg vsync_out_q1, vsync_out_q2;
     (* ASYNC_REG = "TRUE" *) reg pclk_locked_q1, pclk_locked_q2;
-    (* ASYNC_REG = "TRUE" *) reg [47:0] diag_counts_q1, diag_counts_q2;
+    (* ASYNC_REG = "TRUE" *) reg [63:0] diag_counts_q1, diag_counts_q2;
 
     always @(posedge axi_clk) begin
         if (!axi_rstn) begin
@@ -52,7 +58,7 @@ module axi_sync_inputs (
             plocked_q1      <= 1'b0; plocked_q2      <= 1'b0;
             vsync_out_q1    <= 1'b0; vsync_out_q2    <= 1'b0;
             pclk_locked_q1  <= 1'b0; pclk_locked_q2  <= 1'b0;
-            diag_counts_q1  <= 48'd0; diag_counts_q2 <= 48'd0;
+            diag_counts_q1  <= 64'd0; diag_counts_q2 <= 64'd0;
         end else begin
             vsync_q1        <= vsync_async;        vsync_q2        <= vsync_q1;
             plocked_q1      <= plocked_async;      plocked_q2      <= plocked_q1;
