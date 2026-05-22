@@ -60,6 +60,8 @@ add_files -norecurse [file join $project_root hdl scaler_coeffs_h.v]
 add_files -norecurse [file join $project_root hdl scaler_coeffs_v.v]
 # Phase D iter-3 — firmware-side VTC alignment via AXI GPIO + 2-FF input sync
 add_files -norecurse [file join $project_root hdl axi_sync_inputs.v]
+# iter6 (2026-05-22) — pulse generator for S2MM hardware fsync (cherry-picked)
+add_files -norecurse [file join $project_root hdl vsync_cdc_pulse.v]
 # Phase E1 Phase 1 — vsync timestamp instrument (48-bit counter + 2 edge-cap regs)
 add_files -norecurse [file join $project_root hdl vsync_timestamp.v]
 # Phase E1 Phase 2 — synthetic ~60 Hz reference (integer divider on FCLK_CLK1)
@@ -266,7 +268,8 @@ set_property -dict [list \
     CONFIG.c_include_internal_genlock {1} \
     CONFIG.c_mm2s_genlock_repeat_en {1} \
     CONFIG.c_use_mm2s_fsync {1} \
-    CONFIG.c_use_s2mm_fsync {0} \
+    CONFIG.c_use_s2mm_fsync {1} \
+    CONFIG.c_flush_on_fsync {1} \
 ] [get_bd_cells axi_vdma_0]
 # Phase D iter-4d-3 step 2 (2026-05-16): upgrade from plain to Dynamic Genlock.
 #   c_s2mm_genlock_mode 0->2  (Master -> Dynamic Master)
@@ -485,6 +488,23 @@ connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins v_tc_tx/s
 connect_bd_net [get_bd_pins rst_pixclk_out/peripheral_aresetn] [get_bd_pins v_tc_tx/resetn]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]        [get_bd_pins v_vid_in_axi4s_0/aresetn]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]        [get_bd_pins scaler_0/aresetn]
+
+# =============================================================================
+# iter6 (2026-05-22, cherry-picked from iter5-1080p-clean bfdc627):
+# S2MM external fsync from a 1-cycle pulse on source vsync rising edge.
+# Resolves the "bottom-bars 27-row leak" that this branch's
+# tests/phase-e1/phase_e2_psincdec_limit.md flagged as the "spike
+# product-blocker" (static phase wraparound the PI loop couldn't fix).
+# Root cause: axi_vdma v6.3 has ~27-row pipeline lag from AXIS TUSER
+# to DDR3 slot pointer transition. Hardware fsync bypasses that pipeline.
+# vid_pVSync and s_axis_s2mm_aclk are both pclk_in domain → no CDC.
+# Full write-up: docs/iter6-s2mm-fsync-fix.md on iter5-1080p-clean.
+# =============================================================================
+create_bd_cell -type module -reference vsync_cdc_pulse s2mm_fsync_pulse_gen
+connect_bd_net $pclk_in                                      [get_bd_pins s2mm_fsync_pulse_gen/dst_clk]
+connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]      [get_bd_pins s2mm_fsync_pulse_gen/dst_rstn]
+connect_bd_net [get_bd_pins dvi2rgb_0/vid_pVSync]            [get_bd_pins s2mm_fsync_pulse_gen/vsync_async]
+connect_bd_net [get_bd_pins s2mm_fsync_pulse_gen/pulse_out]  [get_bd_pins axi_vdma_0/s2mm_fsync]
 
 # =============================================================================
 # Memory path: VDMA M_AXI ports → SmartConnect → PS S_AXI_HP0
