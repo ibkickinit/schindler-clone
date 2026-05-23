@@ -812,6 +812,12 @@ set_property -dict [list \
 connect_bd_intf_net [get_bd_intf_pins scaler_0/m_axis] [get_bd_intf_pins ila_scaler_out/SLOT_0_AXIS]
 connect_bd_net [get_bd_pins dvi2rgb_0/PixelClk] [get_bd_pins ila_scaler_out/clk]
 connect_bd_net [get_bd_pins rst_pixclk_out/peripheral_aresetn] [get_bd_pins ila_scaler_out/resetn]
+# iter6 H-shift investigation (2026-05-22): the existing AXIS bundle slot
+# above already captures m_axis_tuser, m_axis_tlast, m_axis_tdata,
+# m_axis_tvalid. That's enough to count beats from TUSER→first TLAST and
+# verify whether scaler emits 1280 pixels/row as expected.
+# (Earlier attempt to add native probes via C_NUM_OF_PROBES failed —
+# system_ila auto-monitor mode doesn't expose probe* pins.)
 
 # System ILA on the MM2S output AXIS (pclk_out domain, 74.25 MHz).
 create_bd_cell -type ip -vlnv xilinx.com:ip:system_ila ila_mm2s_out
