@@ -2,7 +2,9 @@
 
 Living document. Source of truth for **what input → output combinations Schindler supports, by what method, with what caveats.** Updated each iter as features ship. Also serves as the QA test plan — every ✅ row should have a bench-validated pass; every 🟡 is the current iter's focus.
 
-Last updated: 2026-05-17 evening (post-bisect; iter4h substrate retired). Production substrate is `iter5-1080p-clean` branch commit `86dc034` — iter4d-3 + cleanups (no AXIS FIFO, no `c_flush_on_fsync=1`, no S2MM over-allocate, no MM2S +STRIDE shift) + NUM_FRAMES=5 / `c_num_fstores=5`.
+Last updated: 2026-05-22 — iter6 S2MM-fsync fix shipped. Production substrate is `iter5-1080p-clean` branch commit `bfdc627` (iter5 substrate + iter6 hardware-fsync fix). iter6 also applied to `mackin-impl-wip` (`231ad7d`, bench-verified) and `phase-e1-pll-spike` (`5d500c1` + `ee42bc9`, vertical-wrap resolved with residual cosmetic 3-px H-shift on that branch only — out of scope for this matrix).
+
+**Key iter6 change:** `c_use_s2mm_fsync=1` + `c_flush_on_fsync=1` + new `s2mm_fsync_pulse_gen` cell drives hardware fsync from source `vid_pVSync` edge. Resolves the 27-row bottom-bars artifact ([docs/iter6-s2mm-fsync-fix.md](iter6-s2mm-fsync-fix.md)) that had silently corrupted slot tails since iter4g — making all prior ✅ entries below pre-iter6 and therefore suspect. **All rows below need re-validation on iter6 substrate.**
 
 ---
 
@@ -50,13 +52,13 @@ Primary output path (rgb2dvi). Covers everything we ship today and most of Phase
 | # | Input format | Output format | Status | Method | Scaling | Notes |
 |---|---|---|---|---|---|---|
 | 1 | 1080p60 | 1080p60 | ⚠️ | — | none | Phase A passthrough validated on early substrate. Needs re-test on iter5-1080p-clean substrate (current production base — iter4h additions removed). |
-| 2 | 1080p60 | 720p60 | ✅ | — | down | **Bench-validated 2026-05-17 evening** on production substrate (`scaler_top` + NUM_FRAMES=5 + iter3i +STRIDE shift restored). PHASE deltas `{1,1,1,...}` confirms matched 1:1. |
-| 3 | 1080p60 | 720p50 | ⚠️ | D (6:5) | down | iter4d-3 FRC validation. Re-test on iter5-1080p-clean substrate. |
-| 4 | 1080p60 | 1080p24 | ✅ | D (5:2) | none | **Bench-validated 2026-05-17 evening** on `iter5-1080p-clean` commit `86dc034`. Clean (no scroll, no tear, no bottom-bars). NUM_FRAMES=5 required to prevent S2MM lapping MM2S mid-read. Scaler bypassed. |
+| 2 | 1080p60 | 720p60 | ✅ | — | down | **Bench-validated 2026-05-22 on iter6 substrate (`bfdc627`)**: monitor clean, DDR3 dump shows uniform PLUGE at slot rows 690-719 (no leak), `v_out_tlast=720` per source frame. Single boot — promote to "✅ multi-boot" after ≥3 cold-boot re-validation per [[schindler-no-coin-flip-rule]]. Prior `iter5-1080p-clean` `86dc034` ✅ was MS2109-tainted per build-manifest 2026-05-21 audit. |
+| 3 | 1080p60 | 720p50 | ⚠️ | D (6:5) | down | iter4d-3 FRC validation. Re-test on iter6 substrate. |
+| 4 | 1080p60 | 1080p24 | ⚠️ | D (5:2) | none | Prior ✅ on commit `86dc034` was MS2109-tainted; iter6 fix may or may not have changed the FRC behavior. Re-test on iter6 substrate. |
 | 5 | 1080p59.94 | 1080p23.976 | 🟡 | A / B | none | **iter5 stretch.** Tests MMCM tracking under 1000/1001 drift. |
 | 6 | 1080p59.94 | 1080p24 | 🔲 | B | none | Phase E1. Needs MMCM tracking to absorb 59.94→60 drift before 5:2 FRC. |
-| 7 | 1080p60 | 1080p30 | ✅ | D (2:1) | none | **Bench-validated 2026-05-17 evening.** PHASE telemetry confirms `deltas={2,2,2,2,...}` constant — exact 2:1 cadence. Picture clean. |
-| 8 | 1080p60 | 1080p25 | ✅ | D (12:5) | none | **Bench-validated 2026-05-17 evening.** PHASE telemetry confirms 12:5 super-cycle with deltas avg 2.4 in pattern `2,3,2,2,3` (rotating per ring snapshot). Cadence irregular — judder would be visible on motion in person; remote capture can't resolve. Mackin blend would help; not blocking. |
+| 7 | 1080p60 | 1080p30 | ⚠️ | D (2:1) | none | Prior ✅ MS2109-tainted; re-test on iter6 substrate. |
+| 8 | 1080p60 | 1080p25 | ⚠️ | D (12:5) | none | Prior ✅ MS2109-tainted; re-test on iter6 substrate. Note: 12:5 deltas pattern `2,3,2,2,3` makes motion judder visible on monitor even with iter6 fix — Mackin blend (Phase E2) would help. |
 | 9 | 1080p60 | 1080p50 | 🔲 | E (6:5) | none | Phase E2. Ugly near-1:1 ratio. |
 | 10 | 1080p50 | 1080p60 | 🔲 | E (5:6) | none | Phase E2. Inverse of #9. |
 | 11 | 1080p50 | 1080p25 | 🔲 | D (2:1) | none | Phase E. Trivial. |
