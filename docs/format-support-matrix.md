@@ -52,7 +52,7 @@ Primary output path (rgb2dvi). Covers everything we ship today and most of Phase
 | # | Input format | Output format | Status | Method | Scaling | Notes |
 |---|---|---|---|---|---|---|
 | 1 | 1080p60 | 1080p60 | ⚠️ | — | none | Phase A passthrough validated on early substrate. Needs re-test on iter5-1080p-clean substrate (current production base — iter4h additions removed). |
-| 2 | 1080p60 | 720p60 | ✅ | — | down | **Bench-validated 2026-05-22 on iter6 substrate (`bfdc627`)**: monitor clean, DDR3 dump shows uniform PLUGE at slot rows 690-719 (no leak), `v_out_tlast=720` per source frame. Single boot — promote to "✅ multi-boot" after ≥3 cold-boot re-validation per [[schindler-no-coin-flip-rule]]. Prior `iter5-1080p-clean` `86dc034` ✅ was MS2109-tainted per build-manifest 2026-05-21 audit. |
+| 2 | 1080p60 | 720p60 | ⚠️ | — | down | **iter6 (`bfdc627`) fixes the 27-row V-wrap (DDR3 dump confirms clean slot tails)** BUT a residual **2-3 pixel per-line horizontal shift** is present on iter6 substrate. Originally missed in 2026-05-22 single-boot verification on iter5 + mackin; observed on closer monitor inspection (also present on phase-e1 where it was first noticed). H-shift NOT in scope for iter6 — separate investigation. Re-test for full ✅ after H-shift fix lands. |
 | 3 | 1080p60 | 720p50 | ⚠️ | D (6:5) | down | iter4d-3 FRC validation. Re-test on iter6 substrate. |
 | 4 | 1080p60 | 1080p24 | ⚠️ | D (5:2) | none | Prior ✅ on commit `86dc034` was MS2109-tainted; iter6 fix may or may not have changed the FRC behavior. Re-test on iter6 substrate. |
 | 5 | 1080p59.94 | 1080p23.976 | 🟡 | A / B | none | **iter5 stretch.** Tests MMCM tracking under 1000/1001 drift. |

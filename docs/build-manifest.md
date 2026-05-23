@@ -482,6 +482,20 @@ See [`docs/iter6-s2mm-fsync-fix.md`](iter6-s2mm-fsync-fix.md) for: detailed root
 
 ---
 
+## 2026-05-22 evening — iter6 H-shift discovered on ALL branches (re-opened)
+
+After closing out iter6 across three branches, Justin re-checked iter5-1080p-clean carefully on the monitor and **the 2-3 pixel per-line H-shift is present here too**. Originally seen on phase-e1-pll-spike and attributed there to branch-specific differences (FRC mode, c_num_fstores=3). That theory is now **refuted** — same H-shift on iter5 substrate.
+
+**Net iter6 status:**
+- ✅ 27-row vertical bottom-bars artifact: **FIXED** (DDR3 dump confirms uniform PLUGE in slot tails, no leak).
+- ❌ 2-3 pixel per-line horizontal shift: **NEW REGRESSION (or pre-existing + unmasked).** Each output row starts ~3 pixels late; last 3 pixels of row N appear at start of row N+1.
+
+**Tomorrow's investigation needs to disambiguate:** was the H-shift pre-existing (hidden behind the more dramatic V-wrap and the MS2109's framebuffer) or newly introduced by the iter6 fsync wiring? Hypotheses ranked in `docs/iter6-s2mm-fsync-fix.md`'s new "Known residual: H-shift" section.
+
+**Matrix Row 2 demoted** back to ⚠️ until H-shift fix lands.
+
+---
+
 ## Going-forward convention
 
 Every bench session must end with an update to this manifest:
