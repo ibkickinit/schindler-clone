@@ -128,9 +128,10 @@ module scaler_h #(
         end
     endfunction
 
-    /* SHIPPED CONFIG (iter3o/iter3q): MAC bypassed — output = window[3]
-     * (center-tap nearest-neighbor pick). Eliminates kernel ringing AND
-     * source-noise amplification at edges. Why this instead of a kernel:
+    /* SHIPPED CONFIG (iter3o/iter3q): MAC bypassed — output is a single
+     * nearest-neighbor pick from the 8-pixel shift register. Eliminates
+     * kernel ringing AND source-noise amplification at edges. Why this
+     * instead of a kernel:
      *   - Mitchell with -0.036 sidelobe coefficients amplified ±1 LSB
      *     source/TMDS noise into ±35 LSB output excursions at high-contrast
      *     edges (visible as colored specks at color-bar boundaries — see
@@ -143,12 +144,35 @@ module scaler_h #(
      *     diagonals / fine text. Acceptable for current broadcast-style
      *     content; revisit when a wider-support all-positive kernel with
      *     enough smoothing for clean interiors gets designed.
-     * To restore MAC: replace these 3 lines with the original mac8_sat calls
-     * (still defined below; coefficient ROM still loaded with Mitchell coeffs
-     * so the math is correct the moment the MAC is wired back in). */
-    wire [7:0] out_r = window[3][23:16];
-    wire [7:0] out_g = window[3][15: 8];
-    wire [7:0] out_b = window[3][ 7: 0];
+     *
+     * iter8 (2026-05-24): tap pick changed from window[3] (= pixel K-4 at
+     * emit cycle K) to window[0] (= pixel K-1). Eliminated the 2-pixel
+     * left margin but introduced a ~3-col right margin (source's right
+     * edge runs off-screen because output col 1279 reads source col 1918
+     * rather than source col 1915 like iter7 did).
+     *
+     * iter10 (2026-05-24): switched from single-tap NN to 8-tap boxcar
+     * MAC. Bench result: too soft for vertical lines (~7-col fade), and
+     * source's right-edge content past col ~1910 still not seen. The
+     * 8-col blend was over-aggressive for sharp grid patterns.
+     *
+     * iter11 (2026-05-24): 2-tap boxcar = (window[0] + window[1]) / 2.
+     * Bench confirmed tighter blur (~2-col fade), left line at col 0,1.
+     * But last emit at cycle 1919 reads source cols 1917,1918 — col 1919's
+     * vertical line never sampled. Right edge still black.
+     *
+     * iter12 (2026-05-24): 2-tap boxcar with newest tap = s_axis_tdata
+     * (the just-arriving pixel) instead of window[1]. Output at emit
+     * cycle K = avg(pixel K, pixel K-1). First emit (K=1) reads source
+     * cols 0,1; last emit (K=1919) reads source cols 1918,1919. Full
+     * source col range 0..1919 is now sampled. Same 2-tap blur level
+     * just shifted by one source col to the right. */
+    wire [8:0] s2r = s_axis_tdata[23:16] + window[0][23:16];
+    wire [8:0] s2g = s_axis_tdata[15: 8] + window[0][15: 8];
+    wire [8:0] s2b = s_axis_tdata[ 7: 0] + window[0][ 7: 0];
+    wire [7:0] out_r = s2r[8:1];
+    wire [7:0] out_g = s2g[8:1];
+    wire [7:0] out_b = s2b[8:1];
     // Reference unused coefficient wires so synthesis doesn't drop the ROM:
     wire _coef_keep = |{c0, c1, c2, c3, c4, c5, c6, c7};
 
@@ -222,6 +246,19 @@ module scaler_h #(
                     m_axis_tlast  <= s_axis_tlast;     // last input pixel of line → last output pixel
                     m_axis_tuser  <= pending_tuser | s_axis_tuser;
                     pending_tuser <= 1'b0;             // consumed by this emit
+                end
+
+                /* iter6 H-shift fix (2026-05-23): clear the 8-tap window on
+                 * TLAST so the next row's emit pipeline starts with an empty
+                 * window. Eliminates the per-row "smear" / "wrap-look"
+                 * artifact where each row's first 2-3 output pixels were
+                 * weighted-average of the PREVIOUS row's last 7 input pixels
+                 * (visible on grid patterns at horizontal-line→normal-row
+                 * boundaries). Last-write-wins in NBA semantics overrides
+                 * the shift writes above. The current emit (if any) already
+                 * used the pre-clear OLD window — see "Emit output" above. */
+                if (s_axis_tlast) begin
+                    for (i = 0; i < TAPS; i = i + 1) window[i] <= 24'h0;
                 end
             end
         end
