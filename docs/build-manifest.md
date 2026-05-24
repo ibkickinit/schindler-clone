@@ -496,6 +496,67 @@ After closing out iter6 across three branches, Justin re-checked iter5-1080p-cle
 
 ---
 
+## 2026-05-24 — iter7→iter13: scaler kernel rework, H-shift RESOLVED
+
+iter6 left a residual artifact ("each line starts 2-3 pixels late, last pixels of row N appear at start of row N+1"). DDR3 boundary-col dumps localized the bug to **scaler_h.v's MAC window**, not S2MM or MM2S as originally hypothesized: the polyphase 8-tap horizontal scaler was using NN-bypass single-tap output WITHOUT clearing the shift register at row boundaries, so the first 2-3 pixels of each output row read leftover tail data from the previous row. Vertical missing-lines was the same class of bug in scaler_v.v (NN-bypass `mac_r = tap1` dropped 1 of every 3 source rows for 1080→720).
+
+**Tested branch:** `iter5-1080p-clean`. Output config = **720p60** (1280×720 @ 1650×750, ~74.25 MHz pixclk).
+
+### Patch progression
+
+| iter | Change | Bench result |
+|---|---|---|
+| iter7 | scaler_h.v: clear `window[0..7]` on TLAST | 2-pixel left margin — window now correctly zero at row start, but old-tap-pick reads pre-row pixel |
+| iter8 | tap window[3] → window[0] (= newest pre-shift) | Left margin gone but image shifted left ~3 cols, right edge falls off screen |
+| iter9 | tap = window[1] (intermediate) | 1-col left + 2-col right hard black margin — better balance but still NN band-aid |
+| iter10 | 8-tap boxcar MAC (all 1/8 coefficients) | Vertical lines too soft (~7-col fade), right edge content past col ~1910 still invisible |
+| iter11 | 2-tap boxcar `(window[0] + window[1])/2` | Tight 2-col blur, lines visible, **right edge still missing** (last MAC reads cols 1917,1918) |
+| **iter12** | **2-tap with newest = `s_axis_tdata`** | **✅ Full src col range 0..1919 sampled. Left + right vertical lines at output cols 0 + 1279 as half-bright.** |
+| **iter13** | **scaler_v.v: NN tap1 → 2-tap `(tap2 + tap3)/2`** | **✅ All horizontal grid lines now visible (no dropouts). Previously hidden every-other-line restored. Visible as 2 output rows half-bright (= V-equivalent of H scaler's 2-col half-bright vertical lines).** |
+
+### Verdict
+
+`iter5-1080p-clean` @ iter12+iter13 = **canonical post-iter6 scaler substrate.** Patches are:
+- `hdl/scaler_h.v` ~lines 164-179 (2-tap with newest = `s_axis_tdata`).
+- `hdl/scaler_v.v` ~lines 170-184 (2-tap with newest = tap3 post-rotation).
+
+### Generalization (for replicating to other output resolutions)
+
+| Output res | Ratio | Min taps | Pattern |
+|---|---|---|---|
+| 1920→1920 (passthrough) | 1.0 | 1 | NN `s_axis_tdata` only |
+| 1920→1440 | 4:3 | 2 | iter12 as-is |
+| **1920→1280 (current)** | **3:2** | **2** | **iter12 = sweet spot** |
+| 1920→960 | 2:1 | 2 | iter12 |
+| 1920→720 | 8:3 | 3 | extend MAC to `(s_axis_tdata + window[0] + window[1]) / 3` |
+| 1920→640 | 3:1 | 3 | same as 720 |
+| 1920→480 | 4:1 | 4 | 4-tap newest |
+
+Rule: tap count ≥ `ceil(IN_W / OUT_W)`, with newest tap = `s_axis_tdata`. V scaler same pattern with line-buffer taps (newest = tap3 after `tap0_slot` rotation).
+
+### Deferred (planned iter14)
+
+Runtime kernel-mode toggle via AXI GPIO + UART `kh`/`kv` commands, independent H/V:
+- mode 0: NN (newest tap only)
+- mode 1: 2-tap boxcar (current iter12/13)
+- mode 2: 4-tap boxcar (more blur)
+- mode 3: reserved (future polyphase or separate blur module)
+
+Cost: ~5 LUTs, ~30 min Vivado rebuild, ~30s UART parser extension. Add when needed for live A/B.
+
+### Known cosmetic
+
+- **First output row of frame:** tap3 lbuf may not be fresh yet (lbuf_fresh gating). Output row 0 reads as half-bright instead of full where source row 0 is bright. Pre-existing warmup; not from iter13.
+- **Horizontal lines now half-bright across 2 output rows** instead of full-bright across 1 row. Symmetric to vertical lines on H. Inherent to 2-tap boxcar; user-accepted trade.
+
+### Outstanding
+
+- Replicate iter12+iter13 to `mackin-impl-wip` and `phase-e1-pll-spike`.
+- Re-test SMPTE bars / motion (Osee inputs 1 and 2) on iter12+13 substrate; current grid-pattern tests were on input 3.
+- iter14 kernel-mode toggle when desired.
+
+---
+
 ## Going-forward convention
 
 Every bench session must end with an update to this manifest:

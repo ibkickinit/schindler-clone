@@ -167,9 +167,19 @@ module scaler_v #(
     /* SHIPPED CONFIG (iter3o/iter3q): V-MAC bypassed — see scaler_h.v for
      * full rationale. Output picks tap1 (one of the middle taps after slot
      * rotation, always points to a current-frame lbuf when lbuf_fresh allows). */
-    wire [7:0] mac_r = tap1[23:16];
-    wire [7:0] mac_g = tap1[15: 8];
-    wire [7:0] mac_b = tap1[ 7: 0];
+    /* iter13 (2026-05-24): V-scaler 2-tap boxcar = (tap2 + tap3) / 2.
+     * Previously was NN single-tap (mac_r = tap1) which dropped 1 of every
+     * 3 source rows for 1080->720, making 1-pixel-thick horizontal lines
+     * land on dropped rows invisible. tap2/tap3 are the 2 NEWEST line
+     * buffers post-rotation, so the final emit (after source row 1079) has
+     * tap3 = row 1079 — full source row range covered, mirroring iter12 H.
+     * Every source row now contributes to >=1 output row at >=half weight. */
+    wire [8:0] vs_r = tap2[23:16] + tap3[23:16];
+    wire [8:0] vs_g = tap2[15: 8] + tap3[15: 8];
+    wire [8:0] vs_b = tap2[ 7: 0] + tap3[ 7: 0];
+    wire [7:0] mac_r = vs_r[8:1];
+    wire [7:0] mac_g = vs_g[8:1];
+    wire [7:0] mac_b = vs_b[8:1];
     wire _vcoef_keep = |{k0, k1, k2, k3};
 
     // Always ready to accept input — internal 4-line BRAM absorbs bursts.

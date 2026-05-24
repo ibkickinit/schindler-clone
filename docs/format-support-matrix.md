@@ -2,9 +2,11 @@
 
 Living document. Source of truth for **what input → output combinations Schindler supports, by what method, with what caveats.** Updated each iter as features ship. Also serves as the QA test plan — every ✅ row should have a bench-validated pass; every 🟡 is the current iter's focus.
 
-Last updated: 2026-05-22 — iter6 S2MM-fsync fix shipped. Production substrate is `iter5-1080p-clean` branch commit `bfdc627` (iter5 substrate + iter6 hardware-fsync fix). iter6 also applied to `mackin-impl-wip` (`231ad7d`, bench-verified) and `phase-e1-pll-spike` (`5d500c1` + `ee42bc9`, vertical-wrap resolved with residual cosmetic 3-px H-shift on that branch only — out of scope for this matrix).
+Last updated: 2026-05-24 — iter12+iter13 scaler kernel rework shipped, resolves residual H-shift + V missing-lines from iter6. Production substrate is `iter5-1080p-clean` branch (iter5 + iter6 hardware-fsync + iter12 H scaler `(s_axis_tdata + window[0])/2` + iter13 V scaler `(tap2 + tap3)/2`). HDMI TX = 720p60 (1280×720 @ 1650×750, 74.25 MHz).
 
-**Key iter6 change:** `c_use_s2mm_fsync=1` + `c_flush_on_fsync=1` + new `s2mm_fsync_pulse_gen` cell drives hardware fsync from source `vid_pVSync` edge. Resolves the 27-row bottom-bars artifact ([docs/iter6-s2mm-fsync-fix.md](iter6-s2mm-fsync-fix.md)) that had silently corrupted slot tails since iter4g — making all prior ✅ entries below pre-iter6 and therefore suspect. **All rows below need re-validation on iter6 substrate.**
+**Key iter12+13 change:** scaler_h.v and scaler_v.v MAC switched from NN single-tap (the iter6-era bypass that caused the H-shift by reading leftover row-tail data, and dropped 1/3 source rows vertically) to 2-tap boxcar with newest-tap from `s_axis_tdata` (H) or post-rotation `tap3` (V). Full source col 0..1919 and row 0..1079 ranges now sampled. See `docs/build-manifest.md` "2026-05-24" section for the iter7→iter13 patch progression + per-resolution generalization rules.
+
+**Pre-iter12 history:** iter6 (`bfdc627`) introduced hardware fsync via `c_use_s2mm_fsync=1` + `c_flush_on_fsync=1` + `s2mm_fsync_pulse_gen` cell, resolving the 27-row bottom-bars artifact ([docs/iter6-s2mm-fsync-fix.md](iter6-s2mm-fsync-fix.md)). iter12+13 fixes the residual scaler-kernel issues iter6 unmasked. All prior ✅ entries below were on pre-iter6 substrate and remain suspect.
 
 ---
 
@@ -52,7 +54,7 @@ Primary output path (rgb2dvi). Covers everything we ship today and most of Phase
 | # | Input format | Output format | Status | Method | Scaling | Notes |
 |---|---|---|---|---|---|---|
 | 1 | 1080p60 | 1080p60 | ⚠️ | — | none | Phase A passthrough validated on early substrate. Needs re-test on iter5-1080p-clean substrate (current production base — iter4h additions removed). |
-| 2 | 1080p60 | 720p60 | ⚠️ | — | down | **iter6 (`bfdc627`) fixes the 27-row V-wrap (DDR3 dump confirms clean slot tails)** BUT a residual **2-3 pixel per-line horizontal shift** is present on iter6 substrate. Originally missed in 2026-05-22 single-boot verification on iter5 + mackin; observed on closer monitor inspection (also present on phase-e1 where it was first noticed). H-shift NOT in scope for iter6 — separate investigation. Re-test for full ✅ after H-shift fix lands. |
+| 2 | 1080p60 | 720p60 | ✅ | — | down | **iter12+iter13 (`iter5-1080p-clean`, 2026-05-24)** fixes both the 27-row V-wrap (iter6) and the residual H-shift + V missing-lines (iter12+13 scaler kernel rework). DDR3 dumps + bench-monitor grid pattern confirm: source col 0..1919 fully sampled (left + right vertical lines at output cols 0 + 1279), source row 0..1079 fully sampled (no horizontal line dropouts). Vertical and horizontal lines render as 2-pixel half-bright instead of 1-pixel full-bright (2-tap boxcar trade). |
 | 3 | 1080p60 | 720p50 | ⚠️ | D (6:5) | down | iter4d-3 FRC validation. Re-test on iter6 substrate. |
 | 4 | 1080p60 | 1080p24 | ⚠️ | D (5:2) | none | Prior ✅ on commit `86dc034` was MS2109-tainted; iter6 fix may or may not have changed the FRC behavior. Re-test on iter6 substrate. |
 | 5 | 1080p59.94 | 1080p23.976 | 🟡 | A / B | none | **iter5 stretch.** Tests MMCM tracking under 1000/1001 drift. |

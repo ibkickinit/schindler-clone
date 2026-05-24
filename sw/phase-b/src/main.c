@@ -694,6 +694,37 @@ static inline void vdma_mm2s_set_park_mode(UINTPTR vdma_base)
  * bottom-bars-artifact debug, dump slot 0 rows 690..720 (the artifact zone +
  * guard row) and slot 1 rows 0..8 (the "if frame N+1 leaked, this is what
  * we'd see in slot 0's tail" reference). */
+/* iter6 H-shift probe (2026-05-23): dump first 10 + last 10 pixels of
+ * each row. Decisive test for byte-level wrap: if row N's cols 1270-1279
+ * == row N+1's cols 0-9, the wrap is real. If they differ, the row N
+ * tail follows the source content and row N+1 head is the next row's
+ * own content (no wrap; what looked like wrap is scaler_h's 8-tap window
+ * carryover smear). */
+static void dump_slot_head_pixels(u32 slot_idx, u32 row_start, u32 row_end)
+{
+    const u32 SLOT_STRIDE_BYTES = FRAME_BYTES + STRIDE;
+    volatile u8 *slot = (volatile u8 *)(FRAME_BUF_BASE + slot_idx * SLOT_STRIDE_BYTES);
+    xil_printf("\r\nDDR3 HEAD+TAIL: slot=%u rows=%u..%u (cols 0-9 + 1270-1279)  base=0x%08x\r\n",
+               (unsigned)slot_idx, (unsigned)row_start, (unsigned)row_end,
+               (unsigned)(FRAME_BUF_BASE + slot_idx * SLOT_STRIDE_BYTES));
+    for (u32 row = row_start; row <= row_end; row++) {
+        u32 row_base = row * STRIDE;
+        xil_printf("  r%3u HEAD ", (unsigned)row);
+        for (u32 col = 0; col < 10; col++) {
+            u32 a = row_base + col * 3;
+            xil_printf("%02x%02x%02x ",
+                       (unsigned)slot[a + 0], (unsigned)slot[a + 1], (unsigned)slot[a + 2]);
+        }
+        xil_printf("| TAIL ");
+        for (u32 col = 1270; col < 1280; col++) {
+            u32 a = row_base + col * 3;
+            xil_printf("%02x%02x%02x ",
+                       (unsigned)slot[a + 0], (unsigned)slot[a + 1], (unsigned)slot[a + 2]);
+        }
+        xil_printf("\r\n");
+    }
+}
+
 static void dump_slot_bytes(u32 slot_idx, u32 row_start, u32 row_end)
 {
     /* iter5 slot layout: FRAME_BYTES of S2MM-written rows + STRIDE of guard.
@@ -713,14 +744,35 @@ static void dump_slot_bytes(u32 slot_idx, u32 row_start, u32 row_end)
      * from the BOTTOM (PLUGE region). This is the fingerprint test for
      * the bottom-bars artifact: slot row 694..719 (expected PLUGE) showing
      * 6 distinct bar colors = frame K+1 top leaking into frame K bottom. */
-    static const u32 SAMPLE_COLS[6] = { 90, 270, 460, 640, 820, 1010 };
+    /* iter6 H-shift probe (2026-05-23): mix of boundary cols (0..3,
+     * 1276..1279) for the per-row alignment check + interior cols
+     * (90, 270, 460, 640, 820, 1010) covering the 7 SMPTE bars to
+     * verify slot has content. If interior cols match the prior iter6
+     * verification fingerprint but boundary cols are zero → slot is
+     * byte-clean, shift is post-MM2S. If boundary AND interior cols
+     * both look weird → may indicate slot empty (S2MM not writing). */
+    static const u32 SAMPLE_COLS[14] = {
+        0, 1, 2, 3,                        /* row LEFT boundary */
+        90, 270, 460, 640, 820, 1010,      /* SMPTE bar interior cols */
+        1276, 1277, 1278, 1279             /* row RIGHT boundary */
+    };
+    /* Also compute a XOR checksum of every byte in the row so we know
+     * whether the row has ANY data at all, beyond just the sample cols. */
     for (u32 row = row_start; row <= row_end; row++) {
         u32 row_base = row * STRIDE;
-        xil_printf("  row %3u  ", (unsigned)row);
-        for (u32 i = 0; i < 6; i++) {
+        u8 chk = 0;
+        u32 nonzero = 0;
+        for (u32 b = 0; b < STRIDE; b++) {
+            u8 v = slot[row_base + b];
+            chk ^= v;
+            if (v) nonzero++;
+        }
+        xil_printf("  row %3u  chk=%02x nz=%5u  ", (unsigned)row,
+                   (unsigned)chk, (unsigned)nonzero);
+        for (u32 i = 0; i < 14; i++) {
             u32 col = SAMPLE_COLS[i];
             u32 a = row_base + col * 3;
-            xil_printf("col%4u=%02x%02x%02x  ", (unsigned)col,
+            xil_printf("c%u=%02x%02x%02x ", (unsigned)col,
                        (unsigned)slot[a + 0], (unsigned)slot[a + 1], (unsigned)slot[a + 2]);
         }
         xil_printf("\r\n");
@@ -867,9 +919,24 @@ static void telemetry_loop(UINTPTR vdma_base)
                 if (trigger) {
                     xil_printf("\r\n=== DDR3 DUMP #%d (diag_iter=%d) ===\r\n",
                                trigger, diag_iter);
-                    dump_slot_bytes(0, FRAME_H - 30, FRAME_H);
-                    dump_slot_bytes(0, FRAME_H,      FRAME_H + 27);
-                    dump_slot_bytes(1, 0, 8);
+                    /* iter6 H-shift probe (2026-05-23): re-read VTC_RX
+                     * detector now — boot might have failed to lock, but
+                     * mid-stream the source could be stable. If detector
+                     * reports HACTIVE != 1920, we've found the wrap cause:
+                     * scaler operating with wrong row width. */
+                    u32 dtstat = Xil_In32(VTC_RX_BASEADDR + 0x024);
+                    u32 dasize = Xil_In32(VTC_RX_BASEADDR + 0x020);
+                    u32 dhsize = Xil_In32(VTC_RX_BASEADDR + 0x030);
+                    u32 dvsize = Xil_In32(VTC_RX_BASEADDR + 0x034);
+                    u32 dpol   = Xil_In32(VTC_RX_BASEADDR + 0x02C);
+                    xil_printf("[VTC_RX LIVE] DTSTAT=0x%08x (LOCK=%d) HACTIVE=%u VACTIVE=%u HTOTAL=%u VTOTAL=%u DPOL=0x%02x\r\n",
+                               (unsigned)dtstat, (int)(dtstat & 1),
+                               (unsigned)(dasize & 0x3FFF),
+                               (unsigned)((dasize >> 16) & 0x3FFF),
+                               (unsigned)(dhsize & 0x3FFF),
+                               (unsigned)(dvsize & 0x3FFF),
+                               (unsigned)(dpol & 0x1F));
+                    dump_slot_head_pixels(0, 0, 99);
                     ddr_dump_count = trigger;
                 }
             }
