@@ -125,9 +125,20 @@ module scaler_h #(
      * To restore MAC: replace these 3 lines with the original mac8_sat calls
      * (still defined below; coefficient ROM still loaded with Mitchell coeffs
      * so the math is correct the moment the MAC is wired back in). */
-    wire [7:0] out_r = window[3][23:16];
-    wire [7:0] out_g = window[3][15: 8];
-    wire [7:0] out_b = window[3][ 7: 0];
+    /* iter12 (2026-05-24, backported from iter5-1080p-clean@f8f143e):
+     * 2-tap boxcar with newest tap = s_axis_tdata. Output at emit cycle K
+     * averages source pixel K (just arriving on s_axis_tdata) with pixel
+     * K-1 (in window[0] from last cycle's shift). First emit (K=1) reads
+     * src cols 0,1; last emit (K=1919) reads src cols 1918,1919 — full
+     * source col 0..1919 range sampled, no edge cols lost. Fixes the
+     * 2-3 pixel H-shift that was actually scaler_h.v carrying over old
+     * row-tail data into new row's first 2-3 output pixels. */
+    wire [8:0] s2r = s_axis_tdata[23:16] + window[0][23:16];
+    wire [8:0] s2g = s_axis_tdata[15: 8] + window[0][15: 8];
+    wire [8:0] s2b = s_axis_tdata[ 7: 0] + window[0][ 7: 0];
+    wire [7:0] out_r = s2r[8:1];
+    wire [7:0] out_g = s2g[8:1];
+    wire [7:0] out_b = s2b[8:1];
     // Reference unused coefficient wires so synthesis doesn't drop the ROM:
     wire _coef_keep = |{c0, c1, c2, c3, c4, c5, c6, c7};
 
@@ -154,15 +165,24 @@ module scaler_h #(
 
             // Input side: when we accept a pixel
             if (s_axis_tvalid && s_axis_tready) begin
-                // Shift window (window[0] newest)
-                window[7] <= window[6];
-                window[6] <= window[5];
-                window[5] <= window[4];
-                window[4] <= window[3];
-                window[3] <= window[2];
-                window[2] <= window[1];
-                window[1] <= window[0];
-                window[0] <= s_axis_tdata;
+                /* iter7 (2026-05-24, backported): clear window on TLAST so
+                 * row N+1's first emits don't read row N's tail data. With
+                 * iter12's (s_axis_tdata + window[0])/2 tap, an unclear
+                 * window[0] at row-start would average row N's last pixel
+                 * with row N+1's first pixel — visible as a per-row H-shift. */
+                if (s_axis_tlast) begin
+                    for (i = 0; i < TAPS; i = i + 1) window[i] <= 24'h0;
+                end else begin
+                    // Shift window (window[0] newest)
+                    window[7] <= window[6];
+                    window[6] <= window[5];
+                    window[5] <= window[4];
+                    window[4] <= window[3];
+                    window[3] <= window[2];
+                    window[2] <= window[1];
+                    window[1] <= window[0];
+                    window[0] <= s_axis_tdata;
+                end
 
                 // Update accumulator and possibly emit
                 if (s_axis_tuser) begin

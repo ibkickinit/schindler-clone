@@ -136,12 +136,20 @@ module scaler_v #(
         end
     endfunction
 
-    /* SHIPPED CONFIG (iter3o/iter3q): V-MAC bypassed — see scaler_h.v for
-     * full rationale. Output picks tap1 (one of the middle taps after slot
-     * rotation, always points to a current-frame lbuf when lbuf_fresh allows). */
-    wire [7:0] mac_r = tap1[23:16];
-    wire [7:0] mac_g = tap1[15: 8];
-    wire [7:0] mac_b = tap1[ 7: 0];
+    /* iter13 (2026-05-24, backported from iter5-1080p-clean@f8f143e):
+     * V scaler 2-tap boxcar = (tap2 + tap3)/2. Previously was NN single-tap
+     * (mac_r = tap1) which dropped 1 of every 3 source rows for 1080→720,
+     * making 1-pixel-thick horizontal lines on dropped rows invisible.
+     * tap2/tap3 are the 2 NEWEST line buffers post-rotation, so the final
+     * emit captures source row 1079 — full source row 0..1079 range now
+     * sampled. Every source row contributes to ≥1 output row at ≥half
+     * weight, mirroring iter12 H's full source col coverage. */
+    wire [8:0] vs_r = tap2[23:16] + tap3[23:16];
+    wire [8:0] vs_g = tap2[15: 8] + tap3[15: 8];
+    wire [8:0] vs_b = tap2[ 7: 0] + tap3[ 7: 0];
+    wire [7:0] mac_r = vs_r[8:1];
+    wire [7:0] mac_g = vs_g[8:1];
+    wire [7:0] mac_b = vs_b[8:1];
     wire _vcoef_keep = |{k0, k1, k2, k3};
 
     // Always ready to accept input — internal 4-line BRAM absorbs bursts.
