@@ -955,6 +955,36 @@ static inline void vdma_mm2s_set_park_mode(UINTPTR vdma_base)
  * bottom-bars-artifact debug, dump slot 0 rows 690..720 (the artifact zone +
  * guard row) and slot 1 rows 0..8 (the "if frame N+1 leaked, this is what
  * we'd see in slot 0's tail" reference). */
+/* iter6 H-shift probe (2026-05-23): dump first 10 + last 10 pixels of
+ * each row. Same helper used on iter5-1080p-clean to localize the H-shift
+ * to scaler_h's MAC window. Reuse on mackin to verify iter12+13 same way:
+ * row N's HEAD col 0 = source col 0 (left vline at half-bright after
+ * iter12), TAIL col 1279 = source col 1919 (right vline at half-bright). */
+static void dump_slot_head_pixels(u32 slot_idx, u32 row_start, u32 row_end)
+{
+    const u32 SLOT_STRIDE_BYTES = FRAME_BYTES + STRIDE;
+    volatile u8 *slot = (volatile u8 *)(FRAME_BUF_BASE + slot_idx * SLOT_STRIDE_BYTES);
+    xil_printf("\r\nDDR3 HEAD+TAIL: slot=%u rows=%u..%u (cols 0-9 + 1270-1279)  base=0x%08x\r\n",
+               (unsigned)slot_idx, (unsigned)row_start, (unsigned)row_end,
+               (unsigned)(FRAME_BUF_BASE + slot_idx * SLOT_STRIDE_BYTES));
+    for (u32 row = row_start; row <= row_end; row++) {
+        u32 row_base = row * STRIDE;
+        xil_printf("  r%3u HEAD ", (unsigned)row);
+        for (u32 col = 0; col < 10; col++) {
+            u32 a = row_base + col * 3;
+            xil_printf("%02x%02x%02x ",
+                       (unsigned)slot[a + 0], (unsigned)slot[a + 1], (unsigned)slot[a + 2]);
+        }
+        xil_printf("| TAIL ");
+        for (u32 col = 1270; col < 1280; col++) {
+            u32 a = row_base + col * 3;
+            xil_printf("%02x%02x%02x ",
+                       (unsigned)slot[a + 0], (unsigned)slot[a + 1], (unsigned)slot[a + 2]);
+        }
+        xil_printf("\r\n");
+    }
+}
+
 static void dump_slot_bytes(u32 slot_idx, u32 row_start, u32 row_end)
 {
     /* iter5 slot layout: FRAME_BYTES of S2MM-written rows + STRIDE of guard.
@@ -1128,9 +1158,7 @@ static void telemetry_loop(UINTPTR vdma_base)
                 if (trigger) {
                     xil_printf("\r\n=== DDR3 DUMP #%d (diag_iter=%d) ===\r\n",
                                trigger, diag_iter);
-                    dump_slot_bytes(0, FRAME_H - 30, FRAME_H);
-                    dump_slot_bytes(0, FRAME_H,      FRAME_H + 27);
-                    dump_slot_bytes(1, 0, 8);
+                    dump_slot_head_pixels(0, 0, 99);
                     ddr_dump_count = trigger;
                 }
             }
