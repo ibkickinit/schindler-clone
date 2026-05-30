@@ -797,6 +797,35 @@ static void cmd_toggle_dump(void)
                g_dump_per_frame);
 }
 
+/* iter12/13 verification (backported from iter5-1080p-clean@f8f143e):
+ * dump first 10 + last 10 pixels of each row in slot 0, rows 0..99.
+ * Confirms the iter12+13 scaler-kernel fix landed: row 0 + horizontal-line
+ * rows show BFBFBF corners + 7F7F7F interior; normal rows show 7F7F7F at
+ * cols 0 + 1279 (left + right vertical lines half-bright), 000000 elsewhere. */
+static void cmd_dump_framebuffer(void)
+{
+    const u32 SLOT_STRIDE_BYTES = FRAME_BYTES + STRIDE;
+    volatile u8 *slot = (volatile u8 *)(FRAME_BUF_BASE + 0 * SLOT_STRIDE_BYTES);
+    xil_printf("\r\nDDR3 HEAD+TAIL: slot=0 rows=0..99 (cols 0-9 + 1270-1279)  base=0x%08x\r\n",
+               (unsigned)(FRAME_BUF_BASE + 0 * SLOT_STRIDE_BYTES));
+    for (u32 row = 0; row <= 99; row++) {
+        u32 row_base = row * STRIDE;
+        xil_printf("  r%3u HEAD ", (unsigned)row);
+        for (u32 col = 0; col < 10; col++) {
+            u32 a = row_base + col * 3;
+            xil_printf("%02x%02x%02x ",
+                       (unsigned)slot[a + 0], (unsigned)slot[a + 1], (unsigned)slot[a + 2]);
+        }
+        xil_printf("| TAIL ");
+        for (u32 col = 1270; col < 1280; col++) {
+            u32 a = row_base + col * 3;
+            xil_printf("%02x%02x%02x ",
+                       (unsigned)slot[a + 0], (unsigned)slot[a + 1], (unsigned)slot[a + 2]);
+        }
+        xil_printf("\r\n");
+    }
+}
+
 /* =========================================================================
  * Phase E1 Phase 7 — reference selector and ref-mask.
  *
@@ -1596,6 +1625,7 @@ static void cmd_help(void)
                "  a             E2.3: auto-FRC (measure source, set M/N, ref=src)\r\n"
                "  o <snap|smooth|film> E2.2: select lock mode (default SMOOTH)\r\n"
                "  i             E2.4: info dump (source format + output + loop state)\r\n"
+               "  F             iter12/13 verify: dump slot 0 rows 0..99 HEAD+TAIL pixels\r\n"
                "  h             diag: dump err histogram (last interval, then reset)\r\n"
                "  t             diag: toggle iter-4a source (real vs synth 50 Hz)\r\n"
                "  B <ppm>       Phase 8: inject ref-rate bias (saturation/slip test)\r\n"
@@ -1673,6 +1703,7 @@ static void uart_poll_and_dispatch(void)
         }
         case 'a': case 'A':       cmd_auto_frc();    break;
         case 'i': case 'I':       cmd_info();        break;
+        case 'F':                 cmd_dump_framebuffer(); break;
         case 't': case 'T':       cmd_toggle_iter4a_test(); break;
         case 'h': case 'H':       cmd_err_histogram(); break;
         case 'o': case 'O': {
