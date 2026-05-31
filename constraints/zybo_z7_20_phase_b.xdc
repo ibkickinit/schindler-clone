@@ -105,3 +105,41 @@ set_false_path -to [get_pins -hier -filter {NAME =~ */src_vsync_divider_0/inst/s
 # the registers, yielding margin against silicon fast-corner variation.
 # Setup analysis is unaffected.
 set_clock_uncertainty -hold 0.050 [all_clocks]
+
+# Color-correct GPIO-to-pclk_out CDC false-paths. ASYNC_REG handles
+# metastability; these inform the timing engine the inter-clock paths are
+# async and shouldn't be constrained. Without them Vivado tries to meet
+# setup from clk_fpga_0 (100 MHz) to clk_out1_pclk_out (74.25 MHz) on
+# the first-stage flops, fails badly (~-3.5 ns WNS).
+set_false_path -to [get_pins {phase_b_bd_i/color_correct_0/br_q1_reg[*]/D}]
+set_false_path -to [get_pins {phase_b_bd_i/color_correct_0/bg_q1_reg[*]/D}]
+set_false_path -to [get_pins {phase_b_bd_i/color_correct_0/bb_q1_reg[*]/D}]
+set_false_path -to [get_pins {phase_b_bd_i/color_correct_0/wr_q1_reg[*]/D}]
+set_false_path -to [get_pins {phase_b_bd_i/color_correct_0/wg_q1_reg[*]/D}]
+set_false_path -to [get_pins {phase_b_bd_i/color_correct_0/wb_q1_reg[*]/D}]
+set_false_path -to [get_pins {phase_b_bd_i/color_saturation_0/sat_q1_reg[*]/D}]
+
+# Color-matrix GPIO-to-pclk_out CDC false-paths (2026-05-31, audit follow-up).
+# color_matrix.v has the same 2-FF ASYNC_REG pattern as color_correct but
+# added later — the false-path constraints were never extended to cover
+# its q1 stages. Result: every build reports WNS=-3.5 ns on the m**_q1
+# and off_*_q1 setup paths. ASYNC_REG handles metastability; these tell
+# the timing engine they're async and shouldn't be constrained.
+set_false_path -to [get_pins {phase_b_bd_i/color_matrix_0/m00_q1_reg[*]/D}]
+set_false_path -to [get_pins {phase_b_bd_i/color_matrix_0/m01_q1_reg[*]/D}]
+set_false_path -to [get_pins {phase_b_bd_i/color_matrix_0/m02_q1_reg[*]/D}]
+set_false_path -to [get_pins {phase_b_bd_i/color_matrix_0/m10_q1_reg[*]/D}]
+set_false_path -to [get_pins {phase_b_bd_i/color_matrix_0/m11_q1_reg[*]/D}]
+set_false_path -to [get_pins {phase_b_bd_i/color_matrix_0/m12_q1_reg[*]/D}]
+set_false_path -to [get_pins {phase_b_bd_i/color_matrix_0/m20_q1_reg[*]/D}]
+set_false_path -to [get_pins {phase_b_bd_i/color_matrix_0/m21_q1_reg[*]/D}]
+set_false_path -to [get_pins {phase_b_bd_i/color_matrix_0/m22_q1_reg[*]/D}]
+set_false_path -to [get_pins {phase_b_bd_i/color_matrix_0/off_r_q1_reg[*]/D}]
+set_false_path -to [get_pins {phase_b_bd_i/color_matrix_0/off_g_q1_reg[*]/D}]
+set_false_path -to [get_pins {phase_b_bd_i/color_matrix_0/off_b_q1_reg[*]/D}]
+
+# scaler_top runtime IN_W/IN_H CDC false-paths (axi clock → pclk_in domain).
+# scaler_top.v has ASYNC_REG 2-FF synchronizers on these buses — same
+# pattern, also previously missing from constraints.
+set_false_path -to [get_pins {phase_b_bd_i/scaler_0/in_w_q1_reg[*]/D}]
+set_false_path -to [get_pins {phase_b_bd_i/scaler_0/in_h_q1_reg[*]/D}]

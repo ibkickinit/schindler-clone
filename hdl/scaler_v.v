@@ -254,7 +254,16 @@ module scaler_v #(
                     tap_lbuf3_q    <= lbuf_fresh[3] ? lbuf3[out_col] : 24'h0;
                     tap0_slot_q    <= tap0_slot;
                     phase_q        <= v_phase_held;
-                    stage0_valid_q <= 1'b1;
+                    /* iter13c (2026-05-31, HDL audit follow-up): suppress
+                     * emit when both lbufs that will become tap2/tap3
+                     * post-rotation are unfresh. iter13's MAC is
+                     * (tap2+tap3)/2; at frame start with neither fresh,
+                     * we'd emit (0+0)/2 = black. Better to hold valid
+                     * low so the picture sees a clean blank/hold rather
+                     * than a black band that flickers at top-of-frame.
+                     * tap2 = lbuf[(tap0_slot+2)%4]; tap3 = lbuf[+3%4]. */
+                    stage0_valid_q <= lbuf_fresh[(tap0_slot + 2'd2) & 2'd3]
+                                   || lbuf_fresh[(tap0_slot + 2'd3) & 2'd3];
                     tlast_q        <= (out_col == IN_W - 1);
                     tuser_q        <= (out_col == 0) && emit_first_row;
 
