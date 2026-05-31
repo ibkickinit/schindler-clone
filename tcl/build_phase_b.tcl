@@ -883,6 +883,41 @@ puts "TIMING: WNS=[get_property STATS.WNS [get_runs impl_1]]  WHS=[get_property 
 write_hw_platform -fixed -include_bit -force \
     -file [file join $build_dir phase_b.xsa]
 puts "XSA: [file join $build_dir phase_b.xsa]"
+
+# =============================================================================
+# Auto-archive (2026-05-31): every successful build also copies its XSA into
+# build/artifacts/<tag>/ where <tag> encodes branch + env-var config + the
+# commit hash. Lets us reprogram any past build via tcl/program_artifact.tcl
+# in 30 seconds instead of 30 min rebuild. ~1.3 MB per saved XSA; build/ is
+# gitignored so this never pollutes the repo.
+# =============================================================================
+proc archive_xsa {build_dir project_root} {
+    # Resolve branch + commit + env vars to a tag string
+    set branch [exec git -C $project_root rev-parse --abbrev-ref HEAD]
+    set commit [exec git -C $project_root rev-parse --short HEAD]
+    set output_mode [expr {[info exists ::env(OUTPUT_MODE)] ? $::env(OUTPUT_MODE) : "720p"}]
+    set scaler_module [expr {[info exists ::env(SCALER_MODULE)] ? $::env(SCALER_MODULE) : "scaler_top"}]
+    set color_pipeline [expr {[info exists ::env(COLOR_PIPELINE)] ? $::env(COLOR_PIPELINE) : "enable"}]
+    set tag "${branch}-${output_mode}-${scaler_module}-${color_pipeline}-${commit}"
+    set dst [file join $build_dir artifacts $tag]
+    file mkdir $dst
+    file copy -force [file join $build_dir phase_b.xsa] [file join $dst phase_b.xsa]
+    # Stamp manifest so future agents can read back the build context
+    set fh [open [file join $dst manifest.txt] w]
+    puts $fh "tag:            $tag"
+    puts $fh "branch:         $branch"
+    puts $fh "commit:         $commit"
+    puts $fh "OUTPUT_MODE:    $output_mode"
+    puts $fh "SCALER_MODULE:  $scaler_module"
+    puts $fh "COLOR_PIPELINE: $color_pipeline"
+    puts $fh "built_at:       [clock format [clock seconds] -format {%Y-%m-%dT%H:%M:%S%z}]"
+    close $fh
+    puts "ARCHIVED: $dst"
+    return $tag
+}
+if {[catch {archive_xsa $build_dir $project_root} archive_err]} {
+    puts "WARN: archive_xsa failed: $archive_err  (XSA still at default location)"
+}
 exit 0
 
 # Probe section moved into build context
