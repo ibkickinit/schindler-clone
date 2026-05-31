@@ -39,3 +39,6 @@ Thumbs.db
 
 # Reference datasheets / procurement PDFs (kept in Dropbox, not in git)
 docs/Hardware/
+
+# Claude Code per-host settings (machine-specific paths, not portable across hosts)
+.claude/
