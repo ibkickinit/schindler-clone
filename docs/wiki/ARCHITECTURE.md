@@ -4,6 +4,60 @@ The Schindler 2.0 pipeline on iter5-1080p-clean substrate.
 
 ## Pipeline topology
 
+```mermaid
+graph LR
+    %% Input chain
+    HDMIIN([HDMI IN]) --> DVI2RGB[dvi2rgb<br/>TMDS RX]
+    DVI2RGB --> VVI[v_vid_in_axi4s<br/>vid_io → AXIS]
+    VVI --> SCALER[scaler_top<br/>1920×1080 → 1280×720<br/>2-tap boxcar H+V]
+    SCALER --> VDMA_S[axi_vdma S2MM<br/>Dynamic Master]
+
+    %% Memory ring
+    VDMA_S --> DDR3[(DDR3 framestore ring<br/>5 slots × 1280×720×3<br/>iter6 hardware fsync)]
+    DDR3 --> VDMA_M[axi_vdma MM2S<br/>Dynamic Slave<br/>repeat_en]
+
+    %% Output chain
+    VDMA_M --> COLOR_SAT[color_saturation<br/>Q1.15 0..200%]
+    COLOR_SAT --> COLOR_COR[color_correct<br/>per-channel black/white]
+    COLOR_COR --> COLOR_MAT[color_matrix<br/>3×3 Q2.14 + offsets]
+    COLOR_MAT --> AXIS_OUT[axis_to_vid_io<br/>AXIS → vid_io]
+    AXIS_OUT --> RGB2DVI[rgb2dvi<br/>TMDS TX]
+    RGB2DVI --> HDMIOUT([HDMI OUT])
+
+    %% VTC timing
+    VTC_TX[v_tc_tx<br/>output VTC<br/>720p60 timing] -.->|active_video, hsync, vsync| AXIS_OUT
+    VTC_TX -.->|fsync| VDMA_M
+
+    %% Detector + diagnostic
+    VVI -.->|vtiming_out| VTC_RX[v_tc_rx<br/>source format detector]
+    VTC_RX -.->|HACTIVE/VACTIVE via AXI GPIO| SCALER
+
+    %% Hardware fsync (iter6)
+    DVI2RGB -.->|vid_pVSync| VSYNC_PULSE[vsync_cdc_pulse<br/>rising-edge → 1cyc pulse]
+    VSYNC_PULSE -.->|s2mm_fsync| VDMA_S
+
+    %% AXI control plane
+    PS[Zynq PS<br/>bare-metal C<br/>VDMA init, color tuning,<br/>UART command parser] -.->|AXI-Lite| VDMA_S
+    PS -.->|AXI-Lite| VDMA_M
+    PS -.->|AXI-Lite| VTC_TX
+    PS -.->|AXI-Lite| VTC_RX
+    PS -.->|GPIOs 3/4/5/6| COLOR_SAT
+    PS -.->|GPIOs 3/4/5/6| COLOR_COR
+    PS -.->|GPIOs 3/4/5/6| COLOR_MAT
+
+    %% Styling
+    classDef input fill:#1e4d2b,stroke:#0a2e15,color:#fff
+    classDef memory fill:#4d3719,stroke:#2e2010,color:#fff
+    classDef output fill:#4d1e3a,stroke:#2e0f23,color:#fff
+    classDef control fill:#1e3a4d,stroke:#102330,color:#fff
+    class HDMIIN,HDMIOUT input
+    class DDR3 memory
+    class RGB2DVI,AXIS_OUT,VTC_TX output
+    class PS,VTC_RX,VSYNC_PULSE control
+```
+
+### Plain-text fallback (in case the renderer doesn't do Mermaid)
+
 ```
 HDMI IN
   │
@@ -91,6 +145,6 @@ See [COLOR-PIPELINE](COLOR-PIPELINE.md) for stage details + UART command referen
 - [COLOR-PIPELINE](COLOR-PIPELINE.md) — color stack details
 - [XILINX-IP-NOTES](XILINX-IP-NOTES.md) — IP-specific gotchas
 
-<!-- AGENT_TASK[docs-4]: Add a Mermaid block diagram (or PlantUML) showing the precise BD cells + connections. Current ASCII is approximate. -->
+<!-- AGENT_TASK[docs-4] DONE 2026-05-31: Mermaid block diagram added at top of "Pipeline topology" section. Shows all major BD cells + AXI-Lite control plane + VTC timing + iter6 fsync wiring. ASCII version retained as plain-text fallback for non-Mermaid renderers. -->
 
 <!-- AGENT_TASK[hdl-3]: scaler_coeffs_h.v + scaler_coeffs_v.v are now dead code kept alive only by `_coef_keep` synth-keep wires. When iter14 lands, these come back online with new (linear/Gaussian) coefficients. Tech debt: document the decision to keep vs. retire. -->
