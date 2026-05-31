@@ -29,8 +29,23 @@
 // scaled to 720p60 output (matched rate). Build with SCALER_MODULE=scaler_top
 // env var. Tests row 2 of format-support-matrix on the production substrate
 // (NUM_FRAMES=5, no iter4h additions).
+/* 2026-05-31: FRAME_W/H parametrized by OUTPUT_1080P compile-time define.
+ * Mirrors the tcl/build_phase_b.tcl OUTPUT_MODE env var. The Vitis tcl
+ * (tcl/build_phase_b_app.tcl) reads OUTPUT_MODE from the environment and
+ * passes -DOUTPUT_1080P=1 to gcc when OUTPUT_MODE is 1080p30 or 1080p60.
+ *
+ *   No env var set (default)          → 720p60 production substrate
+ *   OUTPUT_MODE=720p                  → 720p60 production substrate
+ *   OUTPUT_MODE=1080p30               → 1080p30 passthrough (in -1 spec)
+ *   OUTPUT_MODE=1080p60               → 1080p60 (dev-board blocked; see
+ *                                        zynq7020_rgb2dvi_1080p60_limit) */
+#ifdef OUTPUT_1080P
+#define FRAME_W           1920
+#define FRAME_H           1080
+#else
 #define FRAME_W           1280
 #define FRAME_H           720
+#endif
 /* AXIS data width on the VDMA is 24-bit (RGB888, one pixel-per-clock with no
  * padding). Memory stride must therefore be 3 bytes/pixel, NOT 4 — using 4
  * was the actual reason v_axi4s_vid_out couldn't lock and S2MM was reporting

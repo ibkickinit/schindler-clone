@@ -141,19 +141,41 @@ puts "STAGE_OK: Zynq PS configured"
 #
 # Hardcoded to 720p output. If we ever need to switch output resolution
 # at runtime, clk_wiz needs dynamic-reconfig wiring + firmware.
-# OUTPUT_MODE env var: 720p (default, production) or 1080p (passthrough Row 1).
-# Affects clk_wiz_pixclk_out + v_tc_tx config below.
+# OUTPUT_MODE env var:
+#   720p     (default, production) — 720p60 @ 74.25 MHz pclk
+#   1080p30                        — 1080p30 @ 74.25 MHz pclk (passthrough testing,
+#                                    same pclk + VCO as 720p60 → fully in -1 spec)
+#   1080p60                        — 1080p60 @ 148.5 MHz pclk (DEV-BOARD BLOCKED:
+#                                    even with kClkRange=1 in spec, OSERDESE2
+#                                    SerialClk 742.5 MHz > -1 BUFIO 600 MHz max →
+#                                    bench monitor reports "signal out of spec".
+#                                    Only works on production carrier with external
+#                                    HDMI PHY chip + -2 silicon. See memory
+#                                    zynq7020_rgb2dvi_1080p60_limit.)
+# Affects clk_wiz_pixclk_out + v_tc_tx + rgb2dvi/kClkRange config below.
 if {[info exists ::env(OUTPUT_MODE)]} { set OUTPUT_MODE $::env(OUTPUT_MODE) }
 if {![info exists OUTPUT_MODE]} { set OUTPUT_MODE 720p }
 puts "BUILD: using OUTPUT_MODE=$OUTPUT_MODE"
-if {$OUTPUT_MODE eq "1080p"} {
+if {$OUTPUT_MODE eq "1080p60" || $OUTPUT_MODE eq "1080p"} {
+    # NOTE: "1080p" alias preserved for legacy callers; prefer 1080p60.
     set TX_PIXCLK_MHZ        148.500
     set TX_VIDEO_MODE        1080p
     set TX_GEN_HACTIVE       1920
     set TX_GEN_VACTIVE       1080
     set TX_GEN_HFRAME        2200
     set TX_GEN_F0_VFRAME     1125
+} elseif {$OUTPUT_MODE eq "1080p30"} {
+    # Same pclk as 720p60 (74.25 MHz) — fully in -1 spec for rgb2dvi/OSERDESE2.
+    # VTC timing is 1080p though (HACTIVE/VACTIVE 1920×1080, HTOTAL/VTOTAL
+    # 2200×1125). 30 Hz comes from the half-rate pclk vs 1080p60.
+    set TX_PIXCLK_MHZ        74.250
+    set TX_VIDEO_MODE        1080p
+    set TX_GEN_HACTIVE       1920
+    set TX_GEN_VACTIVE       1080
+    set TX_GEN_HFRAME        2200
+    set TX_GEN_F0_VFRAME     1125
 } else {
+    # 720p (default): 720p60 @ 74.25 MHz pclk. Current production.
     set TX_PIXCLK_MHZ        74.250
     set TX_VIDEO_MODE        720p
     set TX_GEN_HACTIVE       1280
@@ -452,9 +474,11 @@ connect_bd_net [get_bd_pins v_tc_tx/fsync_out] [get_bd_pins axi_vdma_0/mm2s_fsyn
 # Both pclks hit the SAME 742.5 MHz VCO at the right kClkRange.
 # Caveat: at 1080p60, OSERDESE2 SerialClk = 5×148.5 = 742.5 MHz which is
 # above -1 BUFIO 600 MHz max. Investigative only; not a shipping path.
-if {$OUTPUT_MODE eq "1080p"} {
+if {$OUTPUT_MODE eq "1080p60" || $OUTPUT_MODE eq "1080p"} {
     set RGB2DVI_KCLKRANGE 1
 } else {
+    # 720p60 + 1080p30 + future low-rate modes all use 74.25 MHz pclk →
+    # kClkRange=2 keeps VCO at 742.5 MHz (well within -1 spec).
     set RGB2DVI_KCLKRANGE 2
 }
 puts "BUILD: using rgb2dvi kClkRange=$RGB2DVI_KCLKRANGE for OUTPUT_MODE=$OUTPUT_MODE"

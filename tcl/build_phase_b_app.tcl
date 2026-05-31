@@ -7,6 +7,11 @@
 #   source /tools/Xilinx/2025.2/Vitis/settings64.sh
 #   xsct tcl/build_phase_b_app.tcl
 #
+# OUTPUT_MODE env var (2026-05-31): mirrors tcl/build_phase_b.tcl. When set
+# to 1080p30 or 1080p60, the build passes -DOUTPUT_1080P=1 to gcc so
+# sw/phase-b/src/main.c picks up FRAME_W=1920 / FRAME_H=1080. Default is
+# the 720p60 production substrate.
+#
 # Output:
 #   build/vitis-phase-b/vdma_init/Debug/vdma_init.elf  (loadable via XSCT)
 
@@ -15,6 +20,15 @@ set project_root [file normalize [file join $script_dir ..]]
 set workspace    [file join $project_root build vitis-phase-b]
 set xsa          [file join $project_root build phase_b.xsa]
 set src_dir      [file join $project_root sw phase-b src]
+
+# Read OUTPUT_MODE env var to decide whether to pass OUTPUT_1080P compile define.
+if {[info exists ::env(OUTPUT_MODE)]} { set OUTPUT_MODE $::env(OUTPUT_MODE) }
+if {![info exists OUTPUT_MODE]} { set OUTPUT_MODE 720p }
+set FW_OUTPUT_1080P 0
+if {$OUTPUT_MODE eq "1080p30" || $OUTPUT_MODE eq "1080p60" || $OUTPUT_MODE eq "1080p"} {
+    set FW_OUTPUT_1080P 1
+}
+puts "FW BUILD: OUTPUT_MODE=$OUTPUT_MODE → OUTPUT_1080P=$FW_OUTPUT_1080P"
 
 if {![file exists $xsa]} {
     puts "ERROR: $xsa not found. Run tcl/build_phase_b.tcl first."
@@ -43,6 +57,14 @@ app create -name vdma_init \
     -platform phase_b_pf \
     -domain standalone_ps7
 importsources -name vdma_init -path $src_dir
+
+# Inject OUTPUT_1080P compile define if env var requested it. Vitis xsct
+# uses `app config -add define-compiler-symbols` for preprocessor defines.
+if {$FW_OUTPUT_1080P == 1} {
+    app config -name vdma_init -add define-compiler-symbols OUTPUT_1080P=1
+    puts "FW BUILD: added -DOUTPUT_1080P=1 to vdma_init compile flags"
+}
+
 app build -name vdma_init
 
 set elf [file join $workspace vdma_init Debug vdma_init.elf]
