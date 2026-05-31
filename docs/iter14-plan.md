@@ -45,7 +45,9 @@ Analogous mux on `mac_r/mac_g/mac_b` using `tap3` (mode 0), `(tap2+tap3+1)>>1` (
 
 ### iter13b absorbed into iter14
 
-The HDL audit (2026-05-30) flagged a −0.5 LSB DC bias in the current iter12/iter13 boxcars (`(a+b)>>1` truncates instead of rounding). The mode-1 block above adds `+1` before `>>1`, fixing the bias as part of the same Vivado cycle. **Do not ship iter13b standalone**; bundle the fix into iter14.
+The HDL audit (2026-05-30) flagged a −0.5 LSB DC bias in the current iter12/iter13 boxcars (`(a+b)>>1` truncates instead of rounding). The mode-1 block above adds `+1` before `>>1`, fixing the bias as part of the same Vivado cycle.
+
+**Update 2026-05-31:** iter13b shipped standalone on `iter5-1080p-clean` @ `5e98c9b` (later iter13c at `5881322` adds the lbuf_fresh emit suppression). When iter14 lands, the iter13b math (`+1` rounding) lives in the mode-1 mux branch and is just preserved; the existing scaler_h/v files already do round-to-nearest correctly. iter14 is now strictly a kernel-mode toggle addition, not a bias fix bundle.
 
 ## BD changes
 

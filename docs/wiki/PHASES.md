@@ -30,6 +30,7 @@ Phase D went through many iterations as the team chased a series of nested bugs.
 - **iter12** (2026-05-24) — final H form: 2-tap boxcar with newest tap = `s_axis_tdata`. Production.
 - **iter13** (2026-05-24) — V scaler analog. Production.
 - **iter13b** (2026-05-30) — +1 round-to-nearest on boxcar paths. Removes −0.5 LSB DC bias.
+- **iter13c** (2026-05-31, queued) — `lbuf_fresh`-gated emit suppression in scaler_v.v. Top-of-frame black band → clean blank when neither tap2/tap3 lbuf is fresh. Picked up by next Vivado rebuild after the in-progress 720p60 restore.
 - **iter14** — DEFERRED. Runtime kernel-mode toggle (NN / 2-tap / 4-tap, independent H/V) via UART. See `../iter14-plan.md`.
 
 Detailed forensics in `../iter6-s2mm-fsync-fix.md`, `../iter6-h-shift-analysis.md` (with RESOLVED banner), `../iter4g-diagnostic-findings.md`, and `../scaler-v-warmup-fix-plan.md`.
