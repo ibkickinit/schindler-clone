@@ -403,21 +403,36 @@ connect_bd_net [get_bd_pins v_tc_tx/vblank_out]       [get_bd_pins axis_to_vid_i
 # color_saturation: Rec.601 luma-mix, single sat knob (0=gray..255=identity).
 # color_correct:    per-channel black/white diagonal scale + offset.
 # Both clock on pclk_out; aresetn from rst_pixclk_out wired further down.
-create_bd_cell -type module -reference color_saturation color_saturation_0
-create_bd_cell -type module -reference color_correct    color_correct_0
-# color_matrix_0: general 3x3 RGB matrix + 3 offsets. Identity at boot.
-# Inserted DOWNSTREAM of color_correct so the new matrix can be tested
-# independently while existing sat/correct keep working (set to identity if
-# desired). Future: retire color_saturation_0 + color_correct_0 once matrix
-# preset coverage is verified.
-create_bd_cell -type module -reference color_matrix     color_matrix_0
-connect_bd_intf_net [get_bd_intf_pins axi_vdma_0/M_AXIS_MM2S]    [get_bd_intf_pins color_saturation_0/s_axis]
-connect_bd_intf_net [get_bd_intf_pins color_saturation_0/m_axis] [get_bd_intf_pins color_correct_0/s_axis]
-connect_bd_intf_net [get_bd_intf_pins color_correct_0/m_axis]    [get_bd_intf_pins color_matrix_0/s_axis]
-connect_bd_intf_net [get_bd_intf_pins color_matrix_0/m_axis]     [get_bd_intf_pins axis_to_vid_io_0/s_axis]
-connect_bd_net [get_bd_pins clk_wiz_pixclk_out/clk_out1]         [get_bd_pins color_matrix_0/aclk]
-connect_bd_net [get_bd_pins clk_wiz_pixclk_out/clk_out1]         [get_bd_pins color_saturation_0/aclk]
-connect_bd_net [get_bd_pins clk_wiz_pixclk_out/clk_out1]         [get_bd_pins color_correct_0/aclk]
+#
+# COLOR_PIPELINE env var (2026-05-31): default "enable" preserves production
+# behavior; "bypass" skips the color cells entirely and wires MM2S straight
+# to axis_to_vid_io. Bypass mode is for timing-margin investigation at
+# 1080p60 output on -1 silicon (the color pipeline DSP-heavy paths eat
+# margin Phase A didn't have to deal with). Bypass disables UART color
+# commands at runtime; firmware still boots fine.
+if {[info exists ::env(COLOR_PIPELINE)]} { set COLOR_PIPELINE $::env(COLOR_PIPELINE) }
+if {![info exists COLOR_PIPELINE]} { set COLOR_PIPELINE enable }
+puts "BUILD: using COLOR_PIPELINE=$COLOR_PIPELINE"
+if {$COLOR_PIPELINE eq "bypass"} {
+    # No color cells; MM2S → axis_to_vid_io directly.
+    connect_bd_intf_net [get_bd_intf_pins axi_vdma_0/M_AXIS_MM2S] [get_bd_intf_pins axis_to_vid_io_0/s_axis]
+} else {
+    create_bd_cell -type module -reference color_saturation color_saturation_0
+    create_bd_cell -type module -reference color_correct    color_correct_0
+    # color_matrix_0: general 3x3 RGB matrix + 3 offsets. Identity at boot.
+    # Inserted DOWNSTREAM of color_correct so the new matrix can be tested
+    # independently while existing sat/correct keep working (set to identity if
+    # desired). Future: retire color_saturation_0 + color_correct_0 once matrix
+    # preset coverage is verified.
+    create_bd_cell -type module -reference color_matrix     color_matrix_0
+    connect_bd_intf_net [get_bd_intf_pins axi_vdma_0/M_AXIS_MM2S]    [get_bd_intf_pins color_saturation_0/s_axis]
+    connect_bd_intf_net [get_bd_intf_pins color_saturation_0/m_axis] [get_bd_intf_pins color_correct_0/s_axis]
+    connect_bd_intf_net [get_bd_intf_pins color_correct_0/m_axis]    [get_bd_intf_pins color_matrix_0/s_axis]
+    connect_bd_intf_net [get_bd_intf_pins color_matrix_0/m_axis]     [get_bd_intf_pins axis_to_vid_io_0/s_axis]
+    connect_bd_net [get_bd_pins clk_wiz_pixclk_out/clk_out1]         [get_bd_pins color_matrix_0/aclk]
+    connect_bd_net [get_bd_pins clk_wiz_pixclk_out/clk_out1]         [get_bd_pins color_saturation_0/aclk]
+    connect_bd_net [get_bd_pins clk_wiz_pixclk_out/clk_out1]         [get_bd_pins color_correct_0/aclk]
+}
 # fsync: VTC's frame-start pulse → VDMA MM2S so MM2S SOF aligns with VTC frame.
 # VTC is free-running on output clock — output frame rate is exactly
 # clk_wiz_pixclk_out/(2200*1125) = 60.000 Hz. Slow walk vs source is
@@ -429,11 +444,26 @@ connect_bd_net [get_bd_pins v_tc_tx/fsync_out] [get_bd_pins axi_vdma_0/mm2s_fsyn
 # =============================================================================
 # rgb2dvi (HDMI TX) — same MMCM/kClkRange=2 lessons as Phase A
 # =============================================================================
+# rgb2dvi kClkRange depends on OUTPUT_MODE (per research 2026-05-31):
+#   - 720p60 (74.25 MHz pclk): kClkRange=2 → MULT_F=10 → VCO=742.5 MHz ✓
+#     (kClkRange=1 → MULT_F=5 → VCO=371 MHz which is BELOW 600 MHz MIN)
+#   - 1080p60 (148.5 MHz pclk): kClkRange=1 → MULT_F=5 → VCO=742.5 MHz ✓
+#     (kClkRange=2 → MULT_F=10 → VCO=1485 MHz which is ABOVE 1200 MHz MAX)
+# Both pclks hit the SAME 742.5 MHz VCO at the right kClkRange.
+# Caveat: at 1080p60, OSERDESE2 SerialClk = 5×148.5 = 742.5 MHz which is
+# above -1 BUFIO 600 MHz max. Investigative only; not a shipping path.
+if {$OUTPUT_MODE eq "1080p"} {
+    set RGB2DVI_KCLKRANGE 1
+} else {
+    set RGB2DVI_KCLKRANGE 2
+}
+puts "BUILD: using rgb2dvi kClkRange=$RGB2DVI_KCLKRANGE for OUTPUT_MODE=$OUTPUT_MODE"
+
 create_bd_cell -type ip -vlnv digilentinc.com:ip:rgb2dvi rgb2dvi_0
 set_property -dict [list \
     CONFIG.kGenerateSerialClk {true} \
     CONFIG.kClkPrimitive      {MMCM} \
-    CONFIG.kClkRange          {2} \
+    CONFIG.kClkRange          $RGB2DVI_KCLKRANGE \
     CONFIG.kRstActiveHigh     {true} \
 ] [get_bd_cells rgb2dvi_0]
 # Phase C.1 pivoted to 720p output (74.25 MHz). rgb2dvi only accepts
@@ -564,9 +594,11 @@ connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins v_tc_rx/s
 # v_vid_in_axi4s is on the input (dvi2rgb) PixelClk; rst_axi (FCLK_CLK0) is
 # async to it but the IP handles its own internal reset synchronization.
 connect_bd_net [get_bd_pins rst_pixclk_out/peripheral_aresetn] [get_bd_pins v_tc_tx/resetn]
-connect_bd_net [get_bd_pins rst_pixclk_out/peripheral_aresetn] [get_bd_pins color_correct_0/aresetn]
-connect_bd_net [get_bd_pins rst_pixclk_out/peripheral_aresetn] [get_bd_pins color_saturation_0/aresetn]
-connect_bd_net [get_bd_pins rst_pixclk_out/peripheral_aresetn] [get_bd_pins color_matrix_0/aresetn]
+if {$COLOR_PIPELINE ne "bypass"} {
+    connect_bd_net [get_bd_pins rst_pixclk_out/peripheral_aresetn] [get_bd_pins color_correct_0/aresetn]
+    connect_bd_net [get_bd_pins rst_pixclk_out/peripheral_aresetn] [get_bd_pins color_saturation_0/aresetn]
+    connect_bd_net [get_bd_pins rst_pixclk_out/peripheral_aresetn] [get_bd_pins color_matrix_0/aresetn]
+}
 # VTC_rx detector also on pclk_in — reset comes from axi (input-side IP)
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]        [get_bd_pins v_tc_rx/resetn]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]        [get_bd_pins v_vid_in_axi4s_0/aresetn]
@@ -828,12 +860,14 @@ foreach {name din_from} {slice_color_wr 7  slice_color_wg 15  slice_color_wb 23}
     set_property -dict [list CONFIG.DIN_WIDTH {32} CONFIG.DIN_FROM $din_from CONFIG.DIN_TO $din_to CONFIG.DOUT_WIDTH {8}] [get_bd_cells $name]
     connect_bd_net [get_bd_pins axi_gpio_3/gpio2_io_o] [get_bd_pins ${name}/Din]
 }
-connect_bd_net [get_bd_pins slice_color_br/Dout] [get_bd_pins color_correct_0/black_r_async]
-connect_bd_net [get_bd_pins slice_color_bg/Dout] [get_bd_pins color_correct_0/black_g_async]
-connect_bd_net [get_bd_pins slice_color_bb/Dout] [get_bd_pins color_correct_0/black_b_async]
-connect_bd_net [get_bd_pins slice_color_wr/Dout] [get_bd_pins color_correct_0/white_r_async]
-connect_bd_net [get_bd_pins slice_color_wg/Dout] [get_bd_pins color_correct_0/white_g_async]
-connect_bd_net [get_bd_pins slice_color_wb/Dout] [get_bd_pins color_correct_0/white_b_async]
+if {$COLOR_PIPELINE ne "bypass"} {
+    connect_bd_net [get_bd_pins slice_color_br/Dout] [get_bd_pins color_correct_0/black_r_async]
+    connect_bd_net [get_bd_pins slice_color_bg/Dout] [get_bd_pins color_correct_0/black_g_async]
+    connect_bd_net [get_bd_pins slice_color_bb/Dout] [get_bd_pins color_correct_0/black_b_async]
+    connect_bd_net [get_bd_pins slice_color_wr/Dout] [get_bd_pins color_correct_0/white_r_async]
+    connect_bd_net [get_bd_pins slice_color_wg/Dout] [get_bd_pins color_correct_0/white_g_async]
+    connect_bd_net [get_bd_pins slice_color_wb/Dout] [get_bd_pins color_correct_0/white_b_async]
+}
 
 # 16-bit saturation (Q1.15 fixed-point) packed across both axi_gpio_3 spare bytes.
 #   ch1[31:24] = sat_low [7:0]    ch2[31:24] = sat_high [15:8]
@@ -850,7 +884,9 @@ create_bd_cell -type ip -vlnv xilinx.com:ip:xlconcat concat_color_sat
 set_property -dict [list CONFIG.NUM_PORTS {2} CONFIG.IN0_WIDTH {8} CONFIG.IN1_WIDTH {8}] [get_bd_cells concat_color_sat]
 connect_bd_net [get_bd_pins slice_color_sat_lo/Dout] [get_bd_pins concat_color_sat/In0]  ;# lower 8 bits
 connect_bd_net [get_bd_pins slice_color_sat_hi/Dout] [get_bd_pins concat_color_sat/In1]  ;# upper 8 bits
-connect_bd_net [get_bd_pins concat_color_sat/dout]   [get_bd_pins color_saturation_0/sat_async]
+if {$COLOR_PIPELINE ne "bypass"} {
+    connect_bd_net [get_bd_pins concat_color_sat/dout]   [get_bd_pins color_saturation_0/sat_async]
+}
 
 # =============================================================================
 # color_matrix coefficient + offset AXI GPIOs (axi_gpio_4/5/6).
@@ -902,7 +938,9 @@ foreach {sname gpio ch hi lo dest} {
     set width [expr $hi - $lo + 1]
     set_property -dict [list CONFIG.DIN_WIDTH {32} CONFIG.DIN_FROM $hi CONFIG.DIN_TO $lo CONFIG.DOUT_WIDTH $width] [get_bd_cells $sname]
     connect_bd_net [get_bd_pins ${gpio}/${ch}] [get_bd_pins ${sname}/Din]
-    connect_bd_net [get_bd_pins ${sname}/Dout] [get_bd_pins color_matrix_0/${dest}]
+    if {$COLOR_PIPELINE ne "bypass"} {
+        connect_bd_net [get_bd_pins ${sname}/Dout] [get_bd_pins color_matrix_0/${dest}]
+    }
 }
 
 # Offsets — 8-bit each from axi_gpio_6/gpio2_io_o.
@@ -914,7 +952,9 @@ foreach {sname hi lo dest} {
     create_bd_cell -type ip -vlnv xilinx.com:ip:xlslice $sname
     set_property -dict [list CONFIG.DIN_WIDTH {32} CONFIG.DIN_FROM $hi CONFIG.DIN_TO $lo CONFIG.DOUT_WIDTH {8}] [get_bd_cells $sname]
     connect_bd_net [get_bd_pins axi_gpio_6/gpio2_io_o] [get_bd_pins ${sname}/Din]
-    connect_bd_net [get_bd_pins ${sname}/Dout]         [get_bd_pins color_matrix_0/${dest}]
+    if {$COLOR_PIPELINE ne "bypass"} {
+        connect_bd_net [get_bd_pins ${sname}/Dout]         [get_bd_pins color_matrix_0/${dest}]
+    }
 }
 
 connect_bd_intf_net [get_bd_intf_pins axi_ic_lite/M06_AXI] [get_bd_intf_pins axi_gpio_3/S_AXI]
