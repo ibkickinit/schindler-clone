@@ -4,44 +4,42 @@ Open and recently-resolved bugs tracked by status. Source: `../build-manifest.md
 
 ## Open (cosmetic; not blocking)
 
-### SOFLate flag every frame on S2MM_SR
+### 1080p60 HDMI output on Zybo Z7-20
 
-**Substrate:** iter5-1080p-clean, mackin-impl-wip, phase-e1-pll-spike.
-**Symptom:** firmware DIAG print shows `SOFLate` set every frame.
-**Impact:** none on picture — image is clean. Pure flag noise.
-**Root cause:** TUSER arrives at S2MM after the source vsync edge fires fsync. Hardware fsync is doing the right thing; the TUSER is "late" relative to the new slot.
-**Fix paths:** (1) mask the flag in firmware DIAG print (cosmetic); (2) add small delay between fsync edge and S2MM transfer-arm so TUSER lines up. Original iter6 doc considered this "Open item #3."
+**Substrate:** any 1080p60-output build on the Zybo dev board.
+**Symptom:** monitor reports "signal out of spec" — bench-confirmed 2026-05-31.
+**Impact:** 1080p60 output on Zybo dev board unusable.
+**Root cause:** rgb2dvi soft IP serializes pclk × 5 to drive TMDS at 1080p60. SerialClk = 5 × 148.5 = 742.5 MHz exceeds -1 BUFIO 600 MHz max → non-HDMI-compliant TMDS. Vivado doesn't critical-warn; monitor enforces spec.
+**Resolution path:** production hardware (TE0720 -2 silicon AND external HDMI PHY chip TBD). On Zybo, only TFP410 PMOD external chip would unblock — not pursued. See `[[zynq7020_rgb2dvi_1080p60_limit]]` and `[[hdmi_compliance_rule]]`.
 
-<!-- AGENT_TASK[fw-1]: Suppress benign SOFLate flag in DIAG print, OR fix the TUSER timing alignment. Cosmetic only — no picture impact. -->
+Matrix Row 1 reclassified as "❌ on Zybo / ✅ planned on production."
 
-### Async-CDC WNS = -3.5 ns
+### Bench monitor refuses 1080p30
+
+**Substrate:** Dell bench monitor (specific to this hardware).
+**Symptom:** monitor reports "signal out of range" on otherwise-valid CEA-861 1080p30 timing.
+**Impact:** 1080p passthrough validation can't use this monitor.
+**Root cause:** Dell desktop monitors typically enforce ≥50 Hz refresh on HDMI inputs. 1080p30 is valid CEA-861 mode 34 but rejected at the sink. Not a pipeline bug.
+**Workarounds:** use TV/AVR for 1080p30 work, or accept that 1080p validation lives on production hardware.
+
+### ~~SOFLate flag every frame on S2MM_SR~~ — RESOLVED 2026-05-31
+
+**Substrate:** iter5-1080p-clean (and to-be-backported).
+**Resolution:** firmware DIAG print suppression — commit `0937574`. S2MM SOFLate is cosmetic post-iter6 (hardware fsync arrives slightly ahead of AXIS TUSER). Suppressed from DIAG print; raw `s2mm_sr` hex still visible for diagnostics. MM2S SOFLate NOT suppressed (no fsync re-timing on that side).
+
+### ~~Async-CDC WNS = -3.5 ns~~ — FIX QUEUED 2026-05-31
 
 **Substrate:** all branches with color stack.
-**Symptom:** Vivado reports WNS=-3.5 (or sometimes -3.72) ns on async-CDC paths. Soft timing fail.
-**Impact:** functional via `ASYNC_REG` attribute on the CDC flops. No observed image impact at 720p60.
-**Risk:** could bite at 1080p60 output if/when E4 ships scaler-at-output-side.
-**Root cause:** the timing-ignore constraint patterns in the XDC don't match Vivado's hierarchical names for the color pipeline CDC paths.
+**Resolution queued:** XDC false-path constraints added for color_matrix's `m**_q1`/`off_*_q1` and scaler_top's `in_w_q1`/`in_h_q1` synchronizer flops — commit `5881322`. The existing constraints covered color_correct and color_saturation but were never extended when color_matrix + scaler_top runtime-IN_W/H landed. Will be picked up by the next Vivado run after the in-progress 720p60 restore build.
 
-<!-- AGENT_TASK[hdl-5]: Fix the async-CDC false-path constraint pattern so WNS reports clean. Functional via ASYNC_REG but Vivado complains every build. -->
+### ~~Top-of-frame black band (iter13 cosmetic)~~ — FIX QUEUED 2026-05-31
 
-### Top-of-frame black band (iter13 cosmetic)
+**Substrate:** iter5-1080p-clean (and to-be-backported).
+**Resolution queued:** iter13c suppression in `scaler_v.v` — commit `5881322`. When both lbufs that'll become tap2/tap3 post-rotation are unfresh, `stage0_valid_q` is held low so no output is emitted instead of `(0+0)/2 = 0` black band. Will be picked up by the next Vivado run.
 
-**Substrate:** iter5-1080p-clean (and backported to others).
-**Symptom:** first ~2 emit rows of each frame are black until `lbuf_fresh` flags warm up.
-**Impact:** invisible at normal viewing; visible only with diagnostic test patterns or close inspection.
-**Root cause:** iter13's V scaler reads `tap2 + tap3` post-rotation. On first emit of each frame, both can have `lbuf_fresh=0`, gating tap reads to zero. Output = `(0+0)/2 = 0`.
-**Fix (optional):** hold `stage0_valid_q ← 0` for those rows so the output is properly invalid rather than black. Identified by 2026-05-30 HDL audit.
+### ~~`.claude/settings.local.json` not gitignored~~ — RESOLVED 2026-05-31
 
-<!-- AGENT_TASK[hdl-6]: Implement lbuf_fresh-gated output suppression in scaler_v.v so top-of-frame is clean-blank instead of black-band. Optional cosmetic. -->
-
-### `.claude/settings.local.json` not gitignored
-
-**Substrate:** all branches.
-**Symptom:** `git status` always shows `.claude/` as untracked.
-**Impact:** visual noise; risk of accidentally committing macOS-host-specific paths.
-**Fix:** add `.claude/` to `.gitignore`.
-
-<!-- AGENT_TASK[docs-6]: Add .claude/ to .gitignore. ~30 seconds. -->
+**Resolution:** `.gitignore` updated — commit `ec13ab2`.
 
 ### `docs/adv7393-breakout-header-pinout.md` untracked
 
@@ -80,6 +78,10 @@ See [PHASE-E-FRC](PHASE-E-FRC.md).
 ### ✅ Vivado phantom — none
 
 All cited commit hashes in `../build-manifest.md` exist. Per 2026-05-30 Git audit.
+
+### ✅ Firmware VTC mode hardcoded to 720p
+
+**Resolved 2026-05-31 via `#ifdef OUTPUT_1080P` switch — commit `083239a`.** Discovered during 1080p30 bench test: firmware always called `vtc_setup(&MODE_720P60)` regardless of the `OUTPUT_1080P` compile define. VDMA HSIZE was correctly parametrized; VTC active-video gating to 1280 cols caused visible horizontal doubling on 1080p builds. Fix wires `MODE_1080P30` selection to the existing `OUTPUT_1080P` define.
 
 ## Verification debt (the "MS2109 catch-up tax")
 
