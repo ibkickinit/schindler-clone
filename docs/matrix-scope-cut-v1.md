@@ -106,4 +106,4 @@ These are unambiguously NOT shipping — clarifies what tests we'll never write:
 - `01-spec.md` — product spec the customer-framing is derived from
 - `mvphd-comparison.md` — the device we're replacing
 
-<!-- AGENT_TASK[docs-16]: When Justin reacts to this draft, edit format-support-matrix.md row statuses accordingly (v1 ✅ / v2 🔲-v2 / v3 🔲-v3 / out-of-scope ❌). Then archive this scope-cut doc to MIGRATION-NOTES.md so the historical context is preserved but the live matrix is the source of truth. -->
+<!-- AGENT_TASK[docs-16]: DONE 2026-05-31 — scope cut ACCEPTED + format-support-matrix.md updated (commit aa04628). This doc stays live as the rationale-of-record; archiving deferred per Doc Cohesion guidance (keeps the "why" alongside the matrix's "what"). -->

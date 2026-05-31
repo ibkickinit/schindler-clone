@@ -35,6 +35,8 @@ Most commands available on all production branches; some branch-specific:
 | `w <r> <g> <b>` | White levels per channel 0..255 |
 | `a <hex>` | Mackin alpha (Q1.15 hex, 0..0x8000; 0x8000 = curr only; 0x4000 = 50/50). **Visible only on mackin-impl-wip with dual-VDMA wiring** — placeholder makes alpha a no-op. |
 | `r` | Reset color stack to defaults (identity, sat=100, black=(0,0,0), white=(255,255,255)) |
+| `k h <0-3>` / `k v <0-3>` / `k` | iter14 scaler kernel-mode toggle. H/V independent. Modes: 0=NN, 1=2-tap boxcar (default), 2=4-tap boxcar, 3=reserved. See [SCALER-KERNELS](SCALER-KERNELS.md). |
+| `J <json>` | **V0a** — JSON-RPC 2.0 bracket. Daemon-facing; brackets a single-line request. See [CONTROL-PLANE](CONTROL-PLANE.md) for the methods + payload schema. |
 | `F` | (phase-e1 only) Dump DDR3 slot 0 rows 0..99 HEAD+TAIL (cols 0-9 + 1270-1279). iter12+13 verification format. |
 
 Each command echoes `UART> <cmd>` then a readback line (`COLOR: …` or `MATRIX: …`) showing both intended values + GPIO register readback so writes are verified to land.

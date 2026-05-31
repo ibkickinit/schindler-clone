@@ -17,9 +17,17 @@ The conceptual + onboarding layer for the project. **Start with [START-HERE](STA
 | [DEBUGGING-PLAYBOOK](DEBUGGING-PLAYBOOK.md) | When-X-happens-do-Y. Core rules + symptoms → root causes |
 | [FRC-ARCHITECTURE](FRC-ARCHITECTURE.md) | Methods A/B/C/D/E. RT4K three-mode. Mackin blend |
 | [COLOR-PIPELINE](COLOR-PIPELINE.md) | sat → correct → matrix stages. UART tuning. R-B-G byte order |
-| [FIRMWARE-INTERFACE](FIRMWARE-INTERFACE.md) | UART command reference. AXI GPIO map. DIAG print meanings |
+| [FIRMWARE-INTERFACE](FIRMWARE-INTERFACE.md) | UART command reference (incl. `J` JSON-RPC). AXI GPIO map. DIAG print meanings |
 | [PHASE-G-ANALOG](PHASE-G-ANALOG.md) | ADV7393 status, pin map, why blocked, resume plan |
 | [PHASE-E-FRC](PHASE-E-FRC.md) | Phase E1/E2/E3/E4 state. Si5351, MMCM tracking, Triple buffer |
+| [SCALER-KERNELS](SCALER-KERNELS.md) | iter14 runtime kernel-mode toggle (NN / 2-tap / 4-tap, H+V independent) |
+| **[CONTROL-PLANE](CONTROL-PLANE.md)** | **V0a stack: catalog + firmware J + schindlerd + browser UI. Entry point for the V0a tier.** |
+| [SCHINDLERD-RUNBOOK](SCHINDLERD-RUNBOOK.md) | Install / run / troubleshoot the daemon. Operator-facing |
+| [CATALOG-EVOLUTION](CATALOG-EVOLUTION.md) | How to extend the catalog. Semver rules. Gating attributes |
+| [STATUS-PANEL](STATUS-PANEL.md) | Status push protocol — firmware DIAG → telemetry parser → WS notifications |
+| [FACTORY-PROFILES](FACTORY-PROFILES.md) | Four shipped baselines (identity, grayscale, warm, cool). Profile schema |
+| [BRANCH-RESYNC-PLAYBOOK](BRANCH-RESYNC-PLAYBOOK.md) | How to resync mackin / phase-e1 with iter5 (task #65) |
+| [HDMI-COMPLIANCE](HDMI-COMPLIANCE.md) | The rule: no out-of-spec MMCM / TMDS / vendor IP patches |
 | [XILINX-IP-NOTES](XILINX-IP-NOTES.md) | Per-IP gotchas: VTC RU bit, v_vid_in sync wires, VDMA DMASR, CDC traps |
 | [GLOSSARY](GLOSSARY.md) | 100+ domain terms across pipeline, phases, FRC, hardware, bugs |
 | [MIGRATION-NOTES](MIGRATION-NOTES.md) | Overturned claims, stale references, restructuring notes |
@@ -68,4 +76,4 @@ This wiki was created 2026-05-30 from the audit-panel Wiki Editor proposal. It r
 
 The wiki is intentionally **lossy compression** of the corpus — not every memory entry deserves a wiki page. The point is navigation, not redundancy.
 
-<!-- AGENT_TASK[docs-15]: When iter14 lands, add docs/wiki/SCALER-KERNELS.md as a dedicated page covering NN / 2-tap / 4-tap modes + runtime toggle UI. Pull content from iter14-plan.md + schindler_scaler_kernel_iter12_iter13 memory. -->
+<!-- AGENT_TASK[docs-15]: DONE 2026-05-31 — SCALER-KERNELS.md authored. -->

@@ -41,13 +41,9 @@ Matrix Row 1 reclassified as "❌ on Zybo / ✅ planned on production."
 
 **Resolution:** `.gitignore` updated — commit `ec13ab2`.
 
-### `docs/adv7393-breakout-header-pinout.md` untracked
+### `docs/adv7393-breakout-header-pinout.md` untracked — RESOLVED 2026-05-31
 
-**Substrate:** all branches.
-**Symptom:** Real bench-reference doc but never committed.
-**Decision needed:** commit (it complements existing adv7393 docs) or intentionally gitignore.
-
-<!-- AGENT_TASK[docs-7]: Decide adv7393-breakout-header-pinout.md fate. Either commit or gitignore. ~1 minute either way. -->
+File now committed at `docs/adv7393-breakout-header-pinout.md` (commit `ec13ab2`). AGENT_TASK[docs-7] cleared.
 
 ### Open Phase E1 questions
 

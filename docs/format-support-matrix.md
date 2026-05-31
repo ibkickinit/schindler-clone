@@ -72,7 +72,7 @@ Last updated: 2026-05-24 — iter12+iter13 scaler kernel rework shipped, resolve
 
 ## v1 Ship List (committed 2026-05-31)
 
-Under the v1 scope policy, the in-scope HDMI cells form a 6×6 grid (6 inputs × 6 outputs, less upscale-policy). Production substrate is `iter5-1080p-clean` @ `1ec218c`.
+Under the v1 scope policy, the in-scope HDMI cells form a 6×6 grid (6 inputs × 6 outputs, less upscale-policy). Production substrate is `iter5-1080p-clean` (verified clean baseline at `ec13ab2`; current tip carries V0a + audit follow-ups; see `docs/build-manifest.md` for the live ledger).
 
 | Input ↓ / Output → | 1080p24 | 1080p30 | 1080p60 | 720p24 | 720p30 | 720p60 |
 |---|---|---|---|---|---|---|

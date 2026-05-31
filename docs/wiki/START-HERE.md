@@ -36,14 +36,17 @@ These are NOT negotiable and exist because we've been burned:
 2. **[MS2109 verification trap](DEBUGGING-PLAYBOOK.md#ms2109-trap)**: NEVER use the HDMI capture stick for motion-artifact verification. Monitor only.
 3. **[Build provenance rule](DEBUGGING-PLAYBOOK.md#build-provenance)**: every claim of "works" references a specific commit + reboot count + symptom.
 4. **[Suspect equipment first](DEBUGGING-PLAYBOOK.md#equipment-first)** when something seems architecturally impossible.
+5. **[HDMI compliance rule](HDMI-COMPLIANCE.md)**: no out-of-spec MMCM operation, no non-standard TMDS, no patched vendor IP for margin tricks.
 
-## Current state at a glance (2026-05-30)
+## Current state at a glance (2026-05-31)
 
-- Production substrate: `iter5-1080p-clean` @ `464d0a4` (post-iter13b rounding fix)
-- HDMI in 1080p60 → HDMI out 720p60: ✅ bench-clean (static + diagonal motion verified)
+- Production substrate: `iter5-1080p-clean` (verified clean baseline at `ec13ab2`; current tip `d5876c4` adds V0a control plane + iter14 + iter13c + audit follow-ups)
+- HDMI in 1080p60 → HDMI out 720p60: ✅ bench-clean, 3-boot rule satisfied
 - All known H-shift / V missing-lines bugs: ✅ resolved via iter12+iter13
-- Phase G analog out: ⛔ paused on dead ADV7393 chip
-- Phase E2 Si5351 actuator: blocked on multi-byte I²C reliability
+- 1080p60 HDMI **output**: ❌ on Zybo Z7-20 (silicon-blocked, see [HDMI-COMPLIANCE](HDMI-COMPLIANCE.md)); ✅ planned on TE0720 production carrier
+- V0a control plane: ✅ shipped 2026-05-31 (catalog v0.2.0 + firmware `J` UART + Python `schindlerd` + browser UI). See [CONTROL-PLANE](CONTROL-PLANE.md).
+- Phase G analog out: ⛔ paused on dead ADV7393 chip; replacement on order
+- Phase E2 Si5351 actuator: blocked on hardware fix (1 kΩ pull-ups + 0.1 µF cap on JESSINIE breakout)
 
 ## How agents work with this wiki
 

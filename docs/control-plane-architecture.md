@@ -53,7 +53,7 @@ Every tunable in the system is declared in a single JSON document — the **cont
 
 ```yaml
 catalog:
-  version: "0.1.0"   # semver; daemon advertises at handshake
+  version: "0.2.0"   # semver; daemon advertises at handshake (current as of 2026-05-31)
   controls:
     - id: color.saturation                  # dot-namespaced key
       title: Saturation
@@ -173,8 +173,8 @@ JSON file, catalog-version-stamped, signed checksum:
 ```jsonc
 {
   "schema": "schindler-profile",
-  "schema_version": "0.1.0",
-  "catalog_version": "0.1.0",       // catalog this profile was authored against
+  "schema_version": "0.1.0",         // profile-format schema (separate semver)
+  "catalog_version": "0.2.0",       // catalog this profile was authored against
   "name": "BVM-D24",
   "created_at": "2026-05-31T08:00:00Z",
   "controls": {
@@ -224,7 +224,7 @@ The protocol can be developed and tested on the **current Zybo dev environment**
 - Python `schindlerd` runs on the dev host (the laptop driving xsct)
 - Talks UART over `/dev/ttyUSB1` to the existing bare-metal firmware
 - Firmware adds a minimal JSON-RPC-over-UART command (one new `J` UART command that brackets a JSON payload)
-- Catalog v0.1.0 covers current bench controls: `color.saturation`, `color.matrix.preset`, `color.correct.black_r/g/b`, `color.correct.white_r/g/b`, `mackin.alpha`
+- Catalog v0.2.0 covers current bench controls: `color.saturation`, `color.matrix.preset`, `color.correct.black_r/g/b`, `color.correct.white_r/g/b`, `scaler.kernel_h/_v`, plus status fields. (`frc.mackin_alpha` is declared but gated `requires_branch: mackin-impl-wip`.)
 - Web UI is a single-page React/Vue app served by the daemon at `http://localhost:8080`
 - Profiles persist on host filesystem
 - Audit log lines to stdout / journald
@@ -253,7 +253,7 @@ V0a can be built **today** with what's in tree. Specifically:
 | Need | Status | Effort |
 |---|---|---|
 | Firmware `J` UART command for JSON-RPC | not built | ~2 hours — extend existing `uart_poll_and_dispatch` |
-| Catalog file (v0.1.0) covering current bench controls | not authored | ~1 hour — adapt from `schindler_uart_commands` memory + the AXI GPIO map in this doc |
+| Catalog file (v0.2.0) covering current bench controls | ✅ shipped 2026-05-31 | `control-plane/catalog-v0.2.0.json` |
 | Python `schindlerd` skeleton | not built | ~4 hours — UART transport + JSON-RPC dispatcher + WebSocket relay |
 | Web UI scaffold (React/Vue) | not built | ~1 day for a minimal control panel (sliders, dropdowns, profile picker) |
 | Profile save/load infra | not built | ~2 hours — JSON file read/write + validate against catalog |
@@ -299,7 +299,7 @@ V0c is a separate hardware track. Not a v0 prerequisite for V0a/V0b control plan
 
 ## Recommended next steps
 
-1. **Author catalog v0.1.0** from current bench controls. ~1 hour.
+1. **Author catalog v0.1.0** from current bench controls — ✅ shipped 2026-05-31, bumped to v0.2.0 same day with two new DIAG-derived status fields.
 2. **Build V0a** — the host-side Python daemon + minimal web UI + JSON-over-UART firmware bridge. ~2-3 days.
 3. **Bench-verify** parity between web UI and current UART commands.
 4. **Iterate catalog** as iter14 + Phase E2 land — every new control = one catalog entry.
