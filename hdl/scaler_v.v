@@ -144,9 +144,13 @@ module scaler_v #(
      * emit captures source row 1079 — full source row 0..1079 range now
      * sampled. Every source row contributes to ≥1 output row at ≥half
      * weight, mirroring iter12 H's full source col coverage. */
-    wire [8:0] vs_r = tap2[23:16] + tap3[23:16];
-    wire [8:0] vs_g = tap2[15: 8] + tap3[15: 8];
-    wire [8:0] vs_b = tap2[ 7: 0] + tap3[ 7: 0];
+    /* iter13b (2026-05-31, backported from iter5-1080p-clean@5e98c9b):
+     * +1 round-to-nearest. Same fix as scaler_h.v — removes -0.5 LSB DC
+     * bias from (a+b)>>1 truncation. Cumulative with H-side iter13b =
+     * full -1 LSB cascade fix. Cost: 3 LUTs. */
+    wire [8:0] vs_r = tap2[23:16] + tap3[23:16] + 9'd1;
+    wire [8:0] vs_g = tap2[15: 8] + tap3[15: 8] + 9'd1;
+    wire [8:0] vs_b = tap2[ 7: 0] + tap3[ 7: 0] + 9'd1;
     wire [7:0] mac_r = vs_r[8:1];
     wire [7:0] mac_g = vs_g[8:1];
     wire [7:0] mac_b = vs_b[8:1];

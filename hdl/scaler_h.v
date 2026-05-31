@@ -133,9 +133,13 @@ module scaler_h #(
      * source col 0..1919 range sampled, no edge cols lost. Fixes the
      * 2-3 pixel H-shift that was actually scaler_h.v carrying over old
      * row-tail data into new row's first 2-3 output pixels. */
-    wire [8:0] s2r = s_axis_tdata[23:16] + window[0][23:16];
-    wire [8:0] s2g = s_axis_tdata[15: 8] + window[0][15: 8];
-    wire [8:0] s2b = s_axis_tdata[ 7: 0] + window[0][ 7: 0];
+    /* iter13b (2026-05-31, backported from iter5-1080p-clean@5e98c9b):
+     * +1 round-to-nearest. Removes -0.5 LSB per channel DC bias from the
+     * truncating (a+b)>>1. Cumulative with V-side iter13b cascade = -1
+     * LSB per channel = slight dark shift. Cost: 3 LUTs. */
+    wire [8:0] s2r = s_axis_tdata[23:16] + window[0][23:16] + 9'd1;
+    wire [8:0] s2g = s_axis_tdata[15: 8] + window[0][15: 8] + 9'd1;
+    wire [8:0] s2b = s_axis_tdata[ 7: 0] + window[0][ 7: 0] + 9'd1;
     wire [7:0] out_r = s2r[8:1];
     wire [7:0] out_g = s2g[8:1];
     wire [7:0] out_b = s2b[8:1];
