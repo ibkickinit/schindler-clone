@@ -173,10 +173,16 @@ module scaler_v #(
      * land on dropped rows invisible. tap2/tap3 are the 2 NEWEST line
      * buffers post-rotation, so the final emit (after source row 1079) has
      * tap3 = row 1079 — full source row range covered, mirroring iter12 H.
-     * Every source row now contributes to >=1 output row at >=half weight. */
-    wire [8:0] vs_r = tap2[23:16] + tap3[23:16];
-    wire [8:0] vs_g = tap2[15: 8] + tap3[15: 8];
-    wire [8:0] vs_b = tap2[ 7: 0] + tap3[ 7: 0];
+     * Every source row now contributes to >=1 output row at >=half weight.
+     *
+     * iter13b (2026-05-30): added +1 round-to-nearest before the >>1.
+     * Same fix as scaler_h.v — `(a+b)>>1` truncates, biasing -0.5 LSB per
+     * output pixel; cumulative H+V cascade = -1 LSB per channel = slight
+     * dark shift. Matches the mac4_sat path's existing +1024 rounding at
+     * line 163. Cost: 3 LUTs. Per audit-panel HDL Agent 2026-05-30. */
+    wire [8:0] vs_r = tap2[23:16] + tap3[23:16] + 9'd1;
+    wire [8:0] vs_g = tap2[15: 8] + tap3[15: 8] + 9'd1;
+    wire [8:0] vs_b = tap2[ 7: 0] + tap3[ 7: 0] + 9'd1;
     wire [7:0] mac_r = vs_r[8:1];
     wire [7:0] mac_g = vs_g[8:1];
     wire [7:0] mac_b = vs_b[8:1];
