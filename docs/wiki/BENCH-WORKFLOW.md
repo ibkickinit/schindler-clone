@@ -91,7 +91,7 @@ Per the `schindler_build_provenance_rule`, every bench session ends with a manif
 - How many reboots verified the result
 - If broken: symptom + next investigation step
 
-<!-- AGENT_TASK[bench-1]: 3-cold-boot multi-reboot verification of iter12+iter13+iter13b on iter5-1080p-clean per no-coin-flip rule. Current status is ⚠️ LUCKY-BOOT in spirit (multi-reload verified) but no formal ≥3-boot log in the commit history. -->
+<!-- AGENT_TASK[bench-1] DONE 2026-05-31: 3-cold-boot multi-reboot verification of iter12+iter13+iter13b on iter5-1080p-clean per no-coin-flip rule. Iter5 substrate is now ✅ CLEAN, see build-manifest.md 2026-05-31 section. -->
 
 <!-- AGENT_TASK[bench-2]: Re-verify ALL ✅/⚠️ rows in format-support-matrix.md HDMI Section §1 on monitor (NOT MS2109). All prior PASS claims are MS2109-tainted per schindler_ms2109_verification_trap. -->
 

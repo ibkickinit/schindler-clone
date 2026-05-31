@@ -14,9 +14,9 @@
 
 ### `iter5-1080p-clean` — **PRODUCTION SUBSTRATE**
 
-Tip: `464d0a4` (after iter13b rounding fix + cohesion-audit cleanup).
-Status: Bench-clean 1080p60 → 720p60. ⚠️ LUCKY-BOOT formally (multi-reload-verified across input sources in spirit; formal 3-boot record owed).
-Contains: iter4d-3 lineage + 1080p substrate + color stack + iter6 S2MM hardware fsync + iter12 (H 2-tap boxcar with `s_axis_tdata` newest tap) + iter13 (V 2-tap `tap2+tap3` post-rotation) + iter13b (+1 round-to-nearest).
+Tip: `ec13ab2` (after iter13b rounding fix + cohesion-audit cleanup + .gitignore + adv7393 pinout).
+Status: **✅ CLEAN** — verified 2026-05-31, 3 cold reloads showing identical clean picture on ImagePro static SMPTE via Osee input 1. Formally satisfies the no-coin-flip rule.
+Contains: iter4d-3 lineage + 1080p substrate + color stack + iter6 S2MM hardware fsync + iter12 (H 2-tap boxcar with `s_axis_tdata` newest tap) + iter13 (V 2-tap `tap2+tap3` post-rotation) + iter13b (+1 round-to-nearest, removes −0.5 LSB DC bias).
 
 ### `phase-e1-pll-spike` — MMCM tracking ("Gen Lock" mode)
 

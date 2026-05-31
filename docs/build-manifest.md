@@ -45,7 +45,7 @@ Live tips as of 2026-05-30 walk of `git branch -a` + `git log`:
 | Branch | Tip | Date | Buildable | Bench-image | Notes |
 |---|---|---|---|---|---|
 | `main` | `045f09b` | 2026-05-16 | ? | ? | Pre-iter5. Cold storage — do not target. |
-| `iter5-1080p-clean` | `fcd722c` | 2026-05-30 | ✅ Vivado+Vitis 2026-05-30 | ⚠️ LUCKY-BOOT (1 boot, iter12+13 applied; not yet re-tested under 3-boot rule) | **Production substrate.** iter4d-3 + 1080p substrate + color stack + iter6 S2MM hardware fsync + iter12 (H 2-tap `(s_axis_tdata + window[0])/2`) + iter13 (V 2-tap `(tap2 + tap3)/2`). Pushed to origin. |
+| `iter5-1080p-clean` | `ec13ab2` | 2026-05-31 | ✅ Vivado+Vitis 2026-05-30 | ✅ CLEAN (verified 2026-05-31, 3 reboots, ImagePro static + iter13b rounding fix on top of iter12+13) | **Production substrate.** iter4d-3 + 1080p substrate + color stack + iter6 S2MM hardware fsync + iter12 (H 2-tap `(s_axis_tdata + window[0])/2`) + iter13 (V 2-tap `(tap2 + tap3)/2`) + iter13b (+1 round-to-nearest, removes −0.5 LSB DC bias). Pushed to origin. |
 | `mackin-impl-wip` | `fedb51a` | 2026-05-24 | ✅ Vivado+Vitis 2026-05-24 | ⚠️ LUCKY-BOOT-fingerprint (DDR3 byte dump matches iter5; no end-to-end picture test — placeholder axis_clone wiring still in place) | iter12+13 backport on `4b8067e` + dump_slot_head_pixels diag firmware on `fedb51a`. Pushed to origin. **Mackin blender still placeholder until dual-VDMA bench wiring lands.** |
 | `phase-e1-pll-spike` | `81df37b` | 2026-05-24 | ✅ Vivado+Vitis 2026-05-30 | ⚠️ LUCKY-BOOT (1 boot, monitor-clean under ImagePro diagonal 2026-05-30 — no 3-boot rule yet) | iter12+13 backport (`78ee7ad`) + `F` UART command for live framebuffer dump (`81df37b`). MMCM tracking loop active; ±500 ppm tracking range per `[[schindler_phase_e1_state]]`. Pushed to origin. |
 | `phase-g-iter1` | `d94f6cb` | 2026-05-21 | ⚠️ (Vivado not re-run since 2026-05-21) | N/A | ADV7393 BD + Si5351 Phase A-D firmware. **All 9 commits of Si5351 progression** (Phase A→B→C-lite→D-WIP) pushed to origin 2026-05-30. Both ADV7393 and Si5351 are hardware-blocked (chips dead/marginal). |
@@ -600,6 +600,34 @@ mackin-impl-wip (temporal blend) for those.
 the bench monitor directly, not webcam or MS2109 (both have integration
 windows that mask tearing/race artifacts). Webcam useful only for
 captured-to-disk record of static content.
+
+---
+
+## 2026-05-31 — iter5-1080p-clean ⚠️→✅ promotion (3-boot rule satisfied)
+
+Bench-tested iter5-1080p-clean @ `ec13ab2` (post-iter13b round-to-nearest
+fix on top of iter12+13 scaler kernel rework). Output: 720p60. Source:
+ImagePro static SMPTE bars via Osee input 1.
+
+**Verification:** 3 cold reloads via xsct, picture identical across all 3.
+Boot 1: clean. Boot 2: clean ("is good"). Boot 3: clean ("looks identical").
+
+**Result:** ✅ CLEAN. Formally satisfies the no-coin-flip rule. Promoted in
+branch snapshot table above. Format matrix Row 2 (1080p60→720p60) was
+already ✅ on `f8f143e` based on multi-reload-in-spirit evidence; now
+formally backed by a documented 3-boot run on the iter13b substrate.
+
+**What this resolves:**
+- iter12+iter13 LUCKY-BOOT → CLEAN on production substrate ✅
+- iter13b rounding fix verified at the bench (visual; the −0.5 LSB DC bias
+  is below monitor visibility threshold, so this is a "no regression"
+  result rather than a "visible improvement" result — exactly as expected)
+
+**Open:**
+- Backport iter13b to mackin-impl-wip and phase-e1-pll-spike (queued)
+- Motion test on iter5 (ImagePro diagonal) still owed — phase-e1 got it
+  2026-05-30 but iter5 didn't
+- 3-boot verification of mackin and phase-e1 substrates still owed
 
 ---
 
