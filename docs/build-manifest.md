@@ -34,9 +34,26 @@ Memory entries claiming `SHIPPED` or matrix entries claiming `✅` are **point-i
 
 ---
 
-## Branches snapshot — 2026-05-21
+## Branches snapshot — 2026-05-30 (current)
 
-Walked `git branch` 2026-05-21 16:30. Tip commits + best-known status:
+> 2026-05-21 snapshot retained below as historical record.
+
+Live tips as of 2026-05-30 walk of `git branch -a` + `git log`:
+
+| Branch | Tip | Date | Buildable | Bench-image | Notes |
+|---|---|---|---|---|---|
+| `main` | `045f09b` | 2026-05-16 | ? | ? | Pre-iter5. Cold storage — do not target. |
+| `iter5-1080p-clean` | `fcd722c` | 2026-05-30 | ✅ Vivado+Vitis 2026-05-30 | ⚠️ LUCKY-BOOT (1 boot, iter12+13 applied; not yet re-tested under 3-boot rule) | **Production substrate.** iter4d-3 + 1080p substrate + color stack + iter6 S2MM hardware fsync + iter12 (H 2-tap `(s_axis_tdata + window[0])/2`) + iter13 (V 2-tap `(tap2 + tap3)/2`). Pushed to origin. |
+| `mackin-impl-wip` | `fedb51a` | 2026-05-24 | ✅ Vivado+Vitis 2026-05-24 | ⚠️ LUCKY-BOOT-fingerprint (DDR3 byte dump matches iter5; no end-to-end picture test — placeholder axis_clone wiring still in place) | iter12+13 backport on `4b8067e` + dump_slot_head_pixels diag firmware on `fedb51a`. Pushed to origin. **Mackin blender still placeholder until dual-VDMA bench wiring lands.** |
+| `phase-e1-pll-spike` | `81df37b` | 2026-05-24 | ✅ Vivado+Vitis 2026-05-30 | ⚠️ LUCKY-BOOT (1 boot, monitor-clean under ImagePro diagonal 2026-05-30 — no 3-boot rule yet) | iter12+13 backport (`78ee7ad`) + `F` UART command for live framebuffer dump (`81df37b`). MMCM tracking loop active; ±500 ppm tracking range per `[[schindler_phase_e1_state]]`. Pushed to origin. |
+| `phase-g-iter1` | `d94f6cb` | 2026-05-21 | ⚠️ (Vivado not re-run since 2026-05-21) | N/A | ADV7393 BD + Si5351 Phase A-D firmware. **All 9 commits of Si5351 progression** (Phase A→B→C-lite→D-WIP) pushed to origin 2026-05-30. Both ADV7393 and Si5351 are hardware-blocked (chips dead/marginal). |
+| `iter5-bisect-720p` | `81e17a8` | 2026-05-17 | ? | ⚠️ LUCKY-BOOT | Forensic — the bisect endpoint that proved iter4h structurally wrong. Keep for archaeology; don't ship from. |
+| `iter4h-axis-fifo` | `7d5fe09` | 2026-05-17 | ? | ❌ SCROLL | **DO NOT USE.** S2MM VSIZE=747 caused 1-row-per-frame scroll. Forensic only. |
+| `iter5-wip` / `iter4f-wip-pattern-diag` / `iter4g-counter-infra` | various | May 16-17 | ? | various | Abandoned WIPs / forensic. |
+
+## Branches snapshot — 2026-05-21 (historical)
+
+Original walk of `git branch` 2026-05-21 16:30, retained for archaeology. **DO NOT USE FOR CURRENT WORK** — see 2026-05-30 table above.
 
 | Branch | Tip | Date | Buildable | Bench-image | Notes |
 |---|---|---|---|---|---|
@@ -594,3 +611,19 @@ Every bench session must end with an update to this manifest:
 - If broken: what's the symptom, what's the next investigation step
 
 Memory entries are point-in-time; this manifest is the canonical "current state" SSOT.
+
+---
+
+## Reproduction — toolchain + external dependencies
+
+Pinned 2026-05-30 to remove the "what version of X did this build use" ambiguity. If a future build breaks, check these commits first.
+
+| Dependency | Version / commit | Path | Why this matters |
+|---|---|---|---|
+| Vivado | **2025.2** | `/tools/Xilinx/2025.2/Vivado` | IP versions (`axi_vdma 6.3`, `v_tc`, `dvi2rgb`, `rgb2dvi`) move between Vivado releases. A Vivado upgrade silently changes BD-generated wrapper code. |
+| Vitis | **2025.2** | `/tools/Xilinx/2025.2/Vitis` | `importsources` stale-copy gotcha is version-specific; see `[[vitis_importsources_stale_copy]]`. |
+| Digilent board files | `36f34ab687b7fa9c778b779d027f3bce63b3ace9` ("Fix typo in README", 2025-07-15) | `~/fpga/vivado-boards/new/board_files` | The Zybo Z7-20 board preset definitions. Pulled via `BOARD_PARTS_REPO_PATHS` env var in `tcl/build_phase_b.tcl`. |
+| Digilent IP library | `f4613fff005b098065fd5d619a2b88e55720a423` ("Fixed zmod ID GUI parameter", 2024-05-16) | `~/fpga/vivado-library/ip` | Source of `dvi2rgb` + `rgb2dvi`. The `kClkRange` patch (`[[digilent_rgb2dvi_kclkrange_limit]]`) lives in this checkout and must persist across updates. |
+| Target device | Zynq-7020 (XC7Z020-1CLG400C) on Zybo Z7-20 dev board | — | All MMCM/PLL/BRAM/DSP budgets are this device's. |
+
+**If `~/fpga/vivado-boards` or `~/fpga/vivado-library` ever change tip**, re-verify Phase A passthrough + iter5-1080p-clean 720p60 build before continuing. Patch state (kClkRange edit, etc.) lives in those checkouts, not in this repo.
