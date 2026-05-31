@@ -2,6 +2,27 @@
 
 > **New to the project?** Start at [`wiki/START-HERE.md`](wiki/START-HERE.md). This matrix is the QA truth ledger; see [`wiki/FRC-ARCHITECTURE.md`](wiki/FRC-ARCHITECTURE.md) for the conceptual map of Methods A-E.
 
+## v1 scope policy (committed 2026-05-31)
+
+Per Direction A scope cut [`matrix-scope-cut-v1.md`](matrix-scope-cut-v1.md):
+
+- **Inputs supported:** 1080p and 720p @ 24/30/60 fps each (6 input formats).
+- **HDMI outputs supported:** 1080p and 720p @ 24/30/60 fps.
+- **Analog outputs supported:** NTSC composite @ 24/30 fps (via Phase G ADV7393).
+- **No upscaling.** Architectural commitment. Matched-rate passthrough and downscale only on the HDMI path.
+- **Out of scope for v1:** PAL inputs/outputs (50Hz family), Component output, S-Video, all interlaced inputs, 4K, VRR, all upscale paths.
+
+Cells categorized in the matrix below as:
+- ✅ — v1 ship, bench-verified on current production substrate
+- ⚠️ — v1 ship target, awaits formal bench re-verification (3-boot rule + monitor) on current substrate
+- 🅰 — v1 row blocked on Zybo Z7-20 -1 silicon BUFIO (1080p60 OUT). Production carrier (TE0720 -2) + external HDMI PHY chip resolves. See `[[zynq7020_rgb2dvi_1080p60_limit]]`.
+- 🅱 — v1 row blocked on Phase G ADV7393 chip arrival + re-interlace HDL.
+- 🔲v2 — explicit deferral to v2 ship
+- ❌ policy — out of scope by v1 no-upscale architectural commitment
+- ❌ scope — out of v1/v2/v3 scope entirely (interlaced inputs, 4K, VRR, etc.)
+
+---
+
 Living document. Source of truth for **what input → output combinations Schindler supports, by what method, with what caveats.** Updated each iter as features ship. Also serves as the QA test plan — every ✅ row should have a bench-validated pass; every 🟡 is the current iter's focus.
 
 Last updated: 2026-05-24 — iter12+iter13 scaler kernel rework shipped, resolves residual H-shift + V missing-lines from iter6. Production substrate is `iter5-1080p-clean` branch (iter5 + iter6 hardware-fsync + iter12 H scaler `(s_axis_tdata + window[0])/2` + iter13 V scaler `(tap2 + tap3)/2`). HDMI TX = 720p60 (1280×720 @ 1650×750, 74.25 MHz).
@@ -49,39 +70,84 @@ Last updated: 2026-05-24 — iter12+iter13 scaler kernel rework shipped, resolve
 
 ---
 
-## 1. HDMI → HDMI Matrix
+## v1 Ship List (committed 2026-05-31)
+
+Under the v1 scope policy, the in-scope HDMI cells form a 6×6 grid (6 inputs × 6 outputs, less upscale-policy). Production substrate is `iter5-1080p-clean` @ `1ec218c`.
+
+| Input ↓ / Output → | 1080p24 | 1080p30 | 1080p60 | 720p24 | 720p30 | 720p60 |
+|---|---|---|---|---|---|---|
+| **1080p24** | ⚠️ pass | ⚠️ 5:4 | 🅰 | ⚠️ 1:1 | ⚠️ 5:4 | ⚠️ 5:2 |
+| **1080p30** | ⚠️ 4:5 | ⚠️ pass | 🅰 | ⚠️ 4:5 | ⚠️ 1:1 | ⚠️ 2:1 |
+| **1080p60** | ⚠️ 5:2 | ⚠️ 2:1 | 🅰 | ⚠️ 5:2 | ⚠️ 2:1 | ✅ Row 2 |
+| **720p24** | ❌ policy | ❌ policy | ❌ policy | ⚠️ pass | ⚠️ 5:4 | ⚠️ 5:2 |
+| **720p30** | ❌ policy | ❌ policy | ❌ policy | ⚠️ 4:5 | ⚠️ pass | ⚠️ 2:1 |
+| **720p60** | ❌ policy | ❌ policy | ❌ policy | ⚠️ 5:2 | ⚠️ 2:1 | ⚠️ pass (Row 16) |
+
+**Net v1 HDMI scope:**
+- 24 cells in-scope (15 HDMI 1080-OUT + 9 HDMI 720-OUT)
+- **1 cell ✅ formally verified** (Row 2)
+- 20 cells ⚠️ awaiting Phase 2 verification on production substrate
+- 3 cells 🅰 blocked on production silicon (entire 1080p60-OUT column)
+- 12 cells ❌ retired by no-upscale policy
+
+Plus 12 NTSC cells (6 inputs × 2 cadences) all 🅱 blocked on Phase G chip arrival.
+
+**Verification debt under v1 scope:** ~21 cells × 1 bench session each ≈ 7-10 bench hours (down from the Risk Auditor's ~40 hours pre-scope-cut).
+
+### v1 ship-list test plan
+
+Each ⚠️ row needs the standard 3-boot rule + monitor-direct check. Recommend batching by input rate (set ImagePro/source rate once, sweep through output rates). 6 batches:
+
+1. **ImagePro 1080p60 source** → output sweep through 1080p24/30, 720p24/30/60 (5 cells)
+2. **ImagePro 1080p30 source** → output sweep through 1080p24/30, 720p24/30/60 (5 cells)
+3. **ImagePro 1080p24 source** → output sweep through 1080p24/30, 720p24/30/60 (5 cells)
+4. **ImagePro/laptop 720p60 source** → output sweep through 720p24/30/60 (3 cells)
+5. **ImagePro/laptop 720p30 source** → output sweep through 720p24/30/60 (3 cells)
+6. **ImagePro/laptop 720p24 source** → output sweep through 720p24/30/60 (3 cells — assuming ImagePro can do 720p24)
+
+Each batch ≈ 1 bench session of ~1 hour.
+
+---
+
+## 1. HDMI → HDMI Matrix (detailed rows)
 
 Primary output path (rgb2dvi). Covers everything we ship today and most of Phase E.
+
+> **Reading the Status column:** entries reflect v1-scope tier. Same legend as v1 Ship List above (✅, ⚠️, 🅰, 🅱, 🔲v2, ❌ policy/scope).
 
 | # | Input format | Output format | Status | Method | Scaling | Notes |
 |---|---|---|---|---|---|---|
 | 1 | 1080p60 | 1080p60 | ❌ on Zybo / ✅ planned on production | — | none | **Dev-board-blocked, production-OK.** Investigated 2026-05-31 (final): (a) initial rgb2dvi kClkRange=2 caused AVAL-46 (VCO 1485 MHz > 1200 MHz -1 max); (b) fixed to kClkRange=1 (VCO 742.5 MHz, in spec), build closed timing with WNS +0.13 ns; (c) bench monitor reported **"signal out of spec"** — OSERDESE2 SerialClk = 5×148.5 = 742.5 MHz exceeds -1 BUFIO 600 MHz max, producing non-HDMI-compliant TMDS. **Production carrier has external HDMI PHY chip (TBD: TFP410/SiI9134/IT6802) that bypasses FPGA TMDS generation entirely AND production silicon is -2 grade with higher BUFIO/VCO ceilings.** Either alone solves this row; together makes it trivially fit. Sole-Zybo workaround = external TFP410 PMOD ($20, ~1 day BD rework). See memories `zynq7020_rgb2dvi_1080p60_limit` + `hdmi_compliance_rule`. |
 | 2 | 1080p60 | 720p60 | ✅ | — | down | **iter12+iter13+iter13b (`iter5-1080p-clean` @ `ec13ab2`, 2026-05-31)** fixes the 27-row V-wrap (iter6), H-shift + V missing-lines (iter12+13 scaler kernel rework), and −0.5 LSB DC bias (iter13b round-to-nearest). **3-boot rule satisfied 2026-05-31** on ImagePro static SMPTE via Osee input 1; picture identical across 3 cold reloads. DDR3 dumps + bench-monitor grid pattern confirm: source col 0..1919 fully sampled (left + right vertical lines at output cols 0 + 1279), source row 0..1079 fully sampled (no horizontal line dropouts). Vertical and horizontal lines render as 2-pixel half-bright instead of 1-pixel full-bright (2-tap boxcar trade). |
-| 3 | 1080p60 | 720p50 | ⚠️ | D (6:5) | down | iter4d-3 FRC validation. Re-test on iter6 substrate. |
-| 4 | 1080p60 | 1080p24 | ⚠️ | D (5:2) | none | Prior ✅ on commit `86dc034` was MS2109-tainted; iter6 fix may or may not have changed the FRC behavior. Re-test on iter6 substrate. |
-| 5 | 1080p59.94 | 1080p23.976 | 🟡 | A / B | none | **iter5 stretch.** Tests MMCM tracking under 1000/1001 drift. |
-| 6 | 1080p59.94 | 1080p24 | 🔲 | B | none | Phase E1. Needs MMCM tracking to absorb 59.94→60 drift before 5:2 FRC. |
-| 7 | 1080p60 | 1080p30 | ⚠️ | D (2:1) | none | Prior ✅ MS2109-tainted; re-test on iter6 substrate. |
-| 8 | 1080p60 | 1080p25 | ⚠️ | D (12:5) | none | Prior ✅ MS2109-tainted; re-test on iter6 substrate. Note: 12:5 deltas pattern `2,3,2,2,3` makes motion judder visible on monitor even with iter6 fix — Mackin blend (Phase E2) would help. |
-| 9 | 1080p60 | 1080p50 | 🔲 | E (6:5) | none | Phase E2. Ugly near-1:1 ratio. |
-| 10 | 1080p50 | 1080p60 | 🔲 | E (5:6) | none | Phase E2. Inverse of #9. |
-| 11 | 1080p50 | 1080p25 | 🔲 | D (2:1) | none | Phase E. Trivial. |
-| 12 | 1080p50 | 720p50 | 🔲 | — / A | down | Phase E4 (scaler moved to output side). |
-| 13 | 1080p24 | 1080p24 | 🔲 | — | none | Phase E. Pure passthrough; should be trivial. |
-| 14 | 1080p24 | 1080p60 | 🔲 | D (2:5 pulldown) | none | Phase F? Reverse pulldown / cadence-aware repeat. Non-trivial. |
-| 15 | 1080p23.976 | 1080p60 | 🔲 | D + B | none | Phase F. 3:2 telecine, classic NTSC pattern. |
-| 16 | 720p60 | 720p60 | ⚠️ | — | none | Phase A heritage validated. Re-test on iter5-1080p-clean substrate. Bisect already validated `iter5-bisect-720p` substrate at 720p60→720p60 with laptop source — likely fine. |
-| 17 | 720p60 | 1080p60 | 🔲 | — | up | Phase E4. Needs scaler on output side AND upscale support. |
-| 18 | 720p60 | 720p24 | 🔲 | D (5:2) | none | Phase E. |
-| 19 | 720p50 | 720p60 | 🔲 | E (5:6) | none | Phase E2. |
-| 20 | 480p60 | 720p60 | 🔲 | — | up | Phase E4. Needs upscaler. |
-| 21 | 480p60 | 1080p60 | 🔲 | — | up (heavy) | Phase E4+. ~2.25× upscale; quality TBD. |
-| 22 | 576p50 | 720p50 | 🔲 | — | up | Phase E4. PAL SD→HD. |
-| 23 | 1080i60 | * | ❌ | — | — | **No deinterlacing.** Phase F territory. |
-| 24 | 1080i50 | * | ❌ | — | — | Same as #23. |
-| 25 | 480i / 576i | * | ❌ | — | — | Same as #23. |
-| 26 | 2160p (4K) any | * | ❌ | — | — | **Out of scope for Zybo Z7-20** — bandwidth + LE budget insufficient. |
-| 27 | VRR / Freesync source | * | ❌ | — | — | dvi2rgb assumes fixed timing. |
+| 3 | 1080p60 | 720p50 | ❌ scope | D (6:5) | down | **Out of v1 scope** (PAL family — 50Hz not in v1 input/output policy). Forensic only. |
+| 4 | 1080p60 | 1080p24 | ⚠️ v1 | D (5:2) | none | **v1 ship target.** Prior ✅ on commit `86dc034` was MS2109-tainted; Phase 2 verify on iter5+iter13b substrate per v1 ship-list test plan above. |
+| 5 | 1080p59.94 | 1080p23.976 | 🔲 v2 | A / B | none | **v2.** Requires Phase E1 MMCM tracking for 1000/1001 NTSC drift. Partly shipped on `phase-e1-pll-spike`; needs Phase E2 Si5351 actuator for full pull range. |
+| 6 | 1080p59.94 | 1080p24 | 🔲 v2 | B | none | **v2.** Same Phase E1/E2 dependency as #5. |
+| 7 | 1080p60 | 1080p30 | ⚠️ v1 | D (2:1) | none | **v1 ship target.** Prior ✅ MS2109-tainted; Phase 2 verify. Note: most desktop monitors reject sub-50Hz refresh (Dell verified rejecting 1080p30 2026-05-31); TV/AVR likely required for bench verify. |
+| 8 | 1080p60 | 1080p25 | ❌ scope | D (12:5) | none | **Out of v1 scope** (PAL family). |
+| 9 | 1080p60 | 1080p50 | ❌ scope | E (6:5) | none | **Out of v1 scope** (PAL). |
+| 10 | 1080p50 | 1080p60 | ❌ scope | E (5:6) | none | **Out of v1 scope** (PAL input). |
+| 11 | 1080p50 | 1080p25 | ❌ scope | D (2:1) | none | **Out of v1 scope** (PAL). |
+| 12 | 1080p50 | 720p50 | ❌ scope | — / A | down | **Out of v1 scope** (PAL). |
+| 13 | 1080p24 | 1080p24 | ⚠️ v1 | — | none | **v1 ship target.** Pure passthrough. Phase 2 verify. |
+| 14 | 1080p24 | 1080p60 | 🅰 | D (2:5) | none | **v1 ship target on production silicon.** Zybo-blocked (1080p60-OUT BUFIO). TE0720 / TFP410 enables. Non-trivial cadence (reverse-pulldown class). |
+| 15 | 1080p23.976 | 1080p60 | 🔲 v2 | D + B | none | **v2.** 3:2 telecine (classic NTSC pattern). Phase F territory. Also Gate 🅰 on Zybo. |
+| 16 | 720p60 | 720p60 | ⚠️ v1 | — | none | **v1 ship target.** Phase A heritage. Phase 2 verify on iter5+iter13b. |
+| 17 | 720p60 | 1080p60 | ❌ policy | — | up | **Out of v1 scope** (upscale forbidden by v1 architectural commitment). |
+| 18 | 720p60 | 720p24 | ⚠️ v1 | D (5:2) | none | **v1 ship target.** Phase 2 verify. Same Dell-monitor caveat as #7 (sub-50Hz HDMI out). |
+| 19 | 720p50 | 720p60 | ❌ scope | E (5:6) | none | **Out of v1 scope** (PAL). |
+| 20 | 480p60 | 720p60 | ❌ policy | — | up | **Out of v1 scope** (upscale + 480p not in v1 input list). |
+| 21 | 480p60 | 1080p60 | ❌ policy | — | up | **Out of v1 scope** (upscale + 480p input). |
+| 22 | 576p50 | 720p50 | ❌ scope | — | up | **Out of v1 scope** (PAL SD + upscale). |
+| 23 | 1080i60 | * | ❌ scope | — | — | **Out of all scope** — no deinterlacing planned. |
+| 24 | 1080i50 | * | ❌ scope | — | — | Same as #23. |
+| 25 | 480i / 576i | * | ❌ scope | — | — | Same as #23. |
+| 26 | 2160p (4K) any | * | ❌ scope | — | — | Out of scope for Zybo Z7-20 — bandwidth + LE budget insufficient. |
+| 27 | VRR / Freesync source | * | ❌ scope | — | — | dvi2rgb assumes fixed timing. |
+
+### v1 ship-target cells not represented as numbered rows above
+
+The v1 ship list table at the top includes ~18 more cells than the original numbered rows. These are the 1080p30 / 720p30 / 720p24 input variants × 24/30 HDMI output, which weren't in the original matrix because they weren't a focus pre-scope-cut. They share the same Method D drop/repeat infrastructure as the existing rows. Phase 2 verification batches will exercise them at the same time as numbered rows.
 
 ### HDMI special-case notes
 
@@ -92,6 +158,8 @@ Primary output path (rgb2dvi). Covers everything we ship today and most of Phase
 ---
 
 ## 2. HDMI → Component (YPbPr) Matrix
+
+**❌ Out of v1 scope.** v1 policy includes only HDMI + NTSC composite outputs. Component output is deferred to v2 or later (per `matrix-scope-cut-v1.md`). All rows below are 🔲 v2 minimum; forensic only for v1 planning.
 
 Phase G via ADV7393. Hardware on bench, firmware/HDL TBD. **No rows shipped yet — all 🔲 until Phase G iter1.**
 
@@ -115,6 +183,8 @@ Phase G via ADV7393. Hardware on bench, firmware/HDL TBD. **No rows shipped yet 
 
 ## 3. HDMI → S-Video Matrix
 
+**❌ Out of v1 scope.** v1 policy includes only HDMI + NTSC composite outputs. S-Video is deferred to v3 (or later) per `matrix-scope-cut-v1.md`. All rows below are 🔲 v3 minimum; forensic only for v1 planning.
+
 Phase G via ADV7393. Composite-and-S-Video share the chroma encoder; S-Video keeps luma/chroma separated on output cable.
 
 | # | Input format | Output format | Status | Method | Scaling | Notes |
@@ -134,15 +204,29 @@ Phase G via ADV7393. Composite-and-S-Video share the chroma encoder; S-Video kee
 
 ## 4. HDMI → Composite (CVBS) Matrix
 
-Phase G via ADV7393. CVBS = luma + chroma + sync combined on one wire. Lowest pin count, lowest quality — but it's the first-light target for Phase G.
+**In v1 scope.** The marquee feature for MVPHD-24 replacement use. Phase G ADV7393 chip required for all rows (currently 🅱).
+
+The user-facing "NTSC 24 / NTSC 30" outputs are both 480i59.94 NTSC composite signals — the cadence labels describe the program rate carried over the NTSC framework via pulldown:
+- **NTSC 24 cadence** = 24fps content via 3:2 pulldown → 59.94 fields/sec (the classic film-on-NTSC method)
+- **NTSC 30 cadence** = 30fps program → 60 fields/sec (frame-doubled, no pulldown)
 
 | # | Input format | Output format | Status | Method | Scaling | Notes |
 |---|---|---|---|---|---|---|
-| V1 | (none — test pattern) | NTSC composite color bars | 🟡 | — | — | **Phase G first-light target.** Pattern from Phase 2 HDL (sample_gen.v) → ADV7393. No input path involved. |
-| V2 | 1080p60 | NTSC composite (480i59.94) | 🔲 | D | down (heavy) + interlace | Phase G iter2. End-to-end first useful conversion. |
-| V3 | 1080p50 | PAL composite (576i50) | 🔲 | D | down (heavy) + interlace | Phase G iter2. |
-| V4 | 720p60 | NTSC composite | 🔲 | D | down + interlace | Phase G. |
-| V5 | 480p60 | NTSC composite | 🔲 | D | downscale + interlace | Phase G. Trivial-ish; lowest stress on scaler. |
+| V1 | (none — test pattern) | NTSC composite color bars | 🅱 v1 | — | — | **Phase G first-light target.** Pattern from Phase 2 HDL (sample_gen.v) → ADV7393. No input path involved. The pre-req gate for V2+. |
+| V2 | 1080p60 | NTSC 30 composite | 🅱 v1 | D (60→30 drop) | down (heavy) + interlace | **Phase G end-to-end first useful conversion.** v1 ship target. |
+| V3 | 1080p50 | PAL composite (576i50) | ❌ scope | D | down + interlace | **Out of v1 scope** (PAL family). |
+| V4 | 720p60 | NTSC 30 composite | 🅱 v1 | D (60→30 drop) | down + interlace | **v1 ship target.** |
+| V5 | 480p60 | NTSC composite | ❌ scope | — | downscale + interlace | **Out of v1 scope** (480p not in v1 input list). |
+| V6 | 1080p24 | NTSC 24 composite | 🅱 v1 | D + 3:2 pulldown | down + interlace | **v1 ship target.** Classic film-rate-on-NTSC; the MVPHD-24 marquee use case. |
+| V7 | 1080p30 | NTSC 30 composite | 🅱 v1 | — (matched rate) + downscale | down + interlace | **v1 ship target.** |
+| V8 | 720p24 | NTSC 24 composite | 🅱 v1 | D + 3:2 pulldown | down + interlace | **v1 ship target.** |
+| V9 | 720p30 | NTSC 30 composite | 🅱 v1 | — + downscale | down + interlace | **v1 ship target.** |
+| V10 | 1080p60 | NTSC 24 composite | 🅱 v1 | D (60→24 ugly) | down + interlace | **v1 ship target.** 5:2 drop pattern; judder may be visible — Mackin blend (Phase E2) deferred to v2 for smoother motion. |
+| V11 | 1080p30 | NTSC 24 composite | 🅱 v1 | D (5:4 + 3:2) | down + interlace | **v1 ship target.** Ugly compound FRC. |
+| V12 | 720p60 | NTSC 24 composite | 🅱 v1 | D (60→24) | down + interlace | **v1 ship target.** Same as V10 but from 720p source. |
+| V13 | 720p30 | NTSC 24 composite | 🅱 v1 | D (5:4 + 3:2) | down + interlace | **v1 ship target.** |
+| V14 | 1080p24 | NTSC 30 composite | 🅱 v1 | D (24→30 ugly pulldown) | down + interlace | **v1 ship target.** Reverse-pulldown class; uncommon real-world use. |
+| V15 | 720p24 | NTSC 30 composite | 🅱 v1 | D (24→30) | down + interlace | **v1 ship target.** |
 
 ### Composite special-case notes
 

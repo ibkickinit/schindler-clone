@@ -1,7 +1,24 @@
-# Format-Support Matrix — Proposed v1 Scope Cut
+# Format-Support Matrix — v1 Scope Cut (ACCEPTED)
 
-**Status:** DRAFT 2026-05-31. Awaiting Justin's react/redirect.
+**Status:** ACCEPTED 2026-05-31 by Justin.
+
+**Decision summary:**
+- Inputs: 1080p and 720p @ 24/30/60 fps each (6 input formats).
+- HDMI outputs: 1080p and 720p @ 24/30/60 fps.
+- Analog outputs: NTSC composite @ 24 cadence and 30 cadence.
+- **No upscaling** — architectural commitment. Downscale OK; matched-rate is fine; upscale forbidden.
+- **PAL family out of v1** (50Hz inputs/outputs).
+- 1080p60 HDMI OUT row blocked on production silicon (TE0720 or external HDMI PHY chip).
+- All NTSC outputs blocked on Phase G ADV7393 chip arrival.
+
+**Applied to `format-support-matrix.md`** in the same commit — see "v1 Ship List" section at top of that doc for the canonical 6×6 HDMI grid + 15-row composite (CVBS) table + Phase 2 verification batch plan.
+
 **Purpose:** stop the verification-debt growth flagged by the Risk Auditor (~40 hours of bench time to re-validate ~20 ⚠️ rows post-iter6/12/13). Commit explicit scope so every row is either v1-ship, v2-deferred, or out-of-scope. No row sits unresolved consuming attention.
+
+---
+
+## Original draft framing (preserved for context)
+
 
 ## Framing question
 
