@@ -1,0 +1,346 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "schema": "schindler-control-catalog",
+  "schema_version": "0.1.0",
+  "title": "Schindler 2.0 Control Catalog — v0.1.0",
+  "description": "Inventory of all operator-tunable controls + read-only status on the iter5-1080p-clean substrate as of 2026-05-31. Sourced from sw/phase-b/src/main.c UART command handlers + iter14 kernel-mode toggle + Mackin alpha. This catalog is the single source of truth that the schindlerd daemon, web UI, and RP2040 front-panel firmware all generate code from. Future catalog versions add controls as features land; semver applies (patch = bug, minor = add, major = remove/rename/retype).",
+  "generated_at": "2026-05-31",
+  "source_substrate": {
+    "branch": "iter5-1080p-clean",
+    "tip": "ef307b6",
+    "archive_tag": "iter5-1080p-clean-720p-scaler_top-enable-abb83e8"
+  },
+
+  "categories": [
+    { "id": "color",   "title": "Color", "description": "Saturation, per-channel level (black/white), and 3×3 matrix transforms applied between MM2S and axis_to_vid_io." },
+    { "id": "scaler",  "title": "Scaler", "description": "iter14 runtime kernel-mode selection for the H and V downscalers. Production default = 2-tap boxcar; NN sharpens at cost of dropped cols/rows; 4-tap softens." },
+    { "id": "frc",     "title": "FRC", "description": "Mackin alpha for temporal blending (Phase E2 — wiring is currently placeholder; alpha will be load-bearing once dual-VDMA wiring lands)." },
+    { "id": "system",  "title": "System", "description": "Reset, identity, and meta commands." },
+    { "id": "status",  "title": "Status", "description": "Read-only telemetry exposed via DIAG print. v0.1.0 lists the ones the daemon needs to subscribe to for the operator status bar; future versions add more granular metrics." }
+  ],
+
+  "controls": [
+    {
+      "id": "color.saturation",
+      "title": "Saturation",
+      "category": "color",
+      "type": "number",
+      "unit": "percent",
+      "range": [0, 200],
+      "default": 100,
+      "persistent": true,
+      "surface": ["front", "web"],
+      "uart_command": "s <pct>",
+      "hdl_module": "color_saturation",
+      "axi_gpio_register": "axi_gpio_3.ch1 [15:0] (Q1.15)",
+      "encoding": "q1_15",
+      "notes": "0 = grayscale; 100 = identity; 200 = roughly 2× chroma. Implements Rec.601 luma-mix saturation."
+    },
+    {
+      "id": "color.matrix_saturation",
+      "title": "Matrix Saturation",
+      "category": "color",
+      "type": "number",
+      "unit": "percent",
+      "range": [0, 200],
+      "default": 100,
+      "persistent": true,
+      "surface": ["front", "web"],
+      "uart_command": "m <pct>",
+      "hdl_module": "color_matrix",
+      "axi_gpio_register": "axi_gpio_4/5/6 (3×3 matrix coefficients derived from sat percent)",
+      "encoding": "q2_14_matrix",
+      "notes": "Alternative saturation via the full 3×3 matrix path instead of the luma-mix shortcut. 0 = grayscale, 100 = identity. Setting either color.saturation or this overrides the matrix; cannot be used simultaneously."
+    },
+    {
+      "id": "color.correct.black_r",
+      "title": "Black level R",
+      "category": "color",
+      "type": "number",
+      "unit": "raw8",
+      "range": [0, 255],
+      "default": 0,
+      "persistent": true,
+      "surface": ["front", "web"],
+      "uart_command": "b <r> <g> <b>",
+      "hdl_module": "color_correct",
+      "axi_gpio_register": "axi_gpio_3.ch1 [23:16]",
+      "encoding": "u8"
+    },
+    {
+      "id": "color.correct.black_g",
+      "title": "Black level G",
+      "category": "color",
+      "type": "number",
+      "unit": "raw8",
+      "range": [0, 255],
+      "default": 0,
+      "persistent": true,
+      "surface": ["front", "web"],
+      "uart_command": "b <r> <g> <b>",
+      "axi_gpio_register": "axi_gpio_3.ch1 [31:24]",
+      "encoding": "u8"
+    },
+    {
+      "id": "color.correct.black_b",
+      "title": "Black level B",
+      "category": "color",
+      "type": "number",
+      "unit": "raw8",
+      "range": [0, 255],
+      "default": 0,
+      "persistent": true,
+      "surface": ["front", "web"],
+      "uart_command": "b <r> <g> <b>",
+      "axi_gpio_register": "axi_gpio_3.ch2 [7:0]",
+      "encoding": "u8"
+    },
+    {
+      "id": "color.correct.white_r",
+      "title": "White level R",
+      "category": "color",
+      "type": "number",
+      "unit": "raw8",
+      "range": [0, 255],
+      "default": 255,
+      "persistent": true,
+      "surface": ["front", "web"],
+      "uart_command": "w <r> <g> <b>",
+      "axi_gpio_register": "axi_gpio_3.ch2 [15:8]",
+      "encoding": "u8"
+    },
+    {
+      "id": "color.correct.white_g",
+      "title": "White level G",
+      "category": "color",
+      "type": "number",
+      "unit": "raw8",
+      "range": [0, 255],
+      "default": 255,
+      "persistent": true,
+      "surface": ["front", "web"],
+      "uart_command": "w <r> <g> <b>",
+      "axi_gpio_register": "axi_gpio_3.ch2 [23:16]",
+      "encoding": "u8"
+    },
+    {
+      "id": "color.correct.white_b",
+      "title": "White level B",
+      "category": "color",
+      "type": "number",
+      "unit": "raw8",
+      "range": [0, 255],
+      "default": 255,
+      "persistent": true,
+      "surface": ["front", "web"],
+      "uart_command": "w <r> <g> <b>",
+      "axi_gpio_register": "axi_gpio_3.ch2 [31:24]",
+      "encoding": "u8"
+    },
+    {
+      "id": "color.matrix.preset",
+      "title": "Color matrix preset",
+      "category": "color",
+      "type": "enum",
+      "options": [
+        { "value": "identity",    "label": "Identity (full color)",      "uart_command": "i" },
+        { "value": "grayscale",   "label": "Rec.601 grayscale",          "uart_command": "g" },
+        { "value": "custom",      "label": "Custom (advanced)",          "uart_command": null }
+      ],
+      "default": "identity",
+      "persistent": true,
+      "surface": ["front", "web"],
+      "hdl_module": "color_matrix",
+      "notes": "Identity zeros out matrix saturation; grayscale forces it to 0. Custom mode preserves the matrix state set by color.matrix_saturation or future custom 9-coefficient + 3-offset writes."
+    },
+
+    {
+      "id": "scaler.kernel_h",
+      "title": "Scaler H kernel mode",
+      "category": "scaler",
+      "type": "enum",
+      "options": [
+        { "value": "nn",         "label": "Nearest neighbor (sharpest; drops cols)" },
+        { "value": "boxcar_2tap","label": "2-tap boxcar (production)" },
+        { "value": "boxcar_4tap","label": "4-tap boxcar (softer)" },
+        { "value": "reserved",   "label": "Reserved" }
+      ],
+      "default": "boxcar_2tap",
+      "persistent": true,
+      "surface": ["front", "web"],
+      "uart_command": "k h <0-3>",
+      "hdl_module": "scaler_h",
+      "axi_gpio_register": "axi_gpio_7 [1:0]",
+      "encoding": "u2",
+      "requires_iter": 14
+    },
+    {
+      "id": "scaler.kernel_v",
+      "title": "Scaler V kernel mode",
+      "category": "scaler",
+      "type": "enum",
+      "options": [
+        { "value": "nn",         "label": "Nearest neighbor (sharpest; drops rows)" },
+        { "value": "boxcar_2tap","label": "2-tap boxcar (production)" },
+        { "value": "boxcar_4tap","label": "4-tap boxcar (softer)" },
+        { "value": "reserved",   "label": "Reserved" }
+      ],
+      "default": "boxcar_2tap",
+      "persistent": true,
+      "surface": ["front", "web"],
+      "uart_command": "k v <0-3>",
+      "hdl_module": "scaler_v",
+      "axi_gpio_register": "axi_gpio_7 [3:2]",
+      "encoding": "u2",
+      "requires_iter": 14
+    },
+
+    {
+      "id": "frc.mackin_alpha",
+      "title": "Mackin temporal blend alpha",
+      "category": "frc",
+      "type": "number",
+      "unit": "q1_15",
+      "range": [0, 32768],
+      "default": 32768,
+      "persistent": true,
+      "surface": ["front", "web"],
+      "uart_command": "a <hex>",
+      "hdl_module": "mackin_blender",
+      "axi_gpio_register": "axi_gpio_3 (Mackin alpha — branch-specific)",
+      "encoding": "q1_15",
+      "notes": "0x8000 = use current frame only (no blend, equivalent to drop/repeat). 0x4000 = 50/50 blend of current and previous frames. 0x0000 = use previous frame only. CURRENT STATE: bench wiring is placeholder axis_clone — both VDMA paths feed the same frame so alpha has no visible effect until dual-VDMA wiring lands.",
+      "requires_branch": "mackin-impl-wip",
+      "requires_status": "placeholder"
+    },
+
+    {
+      "id": "system.reset",
+      "title": "Reset to defaults",
+      "category": "system",
+      "type": "trigger",
+      "surface": ["front", "web"],
+      "uart_command": "i",
+      "notes": "Identity color matrix, sat=100%, black=(0,0,0), white=(255,255,255). Does NOT reset scaler kernel modes (those persist until explicitly changed)."
+    },
+    {
+      "id": "system.help",
+      "title": "Print help",
+      "category": "system",
+      "type": "trigger",
+      "surface": [],
+      "uart_command": "?",
+      "notes": "UART-only — surface=[] means it doesn't appear in operator UIs."
+    },
+    {
+      "id": "system.readback",
+      "title": "Re-print GPIO readbacks",
+      "category": "system",
+      "type": "trigger",
+      "surface": [],
+      "uart_command": "r",
+      "notes": "UART-only diagnostic."
+    },
+
+    {
+      "id": "status.s2mm_sr",
+      "title": "S2MM status register",
+      "category": "status",
+      "type": "number",
+      "unit": "hex32",
+      "read_only": true,
+      "poll_interval_ms": 1000,
+      "axi_register": "VDMA S2MM_SR @ 0x4 (base TBD by xparameters.h)",
+      "encoding": "u32_bitfield",
+      "bitfield_legend": {
+        "0x80":  "SOFEarly",
+        "0x100": "EOLEarly",
+        "0x800": "SOFLate (suppressed in DIAG; cosmetic post-iter6)",
+        "0x1000":"FrmCnt (benign per PG020)",
+        "0x8000":"EOLLate (real error)"
+      },
+      "surface": ["web"]
+    },
+    {
+      "id": "status.mm2s_sr",
+      "title": "MM2S status register",
+      "category": "status",
+      "type": "number",
+      "unit": "hex32",
+      "read_only": true,
+      "poll_interval_ms": 1000,
+      "axi_register": "VDMA MM2S_SR @ 0x34 (base TBD)",
+      "encoding": "u32_bitfield",
+      "surface": ["web"]
+    },
+    {
+      "id": "status.source_lock",
+      "title": "Source HDMI lock",
+      "category": "status",
+      "type": "boolean",
+      "read_only": true,
+      "poll_interval_ms": 200,
+      "source": "dvi2rgb pLocked + VTC_RX DTSTAT bit 0",
+      "surface": ["front", "web"],
+      "notes": "Drives the operator status bar 'source present' indicator."
+    },
+    {
+      "id": "status.source_format",
+      "title": "Source format",
+      "category": "status",
+      "type": "text",
+      "read_only": true,
+      "poll_interval_ms": 1000,
+      "source": "VTC_RX DASIZE + DVSIZE + DTSTAT (rate derived from HTOTAL × VTOTAL × pclk)",
+      "surface": ["front", "web"],
+      "example_values": ["1080p60", "720p60", "1080p30"]
+    },
+    {
+      "id": "status.output_format",
+      "title": "Output format",
+      "category": "status",
+      "type": "text",
+      "read_only": true,
+      "source": "VTC_TX register readback at boot",
+      "surface": ["front", "web"],
+      "example_values": ["720p60", "1080p30"]
+    }
+  ],
+
+  "profile_format": {
+    "description": "A profile is a JSON object mapping control IDs to their values. Loaded by control.batch_set in one atomic apply.",
+    "example": {
+      "schema":          "schindler-profile",
+      "schema_version":  "0.1.0",
+      "catalog_version": "0.1.0",
+      "name":            "Operator default",
+      "created_at":      "2026-05-31T13:00:00Z",
+      "controls": {
+        "color.saturation":          100,
+        "color.matrix.preset":       "identity",
+        "color.correct.black_r":     0,
+        "color.correct.black_g":     0,
+        "color.correct.black_b":     0,
+        "color.correct.white_r":     255,
+        "color.correct.white_g":     255,
+        "color.correct.white_b":     255,
+        "scaler.kernel_h":           "boxcar_2tap",
+        "scaler.kernel_v":           "boxcar_2tap",
+        "frc.mackin_alpha":          32768
+      }
+    }
+  },
+
+  "open_questions": [
+    "Should 'system.help' and 'system.readback' be in the catalog at all, or are they UART-only meta and excluded from the operator-surface schema? Currently included with surface=[] to mark them as 'exists but not for UIs'.",
+    "Catalog hot-reload: if the daemon re-reads catalog.json mid-flight, do clients need a version handshake to re-sync? Currently the design freezes catalog at daemon start; firmware updates restart the daemon (cleaner).",
+    "Per-channel matrix coefficients (m00..m22) — should they be individual controls (12 entries) or one composite '3×3 matrix' control with structured value type? v0.1.0 hides them behind matrix.preset for now; advanced UI in v2."
+  ],
+
+  "next_catalog_versions": {
+    "0.2.0": "Add FRC method auto-selection control (frc.method = A/B/C/D/E auto/manual) once Methods B/C/E ship.",
+    "0.3.0": "Add Phase G analog output controls (ntsc cadence, chip mute, etc.) when ADV7393 chip arrives.",
+    "0.4.0": "Add iter14 mode 3 = polyphase MAC if/when that ships.",
+    "1.0.0": "Schema lock for v1 ship."
+  }
+}
