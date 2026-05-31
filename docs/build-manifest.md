@@ -557,6 +557,33 @@ Cost: ~5 LUTs, ~30 min Vivado rebuild, ~30s UART parser extension. Add when need
 
 ---
 
+## 2026-05-30 — Motion-source verification on phase-e1 + iter12+13
+
+Bench-tested phase-e1-pll-spike @ `81df37b` (iter12+iter13 scaler kernel +
+F UART command for DDR3 dump) with Osee input 2 (4K motion loop) then
+ImagePro diagonal full-frame motion. Output: 720p60.
+
+**Result:** CLEAN. Eyeball verification of diagonal-motion content on bench
+monitor (the strictest tearing test — full-frame movement makes any seam
+instantly visible) showed no tearing, no judder, no smear, no glitches.
+Earlier webcam photos with apparent multi-frame ghosting were camera
+exposure-integration artifacts only; not visible on direct monitor view.
+
+**MMCM tracking loop** (phase-e1's primary feature) held cleanly under
+60→60 matched-rate motion. No slip events observed.
+
+**Scope established:** phase-e1 is designed for near-matched rates
+(±500 ppm). 5:2 or other large FRC ratios are explicitly out of scope
+for this branch — use iter5-1080p-clean (Method D drop/repeat) or
+mackin-impl-wip (temporal blend) for those.
+
+**Bench rule reinforced:** all motion-artifact verification MUST be on
+the bench monitor directly, not webcam or MS2109 (both have integration
+windows that mask tearing/race artifacts). Webcam useful only for
+captured-to-disk record of static content.
+
+---
+
 ## Going-forward convention
 
 Every bench session must end with an update to this manifest:
