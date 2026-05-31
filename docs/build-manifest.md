@@ -44,8 +44,8 @@ Live tips as of 2026-05-30 walk of `git branch -a` + `git log`:
 
 | Branch | Tip | Date | Buildable | Bench-image | Notes |
 |---|---|---|---|---|---|
-| `main` | `045f09b` | 2026-05-16 | ? | ? | Pre-iter5. Cold storage — do not target. |
-| `iter5-1080p-clean` | `ec13ab2` | 2026-05-31 | ✅ Vivado+Vitis 2026-05-30 | ✅ CLEAN (verified 2026-05-31, 3 reboots, ImagePro static + iter13b rounding fix on top of iter12+13) | **Production substrate.** iter4d-3 + 1080p substrate + color stack + iter6 S2MM hardware fsync + iter12 (H 2-tap `(s_axis_tdata + window[0])/2`) + iter13 (V 2-tap `(tap2 + tap3)/2`) + iter13b (+1 round-to-nearest, removes −0.5 LSB DC bias). Pushed to origin. |
+| `main` | `045f09b` | 2026-05-16 | ? | ? | Cold storage — frozen at pre-iter5. **GitHub default branch flipped to `iter5-1080p-clean` 2026-05-31.** Will force-update at v1 ship; don't target until then. |
+| `iter5-1080p-clean` | `abb83e8` | 2026-05-31 | ✅ Vivado+Vitis 2026-05-31 | ✅ CLEAN (verified 2026-05-31, iter12+13+13b 3-reboot rule satisfied; iter14 hands-on verified across 3 Osee sources) | **PRODUCTION SUBSTRATE / EFFECTIVE MAIN.** GitHub default branch as of 2026-05-31. iter4d-3 + 1080p substrate + color stack + iter6 S2MM hardware fsync + iter12 (H 2-tap `(s_axis_tdata + window[0])/2`) + iter13 (V 2-tap `(tap2 + tap3)/2`) + iter13b (+1 round-to-nearest) + iter13c (lbuf_fresh emit suppression) + iter14 (runtime kernel-mode toggle via UART `k h/v <0-3>`). Auto-archive system live. |
 | `mackin-impl-wip` | `fedb51a` | 2026-05-24 | ✅ Vivado+Vitis 2026-05-24 | ⚠️ LUCKY-BOOT-fingerprint (DDR3 byte dump matches iter5; no end-to-end picture test — placeholder axis_clone wiring still in place) | iter12+13 backport on `4b8067e` + dump_slot_head_pixels diag firmware on `fedb51a`. Pushed to origin. **Mackin blender still placeholder until dual-VDMA bench wiring lands.** |
 | `phase-e1-pll-spike` | `81df37b` | 2026-05-24 | ✅ Vivado+Vitis 2026-05-30 | ⚠️ LUCKY-BOOT (1 boot, monitor-clean under ImagePro diagonal 2026-05-30 — no 3-boot rule yet) | iter12+13 backport (`78ee7ad`) + `F` UART command for live framebuffer dump (`81df37b`). MMCM tracking loop active; ±500 ppm tracking range per `[[schindler_phase_e1_state]]`. Pushed to origin. |
 | `phase-g-iter1` | `d94f6cb` | 2026-05-21 | ⚠️ (Vivado not re-run since 2026-05-21) | N/A | ADV7393 BD + Si5351 Phase A-D firmware. **All 9 commits of Si5351 progression** (Phase A→B→C-lite→D-WIP) pushed to origin 2026-05-30. Both ADV7393 and Si5351 are hardware-blocked (chips dead/marginal). |
@@ -719,3 +719,23 @@ Pinned 2026-05-30 to remove the "what version of X did this build use" ambiguity
 | Target device | Zynq-7020 (XC7Z020-1CLG400C) on Zybo Z7-20 dev board | — | All MMCM/PLL/BRAM/DSP budgets are this device's. |
 
 **If `~/fpga/vivado-boards` or `~/fpga/vivado-library` ever change tip**, re-verify Phase A passthrough + iter5-1080p-clean 720p60 build before continuing. Patch state (kClkRange edit, etc.) lives in those checkouts, not in this repo.
+
+---
+
+## Branch model — soft consolidation (committed 2026-05-31)
+
+**`iter5-1080p-clean` is the effective `main`** as of 2026-05-31. GitHub default branch was flipped via `gh repo edit --default-branch`.
+
+**Rules going forward:**
+- New features land directly on `iter5-1080p-clean` whenever possible.
+- Existing feature branches (`mackin-impl-wip`, `phase-e1-pll-spike`, `phase-g-iter1`) merge BACK to `iter5-1080p-clean` when their feature is bench-stable — NOT parallel-and-cherry-pick like the iter12+13/iter13b/iter13c three-way fan-out we did before today.
+- `main` branch stays frozen at cold-storage (`045f09b`) until v1 ship, then gets force-updated to `iter5-1080p-clean`'s tip and `iter5-1080p-clean` is retired.
+- New short-lived feature branches off `iter5-1080p-clean` are fine; they should merge back within a week or two.
+
+**Why this and not full consolidation now:** force-updating `main` mid-development carries risk (PR refs, external links, watchers). Soft consolidation gets the benefit of one effective trunk (no more 3-way cherry-picks of every fix) without the disruption. At v1 ship the model converges to industry norm.
+
+**Why not status quo:** today's session cost three separate `iter13b` cherry-picks across branches plus a fourth on `iter13c`. If we keep that model, every new feature pays that tax. Soft consolidation makes `iter5-1080p-clean` the gravity well — features land there first, propagate to feature branches only when needed.
+
+### Reference: Phase G hardware test
+
+User has a test carrier board for TE0720 verification (the production target -2 silicon). **TE0720 builds are available on request** when 1080p60 OUT verification or other production-silicon work is needed. Not gating any current v1 path.

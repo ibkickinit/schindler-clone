@@ -4,11 +4,11 @@
 
 ## Quick guide
 
-**Working today? Use `iter5-1080p-clean`.** It's the production substrate.
+**Working today? Use `iter5-1080p-clean`.** It's the production substrate **and the GitHub default branch as of 2026-05-31** (soft consolidation — `main` stays frozen at cold-storage until v1 ship).
 
-**Want to add features?** Branch from `iter5-1080p-clean` for HDMI-only work. Branch from `phase-e1-pll-spike` for FRC/clock work. Branch from `phase-g-iter1` for analog-out work (when hardware unblocks).
+**Want to add features?** Branch from `iter5-1080p-clean`. Period. Even for FRC or analog work — `phase-e1-pll-spike` and `phase-g-iter1` exist for current in-flight work but new features should land on iter5-1080p-clean first and propagate to feature branches only if needed. See `../build-manifest.md` "Branch model — soft consolidation" section.
 
-**Avoid `main`** — it's cold storage from 2026-05-16, pre-iter5.
+**Avoid `main`** — it's frozen cold storage from 2026-05-16, pre-iter5. Will be force-updated to iter5-1080p-clean at v1 ship.
 
 ## Live branches as of 2026-05-30
 
