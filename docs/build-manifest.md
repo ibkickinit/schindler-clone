@@ -739,3 +739,36 @@ Pinned 2026-05-30 to remove the "what version of X did this build use" ambiguity
 ### Reference: Phase G hardware test
 
 User has a test carrier board for TE0720 verification (the production target -2 silicon). **TE0720 builds are available on request** when 1080p60 OUT verification or other production-silicon work is needed. Not gating any current v1 path.
+
+## 2026-05-31 — V0a control plane: end-to-end bench smoke ✅
+
+V0a build (catalog + firmware J bridge + Python schindlerd daemon + browser UI) reached green end-to-end on `iter5-1080p-clean`.
+
+**Build provenance**
+- Branch: `iter5-1080p-clean`
+- Commit at smoke: `9eaab60` (firmware bridge); polish lands at `3d393c6`
+- HDL substrate: identical to `abb83e8` (iter14 runtime kernel mode) — XSA reused, only firmware ELF rebuilt
+- Archive tag: `iter5-1080p-clean-720p-scaler_top-enable-8bb72e9` in `build/artifacts/`
+- Firmware ELF: `build/vitis-phase-b/vdma_init/Debug/vdma_init.elf` (324 KB)
+- Toolchain: Vitis 2025.2
+
+**What was verified (bench, 2026-05-31 ~15:00-15:15)**
+- Boot banner clean; source detected 1920×1080 @ 60.895 Hz; output 720p60; passthrough regime; no error bits
+- `?` UART help shows new `J <json>` line
+- `control-plane/schindlerd/jsmoke.py` direct-UART smoke: 9/9 happy + 2/2 error paths PASS
+- WebSocket round-trip via daemon: identify / control.set / control.get / enum string↔int translation all clean
+- Browser UI at http://127.0.0.1:8080: 3 sections render (Color / Scaler), saturation slider drags smoothly post-coalesce fix, kernel-mode dropdowns toggle live, profile snapshot+load round-trip works
+- `frc.mackin_alpha` correctly hidden via daemon firmware-availability probe (depends on `mackin-impl-wip` branch which isn't this substrate)
+
+**Issues found and fixed in-session**
+- UI was firing 100 control.set/sec during slider drag → daemon UART queue overflow → 1.5 s timeouts. Fix: per-control coalescing in `web/index.html` — only newest queued value sent next; intermediates dropped.
+- UI was rendering controls firmware doesn't implement (mackin alpha placeholder, status entries). Fix: daemon probes firmware `system.list_controls` at first `system.catalog` request and tags each catalog entry `available: true/false`; UI skips `false`.
+- UI was calling `control.get` on read-only / trigger controls → noisy daemon stderr (firmware doesn't expose status reads). Fix: skip these in `refreshAllValues`.
+
+**Open items (V0a+1)**
+- Status push: daemon polling task for `status.*` controls → broadcast `notification` frames to subscribed WS clients. Status entries currently show "—".
+- Catalog version compatibility handshake at WS open.
+- Multi-client coordination — second open browser doesn't see first's changes until refresh.
+- Mackin alpha will turn on automatically once dual-VDMA wiring lands on `mackin-impl-wip` and the firmware J table gains the control.
+
+**Pass/fail**: ✅ PASS — V0a stack is end-to-end functional and ready for daily bench use. The "rebuild + re-program + run schindlerd → browser" loop replaces the picocom + manual UART commands workflow.
