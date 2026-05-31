@@ -58,6 +58,38 @@ Programs the .bit then loads + starts the .elf. ~30 seconds.
 
 **Verify it worked:** open serial on `/dev/ttyUSB1 @ 115200 8N1`. Should see VDMA init + telemetry within a few seconds.
 
+## Build artifact archive — swap builds in 30 seconds
+
+Every successful Vivado + Vitis build auto-archives its `phase_b.bit`, `phase_b.xsa`, `ps7_init.tcl`, `vdma_init.elf`, and a `manifest.txt` into `build/artifacts/<tag>/`. Tag scheme:
+
+```
+<branch>-<output_mode>-<scaler_module>-<color_pipeline>-<commit>
+```
+
+Examples:
+- `iter5-1080p-clean-720p-scaler_top-enable-6e4bd80`
+- `iter5-1080p-clean-1080p30-scaler_bypass_1080p-enable-083239a`
+- `phase-e1-pll-spike-720p-scaler_top-enable-e0b62b7`
+
+**Disk cost:** ~5.6 MB per saved build (`phase_b.bit` = 4 MB, `phase_b.xsa` = 1.3 MB, ELF = 305 KB, ps7_init.tcl = 35 KB, manifest = 0.5 KB). 100 saved builds ≈ 560 MB. `build/` is gitignored so this never pollutes the repo.
+
+### Reprogram from a saved build (no rebuild)
+
+```bash
+source /tools/Xilinx/2025.2/Vitis/settings64.sh
+
+# List available builds:
+xsct tcl/program_artifact.tcl
+
+# Program a specific one (substring match works if unique):
+xsct tcl/program_artifact.tcl 1080p30
+xsct tcl/program_artifact.tcl iter5-720p-scaler_top-enable-6e4bd80
+```
+
+Same canonical Zynq-7000 bring-up sequence as `program_phase_b_full.tcl`. ~30 seconds vs ~30 min rebuild.
+
+**Caveat:** archive happens at successful end of build. If you run only Vivado without Vitis, the tag dir gets the XSA + manifest but not the `.bit`/`.elf`. Re-running Vitis backfills.
+
 ```bash
 picocom -b 115200 /dev/ttyUSB1
 ```
