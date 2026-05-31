@@ -247,18 +247,41 @@ class UartBridge:
 # ---------------------------------------------------------------------------
 
 class ProfileStore:
-    def __init__(self, root: Path):
-        self.root = root
-        self.root.mkdir(parents=True, exist_ok=True)
+    """Multi-source profile store. The first root is the writable user dir;
+    additional roots (e.g. factory presets shipped with the daemon) are
+    read-only. Name collisions resolve to the first matching root, so a
+    user profile shadows a factory profile of the same name."""
 
-    def list(self) -> List[str]:
-        return sorted(p.stem for p in self.root.glob("*.json"))
+    def __init__(self, user_root: Path, readonly_roots: Optional[List[Path]] = None):
+        self.user_root = user_root
+        self.user_root.mkdir(parents=True, exist_ok=True)
+        self.readonly_roots = [p for p in (readonly_roots or []) if p.is_dir()]
+
+    def list(self) -> List[Dict[str, Any]]:
+        """List visible profiles. Each entry: {name, factory: bool, source}."""
+        seen: Dict[str, Dict[str, Any]] = {}
+        for p in self.user_root.glob("*.json"):
+            seen[p.stem] = {"name": p.stem, "factory": False, "source": "user"}
+        for root in self.readonly_roots:
+            for p in root.glob("*.json"):
+                if p.stem in seen:
+                    continue
+                seen[p.stem] = {"name": p.stem, "factory": True, "source": root.name}
+        return sorted(seen.values(), key=lambda r: (not r["factory"], r["name"]))
 
     def load(self, name: str) -> Dict[str, Any]:
-        return json.loads((self.root / f"{name}.json").read_text())
+        user_path = self.user_root / f"{name}.json"
+        if user_path.is_file():
+            return json.loads(user_path.read_text())
+        for root in self.readonly_roots:
+            p = root / f"{name}.json"
+            if p.is_file():
+                return json.loads(p.read_text())
+        raise FileNotFoundError(f"no profile '{name}'")
 
     def save(self, name: str, profile: Dict[str, Any]) -> None:
-        (self.root / f"{name}.json").write_text(json.dumps(profile, indent=2))
+        # Saving always writes to the user dir; never touches factory dirs.
+        (self.user_root / f"{name}.json").write_text(json.dumps(profile, indent=2))
 
 
 # ---------------------------------------------------------------------------
@@ -648,7 +671,10 @@ async def amain(args: argparse.Namespace) -> int:
     telemetry = TelemetryParser(bus)
     uart.text_log_handler = telemetry.feed
 
-    profiles = ProfileStore(Path(args.profiles).expanduser())
+    profiles = ProfileStore(
+        Path(args.profiles).expanduser(),
+        readonly_roots=[Path(args.factory_profiles).resolve()] if args.factory_profiles else None,
+    )
     dispatcher = Dispatcher(catalog, uart, profiles, bus)
     dispatcher.telemetry = telemetry  # exposed to ws_handler for snapshot replay
 
@@ -692,6 +718,10 @@ def main() -> int:
     p.add_argument("--catalog",   default=os.path.join(os.path.dirname(__file__),
                                                        "..", "catalog-v0.2.0.json"))
     p.add_argument("--profiles",  default="~/.schindler/profiles")
+    p.add_argument("--factory-profiles",
+                   default=os.path.join(os.path.dirname(__file__),
+                                        "..", "profiles", "factory"),
+                   help="read-only profile dir shipped with the daemon")
     p.add_argument("--host",      default="127.0.0.1")
     p.add_argument("--ws-port",   type=int, default=8081)
     p.add_argument("--http-port", type=int, default=8080)

@@ -1,0 +1,21 @@
+{
+  "schema": "schindler-profile",
+  "schema_version": "0.1.0",
+  "catalog_version": "0.2.0",
+  "name": "warm",
+  "description": "Slightly punchy saturation (110%) with a warm white balance (R full, G/B dialed back). Tungsten-leaning look — pleasing for skin tones on consumer monitors.",
+  "factory": true,
+  "controls": {
+    "color.saturation":         110,
+    "color.matrix.preset":      "identity",
+    "color.matrix_saturation":  100,
+    "color.correct.black_r":    0,
+    "color.correct.black_g":    0,
+    "color.correct.black_b":    0,
+    "color.correct.white_r":    255,
+    "color.correct.white_g":    240,
+    "color.correct.white_b":    220,
+    "scaler.kernel_h":          "boxcar_2tap",
+    "scaler.kernel_v":          "boxcar_2tap"
+  }
+}

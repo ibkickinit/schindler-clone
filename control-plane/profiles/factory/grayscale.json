@@ -1,0 +1,21 @@
+{
+  "schema": "schindler-profile",
+  "schema_version": "0.1.0",
+  "catalog_version": "0.2.0",
+  "name": "grayscale",
+  "description": "B&W output via Rec.601 luma weights. Useful for verifying gamma + level handling without color confounding.",
+  "factory": true,
+  "controls": {
+    "color.saturation":         0,
+    "color.matrix.preset":      "grayscale",
+    "color.matrix_saturation":  0,
+    "color.correct.black_r":    0,
+    "color.correct.black_g":    0,
+    "color.correct.black_b":    0,
+    "color.correct.white_r":    255,
+    "color.correct.white_g":    255,
+    "color.correct.white_b":    255,
+    "scaler.kernel_h":          "boxcar_2tap",
+    "scaler.kernel_v":          "boxcar_2tap"
+  }
+}

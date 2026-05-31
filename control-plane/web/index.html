@@ -373,12 +373,14 @@
   // Profiles
   // -------------------------------------------------------------------------
   async function refreshProfiles() {
-    const names = await call("profile.list");
+    const items = await call("profile.list");
     const sel = document.getElementById("profile-select");
     sel.innerHTML = "";
-    for (const n of names) {
+    for (const it of items) {
       const o = document.createElement("option");
-      o.value = n; o.textContent = n; sel.appendChild(o);
+      o.value = it.name;
+      o.textContent = it.factory ? `${it.name} (factory)` : it.name;
+      sel.appendChild(o);
     }
   }
 
