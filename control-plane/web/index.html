@@ -158,6 +158,7 @@
     const byCategory = new Map();
     for (const c of cat.controls) {
       if (!c.surface || c.surface.indexOf("web") === -1) continue;
+      if (c.available === false) continue;  // firmware doesn't implement it / gated by branch
       const k = c.category || "other";
       if (!byCategory.has(k)) byCategory.set(k, []);
       byCategory.get(k).push(c);
@@ -230,19 +231,37 @@
     return row;
   }
 
+  // Per-control coalescing: a slider firing 100 input events per second would
+  // overwhelm the serialized UART. We keep one request inflight per control
+  // and drop intermediate values — only the latest queued value gets sent
+  // when the current request completes.
+  const pendingValue = new Map();   // id -> latest queued value
+  const inflight = new Set();        // id -> request currently on the wire
+
   async function setValue(id, value) {
+    pendingValue.set(id, value);
+    if (inflight.has(id)) return;     // a coroutine is already draining this id
+    inflight.add(id);
     const rec = controlRows.get(id);
     rec.row.classList.add("dirty");
     rec.row.classList.remove("error");
     try {
-      const r = await call("control.set", { id, value });
-      rec.value.textContent = formatValue(rec.control, r.value);
+      while (pendingValue.has(id)) {
+        const v = pendingValue.get(id);
+        pendingValue.delete(id);
+        try {
+          const r = await call("control.set", { id, value: v });
+          rec.value.textContent = formatValue(rec.control, r.value);
+          rec.row.classList.remove("error");
+        } catch (e) {
+          rec.row.classList.add("error");
+          rec.value.textContent = "ERR";
+          log(`set ${id}=${v}: ${e.message}`, "err");
+        }
+      }
+    } finally {
+      inflight.delete(id);
       rec.row.classList.remove("dirty");
-    } catch (e) {
-      rec.row.classList.remove("dirty");
-      rec.row.classList.add("error");
-      rec.value.textContent = "ERR";
-      log(`set ${id}=${value}: ${e.message}`, "err");
     }
   }
 
@@ -254,13 +273,16 @@
 
   async function refreshAllValues() {
     for (const [id, rec] of controlRows) {
+      // Skip read-only / trigger controls — there's nothing to get and the
+      // firmware doesn't expose status reads via control.get yet.
+      if (rec.control.read_only || rec.control.type === "trigger") continue;
       try {
         const r = await call("control.get", { id });
         rec.value.textContent = formatValue(rec.control, r.value);
         if (rec.input.tagName === "INPUT" && rec.input.type === "range") rec.input.value = r.value;
         else if (rec.input.tagName === "SELECT") rec.input.value = r.value;
         else if (rec.input.tagName === "INPUT" && rec.input.type === "checkbox") rec.input.checked = !!r.value;
-      } catch (e) { /* read-only without firmware support — leave dash */ }
+      } catch (e) { /* leave dash */ }
     }
   }
 

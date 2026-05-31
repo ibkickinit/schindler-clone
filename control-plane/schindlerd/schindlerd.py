@@ -105,6 +105,7 @@ class Catalog:
     version: str
     controls: Dict[str, CatalogControl]
     raw: Dict[str, Any]
+    available_ids: Optional[set] = None  # firmware-reported set; None = not probed yet
 
     @classmethod
     def load(cls, path: Path) -> "Catalog":
@@ -113,6 +114,23 @@ class Catalog:
         for c in raw.get("controls", []):
             controls[c["id"]] = CatalogControl.from_json(c)
         return cls(version=raw.get("schema_version", "0.0.0"), controls=controls, raw=raw)
+
+    def annotated_raw(self) -> Dict[str, Any]:
+        """Return the catalog with each control tagged 'available' based on
+        what the firmware reported via system.list_controls. Status-type
+        controls are always 'available' from the client's perspective (the
+        daemon synthesizes them; firmware needn't know about them). Controls
+        with requires_status == 'placeholder' are forced unavailable."""
+        out = json.loads(json.dumps(self.raw))  # deep copy
+        avail = self.available_ids or set()
+        for c in out.get("controls", []):
+            cid = c["id"]
+            placeholder = c.get("requires_status") == "placeholder"
+            if c.get("category") == "status" or c.get("read_only"):
+                c["available"] = not placeholder
+            else:
+                c["available"] = (cid in avail) and not placeholder
+        return out
 
 
 # ---------------------------------------------------------------------------
@@ -289,7 +307,21 @@ class Dispatcher:
         }
 
     async def _m_catalog(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        return self.catalog.raw
+        if self.catalog.available_ids is None:
+            await self.probe_firmware_controls()
+        return self.catalog.annotated_raw()
+
+    async def probe_firmware_controls(self) -> None:
+        """Ask the firmware which controls it actually implements. Used to
+        annotate the catalog so the UI can hide gated controls."""
+        try:
+            fw = await self.uart.request("system.list_controls")
+            ids = fw.get("result", {}).get("ids", [])
+            self.catalog.available_ids = set(ids)
+            log.info("firmware reports %d available controls", len(ids))
+        except Exception as e:
+            log.warning("firmware probe failed: %s", e)
+            self.catalog.available_ids = set()
 
     async def _m_list_controls(self, params: Dict[str, Any]) -> List[str]:
         return list(self.catalog.controls.keys())
