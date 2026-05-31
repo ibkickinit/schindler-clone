@@ -631,6 +631,59 @@ formally backed by a documented 3-boot run on the iter13b substrate.
 
 ---
 
+## 2026-05-31 (later) — 1080p investigation + infra parametrization + Tier-1 audit cleanup
+
+After the iter5 ✅ promotion (above), this session tackled two threads:
+
+### 1080p output investigation (Row 1 + passthrough testing)
+
+User asked to verify Row 1 (1080p60→1080p60). Three builds + thorough investigation:
+
+| Build | Config | Result | Cause |
+|---|---|---|---|
+| 1080p60 + scaler_bypass + color enabled | rgb2dvi kClkRange=2 (production default) | Vivado AVAL-46 CRIT WARN — VCO 1485 MHz > 1200 MHz -1 max + timing failure | kClkRange=2 → MULT_F=10; correct for 720p60 at 74.25 MHz pclk, wrong for 1080p60 at 148.5 MHz |
+| 1080p60 + scaler_bypass + COLOR_PIPELINE=bypass + kClkRange=1 | tcl rgb2dvi auto-derived from OUTPUT_MODE | Build closed timing (WNS +0.13) BUT bench monitor reported "signal out of spec" | OSERDESE2 SerialClk = 5 × 148.5 = 742.5 MHz exceeds -1 BUFIO 600 MHz max → non-HDMI-compliant TMDS |
+| 1080p30 + scaler_bypass + color enabled | 74.25 MHz pclk (same as 720p60) | Build clean; bench monitor reported "signal out of range" — sink rejected sub-50Hz refresh | Dell desktop monitor doesn't accept 1080p30 (CEA-861 mode 34); pipeline output is correct |
+
+**Result: Row 1 reclassified as "❌ on Zybo / ✅ planned on production"** — production carrier has external HDMI PHY chip + -2 silicon, either alone solves the row. Caught a VTC mode #ifdef hardcode bug in firmware along the way (commit `083239a`). New project rule established: HDMI output must be spec-compliant (memory [[hdmi_compliance_rule]]).
+
+### Infrastructure parametrization (commits `891e834`, `ce1b671`, `0625876`)
+
+tcl/build_phase_b.tcl + tcl/build_phase_b_app.tcl now have three orthogonal env vars, all defaulting to production behavior:
+
+- **OUTPUT_MODE** = `720p` (default) | `1080p30` | `1080p60`
+- **SCALER_MODULE** = `scaler_top` (default) | `scaler_bypass_1080p` | `scaler_crop_bypass`
+- **COLOR_PIPELINE** = `enable` (default) | `bypass`
+- rgb2dvi kClkRange auto-derived from OUTPUT_MODE (1080p60 → 1=MULT_F=5; else 2=MULT_F=10)
+- Firmware `OUTPUT_1080P` compile define auto-set from `OUTPUT_MODE`; selects FRAME_W/FRAME_H + VTC mode
+
+Default build (no env vars) = bit-identical to production 720p60 + color stack.
+
+### Tier-1 audit cleanup (queued for next Vivado run)
+
+Commits `0937574`, `5881322` — picked up next time Vivado runs:
+
+- **SOFLate DIAG suppression** — cosmetic firmware noise, gone (S2MM only; MM2S not suppressed)
+- **iter7 window-clear** — only clear `window[0]` (tap[1..7] are dead post-iter12; saves 168 flop-loads/row)
+- **iter13c lbuf_fresh emit suppression** — top-of-frame black band → clean blank when both tap2/tap3 lbufs unfresh
+- **XDC false-paths for color_matrix + scaler_top** — fixes the chronic WNS=-3.5 ns false-positive from missing constraint coverage
+
+Production substrate continues to be `iter5-1080p-clean` @ `ec13ab2` (verified ✅ CLEAN). Subsequent commits (`5881322` onwards) add the queued fixes; verification of those happens on the next Vivado-cycle program + bench run.
+
+### Forward-looking work also produced
+
+- `docs/control-plane-architecture.md` (308 lines) — designs the production web UI / RP2040 / Linux daemon stack. V0a buildout plan (host-side bridge daemon) ~2-3 days, no PetaLinux required. Tabled by user for now.
+- Memory entries `zynq7020_rgb2dvi_1080p60_limit` + `hdmi_compliance_rule` capture the 1080p60 investigation findings as durable rules.
+
+### Outstanding
+
+- 720p60 production substrate rebuild in progress (verifying queued Tier-1 fixes don't break the production path); user to bench-verify after program
+- iter13b backport to mackin + phase-e1 still owed (~50 min wall-clock; pure cherry-pick)
+- Matrix scope cut decision (Risk #4 mitigation) deferred to strategic-mind session
+- Phase G vs E2 priority decision deferred
+
+---
+
 ## Going-forward convention
 
 Every bench session must end with an update to this manifest:
