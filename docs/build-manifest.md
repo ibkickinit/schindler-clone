@@ -4,7 +4,7 @@
 
 **Status:** living document. Source of truth for **which builds exist, which ones produce a clean image, and what's broken.** Pairs with [`format-support-matrix.md`](format-support-matrix.md) — that doc tracks **format axis** (what input→output combos), this doc tracks **build axis** (what bitstream lineage).
 
-Last updated: 2026-05-22 ~15:30 — iter6 bottom-bars artifact resolved via S2MM hardware fsync.
+Last updated: 2026-05-31 — V0a control plane shipped end-to-end (catalog v0.2.0 + firmware J bridge + Python schindlerd daemon + browser UI + status push + version handshake + multi-client + factory profile presets); iter13c backported to mackin + phase-e1; iter5-1080p-clean promoted ⚠️→✅.
 
 ## Why this document exists
 

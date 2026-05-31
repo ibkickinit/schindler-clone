@@ -6,7 +6,7 @@ V0a single-page browser UI for the Schindler 2.0 control plane. No build step â€
 
 1. Browser loads `index.html` from `http://127.0.0.1:8080/` (served by schindlerd's stdlib HTTP).
 2. JS opens `ws://127.0.0.1:8081/` (schindlerd's WebSocket).
-3. Calls `system.identify` then `system.catalog` to fetch the live catalog v0.1.0.
+3. Calls `system.identify` then `system.catalog` to fetch the live catalog (v0.2.0 today).
 4. Renders one section per category, one row per control with `surface` containing `"web"`.
 5. Slider/select changes fire `control.set` immediately; the response's echoed `value` becomes the readback display.
 6. Status bar shows connection state; auto-reconnects on close with a 2 s backoff.

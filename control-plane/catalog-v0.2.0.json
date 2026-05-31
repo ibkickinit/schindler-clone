@@ -16,7 +16,7 @@
     { "id": "scaler",  "title": "Scaler", "description": "iter14 runtime kernel-mode selection for the H and V downscalers. Production default = 2-tap boxcar; NN sharpens at cost of dropped cols/rows; 4-tap softens." },
     { "id": "frc",     "title": "FRC", "description": "Mackin alpha for temporal blending (Phase E2 — wiring is currently placeholder; alpha will be load-bearing once dual-VDMA wiring lands)." },
     { "id": "system",  "title": "System", "description": "Reset, identity, and meta commands." },
-    { "id": "status",  "title": "Status", "description": "Read-only telemetry exposed via DIAG print. v0.1.0 lists the ones the daemon needs to subscribe to for the operator status bar; future versions add more granular metrics." }
+    { "id": "status",  "title": "Status", "description": "Read-only telemetry exposed via DIAG print. v0.2.0 adds source/output rate fields driven by the firmware DIAG line; future versions add more granular metrics." }
   ],
 
   "controls": [
@@ -334,7 +334,7 @@
     "example": {
       "schema":          "schindler-profile",
       "schema_version":  "0.1.0",
-      "catalog_version": "0.1.0",
+      "catalog_version": "0.2.0",
       "name":            "Operator default",
       "created_at":      "2026-05-31T13:00:00Z",
       "controls": {
@@ -356,13 +356,13 @@
   "open_questions": [
     "Should 'system.help' and 'system.readback' be in the catalog at all, or are they UART-only meta and excluded from the operator-surface schema? Currently included with surface=[] to mark them as 'exists but not for UIs'.",
     "Catalog hot-reload: if the daemon re-reads catalog.json mid-flight, do clients need a version handshake to re-sync? Currently the design freezes catalog at daemon start; firmware updates restart the daemon (cleaner).",
-    "Per-channel matrix coefficients (m00..m22) — should they be individual controls (12 entries) or one composite '3×3 matrix' control with structured value type? v0.1.0 hides them behind matrix.preset for now; advanced UI in v2."
+    "Per-channel matrix coefficients (m00..m22) — should they be individual controls (12 entries) or one composite '3×3 matrix' control with structured value type? v0.2.0 hides them behind matrix.preset for now; advanced UI in v2."
   ],
 
   "next_catalog_versions": {
-    "0.2.0": "Add FRC method auto-selection control (frc.method = A/B/C/D/E auto/manual) once Methods B/C/E ship.",
-    "0.3.0": "Add Phase G analog output controls (ntsc cadence, chip mute, etc.) when ADV7393 chip arrives.",
-    "0.4.0": "Add iter14 mode 3 = polyphase MAC if/when that ships.",
+    "0.3.0": "Add FRC method auto-selection control (frc.method = A/B/C/D/E auto/manual) once Methods B/C/E ship.",
+    "0.4.0": "Add Phase G analog output controls (ntsc cadence, chip mute, etc.) when ADV7393 chip arrives.",
+    "0.5.0": "Add iter14 mode 3 = polyphase MAC if/when that ships.",
     "1.0.0": "Schema lock for v1 ship."
   }
 }
