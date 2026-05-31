@@ -331,6 +331,16 @@ static unsigned g_sat_pct        = 100;
 static unsigned g_matrix_sat_pct = 100;
 static unsigned g_matrix_preset  = 0;   /* 0=identity, 1=grayscale, 2=custom */
 
+/* V0a status shadows: captured from boot-time prints so the daemon's
+ * TelemetryParser can pick them up after a daemon restart (the original
+ * boot lines fire once and are lost otherwise). Re-emitted from
+ * telemetry_loop every ~10 DIAG cycles. */
+static unsigned g_src_hactive = 0, g_src_vactive = 0;
+static unsigned g_src_htotal  = 0, g_src_vtotal  = 0;
+static unsigned g_src_dpol    = 0;
+static const char *g_output_mode_name = "unknown";
+static unsigned g_output_htotal = 0, g_output_vtotal = 0;
+
 static inline void color_apply_state(void)
 {
     color_set(g_sat_q15, g_black_r, g_black_g, g_black_b,
@@ -586,7 +596,7 @@ static void cp_dispatch_jsonrpc(const char *json)
         xil_printf("{\"jsonrpc\":\"2.0\",\"id\":%s,\"result\":{"
                    "\"model\":\"Schindler 2.0 Phase B\","
                    "\"fw\":\"iter5-1080p-clean\","
-                   "\"catalog\":\"0.1.0\""
+                   "\"catalog\":\"0.2.0\""
                    "}}\r\n", id_lit);
         return;
     }
@@ -1259,6 +1269,19 @@ static void telemetry_loop(UINTPTR vdma_base)
                 out_count = 0;
                 phase_last_src = 0;
 
+                /* V0a status re-emit: once every 10 DIAGs (~10s), re-print
+                 * the VTC_RX and VTC config summary so the daemon's
+                 * TelemetryParser can pick up status.source_format and
+                 * status.output_format even when it started after boot.
+                 * Daemon-side dedup prevents WS-traffic amplification. */
+                if (g_src_hactive && (diag_iter % 10) == 0) {
+                    xil_printf("VTC_RX: HACTIVE=%u VACTIVE=%u HTOTAL=%u VTOTAL=%u DPOL=0x%02x\r\n",
+                               g_src_hactive, g_src_vactive,
+                               g_src_htotal,  g_src_vtotal, g_src_dpol);
+                    xil_printf("VTC: configuring %s (HTOTAL=%u VTOTAL=%u)\r\n",
+                               g_output_mode_name, g_output_htotal, g_output_vtotal);
+                }
+
                 /* iter4 (2026-05-22): two-shot DDR3 dump for A1/A2
                  * disambiguation. Run Osee on input 2 (motion) so the source
                  * varies over time. Dump #1 fires at first DIAG (~1s),
@@ -1381,6 +1404,12 @@ static int vtc_detector_read(u32 *hactive_out, u32 *vactive_out,
     xil_printf("\r\nVTC_RX: HACTIVE=%u VACTIVE=%u HTOTAL=%u VTOTAL=%u DPOL=0x%02x\r\n",
                (unsigned)hactive, (unsigned)vactive,
                (unsigned)htotal,  (unsigned)vtotal, (unsigned)(dpol & 0x7Fu));
+    /* V0a: snapshot for periodic re-emit in telemetry_loop. */
+    g_src_hactive = (unsigned)hactive;
+    g_src_vactive = (unsigned)vactive;
+    g_src_htotal  = (unsigned)htotal;
+    g_src_vtotal  = (unsigned)vtotal;
+    g_src_dpol    = (unsigned)(dpol & 0x7Fu);
 
     if (hactive_out) *hactive_out = hactive;
     if (vactive_out) *vactive_out = vactive;
@@ -1522,6 +1551,10 @@ static int vtc_setup(const vtc_mode_t *m)
     /* Now safe to printf — CTL write committed, alignment locked. */
     xil_printf("VTC: configuring %s (HTOTAL=%u VTOTAL=%u)\r\n",
                m->name, (unsigned)H_TOTAL, (unsigned)V_TOTAL);
+    /* V0a: snapshot for periodic re-emit in telemetry_loop. */
+    g_output_mode_name = m->name;
+    g_output_htotal    = (unsigned)H_TOTAL;
+    g_output_vtotal    = (unsigned)V_TOTAL;
 
     return XST_SUCCESS;
 }
