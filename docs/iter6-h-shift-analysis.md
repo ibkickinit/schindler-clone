@@ -1,6 +1,18 @@
 # iter6 residual H-shift — diagnostic plan for tomorrow
 
-**Status:** OPEN as of 2026-05-22 evening. iter6 (S2MM hardware fsync) resolves the 27-row vertical bottom-bars artifact across iter5-1080p-clean, mackin-impl-wip, and phase-e1-pll-spike. A residual **2-3 pixel per-line horizontal shift** is present on all three branches; the last 3 pixels of each row appear at the start of the next row.
+> # ✅ RESOLVED 2026-05-24 via iter12 + iter13
+>
+> The H-shift root cause was localized to **scaler_h.v's MAC window**, not S2MM/MM2S as originally hypothesized below. NN-bypass single-tap at downscale left row-tail data in the 8-pixel shift register, contaminating row N+1's first 2-3 output pixels. Fix: 2-tap boxcar with newest tap = `s_axis_tdata` (the freshly arriving pixel), plus iter7's `window[0..7]` clear on TLAST.
+>
+> Same class of bug on V scaler — `mac_r = tap1` NN-bypass dropped 1 of every 3 source rows at 1080→720. Fix: 2-tap boxcar `(tap2 + tap3)/2`.
+>
+> See `docs/build-manifest.md` "2026-05-24" section for the iter7→iter13 patch progression. Production substrate is `iter5-1080p-clean` @ `fcd722c`.
+>
+> The narrative below is **archaeology**, retained because the diagnostic methodology (boundary-col DDR3 dumps, hypothesis-ranking) is reusable for future row-boundary investigations.
+
+---
+
+**Status (original):** OPEN as of 2026-05-22 evening. iter6 (S2MM hardware fsync) resolves the 27-row vertical bottom-bars artifact across iter5-1080p-clean, mackin-impl-wip, and phase-e1-pll-spike. A residual **2-3 pixel per-line horizontal shift** is present on all three branches; the last 3 pixels of each row appear at the start of the next row.
 
 ## Symptom precisely
 

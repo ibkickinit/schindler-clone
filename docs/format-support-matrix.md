@@ -53,7 +53,7 @@ Primary output path (rgb2dvi). Covers everything we ship today and most of Phase
 
 | # | Input format | Output format | Status | Method | Scaling | Notes |
 |---|---|---|---|---|---|---|
-| 1 | 1080p60 | 1080p60 | ⚠️ | — | none | Phase A passthrough validated on early substrate. Needs re-test on iter5-1080p-clean substrate (current production base — iter4h additions removed). |
+| 1 | 1080p60 | 1080p60 | ⚠️ | — | none | Phase A passthrough validated on early substrate. **Easy promotion target:** iter12+13 makes matched-rate passthrough trivially re-verifiable since the scaler degenerates cleanly at 1:1. Pencil-in for the next bench session — 3 reloads + monitor check on ImagePro static + diagonal = ✅. Same substrate as Row 2 which is already verified. |
 | 2 | 1080p60 | 720p60 | ✅ | — | down | **iter12+iter13 (`iter5-1080p-clean`, 2026-05-24)** fixes both the 27-row V-wrap (iter6) and the residual H-shift + V missing-lines (iter12+13 scaler kernel rework). DDR3 dumps + bench-monitor grid pattern confirm: source col 0..1919 fully sampled (left + right vertical lines at output cols 0 + 1279), source row 0..1079 fully sampled (no horizontal line dropouts). Vertical and horizontal lines render as 2-pixel half-bright instead of 1-pixel full-bright (2-tap boxcar trade). |
 | 3 | 1080p60 | 720p50 | ⚠️ | D (6:5) | down | iter4d-3 FRC validation. Re-test on iter6 substrate. |
 | 4 | 1080p60 | 1080p24 | ⚠️ | D (5:2) | none | Prior ✅ on commit `86dc034` was MS2109-tainted; iter6 fix may or may not have changed the FRC behavior. Re-test on iter6 substrate. |
