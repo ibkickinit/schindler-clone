@@ -54,6 +54,15 @@ module scaler_h #(
      * value used for emit_now/excess is frame-atomic. */
     input  wire [11:0] in_w_runtime,
 
+    /* iter14 (2026-05-31): runtime kernel-mode selector.
+     *   2'd0 = NN single-tap (newest pixel only) — sharpest; loses cols at non-1:1
+     *   2'd1 = 2-tap boxcar (iter12+iter13b production default; rounded)
+     *   2'd2 = 4-tap boxcar (softer; useful for noisy/motion content)
+     *   2'd3 = reserved (future: polyphase MAC via existing coefficient ROM)
+     * Sourced from AXI GPIO 7 bit field; CDC handled in scaler_top.
+     * Default tied to 2'd1 (production behavior preserved). */
+    input  wire [1:0]  kernel_mode,
+
     /* iter4g DIAG counter: count s_axis_tlast events between TUSERs.
      * Latched at TUSER into snap output for firmware to read. Tells us
      * how many input rows v_vid_in_axi4s actually delivered per frame. */
@@ -175,12 +184,43 @@ module scaler_h #(
      * MAC path (mac8_sat below) already does this rounding at line 127.
      * Cost: 3 LUTs (one +1 saturation per channel). Per audit-panel HDL
      * Agent finding 2026-05-30. */
+    /* iter14 (2026-05-31): runtime kernel-mode mux. Three forms computed
+     * in parallel; combinational mux on kernel_mode selects which feeds
+     * m_axis_tdata. Mode 1 is the iter12/iter13b production default. */
+    // Mode 0 — NN single-tap (newest = s_axis_tdata)
+    wire [7:0] mode0_r = s_axis_tdata[23:16];
+    wire [7:0] mode0_g = s_axis_tdata[15: 8];
+    wire [7:0] mode0_b = s_axis_tdata[ 7: 0];
+
+    // Mode 1 — 2-tap boxcar with iter13b round-to-nearest (production)
     wire [8:0] s2r = s_axis_tdata[23:16] + window[0][23:16] + 9'd1;
     wire [8:0] s2g = s_axis_tdata[15: 8] + window[0][15: 8] + 9'd1;
     wire [8:0] s2b = s_axis_tdata[ 7: 0] + window[0][ 7: 0] + 9'd1;
-    wire [7:0] out_r = s2r[8:1];
-    wire [7:0] out_g = s2g[8:1];
-    wire [7:0] out_b = s2b[8:1];
+    wire [7:0] mode1_r = s2r[8:1];
+    wire [7:0] mode1_g = s2g[8:1];
+    wire [7:0] mode1_b = s2b[8:1];
+
+    // Mode 2 — 4-tap boxcar (newest + window[0..2]) with +2 round-to-nearest
+    wire [9:0] s4r = s_axis_tdata[23:16] + window[0][23:16]
+                   + window[1][23:16]    + window[2][23:16] + 10'd2;
+    wire [9:0] s4g = s_axis_tdata[15: 8] + window[0][15: 8]
+                   + window[1][15: 8]    + window[2][15: 8] + 10'd2;
+    wire [9:0] s4b = s_axis_tdata[ 7: 0] + window[0][ 7: 0]
+                   + window[1][ 7: 0]    + window[2][ 7: 0] + 10'd2;
+    wire [7:0] mode2_r = s4r[9:2];
+    wire [7:0] mode2_g = s4g[9:2];
+    wire [7:0] mode2_b = s4b[9:2];
+
+    // Combinational mux. Mode 3 reserved → falls through to mode 1 default.
+    reg [7:0] out_r, out_g, out_b;
+    always @* begin
+        case (kernel_mode)
+            2'd0: begin out_r = mode0_r; out_g = mode0_g; out_b = mode0_b; end
+            2'd1: begin out_r = mode1_r; out_g = mode1_g; out_b = mode1_b; end
+            2'd2: begin out_r = mode2_r; out_g = mode2_g; out_b = mode2_b; end
+            default: begin out_r = mode1_r; out_g = mode1_g; out_b = mode1_b; end
+        endcase
+    end
     // Reference unused coefficient wires so synthesis doesn't drop the ROM:
     wire _coef_keep = |{c0, c1, c2, c3, c4, c5, c6, c7};
 

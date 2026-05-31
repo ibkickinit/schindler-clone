@@ -353,7 +353,10 @@ static void cmd_help(void)
                "  g               matrix grayscale (m 0)\r\n"
                "  b <r> <g> <b>   color_correct black RGB (0..255)\r\n"
                "  w <r> <g> <b>   color_correct white RGB (0..255)\r\n"
-               "  r               re-print GPIO readbacks\r\n");
+               "  r               re-print GPIO readbacks\r\n"
+               "  k h <0-3>       scaler H kernel: 0=NN 1=2tap 2=4tap (iter14)\r\n"
+               "  k v <0-3>       scaler V kernel: 0=NN 1=2tap 2=4tap\r\n"
+               "  k               query current kernel modes\r\n");
 }
 
 static void uart_dispatch(const char *line)
@@ -386,6 +389,35 @@ static void uart_dispatch(const char *line)
     } else if (op == 'r') {
         color_apply_state();   /* re-write triggers readback prints */
         color_matrix_identity(); /* same — re-emits MATRIX line */
+    } else if (op == 'k') {
+        /* iter14 (2026-05-31): runtime scaler kernel-mode toggle.
+         *   k h <0|1|2|3>  — set H scaler kernel mode
+         *   k v <0|1|2|3>  — set V scaler kernel mode
+         *   k             — print current mode
+         * Modes: 0=NN, 1=2-tap boxcar (production), 2=4-tap boxcar, 3=rsv.
+         * GPIO 7 holds 4-bit value: [1:0]=H, [3:2]=V. */
+#ifdef XPAR_AXI_GPIO_7_BASEADDR
+        u32 cur = Xil_In32(XPAR_AXI_GPIO_7_BASEADDR);
+        if (*p == ' ') p++;
+        char axis = *p++;
+        if (axis == '\0') {
+            /* query */
+            xil_printf("KERNEL: H=%u V=%u  (raw=0x%01x)\r\n",
+                       (unsigned)(cur & 0x3), (unsigned)((cur >> 2) & 0x3),
+                       (unsigned)(cur & 0xf));
+        } else if ((axis == 'h' || axis == 'v') && parse_uint(&p, &a) && a <= 3) {
+            if (axis == 'h') cur = (cur & ~0x3) | (a & 0x3);
+            else             cur = (cur & ~0xC) | ((a & 0x3) << 2);
+            Xil_Out32(XPAR_AXI_GPIO_7_BASEADDR, cur);
+            xil_printf("KERNEL: H=%u V=%u  (k%c=%u)\r\n",
+                       (unsigned)(cur & 0x3), (unsigned)((cur >> 2) & 0x3),
+                       axis, a);
+        } else {
+            xil_printf("UART: usage 'k h|v <0-3>' or just 'k' to query\r\n");
+        }
+#else
+        xil_printf("UART: kernel-mode GPIO not present in this build\r\n");
+#endif
     } else {
         xil_printf("UART: unknown cmd '%s' — type ? for help\r\n", line);
     }

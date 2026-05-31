@@ -49,6 +49,9 @@ module scaler_crop_bypass #(
     input  wire [15:0] in_w_async,
     input  wire [15:0] in_h_async,
 
+    /* iter14 kernel_mode_async stub — crop bypass doesn't filter. */
+    input  wire [3:0]  kernel_mode_async,
+
     // Stub: scaler_top exposes 48-bit diag counters. Tie low; firmware will
     // read zeros for h_in/v_in/v_emit during the bypass test.
     output wire [47:0] diag_counts,
@@ -58,7 +61,7 @@ module scaler_crop_bypass #(
     output wire [15:0] out_tlast_snap
 );
     /* Suppress unused-input warnings without dropping ports. */
-    wire _stub_keep = |{in_w_async, in_h_async};
+    wire _stub_keep = |{in_w_async, in_h_async, kernel_mode_async};
     assign diag_counts = 48'd0;
     assign out_tlast_snap = 16'd0;
 

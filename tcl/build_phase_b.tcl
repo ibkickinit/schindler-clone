@@ -576,7 +576,7 @@ create_bd_cell -type ip -vlnv xilinx.com:ip:axi_interconnect axi_ic_lite
 #   M00 = VDMA, M01 = VTC tx (generator), M02 = GPIO 0 (status inputs)
 #   M03 = VTC rx (detector), M04 = GPIO 1 (scaler dim outputs)
 #   M05 = GPIO 2 (iter4g diagnostic counters, new)
-set_property -dict [list CONFIG.NUM_SI {1} CONFIG.NUM_MI {10}] [get_bd_cells axi_ic_lite]
+set_property -dict [list CONFIG.NUM_SI {1} CONFIG.NUM_MI {11}] [get_bd_cells axi_ic_lite]  ;# M10 = axi_gpio_7 (iter14 kernel_mode)
 connect_bd_intf_net [get_bd_intf_pins zynq_ps/M_AXI_GP0]     [get_bd_intf_pins axi_ic_lite/S00_AXI]
 connect_bd_intf_net [get_bd_intf_pins axi_ic_lite/M00_AXI]   [get_bd_intf_pins axi_vdma_0/S_AXI_LITE]
 connect_bd_intf_net [get_bd_intf_pins axi_ic_lite/M01_AXI]   [get_bd_intf_pins v_tc_tx/ctrl]
@@ -594,6 +594,7 @@ connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/M06_A
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/M07_ACLK]  ;# axi_gpio_4 (matrix coefs row 0)
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/M08_ACLK]  ;# axi_gpio_5 (matrix coefs row 1+row 2 start)
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/M09_ACLK]  ;# axi_gpio_6 (matrix m22 + offsets)
+connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/M10_ACLK]  ;# axi_gpio_7 (iter14 kernel_mode)
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_vdma_0/s_axi_lite_aclk]
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins v_tc_tx/s_axi_aclk]
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins v_tc_rx/s_axi_aclk]
@@ -609,6 +610,7 @@ connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_li
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_lite/M07_ARESETN]  ;# axi_gpio_4
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_lite/M08_ARESETN]  ;# axi_gpio_5
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_lite/M09_ARESETN]  ;# axi_gpio_6
+connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_lite/M10_ARESETN]  ;# axi_gpio_7
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_vdma_0/axi_resetn]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins v_tc_tx/s_axi_aresetn]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins v_tc_rx/s_axi_aresetn]
@@ -797,6 +799,25 @@ connect_bd_net [get_bd_pins slice_in_h/Dout]      [get_bd_pins scaler_0/in_h_asy
 connect_bd_intf_net [get_bd_intf_pins axi_ic_lite/M04_AXI] [get_bd_intf_pins axi_gpio_1/S_AXI]
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]             [get_bd_pins axi_gpio_1/s_axi_aclk]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]    [get_bd_pins axi_gpio_1/s_axi_aresetn]
+
+# =============================================================================
+# iter14 (2026-05-31): AXI GPIO 7 — 4-bit output for scaler kernel-mode select.
+# Bits [1:0] = kernel_mode_h, bits [3:2] = kernel_mode_v.
+# Default 0x5 = 0b0101 = H mode 1 + V mode 1 = production 2-tap boxcar.
+# Firmware UART `k h|v <0|1|2|3>` commands tweak this at runtime.
+# =============================================================================
+create_bd_cell -type ip -vlnv xilinx.com:ip:axi_gpio axi_gpio_7
+set_property -dict [list \
+    CONFIG.C_GPIO_WIDTH    {4} \
+    CONFIG.C_ALL_OUTPUTS   {1} \
+    CONFIG.C_IS_DUAL       {0} \
+    CONFIG.C_INTERRUPT_PRESENT {0} \
+    CONFIG.C_DOUT_DEFAULT   {0x00000005} \
+] [get_bd_cells axi_gpio_7]
+connect_bd_intf_net [get_bd_intf_pins axi_ic_lite/M10_AXI] [get_bd_intf_pins axi_gpio_7/S_AXI]
+connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]             [get_bd_pins axi_gpio_7/s_axi_aclk]
+connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]    [get_bd_pins axi_gpio_7/s_axi_aresetn]
+connect_bd_net [get_bd_pins axi_gpio_7/gpio_io_o]          [get_bd_pins scaler_0/kernel_mode_async]
 
 # =============================================================================
 # iter4g: AXI GPIO 2 — dual-channel, input-only, exposes scaler_top counters
