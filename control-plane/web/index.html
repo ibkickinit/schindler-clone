@@ -1,0 +1,313 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Schindler 2.0 — Control Panel</title>
+  <style>
+    :root {
+      --bg: #1a1d23;
+      --panel: #23272e;
+      --panel-2: #2c3038;
+      --text: #e0e3e8;
+      --muted: #9aa1ab;
+      --accent: #5aa9e6;
+      --accent-2: #4d8fc4;
+      --good: #4caf50;
+      --bad: #ef5350;
+      --border: #353a44;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text);
+                 font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    header { background: var(--panel); border-bottom: 1px solid var(--border);
+             padding: 12px 20px; display: flex; align-items: center; gap: 16px; }
+    header h1 { margin: 0; font-size: 16px; font-weight: 600; }
+    header .status { font-size: 12px; color: var(--muted); }
+    header .status .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+                           background: var(--bad); margin-right: 6px; vertical-align: 1px; }
+    header .status.connected .dot { background: var(--good); }
+    header .spacer { flex: 1; }
+    header select, header button {
+      background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
+      padding: 6px 10px; border-radius: 4px; font-size: 13px;
+    }
+    header button { cursor: pointer; }
+    header button:hover { background: var(--border); }
+
+    main { padding: 20px; max-width: 1100px; margin: 0 auto; }
+    .category { background: var(--panel); border: 1px solid var(--border);
+                border-radius: 6px; margin-bottom: 16px; }
+    .category > h2 { margin: 0; padding: 12px 16px; border-bottom: 1px solid var(--border);
+                     font-size: 13px; font-weight: 600; text-transform: uppercase;
+                     letter-spacing: 0.5px; color: var(--muted); }
+    .controls { padding: 12px 16px; display: grid; grid-template-columns: 200px 1fr 90px;
+                gap: 6px 16px; align-items: center; }
+    .controls .ctl-title { font-weight: 500; }
+    .controls .ctl-title small { display: block; font-weight: normal; color: var(--muted); font-size: 11px; }
+    .controls input[type=range] { width: 100%; }
+    .controls input[type=number] { background: var(--panel-2); color: var(--text);
+                                    border: 1px solid var(--border); padding: 4px 8px;
+                                    border-radius: 3px; width: 80px; font: inherit; }
+    .controls select { background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
+                       padding: 4px 8px; border-radius: 3px; font: inherit; width: 100%; }
+    .ctl-value { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 12px; text-align: right; }
+    .ctl-row.dirty .ctl-value { color: var(--accent); }
+    .ctl-row.error .ctl-value { color: var(--bad); }
+    .ctl-row.read_only input, .ctl-row.read_only select { opacity: 0.6; pointer-events: none; }
+
+    #log { background: #000; color: #9aa1ab; font: 11px/1.3 "SF Mono", Menlo, monospace;
+           padding: 12px; border-radius: 4px; height: 140px; overflow: auto;
+           border: 1px solid var(--border); margin-top: 16px; }
+    #log .err { color: var(--bad); }
+    #log .ok  { color: var(--good); }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Schindler 2.0</h1>
+    <span class="status" id="status"><span class="dot"></span><span id="status-text">disconnected</span></span>
+    <div class="spacer"></div>
+    <select id="profile-select" title="Profiles"></select>
+    <button id="profile-load">Load</button>
+    <button id="profile-save">Save…</button>
+    <button id="profile-snapshot">Snapshot current →</button>
+  </header>
+
+  <main>
+    <div id="catalog-mount"></div>
+    <div id="log"></div>
+  </main>
+
+  <script>
+  // -------------------------------------------------------------------------
+  // JSON-RPC over WebSocket
+  // -------------------------------------------------------------------------
+  const WS_URL = `ws://${location.hostname}:8081`;
+  let ws = null;
+  let nextId = 1;
+  const pending = new Map();
+
+  function log(msg, cls = "") {
+    const el = document.getElementById("log");
+    const t = new Date().toISOString().slice(11, 23);
+    const span = document.createElement("div");
+    if (cls) span.className = cls;
+    span.textContent = `[${t}] ${msg}`;
+    el.appendChild(span);
+    el.scrollTop = el.scrollHeight;
+  }
+
+  function connect() {
+    log(`connecting to ${WS_URL}`);
+    ws = new WebSocket(WS_URL);
+    ws.onopen = async () => {
+      setStatus(true);
+      log("connected", "ok");
+      try {
+        const ident = await call("system.identify");
+        log(`firmware: ${JSON.stringify(ident.firmware)} | catalog v${ident.catalog}`);
+        const cat = await call("system.catalog");
+        renderCatalog(cat);
+        await refreshAllValues();
+        await refreshProfiles();
+      } catch (e) {
+        log(`init error: ${e.message}`, "err");
+      }
+    };
+    ws.onclose = () => { setStatus(false); log("disconnected", "err"); setTimeout(connect, 2000); };
+    ws.onerror = () => log("ws error", "err");
+    ws.onmessage = ev => {
+      let m;
+      try { m = JSON.parse(ev.data); } catch (e) { return; }
+      const cb = pending.get(m.id);
+      if (cb) { pending.delete(m.id); cb(m); }
+    };
+  }
+
+  function call(method, params) {
+    return new Promise((resolve, reject) => {
+      const id = nextId++;
+      pending.set(id, m => {
+        if (m.error) reject(new Error(m.error.message));
+        else resolve(m.result);
+      });
+      ws.send(JSON.stringify({ jsonrpc: "2.0", id, method, params }));
+      setTimeout(() => {
+        if (pending.has(id)) { pending.delete(id); reject(new Error(`timeout ${method}`)); }
+      }, 3000);
+    });
+  }
+
+  function setStatus(connected) {
+    const el = document.getElementById("status");
+    el.classList.toggle("connected", connected);
+    document.getElementById("status-text").textContent = connected ? "connected" : "disconnected";
+  }
+
+  // -------------------------------------------------------------------------
+  // Catalog → UI
+  // -------------------------------------------------------------------------
+  let catalog = null;
+  const controlRows = new Map();   // id -> {el, valueEl, input}
+
+  function renderCatalog(cat) {
+    catalog = cat;
+    const mount = document.getElementById("catalog-mount");
+    mount.innerHTML = "";
+    const byCategory = new Map();
+    for (const c of cat.controls) {
+      if (!c.surface || c.surface.indexOf("web") === -1) continue;
+      const k = c.category || "other";
+      if (!byCategory.has(k)) byCategory.set(k, []);
+      byCategory.get(k).push(c);
+    }
+    for (const catDef of cat.categories || []) {
+      const items = byCategory.get(catDef.id) || [];
+      if (!items.length) continue;
+      const sec = document.createElement("section");
+      sec.className = "category";
+      sec.innerHTML = `<h2>${catDef.title}</h2>`;
+      const grid = document.createElement("div");
+      grid.className = "controls";
+      for (const c of items) grid.appendChild(renderControl(c));
+      sec.appendChild(grid);
+      mount.appendChild(sec);
+    }
+  }
+
+  function renderControl(c) {
+    const row = document.createElement("div");
+    row.className = "ctl-row";
+    row.style.display = "contents";
+    if (c.read_only) row.classList.add("read_only");
+
+    const title = document.createElement("div");
+    title.className = "ctl-title";
+    title.innerHTML = `${c.title}<small>${c.id}</small>`;
+
+    const ctrl = document.createElement("div");
+    let input;
+    if (c.type === "number") {
+      input = document.createElement("input");
+      input.type = "range";
+      input.min = c.range ? c.range[0] : 0;
+      input.max = c.range ? c.range[1] : 100;
+      input.step = 1;
+      input.value = c.default ?? input.min;
+      input.addEventListener("input", () => setValue(c.id, +input.value));
+    } else if (c.type === "enum") {
+      input = document.createElement("select");
+      for (const opt of c.options || []) {
+        const o = document.createElement("option");
+        o.value = opt.value; o.textContent = opt.label || opt.value;
+        input.appendChild(o);
+      }
+      input.addEventListener("change", () => setValue(c.id, input.value));
+    } else if (c.type === "boolean") {
+      input = document.createElement("input");
+      input.type = "checkbox";
+      input.addEventListener("change", () => setValue(c.id, input.checked));
+    } else if (c.type === "trigger") {
+      input = document.createElement("button");
+      input.textContent = c.title;
+      input.addEventListener("click", () => setValue(c.id, true));
+    } else {
+      input = document.createElement("span");
+      input.textContent = `(${c.type})`;
+    }
+    ctrl.appendChild(input);
+
+    const val = document.createElement("div");
+    val.className = "ctl-value";
+    val.textContent = "—";
+
+    // display: contents on row lets title/ctrl/val land in the parent grid columns.
+    row.appendChild(title);
+    row.appendChild(ctrl);
+    row.appendChild(val);
+    controlRows.set(c.id, { row, value: val, input, control: c });
+    return row;
+  }
+
+  async function setValue(id, value) {
+    const rec = controlRows.get(id);
+    rec.row.classList.add("dirty");
+    rec.row.classList.remove("error");
+    try {
+      const r = await call("control.set", { id, value });
+      rec.value.textContent = formatValue(rec.control, r.value);
+      rec.row.classList.remove("dirty");
+    } catch (e) {
+      rec.row.classList.remove("dirty");
+      rec.row.classList.add("error");
+      rec.value.textContent = "ERR";
+      log(`set ${id}=${value}: ${e.message}`, "err");
+    }
+  }
+
+  function formatValue(c, v) {
+    if (c.unit === "percent") return v + "%";
+    if (c.unit === "raw8") return String(v);
+    return String(v);
+  }
+
+  async function refreshAllValues() {
+    for (const [id, rec] of controlRows) {
+      try {
+        const r = await call("control.get", { id });
+        rec.value.textContent = formatValue(rec.control, r.value);
+        if (rec.input.tagName === "INPUT" && rec.input.type === "range") rec.input.value = r.value;
+        else if (rec.input.tagName === "SELECT") rec.input.value = r.value;
+        else if (rec.input.tagName === "INPUT" && rec.input.type === "checkbox") rec.input.checked = !!r.value;
+      } catch (e) { /* read-only without firmware support — leave dash */ }
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Profiles
+  // -------------------------------------------------------------------------
+  async function refreshProfiles() {
+    const names = await call("profile.list");
+    const sel = document.getElementById("profile-select");
+    sel.innerHTML = "";
+    for (const n of names) {
+      const o = document.createElement("option");
+      o.value = n; o.textContent = n; sel.appendChild(o);
+    }
+  }
+
+  document.getElementById("profile-load").addEventListener("click", async () => {
+    const name = document.getElementById("profile-select").value;
+    if (!name) return;
+    try {
+      const r = await call("profile.load", { name });
+      log(`loaded '${name}': applied ${r.applied.length} controls`, "ok");
+      await refreshAllValues();
+    } catch (e) { log(`load: ${e.message}`, "err"); }
+  });
+
+  document.getElementById("profile-snapshot").addEventListener("click", async () => {
+    const name = prompt("Snapshot name:");
+    if (!name) return;
+    try {
+      const r = await call("profile.save", { name });
+      log(`saved '${name}' (${r.saved} controls)`, "ok");
+      await refreshProfiles();
+    } catch (e) { log(`save: ${e.message}`, "err"); }
+  });
+
+  document.getElementById("profile-save").addEventListener("click", async () => {
+    const name = document.getElementById("profile-select").value;
+    if (!name) return alert("pick a profile first or use 'Snapshot current'");
+    if (!confirm(`Overwrite '${name}' with current state?`)) return;
+    try {
+      const r = await call("profile.save", { name });
+      log(`saved '${name}' (${r.saved} controls)`, "ok");
+    } catch (e) { log(`save: ${e.message}`, "err"); }
+  });
+
+  connect();
+  </script>
+</body>
+</html>

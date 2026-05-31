@@ -9,9 +9,9 @@ This directory is the **V0a buildout** of the control-plane stack: the JSON cata
 | File | Purpose | Status |
 |---|---|---|
 | `catalog-v0.1.0.json` | Inventory of all controls + status fields on iter5-1080p-clean @ ef307b6. | ✅ v0.1.0 shipped 2026-05-31 |
-| `schindlerd/` | Python daemon. Talks UART to bare-metal firmware, exposes JSON-RPC over WebSocket. | 🔲 next |
-| `web/` | React/Vue scaffold for the browser UI. | 🔲 after schindlerd |
-| `firmware/` | Reference for the firmware-side `J` JSON-RPC bridge UART command. Just docs; code lives in `sw/phase-b/src/main.c`. | 🔲 after catalog |
+| `schindlerd/` | Python daemon. Talks UART to bare-metal firmware, exposes JSON-RPC over WebSocket. | ✅ v0.1 skeleton 2026-05-31 |
+| `web/` | Single-page browser UI served by schindlerd. No build step. | ✅ v0.1 skeleton 2026-05-31 |
+| firmware bridge | `J` UART command in `sw/phase-b/src/main.c`. | ✅ shipped 2026-05-31 |
 
 ## Catalog versioning (semver)
 
