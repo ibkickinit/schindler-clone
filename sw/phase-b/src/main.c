@@ -325,6 +325,12 @@ static u16 g_sat_q15 = 0x8000;
 static u8  g_black_r = 0, g_black_g = 0, g_black_b = 0;
 static u8  g_white_r = 255, g_white_g = 255, g_white_b = 255;
 
+/* V0a catalog shadows: round-trip-clean readback values for control.get.
+ * Updated by the same code paths that touch the GPIOs. */
+static unsigned g_sat_pct        = 100;
+static unsigned g_matrix_sat_pct = 100;
+static unsigned g_matrix_preset  = 0;   /* 0=identity, 1=grayscale, 2=custom */
+
 static inline void color_apply_state(void)
 {
     color_set(g_sat_q15, g_black_r, g_black_g, g_black_b,
@@ -356,7 +362,292 @@ static void cmd_help(void)
                "  r               re-print GPIO readbacks\r\n"
                "  k h <0-3>       scaler H kernel: 0=NN 1=2tap 2=4tap (iter14)\r\n"
                "  k v <0-3>       scaler V kernel: 0=NN 1=2tap 2=4tap\r\n"
-               "  k               query current kernel modes\r\n");
+               "  k               query current kernel modes\r\n"
+               "  J <json>        JSON-RPC 2.0 (catalog v0.1.0; for schindlerd)\r\n");
+}
+
+/* ============================================================================
+ * V0a JSON-RPC bridge — catalog v0.1.0 (control-plane/catalog-v0.1.0.json)
+ *
+ * Single new UART command 'J' brackets a single-line JSON-RPC 2.0 payload.
+ * Hand-rolled minimal JSON tokenizer — no malloc, no nested-object recursion
+ * beyond one level (jsonrpc / id / method / params{id,value}).
+ *
+ * Examples:
+ *   J {"jsonrpc":"2.0","id":1,"method":"system.identify"}
+ *   J {"jsonrpc":"2.0","id":2,"method":"control.get","params":{"id":"color.saturation"}}
+ *   J {"jsonrpc":"2.0","id":3,"method":"control.set","params":{"id":"color.saturation","value":110}}
+ *
+ * Responses are emitted as single lines starting with '{'. The host daemon
+ * filters log noise by requiring lines to start with '{'. The enum-vs-int
+ * mapping (e.g. "boxcar_2tap" → 1) lives in the daemon; firmware sees only
+ * integer values.
+ * ============================================================================ */
+
+/* Locate `"key"` in a single-line JSON snippet and return ptr+len of its value.
+ * Tolerates whitespace; tracks string/object/array depth to find the value's
+ * comma/brace terminator. Returns 1 on hit, 0 on miss. */
+static int cp_find_key(const char *json, const char *key,
+                       const char **val_start, int *val_len)
+{
+    size_t klen = strlen(key);
+    const char *p = json;
+    while (*p) {
+        if (p[0] == '"' && strncmp(p + 1, key, klen) == 0 && p[klen + 1] == '"') {
+            const char *q = p + klen + 2;
+            while (*q == ' ' || *q == '\t') q++;
+            if (*q != ':') { p++; continue; }
+            q++;
+            while (*q == ' ' || *q == '\t') q++;
+            *val_start = q;
+            int depth = 0, in_str = 0;
+            const char *r = q;
+            while (*r) {
+                if (in_str) {
+                    if (*r == '\\' && r[1]) r++;
+                    else if (*r == '"') in_str = 0;
+                } else {
+                    if (*r == '"') in_str = 1;
+                    else if (*r == '{' || *r == '[') depth++;
+                    else if (*r == '}' || *r == ']') {
+                        if (depth == 0) break;
+                        depth--;
+                    } else if (*r == ',' && depth == 0) break;
+                }
+                r++;
+            }
+            *val_len = (int)(r - q);
+            /* Trim trailing whitespace. */
+            while (*val_len > 0 && (q[*val_len - 1] == ' ' || q[*val_len - 1] == '\t'))
+                (*val_len)--;
+            return 1;
+        }
+        p++;
+    }
+    return 0;
+}
+
+/* Parse a quoted JSON string at p (must include the leading '"' and trailing
+ * '"' within len). Copies unescaped chars into out, NUL-terminated. */
+static int cp_parse_string(const char *p, int len, char *out, int outsize)
+{
+    if (len < 2 || p[0] != '"' || p[len - 1] != '"') return 0;
+    int o = 0;
+    for (int i = 1; i < len - 1 && o < outsize - 1; i++) {
+        if (p[i] == '\\' && i + 1 < len - 1) {
+            i++;
+            switch (p[i]) {
+                case 'n': out[o++] = '\n'; break;
+                case 't': out[o++] = '\t'; break;
+                case 'r': out[o++] = '\r'; break;
+                case '"': out[o++] = '"';  break;
+                case '\\': out[o++] = '\\'; break;
+                default: out[o++] = p[i]; break;
+            }
+        } else {
+            out[o++] = p[i];
+        }
+    }
+    out[o] = '\0';
+    return 1;
+}
+
+/* Parse a JSON integer literal at p over len bytes. */
+static int cp_parse_int(const char *p, int len, int *out)
+{
+    int sign = 1, val = 0, i = 0;
+    if (len <= 0) return 0;
+    if (p[0] == '-') { sign = -1; i = 1; }
+    if (i >= len) return 0;
+    for (; i < len; i++) {
+        if (p[i] < '0' || p[i] > '9') return 0;
+        val = val * 10 + (p[i] - '0');
+    }
+    *out = val * sign;
+    return 1;
+}
+
+/* ---- per-control setters/getters --------------------------------------- */
+
+typedef int (*cp_set_fn)(int v);
+typedef int (*cp_get_fn)(int *out);
+
+typedef struct {
+    const char *id;
+    cp_set_fn set;
+    cp_get_fn get;
+} cp_control_t;
+
+static int cp_set_sat(int v) {
+    if (v < 0 || v > 200) return -2;
+    g_sat_pct = (unsigned)v;
+    g_sat_q15 = color_sat_from_percent((unsigned)v);
+    color_apply_state();
+    return 0;
+}
+static int cp_get_sat(int *o) { *o = (int)g_sat_pct; return 0; }
+
+static int cp_set_msat(int v) {
+    if (v < 0 || v > 200) return -2;
+    g_matrix_sat_pct = (unsigned)v; g_matrix_preset = 2;
+    color_matrix_saturation(color_sat_from_percent((unsigned)v));
+    return 0;
+}
+static int cp_get_msat(int *o) { *o = (int)g_matrix_sat_pct; return 0; }
+
+static int cp_set_preset(int v) {
+    if (v < 0 || v > 2) return -2;
+    g_matrix_preset = (unsigned)v;
+    if (v == 0)      { color_matrix_identity(); g_matrix_sat_pct = 100; }
+    else if (v == 1) { color_matrix_saturation(0); g_matrix_sat_pct = 0; }
+    /* v == 2: custom — leave matrix where the user last set it */
+    return 0;
+}
+static int cp_get_preset(int *o) { *o = (int)g_matrix_preset; return 0; }
+
+#define DEF_RGB_LEVEL(name, var, default_val) \
+    static int cp_set_##name(int v) { \
+        if (v < 0 || v > 255) return -2; \
+        var = (u8)v; color_apply_state(); return 0; \
+    } \
+    static int cp_get_##name(int *o) { *o = (int)var; return 0; }
+
+DEF_RGB_LEVEL(blk_r, g_black_r, 0)
+DEF_RGB_LEVEL(blk_g, g_black_g, 0)
+DEF_RGB_LEVEL(blk_b, g_black_b, 0)
+DEF_RGB_LEVEL(wht_r, g_white_r, 255)
+DEF_RGB_LEVEL(wht_g, g_white_g, 255)
+DEF_RGB_LEVEL(wht_b, g_white_b, 255)
+
+#ifdef XPAR_AXI_GPIO_7_BASEADDR
+static int cp_set_kh(int v) {
+    if (v < 0 || v > 3) return -2;
+    u32 cur = Xil_In32(XPAR_AXI_GPIO_7_BASEADDR);
+    cur = (cur & ~0x3u) | ((u32)v & 0x3u);
+    Xil_Out32(XPAR_AXI_GPIO_7_BASEADDR, cur);
+    return 0;
+}
+static int cp_get_kh(int *o) { *o = (int)(Xil_In32(XPAR_AXI_GPIO_7_BASEADDR) & 0x3); return 0; }
+static int cp_set_kv(int v) {
+    if (v < 0 || v > 3) return -2;
+    u32 cur = Xil_In32(XPAR_AXI_GPIO_7_BASEADDR);
+    cur = (cur & ~0xCu) | (((u32)v & 0x3u) << 2);
+    Xil_Out32(XPAR_AXI_GPIO_7_BASEADDR, cur);
+    return 0;
+}
+static int cp_get_kv(int *o) { *o = (int)((Xil_In32(XPAR_AXI_GPIO_7_BASEADDR) >> 2) & 0x3); return 0; }
+#else
+static int cp_set_kh(int v) { (void)v; return -2; }
+static int cp_get_kh(int *o) { *o = -1; return -2; }
+static int cp_set_kv(int v) { (void)v; return -2; }
+static int cp_get_kv(int *o) { *o = -1; return -2; }
+#endif
+
+static const cp_control_t CP_CONTROLS[] = {
+    {"color.saturation",         cp_set_sat,    cp_get_sat   },
+    {"color.matrix_saturation",  cp_set_msat,   cp_get_msat  },
+    {"color.matrix.preset",      cp_set_preset, cp_get_preset},
+    {"color.correct.black_r",    cp_set_blk_r,  cp_get_blk_r },
+    {"color.correct.black_g",    cp_set_blk_g,  cp_get_blk_g },
+    {"color.correct.black_b",    cp_set_blk_b,  cp_get_blk_b },
+    {"color.correct.white_r",    cp_set_wht_r,  cp_get_wht_r },
+    {"color.correct.white_g",    cp_set_wht_g,  cp_get_wht_g },
+    {"color.correct.white_b",    cp_set_wht_b,  cp_get_wht_b },
+    {"scaler.kernel_h",          cp_set_kh,     cp_get_kh    },
+    {"scaler.kernel_v",          cp_set_kv,     cp_get_kv    },
+    {NULL, NULL, NULL}
+};
+
+/* Emit a JSON-RPC error response for the given id (raw literal: number or
+ * "null"), error code, and message. Single line, '{'-prefixed. */
+static void cp_emit_error(const char *id_lit, int code, const char *msg)
+{
+    xil_printf("{\"jsonrpc\":\"2.0\",\"id\":%s,\"error\":{\"code\":%d,\"message\":\"%s\"}}\r\n",
+               id_lit, code, msg);
+}
+
+static void cp_dispatch_jsonrpc(const char *json)
+{
+    const char *vs; int vl;
+    char method[40] = {0};
+    char id_lit[20] = "null";
+
+    if (cp_find_key(json, "id", &vs, &vl)) {
+        int n = (vl < (int)sizeof(id_lit) - 1) ? vl : (int)sizeof(id_lit) - 1;
+        memcpy(id_lit, vs, n); id_lit[n] = '\0';
+    }
+    if (!cp_find_key(json, "method", &vs, &vl) ||
+        !cp_parse_string(vs, vl, method, sizeof(method))) {
+        cp_emit_error(id_lit, -32600, "missing method");
+        return;
+    }
+
+    if (strcmp(method, "system.identify") == 0) {
+        xil_printf("{\"jsonrpc\":\"2.0\",\"id\":%s,\"result\":{"
+                   "\"model\":\"Schindler 2.0 Phase B\","
+                   "\"fw\":\"iter5-1080p-clean\","
+                   "\"catalog\":\"0.1.0\""
+                   "}}\r\n", id_lit);
+        return;
+    }
+
+    if (strcmp(method, "system.list_controls") == 0) {
+        xil_printf("{\"jsonrpc\":\"2.0\",\"id\":%s,\"result\":{\"ids\":[", id_lit);
+        for (int i = 0; CP_CONTROLS[i].id; i++) {
+            xil_printf("%s\"%s\"", i == 0 ? "" : ",", CP_CONTROLS[i].id);
+        }
+        xil_printf("]}}\r\n");
+        return;
+    }
+
+    const char *ps; int pl;
+    if (!cp_find_key(json, "params", &ps, &pl)) {
+        cp_emit_error(id_lit, -32602, "missing params");
+        return;
+    }
+    const char *pid_s; int pid_l;
+    char ctl_id[48];
+    if (!cp_find_key(ps, "id", &pid_s, &pid_l) ||
+        !cp_parse_string(pid_s, pid_l, ctl_id, sizeof(ctl_id))) {
+        cp_emit_error(id_lit, -32602, "missing params.id");
+        return;
+    }
+
+    const cp_control_t *ctl = NULL;
+    for (int i = 0; CP_CONTROLS[i].id; i++) {
+        if (strcmp(CP_CONTROLS[i].id, ctl_id) == 0) { ctl = &CP_CONTROLS[i]; break; }
+    }
+    if (!ctl) { cp_emit_error(id_lit, -32601, "unknown control id"); return; }
+
+    if (strcmp(method, "control.get") == 0) {
+        int val = 0;
+        if (ctl->get && ctl->get(&val) == 0) {
+            xil_printf("{\"jsonrpc\":\"2.0\",\"id\":%s,\"result\":{\"value\":%d}}\r\n", id_lit, val);
+        } else {
+            cp_emit_error(id_lit, -32603, "read failed");
+        }
+        return;
+    }
+    if (strcmp(method, "control.set") == 0) {
+        const char *pv_s; int pv_l; int val = 0;
+        if (!cp_find_key(ps, "value", &pv_s, &pv_l) || !cp_parse_int(pv_s, pv_l, &val)) {
+            cp_emit_error(id_lit, -32602, "missing/invalid value");
+            return;
+        }
+        int rc = ctl->set ? ctl->set(val) : -1;
+        if (rc == 0) {
+            int rb = val;
+            if (ctl->get) ctl->get(&rb);
+            xil_printf("{\"jsonrpc\":\"2.0\",\"id\":%s,\"result\":{\"value\":%d}}\r\n", id_lit, rb);
+        } else if (rc == -2) {
+            cp_emit_error(id_lit, -32602, "value out of range");
+        } else {
+            cp_emit_error(id_lit, -32603, "set failed");
+        }
+        return;
+    }
+
+    cp_emit_error(id_lit, -32601, "unknown method");
 }
 
 static void uart_dispatch(const char *line)
@@ -365,20 +656,29 @@ static void uart_dispatch(const char *line)
     char op = line[0];
     const char *p = line + 1;
     unsigned a, b, c;
+    if (op == 'J') {
+        while (*p == ' ' || *p == '\t') p++;
+        cp_dispatch_jsonrpc(p);
+        return;
+    }
     if (op == '?' || op == 'h') {
         cmd_help();
     } else if (op == 'i') {
-        g_sat_q15 = 0x8000;
+        g_sat_q15 = 0x8000; g_sat_pct = 100;
         g_black_r = g_black_g = g_black_b = 0;
         g_white_r = g_white_g = g_white_b = 255;
+        g_matrix_sat_pct = 100; g_matrix_preset = 0;
         color_apply_state();
         color_matrix_identity();
     } else if (op == 's' && parse_uint(&p, &a)) {
+        g_sat_pct = (a > 200) ? 200 : a;
         g_sat_q15 = color_sat_from_percent(a);
         color_apply_state();
     } else if (op == 'm' && parse_uint(&p, &a)) {
+        g_matrix_sat_pct = (a > 200) ? 200 : a; g_matrix_preset = 2;
         color_matrix_saturation(color_sat_from_percent(a));
     } else if (op == 'g') {
+        g_matrix_sat_pct = 0; g_matrix_preset = 1;
         color_matrix_saturation(0);
     } else if (op == 'b' && parse_uint(&p, &a) && parse_uint(&p, &b) && parse_uint(&p, &c)) {
         g_black_r = (u8)a; g_black_g = (u8)b; g_black_b = (u8)c;
@@ -426,16 +726,19 @@ static void uart_dispatch(const char *line)
 #ifdef STDIN_BASEADDRESS
 static void uart_poll(void)
 {
-    static char buf[80];
+    /* 512 bytes accommodates the longest JSON-RPC requests for v0.1.0
+     * (control.set with the longest control id ~95 bytes; headroom for
+     * future namespaced ids). */
+    static char buf[512];
     static int  len = 0;
-    /* Direct register access via Xil_In32 — UART PS Channel SR @ +0x2C,
-     * RXEMPTY = bit 1; RX FIFO data @ +0x30. */
     while (!(Xil_In32(STDIN_BASEADDRESS + 0x2C) & 0x2)) {
         u8 ch = (u8)Xil_In32(STDIN_BASEADDRESS + 0x30);
         if (ch == '\r' || ch == '\n') {
             if (len > 0) {
                 buf[len] = '\0';
-                xil_printf("\r\nUART> %s\r\n", buf);
+                /* Suppress the human-readable echo for JSON-RPC lines —
+                 * the daemon scans for lines starting with '{'. */
+                if (buf[0] != 'J') xil_printf("\r\nUART> %s\r\n", buf);
                 uart_dispatch(buf);
                 len = 0;
             }
