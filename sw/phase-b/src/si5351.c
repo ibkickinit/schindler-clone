@@ -230,9 +230,52 @@ int si5351_read_reg(u32 iic_base, u8 reg, u8 *out_data)
     return (recvd == 1) ? 0 : -3;
 }
 
+/* iter-Si5351-fix (2026-05-31): poll Si5351 SYS_INIT (reg 0 bit 7) until it
+ * clears. Per AN619 §3.1 + memory si5351_sys_init_poll: chip ACKs at I²C
+ * level before SYS_INIT clears, so writes during SYS_INIT silently fail.
+ * Must wait for SYS_INIT=0 before any RAM (PLL/MS) write. Timeout 50 ms
+ * is generous — typical clear time is ~10 ms after power-on per datasheet. */
+static int si5351_wait_sys_init(u32 iic_base)
+{
+    extern int si5351_debug_write;  /* fwd ref to debug-print toggle */
+    const int max_iter = 500;       /* 500 × ~100us = 50 ms ceiling */
+    for (int i = 0; i < max_iter; i++) {
+        u8 status = 0xFF;
+        int rc = si5351_read_reg(iic_base, SI5351_REG_STATUS, &status);
+        if (rc != 0) {
+            /* read failed (chip dead or bus wedged) — surface and bail */
+            xil_printf("si5351_wait_sys_init: read failed rc=%d (iter %d)\r\n",
+                       rc, i);
+            return rc;
+        }
+        if ((status & 0x80) == 0) {
+            /* SYS_INIT cleared. Ready for RAM writes. */
+            if (si5351_debug_write) {
+                xil_printf("si5351_wait_sys_init: cleared after %d polls "
+                           "(status=0x%02x)\r\n", i, (unsigned)status);
+            }
+            return 0;
+        }
+        for (volatile int d = 0; d < 10000; d++);  /* ~100 µs at 100 MHz spin */
+    }
+    xil_printf("si5351_wait_sys_init: TIMEOUT after %d polls — chip stuck "
+               "in SYS_INIT (decoupling or VDD issue?)\r\n", max_iter);
+    return -1;
+}
+
 int si5351_init_10mhz_clk0(u32 iic_base)
 {
     int rc;
+
+    /* iter-Si5351-fix (2026-05-31): poll SYS_INIT before ANY RAM writes.
+     * Probe ACK alone is not sufficient — Si5351 strapping/cal load takes
+     * up to ~10 ms after probe. Writes during SYS_INIT silently fail; the
+     * chip ACKs at the I²C level but ignores the data internally. Per
+     * memory si5351_sys_init_poll. */
+    if ((rc = si5351_wait_sys_init(iic_base)) != 0) {
+        xil_printf("si5351_init_10mhz: SYS_INIT never cleared — bailing\r\n");
+        return rc;
+    }
 
     /* AN619 cold-init sequence:
      *   1. Disable all outputs (OEB = 0xFF).
@@ -330,6 +373,19 @@ int si5351_set_freq_hz(u32 iic_base, u32 target_hz)
      */
 
     if (target_hz == 0) return -3;
+
+    /* iter-Si5351-fix (2026-05-31): poll SYS_INIT before RAM writes.
+     * Same rationale as si5351_init_10mhz_clk0 — Si5351 ACKs at I²C level
+     * before internal cal completes; writes during SYS_INIT silently fail.
+     * Safe to call on every set_freq_hz; clears quickly on hot calls. */
+    {
+        int sys_rc = si5351_wait_sys_init(iic_base);
+        if (sys_rc != 0) {
+            xil_printf("si5351_set_freq_hz: SYS_INIT poll failed rc=%d\r\n",
+                       sys_rc);
+            return sys_rc;
+        }
+    }
 
     const u32 f_xtal       = 25000000UL;
     const u32 f_vco_target = 800000000UL;
@@ -451,6 +507,12 @@ int si5351_init_25mhz_clk0(u32 iic_base)
 
     int rc;
     #define CHK(call) do { rc = (call); if (rc != 0) return rc; } while (0)
+
+    /* iter-Si5351-fix (2026-05-31): poll SYS_INIT before RAM writes. */
+    if ((rc = si5351_wait_sys_init(iic_base)) != 0) {
+        xil_printf("si5351_init_25mhz: SYS_INIT never cleared — bailing\r\n");
+        return rc;
+    }
 
     CHK(si5351_write_reg(iic_base, SI5351_REG_OUTPUT_ENABLE, 0xFF));
 
