@@ -120,6 +120,12 @@
     ws.onmessage = ev => {
       let m;
       try { m = JSON.parse(ev.data); } catch (e) { return; }
+      // JSON-RPC notification (no id) — route to status handler.
+      if (m.method && m.id === undefined) {
+        if (m.method === "status.update") handleStatusUpdate(m.params);
+        else if (m.method === "control.changed") handleControlChanged(m.params);
+        return;
+      }
       const cb = pending.get(m.id);
       if (cb) { pending.delete(m.id); cb(m); }
     };
@@ -189,7 +195,12 @@
 
     const ctrl = document.createElement("div");
     let input;
-    if (c.type === "number") {
+    if (c.read_only) {
+      // Status / telemetry — no editable widget, value cell does the work.
+      input = document.createElement("span");
+      input.className = "ctl-readonly-spacer";
+      input.textContent = "";
+    } else if (c.type === "number") {
       input = document.createElement("input");
       input.type = "range";
       input.min = c.range ? c.range[0] : 0;
@@ -266,9 +277,32 @@
   }
 
   function formatValue(c, v) {
+    if (v === null || v === undefined) return "—";
     if (c.unit === "percent") return v + "%";
     if (c.unit === "raw8") return String(v);
+    if (c.unit === "hex32" && typeof v === "number") return "0x" + v.toString(16).padStart(8, "0").toUpperCase();
+    if (c.unit === "hz" && typeof v === "number") return v + " Hz";
+    if (typeof v === "boolean") return v ? "✓" : "✗";
     return String(v);
+  }
+
+  // status.update {id, value} from the daemon's TelemetryParser.
+  function handleStatusUpdate(p) {
+    const rec = controlRows.get(p.id);
+    if (!rec) return;  // unknown id (e.g. catalog 0.2.0 fields not in this catalog)
+    rec.value.textContent = formatValue(rec.control, p.value);
+  }
+
+  // control.changed {id, value} from another client.
+  function handleControlChanged(p) {
+    const rec = controlRows.get(p.id);
+    if (!rec) return;
+    // Don't ricochet — if we're the one currently dragging, ignore the echo.
+    if (inflight.has(p.id) || pendingValue.has(p.id)) return;
+    rec.value.textContent = formatValue(rec.control, p.value);
+    if (rec.input.tagName === "INPUT" && rec.input.type === "range") rec.input.value = p.value;
+    else if (rec.input.tagName === "SELECT") rec.input.value = p.value;
+    else if (rec.input.tagName === "INPUT" && rec.input.type === "checkbox") rec.input.checked = !!p.value;
   }
 
   async function refreshAllValues() {

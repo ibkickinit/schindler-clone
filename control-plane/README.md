@@ -8,7 +8,7 @@ This directory is the **V0a buildout** of the control-plane stack: the JSON cata
 
 | File | Purpose | Status |
 |---|---|---|
-| `catalog-v0.1.0.json` | Inventory of all controls + status fields on iter5-1080p-clean @ ef307b6. | ✅ v0.1.0 shipped 2026-05-31 |
+| `catalog-v0.2.0.json` | Inventory of all controls + status fields. | ✅ v0.1.0 shipped 2026-05-31; bumped to v0.2.0 (+2 status fields) |
 | `schindlerd/` | Python daemon. Talks UART to bare-metal firmware, exposes JSON-RPC over WebSocket. | ✅ v0.1 skeleton 2026-05-31 |
 | `web/` | Single-page browser UI served by schindlerd. No build step. | ✅ v0.1 skeleton 2026-05-31 |
 | firmware bridge | `J` UART command in `sw/phase-b/src/main.c`. | ✅ shipped 2026-05-31 |
@@ -33,4 +33,4 @@ Daemon advertises its catalog version at WebSocket handshake. Web UI / RP2040 fi
 
 The catalog is **executable data** — the daemon parses it at startup and generates client schemas from it. It's not documentation; it's the central schema that everything-else-is-generated-from. Putting it in a top-level `control-plane/` directory makes that clear and keeps it adjacent to the daemon code that consumes it.
 
-`docs/control-plane-architecture.md` is the architectural reference. `control-plane/catalog-v0.1.0.json` is the live artifact.
+`docs/control-plane-architecture.md` is the architectural reference. `control-plane/catalog-v0.2.0.json` is the live artifact.

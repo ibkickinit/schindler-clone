@@ -27,7 +27,7 @@ These are V0a+1 follow-ups; the v0.1 scaffold is intentionally minimal.
 
 ## To add a new control
 
-1. Add a `controls[]` entry to `catalog-v0.1.0.json` (or the next bumped version).
+1. Add a `controls[]` entry to `catalog-v0.2.0.json` (or the next bumped version).
 2. Restart schindlerd.
 3. Reload the page. The new control appears automatically — no UI code change needed.
 

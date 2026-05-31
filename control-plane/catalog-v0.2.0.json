@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "schema": "schindler-control-catalog",
-  "schema_version": "0.1.0",
-  "title": "Schindler 2.0 Control Catalog — v0.1.0",
+  "schema_version": "0.2.0",
+  "title": "Schindler 2.0 Control Catalog — v0.2.0",
   "description": "Inventory of all operator-tunable controls + read-only status on the iter5-1080p-clean substrate as of 2026-05-31. Sourced from sw/phase-b/src/main.c UART command handlers + iter14 kernel-mode toggle + Mackin alpha. This catalog is the single source of truth that the schindlerd daemon, web UI, and RP2040 front-panel firmware all generate code from. Future catalog versions add controls as features land; semver applies (patch = bug, minor = add, major = remove/rename/retype).",
   "generated_at": "2026-05-31",
   "source_substrate": {
@@ -304,6 +304,28 @@
       "source": "VTC_TX register readback at boot",
       "surface": ["front", "web"],
       "example_values": ["720p60", "1080p30"]
+    },
+    {
+      "id": "status.source_rate_hz",
+      "title": "Source rate",
+      "category": "status",
+      "type": "number",
+      "unit": "hz",
+      "read_only": true,
+      "poll_interval_ms": 1000,
+      "source": "firmware DIAG line src=N field (integer Hz)",
+      "surface": ["front", "web"]
+    },
+    {
+      "id": "status.output_rate_hz",
+      "title": "Output rate",
+      "category": "status",
+      "type": "number",
+      "unit": "hz",
+      "read_only": true,
+      "poll_interval_ms": 1000,
+      "source": "firmware DIAG line out=N field (integer Hz)",
+      "surface": ["front", "web"]
     }
   ],
 

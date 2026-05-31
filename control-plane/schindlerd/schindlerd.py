@@ -11,7 +11,7 @@ Dependencies: pyserial, websockets. Install:
     pip install pyserial websockets
 
 Run:
-    python schindlerd.py --port /dev/ttyUSB1 --catalog ../catalog-v0.1.0.json
+    python schindlerd.py --port /dev/ttyUSB1 --catalog ../catalog-v0.2.0.json
 
 Architecture: docs/control-plane-architecture.md §V0a.
 """
@@ -154,6 +154,9 @@ class UartBridge:
         self._loop: Optional[asyncio.AbstractEventLoop] = None
         self._stop = threading.Event()
         self._reader_thread: Optional[threading.Thread] = None
+        # Non-JSON UART lines (firmware DIAG/TELEMETRY/etc) get routed to this
+        # callback on the asyncio loop. Set externally by the daemon.
+        self.text_log_handler: Optional[Callable[[str], None]] = None
 
     def start(self, loop: asyncio.AbstractEventLoop) -> None:
         self._loop = loop
@@ -189,8 +192,10 @@ class UartBridge:
                 if self.JSON_LINE_RE.match(line):
                     self._on_json_line(line)
                 else:
-                    # Mirror firmware human-readable text to our own log.
-                    log.debug("uart-log: %s", line.decode("utf-8", "replace"))
+                    text = line.decode("utf-8", "replace")
+                    log.debug("uart-log: %s", text)
+                    if self.text_log_handler and self._loop:
+                        self._loop.call_soon_threadsafe(self.text_log_handler, text)
 
     def _on_json_line(self, line: bytes) -> None:
         try:
@@ -257,14 +262,133 @@ class ProfileStore:
 
 
 # ---------------------------------------------------------------------------
+# Status cache + telemetry parser — converts firmware text lines into typed
+# status fields broadcast as JSON-RPC notifications to all connected WS clients.
+# ---------------------------------------------------------------------------
+
+class StatusBus:
+    """In-process pub-sub for status fields. clients call subscribe() with an
+    asyncio.Queue; daemon publish()es a dict and every subscribed queue receives
+    it. WS handler drains the queue and forwards as JSON-RPC notifications."""
+
+    def __init__(self):
+        self._queues: List[asyncio.Queue] = []
+        self._lock = asyncio.Lock()
+
+    async def subscribe(self) -> asyncio.Queue:
+        q: asyncio.Queue = asyncio.Queue(maxsize=64)
+        async with self._lock:
+            self._queues.append(q)
+        return q
+
+    async def unsubscribe(self, q: asyncio.Queue) -> None:
+        async with self._lock:
+            if q in self._queues:
+                self._queues.remove(q)
+
+    def publish(self, payload: Dict[str, Any]) -> None:
+        # Synchronous publish — called from the asyncio loop. Drops events
+        # to slow subscribers rather than blocking the pipeline.
+        for q in list(self._queues):
+            try:
+                q.put_nowait(payload)
+            except asyncio.QueueFull:
+                log.warning("status: subscriber queue full, dropping event")
+
+
+class TelemetryParser:
+    """Regex-based parser for the firmware's existing DIAG/TELEMETRY/VTC_RX
+    lines. Maps captured fields to catalog status.* ids and publishes deltas.
+
+    The parser keeps the last value per id and only republishes on change —
+    no point sending the same S2MM_SR every second."""
+
+    # The firmware DIAG line wraps each SR with a bracketed bitfield decode,
+    # e.g. S2MM_SR=0x00011810[FrmCnt  frmcnt=1]. The bracket content contains
+    # spaces, so match it with [^\]]* rather than \S*.
+    RE_DIAG = re.compile(
+        r"DIAG:\s*h_in=(\d+)\s+v_in=(\d+)\s+v_emit=(\d+)\s+v_out_tlast=(\d+)\s+"
+        r"S2MM_SR=(0x[0-9a-fA-F]+)(?:\[[^\]]*\])?\s+"
+        r"MM2S_SR=(0x[0-9a-fA-F]+)(?:\[[^\]]*\])?\s+"
+        r"RDSTORE=(\d+)\s+WRSTORE=(\d+)\s+src=(\d+)\s+out=(\d+)")
+    RE_TELEMETRY = re.compile(
+        r"TELEMETRY:\s+src=([\d.]+)\s+Hz\s+->\s+regime\s+(\d+)\s+\[(.+?)\]")
+    RE_VTCRX = re.compile(
+        r"VTC_RX:\s+HACTIVE=(\d+)\s+VACTIVE=(\d+)\s+HTOTAL=(\d+)\s+VTOTAL=(\d+)")
+    RE_LOCKED = re.compile(r"dvi2rgb pLocked stable")
+
+    def __init__(self, bus: StatusBus):
+        self.bus = bus
+        self.last: Dict[str, Any] = {}
+        # Output format is a build-time constant for v0.1 — bag it from the
+        # banner line and reuse.
+        self._output_format = "720p60"  # default until banner says otherwise
+
+    def feed(self, line: str) -> None:
+        try:
+            self._feed(line)
+        except Exception as e:
+            log.warning("telemetry parser error: %s on line %r", e, line)
+
+    def _feed(self, line: str) -> None:
+        if m := self.RE_DIAG.search(line):
+            self._update("status.s2mm_sr", int(m.group(5), 16))
+            self._update("status.mm2s_sr", int(m.group(6), 16))
+            # DIAG only fires once the pipeline is locked, so its presence
+            # implies source_lock=true. src/out are integer-Hz approximations
+            # adequate for the operator status bar.
+            self._update("status.source_lock", True)
+            self._update("status.source_rate_hz", int(m.group(9)))
+            self._update("status.output_rate_hz", int(m.group(10)))
+            return
+        if m := self.RE_TELEMETRY.search(line):
+            hz = float(m.group(1))
+            regime_lbl = m.group(3)
+            self._update("status.source_rate_hz", round(hz, 3))
+            self._update("status.regime", regime_lbl)
+            return
+        if m := self.RE_VTCRX.search(line):
+            hactive = int(m.group(1)); vactive = int(m.group(2))
+            self._update("status.source_format", f"{hactive}x{vactive}")
+            self._update("status.source_lock", True)
+            return
+        if self.RE_LOCKED.search(line):
+            self._update("status.source_lock", True)
+            return
+        if "VTC: configuring 720p60" in line:
+            self._output_format = "720p60"
+            self._update("status.output_format", "720p60")
+        elif "VTC: configuring 1080p30" in line:
+            self._output_format = "1080p30"
+            self._update("status.output_format", "1080p30")
+        elif "VTC: configuring 1080p60" in line:
+            self._output_format = "1080p60"
+            self._update("status.output_format", "1080p60")
+
+    def _update(self, cid: str, value: Any) -> None:
+        if self.last.get(cid) == value:
+            return
+        self.last[cid] = value
+        # Publish as a JSON-RPC notification (no id). Web UI handler routes
+        # status.update notifications into the per-row value cells.
+        self.bus.publish({
+            "jsonrpc": "2.0",
+            "method": "status.update",
+            "params": {"id": cid, "value": value},
+        })
+
+
+# ---------------------------------------------------------------------------
 # JSON-RPC dispatcher — handles methods coming from WebSocket clients
 # ---------------------------------------------------------------------------
 
 class Dispatcher:
-    def __init__(self, catalog: Catalog, uart: UartBridge, profiles: ProfileStore):
+    def __init__(self, catalog: Catalog, uart: UartBridge, profiles: ProfileStore,
+                 bus: "StatusBus"):
         self.catalog = catalog
         self.uart = uart
         self.profiles = profiles
+        self.bus = bus
         self.methods: Dict[str, Callable[[Dict[str, Any]], Awaitable[Any]]] = {
             "system.identify":      self._m_identify,
             "system.catalog":       self._m_catalog,
@@ -403,6 +527,21 @@ def _error(rid: Any, code: int, message: str) -> Dict[str, Any]:
 
 async def ws_handler(ws: "WebSocketServerProtocol", dispatcher: Dispatcher) -> None:
     log.info("ws: client connected from %s", getattr(ws, "remote_address", "?"))
+    # Subscribe this client to the status bus. A background task drains the
+    # queue and forwards each event as a JSON notification.
+    status_q = await dispatcher.bus.subscribe()
+    push_task = asyncio.create_task(_drain_status_to_ws(status_q, ws))
+    # Replay last-known status snapshot so a fresh client doesn't have to
+    # wait up to ~1s for the next DIAG line.
+    try:
+        for cid, val in list(dispatcher.telemetry.last.items()):
+            await ws.send(json.dumps({
+                "jsonrpc": "2.0",
+                "method": "status.update",
+                "params": {"id": cid, "value": val},
+            }))
+    except Exception:
+        pass
     try:
         async for raw in ws:
             try:
@@ -415,7 +554,21 @@ async def ws_handler(ws: "WebSocketServerProtocol", dispatcher: Dispatcher) -> N
     except websockets.ConnectionClosed:
         pass
     finally:
+        push_task.cancel()
+        await dispatcher.bus.unsubscribe(status_q)
         log.info("ws: client disconnected")
+
+
+async def _drain_status_to_ws(q: asyncio.Queue, ws) -> None:
+    try:
+        while True:
+            payload = await q.get()
+            try:
+                await ws.send(json.dumps(payload))
+            except websockets.ConnectionClosed:
+                return
+    except asyncio.CancelledError:
+        return
 
 
 # ---------------------------------------------------------------------------
@@ -481,8 +634,13 @@ async def amain(args: argparse.Namespace) -> int:
     uart = UartBridge(args.port, args.baud)
     uart.start(asyncio.get_running_loop())
 
+    bus = StatusBus()
+    telemetry = TelemetryParser(bus)
+    uart.text_log_handler = telemetry.feed
+
     profiles = ProfileStore(Path(args.profiles).expanduser())
-    dispatcher = Dispatcher(catalog, uart, profiles)
+    dispatcher = Dispatcher(catalog, uart, profiles, bus)
+    dispatcher.telemetry = telemetry  # exposed to ws_handler for snapshot replay
 
     web_root = Path(args.web).resolve() if args.web else None
     if web_root and not web_root.is_dir():
@@ -522,7 +680,7 @@ def main() -> int:
     p.add_argument("--port",      default="/dev/ttyUSB1", help="serial device")
     p.add_argument("--baud",      type=int, default=115200)
     p.add_argument("--catalog",   default=os.path.join(os.path.dirname(__file__),
-                                                       "..", "catalog-v0.1.0.json"))
+                                                       "..", "catalog-v0.2.0.json"))
     p.add_argument("--profiles",  default="~/.schindler/profiles")
     p.add_argument("--host",      default="127.0.0.1")
     p.add_argument("--ws-port",   type=int, default=8081)

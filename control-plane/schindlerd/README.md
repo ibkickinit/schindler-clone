@@ -4,7 +4,7 @@ V0a host-side bridge daemon for the Schindler 2.0 control plane. Single-file Pyt
 
 ## What it does
 
-- Loads `control-plane/catalog-v0.1.0.json` and validates control IDs / value coercion at the daemon boundary.
+- Loads `control-plane/catalog-v0.2.0.json` and validates control IDs / value coercion at the daemon boundary.
 - Opens `/dev/ttyUSB1` and talks to the firmware's `J` UART command (JSON-RPC 2.0 over UART).
 - Serves JSON-RPC over WebSocket on `ws://127.0.0.1:8081` for the web UI (and any future remote surface).
 - Serves the web UI static files from `control-plane/web/` on `http://127.0.0.1:8080`.
