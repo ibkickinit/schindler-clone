@@ -14,9 +14,9 @@
 
 ### `iter5-1080p-clean` — **PRODUCTION SUBSTRATE**
 
-Tip: `ec13ab2` (after iter13b rounding fix + cohesion-audit cleanup + .gitignore + adv7393 pinout).
-Status: **✅ CLEAN** — verified 2026-05-31, 3 cold reloads showing identical clean picture on ImagePro static SMPTE via Osee input 1. Formally satisfies the no-coin-flip rule.
-Contains: iter4d-3 lineage + 1080p substrate + color stack + iter6 S2MM hardware fsync + iter12 (H 2-tap boxcar with `s_axis_tdata` newest tap) + iter13 (V 2-tap `tap2+tap3` post-rotation) + iter13b (+1 round-to-nearest, removes −0.5 LSB DC bias).
+Tip: `4c0400e` (after this session's later cleanup; verified clean substrate is at `ec13ab2`).
+Status: **✅ CLEAN** at `ec13ab2` — verified 2026-05-31, 3 cold reloads showing identical clean picture on ImagePro static SMPTE via Osee input 1. Formally satisfies the no-coin-flip rule. Subsequent commits add additional fixes queued for next Vivado verify (SOFLate DIAG suppression, iter13c top-of-frame suppression, async-CDC XDC fix, VTC mode #ifdef, tcl OUTPUT_MODE / COLOR_PIPELINE / kClkRange parametrization).
+Contains: iter4d-3 lineage + 1080p substrate + color stack + iter6 S2MM hardware fsync + iter12 (H 2-tap boxcar with `s_axis_tdata` newest tap) + iter13 (V 2-tap `tap2+tap3` post-rotation) + iter13b (+1 round-to-nearest, removes −0.5 LSB DC bias) + iter13c (lbuf_fresh-gated emit suppression, queued).
 
 ### `phase-e1-pll-spike` — MMCM tracking ("Gen Lock" mode)
 
