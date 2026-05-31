@@ -1307,8 +1307,18 @@ int main(void)
      * Switch to MODE_720P60 to revert. */
     /* 720p re-validation (2026-05-17): 1080p60 source → 720p60 output on
      * production substrate (NUM_FRAMES=5, post-bisect). Matched rate, no
-     * FRC. Expected PHASE deltas all 1 (every source frame consumed). */
+     * FRC. Expected PHASE deltas all 1 (every source frame consumed).
+     *
+     * 2026-05-31: OUTPUT_1080P compile-time switch picks MODE_1080P30 for
+     * the 1080p30 passthrough test build. Was a missed hardcode that left
+     * VTC generating 720p timing on 1080p builds — VDMA HSIZE was correct
+     * (per FRAME_W param) but VTC told axis_to_vid_io to gate 1280 cols of
+     * active video per row → output rendered ~half-width, repeated. */
+#ifdef OUTPUT_1080P
+    if (vtc_setup(&MODE_1080P30) != XST_SUCCESS) return -1;
+#else
     if (vtc_setup(&MODE_720P60) != XST_SUCCESS) return -1;
+#endif
     xil_printf("VTC aligned to source vsync\r\n");
     sleep(1);  /* give VTC time to start pulsing fsync before VDMA reset */
 
