@@ -26,6 +26,7 @@ The wiki is the **conceptual + onboarding layer**. The following files in `../` 
 - `../format-support-matrix.md` — **QA truth**. Source of truth for "what input/output combinations are supported and at what verification level."
 - `../iter6-s2mm-fsync-fix.md` and `../iter6-h-shift-analysis.md` — forensic records of past iter work.
 - `../01-spec.md`, `../dev-roadmap.md`, `../packaging-skus.md`, `../bom-v1.md` — product SSOT.
+- `../control-plane-architecture.md` — how operator surfaces (web UI, front panel) talk to the FPGA. Three-tier protocol stack + control catalog schema + V0 buildout plan.
 
 ## Critical rules
 
