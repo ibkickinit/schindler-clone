@@ -50,7 +50,7 @@ Hardware bring-up of the ADV7393 DAC for analog out. Paused since 2026-05-20 on 
 
 Geometry warp for CRT pincushion/keystone correction. Documented as roadmap; no implementation. Low priority.
 
-<!-- AGENT_TASK[docs-3]: Reconcile dev-roadmap.md's Phase D table (last updated 2026-05-16, stops at iter4d-3) with this living ledger. Roadmap is stale. -->
+<!-- AGENT_TASK[docs-3] DONE 2026-05-31: dev-roadmap.md Phase D + E rows reconciled. Phase D forwards to wiki/PHASES.md + build-manifest.md as canonical ledgers, archived sub-row preserves the original detailed history. Phase E now reflects E.1 ship + E1 spike + E2 partial/blocked. -->
 
 <!-- AGENT_TASK[hdl-2]: Phase E4 — design upscaling path. Move polyphase scaler to output side. Required for 480p→720p, 720p→1080p, all "SD up to HD" rows in format matrix. -->
 
