@@ -166,10 +166,18 @@ module scaler_h #(
      * cycle K = avg(pixel K, pixel K-1). First emit (K=1) reads source
      * cols 0,1; last emit (K=1919) reads source cols 1918,1919. Full
      * source col range 0..1919 is now sampled. Same 2-tap blur level
-     * just shifted by one source col to the right. */
-    wire [8:0] s2r = s_axis_tdata[23:16] + window[0][23:16];
-    wire [8:0] s2g = s_axis_tdata[15: 8] + window[0][15: 8];
-    wire [8:0] s2b = s_axis_tdata[ 7: 0] + window[0][ 7: 0];
+     * just shifted by one source col to the right.
+     *
+     * iter13b (2026-05-30): added +1 round-to-nearest before the >>1.
+     * Original `(a+b)>>1` truncates, biasing the output -0.5 LSB per
+     * pixel; cumulative with iter13's V-side shift = -1 LSB per channel
+     * across the H+V cascade = slight dark shift on every frame. The
+     * MAC path (mac8_sat below) already does this rounding at line 127.
+     * Cost: 3 LUTs (one +1 saturation per channel). Per audit-panel HDL
+     * Agent finding 2026-05-30. */
+    wire [8:0] s2r = s_axis_tdata[23:16] + window[0][23:16] + 9'd1;
+    wire [8:0] s2g = s_axis_tdata[15: 8] + window[0][15: 8] + 9'd1;
+    wire [8:0] s2b = s_axis_tdata[ 7: 0] + window[0][ 7: 0] + 9'd1;
     wire [7:0] out_r = s2r[8:1];
     wire [7:0] out_g = s2g[8:1];
     wire [7:0] out_b = s2b[8:1];
