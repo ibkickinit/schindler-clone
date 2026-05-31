@@ -256,17 +256,22 @@ module scaler_h #(
                     pending_tuser <= 1'b0;             // consumed by this emit
                 end
 
-                /* iter6 H-shift fix (2026-05-23): clear the 8-tap window on
-                 * TLAST so the next row's emit pipeline starts with an empty
-                 * window. Eliminates the per-row "smear" / "wrap-look"
-                 * artifact where each row's first 2-3 output pixels were
-                 * weighted-average of the PREVIOUS row's last 7 input pixels
-                 * (visible on grid patterns at horizontal-line→normal-row
-                 * boundaries). Last-write-wins in NBA semantics overrides
-                 * the shift writes above. The current emit (if any) already
-                 * used the pre-clear OLD window — see "Emit output" above. */
+                /* iter6 H-shift fix (2026-05-23, simplified 2026-05-31):
+                 * clear the H-window on TLAST so the next row's emit
+                 * pipeline starts with an empty window. Eliminates the
+                 * per-row "smear" / "wrap-look" artifact where each row's
+                 * first 2-3 output pixels were weighted-average of the
+                 * PREVIOUS row's last input pixels (visible on grid
+                 * patterns at horizontal-line→normal-row boundaries).
+                 *
+                 * 2026-05-31 simplification (HDL audit follow-up): iter12's
+                 * output uses only `s_axis_tdata + window[0]`, so we only
+                 * need to clear window[0]. Taps window[1..7] are dead code
+                 * kept alive by `_coef_keep` synth-keep — they shift but
+                 * aren't read. Clearing only window[0] saves 7 × 24 = 168
+                 * flop-loads per row. No functional change. */
                 if (s_axis_tlast) begin
-                    for (i = 0; i < TAPS; i = i + 1) window[i] <= 24'h0;
+                    window[0] <= 24'h0;
                 end
             end
         end

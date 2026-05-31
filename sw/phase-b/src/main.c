@@ -880,8 +880,17 @@ static void telemetry_loop(UINTPTR vdma_base)
                  *     S2MM slot-advance timing (A2-S2MM).
                  *   v_out_tlast <  720 → scaler aborts last ~26 emits at
                  *     frame boundary (A2-scaler). */
+                /* iter6-post (2026-05-31): S2MM SOFLate (bit 0x800) is set
+                 * every frame because iter6's hardware fsync from source
+                 * vsync arrives slightly ahead of TUSER on AXIS. PG020
+                 * flags this as "late" but it's cosmetic — picture is
+                 * clean. Suppress the noise in the DIAG print; the bit
+                 * is still visible in the raw s2mm_sr hex if anything
+                 * else changes about timing. MM2S SOFLate is NOT
+                 * suppressed — that side has no fsync re-timing so any
+                 * SOFLate there would be a real issue. */
                 xil_printf("DIAG: h_in=%u v_in=%u v_emit=%u v_out_tlast=%u  "
-                           "S2MM_SR=0x%08x[%s%s%s%s%s frmcnt=%u] "
+                           "S2MM_SR=0x%08x[%s%s%s%s frmcnt=%u] "
                            "MM2S_SR=0x%08x[%s%s%s%s%s frmcnt=%u]  "
                            "RDSTORE=%d WRSTORE=%d  src=%d out=%d\r\n",
                            (unsigned)h_in, (unsigned)v_in, (unsigned)v_emit, (unsigned)v_out_tlast,
@@ -889,7 +898,7 @@ static void telemetry_loop(UINTPTR vdma_base)
                            (unsigned)s2mm_sr,
                            (s2mm_sr & 0x80)   ? "SOFEarly " : "",
                            (s2mm_sr & 0x100)  ? "EOLEarly " : "",
-                           (s2mm_sr & 0x800)  ? "SOFLate " : "",
+                           /* SOFLate (0x800) suppressed — cosmetic post-iter6 */
                            (s2mm_sr & 0x1000) ? "FrmCnt " : "",     /* benign per PG020 */
                            (s2mm_sr & 0x8000) ? "EOLLate " : "",    /* real EOLLate is bit 15 */
                            (unsigned)s2mm_frmcnt,
