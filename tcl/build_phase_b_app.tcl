@@ -51,4 +51,30 @@ if {![file exists $elf]} {
     exit 1
 }
 puts "STAGE_OK: built $elf"
+
+# =============================================================================
+# Auto-archive ELF alongside the corresponding XSA (2026-05-31). Mirrors the
+# tag scheme in tcl/build_phase_b.tcl so XSA + ELF + manifest sit together.
+# =============================================================================
+proc archive_elf {project_root elf} {
+    set branch [exec git -C $project_root rev-parse --abbrev-ref HEAD]
+    set commit [exec git -C $project_root rev-parse --short HEAD]
+    set output_mode [expr {[info exists ::env(OUTPUT_MODE)] ? $::env(OUTPUT_MODE) : "720p"}]
+    set scaler_module [expr {[info exists ::env(SCALER_MODULE)] ? $::env(SCALER_MODULE) : "scaler_top"}]
+    set color_pipeline [expr {[info exists ::env(COLOR_PIPELINE)] ? $::env(COLOR_PIPELINE) : "enable"}]
+    set tag "${branch}-${output_mode}-${scaler_module}-${color_pipeline}-${commit}"
+    set dst [file join $project_root build artifacts $tag]
+    file mkdir $dst
+    file copy -force $elf [file join $dst vdma_init.elf]
+    # Also copy the .bit + ps7_init.tcl extracted by the Vitis platform from
+    # the XSA, so tcl/program_artifact.tcl can program without re-extracting.
+    set bit [file join $project_root build vitis-phase-b phase_b_pf hw phase_b.bit]
+    set ps7 [file join $project_root build vitis-phase-b phase_b_pf hw ps7_init.tcl]
+    if {[file exists $bit]} { file copy -force $bit [file join $dst phase_b.bit] }
+    if {[file exists $ps7]} { file copy -force $ps7 [file join $dst ps7_init.tcl] }
+    puts "ARCHIVED ELF + bit + ps7_init: $dst"
+}
+if {[catch {archive_elf $project_root $elf} archive_err]} {
+    puts "WARN: archive_elf failed: $archive_err  (ELF still at default location)"
+}
 exit 0
