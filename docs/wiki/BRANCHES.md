@@ -38,9 +38,18 @@ Tip: `d94f6cb`.
 Status: ADV7393 BD + Si5351 Phase A→D firmware. Both ADV7393 and Si5351 are hardware-blocked.
 Notes: 4 clk_wiz cells (MMCM budget at ceiling per `../zynq7020_mmcm_budget` memory). See [PHASE-G-ANALOG](PHASE-G-ANALOG.md) + [PHASE-E-FRC](PHASE-E-FRC.md).
 
-### `iter5-bisect-720p`, `iter4*`, `iter5-wip` — Forensic / archaeology
+### `iter5-bisect-720p`, `iter4*`, `iter5-wip` — Forensic / ARCHIVED 2026-05-31
 
-Keep for git archaeology; do not ship from. See manifest for symptoms (mostly ❌ SCROLL or abandoned WIP).
+**Archived via tags** on 2026-05-31 (Phase 4 of Direction A scope cleanup). Tags pushed to origin:
+- `archive/iter4f-wip-pattern-diag`
+- `archive/iter4g-counter-infra`
+- `archive/iter4h-axis-fifo`
+- `archive/iter5-wip`
+- `archive/iter5-bisect-720p`
+
+Branches stay on origin (not deleted) — tags preserve refs even if branches eventually get cleaned up. Recover full history at any time via `git checkout archive/<name>`.
+
+Going forward: 4 active branches (`main` cold storage + `iter5-1080p-clean` production + `mackin-impl-wip` + `phase-e1-pll-spike` + `phase-g-iter1` hardware-blocked). See manifest for current tips.
 
 ## Branch divergence picture
 

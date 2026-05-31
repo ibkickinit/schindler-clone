@@ -49,9 +49,18 @@ Live tips as of 2026-05-30 walk of `git branch -a` + `git log`:
 | `mackin-impl-wip` | `fedb51a` | 2026-05-24 | ✅ Vivado+Vitis 2026-05-24 | ⚠️ LUCKY-BOOT-fingerprint (DDR3 byte dump matches iter5; no end-to-end picture test — placeholder axis_clone wiring still in place) | iter12+13 backport on `4b8067e` + dump_slot_head_pixels diag firmware on `fedb51a`. Pushed to origin. **Mackin blender still placeholder until dual-VDMA bench wiring lands.** |
 | `phase-e1-pll-spike` | `81df37b` | 2026-05-24 | ✅ Vivado+Vitis 2026-05-30 | ⚠️ LUCKY-BOOT (1 boot, monitor-clean under ImagePro diagonal 2026-05-30 — no 3-boot rule yet) | iter12+13 backport (`78ee7ad`) + `F` UART command for live framebuffer dump (`81df37b`). MMCM tracking loop active; ±500 ppm tracking range per `[[schindler_phase_e1_state]]`. Pushed to origin. |
 | `phase-g-iter1` | `d94f6cb` | 2026-05-21 | ⚠️ (Vivado not re-run since 2026-05-21) | N/A | ADV7393 BD + Si5351 Phase A-D firmware. **All 9 commits of Si5351 progression** (Phase A→B→C-lite→D-WIP) pushed to origin 2026-05-30. Both ADV7393 and Si5351 are hardware-blocked (chips dead/marginal). |
-| `iter5-bisect-720p` | `81e17a8` | 2026-05-17 | ? | ⚠️ LUCKY-BOOT | Forensic — the bisect endpoint that proved iter4h structurally wrong. Keep for archaeology; don't ship from. |
-| `iter4h-axis-fifo` | `7d5fe09` | 2026-05-17 | ? | ❌ SCROLL | **DO NOT USE.** S2MM VSIZE=747 caused 1-row-per-frame scroll. Forensic only. |
-| `iter5-wip` / `iter4f-wip-pattern-diag` / `iter4g-counter-infra` | various | May 16-17 | ? | various | Abandoned WIPs / forensic. |
+| `iter5-bisect-720p` | `81e17a8` | 2026-05-17 | ? | ⚠️ LUCKY-BOOT | **ARCHIVED 2026-05-31** via tag `archive/iter5-bisect-720p`. Forensic — the bisect endpoint that proved iter4h structurally wrong. Keep for archaeology; don't ship from. |
+| `iter4h-axis-fifo` | `7d5fe09` | 2026-05-17 | ? | ❌ SCROLL | **ARCHIVED 2026-05-31** via tag `archive/iter4h-axis-fifo`. **DO NOT USE.** S2MM VSIZE=747 caused 1-row-per-frame scroll. Forensic only. |
+| `iter5-wip` / `iter4f-wip-pattern-diag` / `iter4g-counter-infra` | various | May 16-17 | ? | various | **ARCHIVED 2026-05-31** via tags `archive/<name>`. Abandoned WIPs / forensic. |
+
+**2026-05-31 — Phase 4 of Direction A: branch retirement (tag-only):** Five stale branches tagged as `archive/<name>` and remain on origin (not deleted). Branches stay visible in `git branch -a` but are marked dead in this manifest. Use the tags to recover history if ever needed.
+
+Active branches going forward (4):
+- `main` — cold storage (pre-iter5)
+- `iter5-1080p-clean` — **production substrate**
+- `mackin-impl-wip` — temporal blender (placeholder wiring)
+- `phase-e1-pll-spike` — MMCM tracking spike
+- `phase-g-iter1` — analog out (hardware-blocked)
 
 ## Branches snapshot — 2026-05-21 (historical)
 
