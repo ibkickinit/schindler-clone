@@ -57,8 +57,14 @@ module scaler_bypass_1080p #(
      * Reset on TUSER (start of frame). 16-bit fields are plenty: max pixel/line
      * is bounded by HTOTAL (~2750 worst case for 1080p), max lines/frame by
      * VTOTAL (~1125). */
-    output wire [47:0] diag_counts
+    output wire [47:0] diag_counts,
+    /* iter5-1080p Row 1 verify (2026-05-31): mirror scaler_top's
+     * out_tlast_snap port so BD diag_concat wiring is identical for
+     * any SCALER_MODULE choice. Stubbed to 0; bypass module doesn't
+     * emit TLAST per-frame counters. */
+    output wire [15:0] out_tlast_snap
 );
+    assign out_tlast_snap = 16'd0;
     /* Suppress unused-input warnings without dropping ports. */
     wire _stub_keep = |{in_w_async, in_h_async};
 

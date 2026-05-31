@@ -141,11 +141,32 @@ puts "STAGE_OK: Zynq PS configured"
 #
 # Hardcoded to 720p output. If we ever need to switch output resolution
 # at runtime, clk_wiz needs dynamic-reconfig wiring + firmware.
+# OUTPUT_MODE env var: 720p (default, production) or 1080p (passthrough Row 1).
+# Affects clk_wiz_pixclk_out + v_tc_tx config below.
+if {[info exists ::env(OUTPUT_MODE)]} { set OUTPUT_MODE $::env(OUTPUT_MODE) }
+if {![info exists OUTPUT_MODE]} { set OUTPUT_MODE 720p }
+puts "BUILD: using OUTPUT_MODE=$OUTPUT_MODE"
+if {$OUTPUT_MODE eq "1080p"} {
+    set TX_PIXCLK_MHZ        148.500
+    set TX_VIDEO_MODE        1080p
+    set TX_GEN_HACTIVE       1920
+    set TX_GEN_VACTIVE       1080
+    set TX_GEN_HFRAME        2200
+    set TX_GEN_F0_VFRAME     1125
+} else {
+    set TX_PIXCLK_MHZ        74.250
+    set TX_VIDEO_MODE        720p
+    set TX_GEN_HACTIVE       1280
+    set TX_GEN_VACTIVE       720
+    set TX_GEN_HFRAME        1650
+    set TX_GEN_F0_VFRAME     750
+}
+
 create_bd_cell -type ip -vlnv xilinx.com:ip:clk_wiz clk_wiz_pixclk_out
 set_property -dict [list \
     CONFIG.PRIMITIVE {MMCM} \
     CONFIG.PRIM_IN_FREQ {100.000} \
-    CONFIG.CLKOUT1_REQUESTED_OUT_FREQ {74.250} \
+    CONFIG.CLKOUT1_REQUESTED_OUT_FREQ $TX_PIXCLK_MHZ \
     CONFIG.USE_LOCKED {true} \
     CONFIG.USE_RESET {true} \
 ] [get_bd_cells clk_wiz_pixclk_out]
@@ -326,13 +347,13 @@ create_bd_cell -type ip -vlnv xilinx.com:ip:v_tc v_tc_tx
 set_property -dict [list \
     CONFIG.enable_detection {false} \
     CONFIG.enable_generation {true} \
-    CONFIG.VIDEO_MODE {720p} \
+    CONFIG.VIDEO_MODE $TX_VIDEO_MODE \
     CONFIG.MAX_CLOCKS_PER_LINE {4096} \
     CONFIG.MAX_LINES_PER_FRAME {4096} \
-    CONFIG.GEN_HACTIVE_SIZE {1280} \
-    CONFIG.GEN_VACTIVE_SIZE {720} \
-    CONFIG.GEN_HFRAME_SIZE {1650} \
-    CONFIG.GEN_F0_VFRAME_SIZE {750} \
+    CONFIG.GEN_HACTIVE_SIZE $TX_GEN_HACTIVE \
+    CONFIG.GEN_VACTIVE_SIZE $TX_GEN_VACTIVE \
+    CONFIG.GEN_HFRAME_SIZE $TX_GEN_HFRAME \
+    CONFIG.GEN_F0_VFRAME_SIZE $TX_GEN_F0_VFRAME \
 ] [get_bd_cells v_tc_tx]
 
 # =============================================================================
