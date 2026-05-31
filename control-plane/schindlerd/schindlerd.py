@@ -473,7 +473,17 @@ class Dispatcher:
         if "error" in fw:
             raise RuntimeError(f"firmware: {fw['error'].get('message', '?')}")
         raw_val = fw["result"]["value"]
-        return {"id": cid, "value": ctl.coerce_from_firmware(raw_val)}
+        out_val = ctl.coerce_from_firmware(raw_val)
+        # Multi-client coordination: every connected client receives a
+        # control.changed notification so all open browsers stay in sync.
+        # The originating client filters its own echo via inflight/pending
+        # state in the UI handler.
+        self.bus.publish({
+            "jsonrpc": "2.0",
+            "method": "control.changed",
+            "params": {"id": cid, "value": out_val},
+        })
+        return {"id": cid, "value": out_val}
 
     async def _m_profile_list(self, params: Dict[str, Any]) -> List[str]:
         return self.profiles.list()

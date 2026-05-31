@@ -56,6 +56,10 @@
     .ctl-row.error .ctl-value { color: var(--bad); }
     .ctl-row.read_only input, .ctl-row.read_only select { opacity: 0.6; pointer-events: none; }
 
+    #banner { padding: 10px 14px; border-radius: 6px; margin-bottom: 16px; font-size: 13px; }
+    #banner.warn  { background: #4d3f1d; border: 1px solid #8b6f2a; color: #ffd97a; }
+    #banner.error { background: #4d1d1d; border: 1px solid #8b2a2a; color: #ff9d9d; }
+
     #log { background: #000; color: #9aa1ab; font: 11px/1.3 "SF Mono", Menlo, monospace;
            padding: 12px; border-radius: 4px; height: 140px; overflow: auto;
            border: 1px solid var(--border); margin-top: 16px; }
@@ -75,6 +79,7 @@
   </header>
 
   <main>
+    <div id="banner" hidden></div>
     <div id="catalog-mount"></div>
     <div id="log"></div>
   </main>
@@ -84,9 +89,52 @@
   // JSON-RPC over WebSocket
   // -------------------------------------------------------------------------
   const WS_URL = `ws://${location.hostname}:8081`;
+  // What catalog schema this UI was written against. Bump in lockstep with
+  // the catalog file when new schema features land (new unit, new type, etc.)
+  const UI_CATALOG_VERSION = "0.2.0";
   let ws = null;
   let nextId = 1;
   const pending = new Map();
+
+  function compareSemver(a, b) {
+    const [aM, am, ap] = a.split(".").map(Number);
+    const [bM, bm, bp] = b.split(".").map(Number);
+    if (aM !== bM) return aM - bM;
+    if (am !== bm) return am - bm;
+    return (ap || 0) - (bp || 0);
+  }
+
+  function showBanner(text, kind = "warn") {
+    const el = document.getElementById("banner");
+    el.textContent = text;
+    el.className = kind;
+    el.hidden = false;
+  }
+  function clearBanner() {
+    document.getElementById("banner").hidden = true;
+  }
+
+  function checkCatalogCompat(daemonCatalogVersion) {
+    const cmp = compareSemver(daemonCatalogVersion, UI_CATALOG_VERSION);
+    const [uiMajor] = UI_CATALOG_VERSION.split(".").map(Number);
+    const [dMajor]  = daemonCatalogVersion.split(".").map(Number);
+    if (uiMajor !== dMajor) {
+      showBanner(
+        `Catalog major mismatch: UI expects ${UI_CATALOG_VERSION}, daemon has ${daemonCatalogVersion}. Some controls may not render or may misbehave.`,
+        "error");
+      return false;
+    }
+    if (cmp < 0) {
+      showBanner(
+        `Daemon catalog ${daemonCatalogVersion} is older than this UI's expected ${UI_CATALOG_VERSION}. Continuing — unknown new UI features will be inert.`,
+        "warn");
+      return true;
+    }
+    // cmp >= 0 same major: daemon has equal or newer minor. UI is forward-
+    // compatible (ignores unknown control entries gracefully).
+    clearBanner();
+    return true;
+  }
 
   function log(msg, cls = "") {
     const el = document.getElementById("log");
@@ -107,6 +155,7 @@
       try {
         const ident = await call("system.identify");
         log(`firmware: ${JSON.stringify(ident.firmware)} | catalog v${ident.catalog}`);
+        checkCatalogCompat(ident.catalog);
         const cat = await call("system.catalog");
         renderCatalog(cat);
         await refreshAllValues();
