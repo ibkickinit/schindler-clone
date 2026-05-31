@@ -421,7 +421,9 @@ class Dispatcher:
             "profile.list":         self._m_profile_list,
             "profile.load":         self._m_profile_load,
             "profile.save":         self._m_profile_save,
+            "status.snapshot":      self._m_status_snapshot,
         }
+        self.telemetry: Optional[TelemetryParser] = None  # set by daemon main
 
     async def handle(self, req: Dict[str, Any]) -> Dict[str, Any]:
         rid = req.get("id")
@@ -548,6 +550,16 @@ class Dispatcher:
         }
         self.profiles.save(name, profile)
         return {"name": name, "saved": len(controls)}
+
+    async def _m_status_snapshot(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Return the current value of every status field the daemon has seen.
+        Clients call this after their UI has rendered so they can populate the
+        status panel from cached state — works around the race between the WS
+        connect-time snapshot replay (sent immediately) and the browser's
+        catalog-render path (which takes ~100ms to populate its row table)."""
+        if self.telemetry is None:
+            return {}
+        return dict(self.telemetry.last)
 
 
 def _error(rid: Any, code: int, message: str) -> Dict[str, Any]:

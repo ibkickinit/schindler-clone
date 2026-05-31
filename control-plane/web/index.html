@@ -160,6 +160,15 @@
         renderCatalog(cat);
         await refreshAllValues();
         await refreshProfiles();
+        // Pull the daemon's current status snapshot. The connect-time replay
+        // raced our renderCatalog; this back-fills any stable values (S2MM_SR,
+        // source_lock, output_format, etc.) that dedup prevented from re-publishing.
+        try {
+          const snap = await call("status.snapshot");
+          for (const [id, value] of Object.entries(snap)) {
+            handleStatusUpdate({ id, value });
+          }
+        } catch (e) { log(`snapshot: ${e.message}`, "err"); }
       } catch (e) {
         log(`init error: ${e.message}`, "err");
       }
