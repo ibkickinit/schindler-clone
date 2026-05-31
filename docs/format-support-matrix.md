@@ -1,5 +1,7 @@
 # Schindler Format Support Matrix
 
+> **New to the project?** Start at [`wiki/START-HERE.md`](wiki/START-HERE.md). This matrix is the QA truth ledger; see [`wiki/FRC-ARCHITECTURE.md`](wiki/FRC-ARCHITECTURE.md) for the conceptual map of Methods A-E.
+
 Living document. Source of truth for **what input → output combinations Schindler supports, by what method, with what caveats.** Updated each iter as features ship. Also serves as the QA test plan — every ✅ row should have a bench-validated pass; every 🟡 is the current iter's focus.
 
 Last updated: 2026-05-24 — iter12+iter13 scaler kernel rework shipped, resolves residual H-shift + V missing-lines from iter6. Production substrate is `iter5-1080p-clean` branch (iter5 + iter6 hardware-fsync + iter12 H scaler `(s_axis_tdata + window[0])/2` + iter13 V scaler `(tap2 + tap3)/2`). HDMI TX = 720p60 (1280×720 @ 1650×750, 74.25 MHz).

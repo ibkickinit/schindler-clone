@@ -1,5 +1,7 @@
 # Schindler Build Manifest
 
+> **New to the project?** Start at [`wiki/START-HERE.md`](wiki/START-HERE.md). This manifest is the live build ledger; the wiki has the conceptual map. Both are canonical for different things.
+
 **Status:** living document. Source of truth for **which builds exist, which ones produce a clean image, and what's broken.** Pairs with [`format-support-matrix.md`](format-support-matrix.md) — that doc tracks **format axis** (what input→output combos), this doc tracks **build axis** (what bitstream lineage).
 
 Last updated: 2026-05-22 ~15:30 — iter6 bottom-bars artifact resolved via S2MM hardware fsync.
