@@ -55,27 +55,50 @@ Landed on `iter5-1080p-clean`:
 
 **Gate status**: PASS at default env. XSA-diff verification against a previous build deferred (low risk — the parameterization is text-substitution-only, and the firmware behavior was confirmed identical to the prior build).
 
-### Phase 2 — Resync mackin (~2 hours + bench)
+### Phase 2 — Resync mackin (revised ~3-4 h + 30 min bench)
 
-On `mackin-impl-wip`:
-1. Merge-from-iter5 to bring in V0a, iter14, the audit follow-ups, the new parameterized slot picker.
-2. Resolve BD conflicts: keep `mackin_alpha` at axi_gpio_7 / M10; iter14 picks up a free slot (axi_gpio_8 / M13).
-3. Build with `KERNEL_GPIO_INDEX=8`.
-4. Bench: 3-boot rule on 720p60→720p60 passthrough first; then alpha command roundtrip; then `k h <N>` / `k v <N>` toggle.
+2026-05-31 evening: attempted the merge to scope the work; aborted cleanly. Findings:
 
-**Gate**: 3 cold reboots clean on bench monitor + alpha + kernel-mode round-trip works via UART.
+**Conflicting files (8)**:
+- `constraints/zybo_z7_20_phase_b.xdc` — 3 comment-only conflicts. Take iter5.
+- `docs/build-manifest.md`, `docs/iter6-s2mm-fsync-fix.md` — additive doc sections. Take iter5.
+- `hdl/scaler_top.v`, `hdl/scaler_h.v`, `hdl/scaler_v.v` — mackin's HDL is iter5 minus iter14. Take iter5 (brings iter14 + iter13c + audit follow-ups).
+- `sw/phase-b/src/main.c` — **the substantive merge**. 8 conflict regions over ~300 lines. Mackin's alpha tuning (`a <hex>`), TPG controls (`t`, `p`, `n`, `f`, `c`), and classic_genlock setup live alongside iter5's V0a JSON-RPC J handler + iter14 `k` command. Cannot take either side wholesale — needs hand merge of the UART parser.
+- `tcl/build_phase_b.tcl` — 5 conflict regions. Key: mackin uses `NUM_MI=13` (Mackin alpha at M10/axi_gpio_7 + ADV7393 at M11 + TPG at M12/axi_gpio_8); iter5 added kernel_mode at M10/axi_gpio_7. Merge needs `NUM_MI=14` with kernel_mode at a new slot (M13/axi_gpio_9 is suggested per blocker #1). The `KERNEL_GPIO_INDEX`/`KERNEL_M_SLOT` env vars from Phase 1 are the right abstraction; mackin builds need `KERNEL_GPIO_INDEX=9 KERNEL_M_SLOT=13`.
 
-### Phase 3 — Resync phase-e1 (~3 hours + bench)
+**Files mackin doesn't have but iter5 brings** (clean adds; no conflict):
+- `control-plane/` — catalog, daemon, web UI, factory profiles, JSON Schemas.
+- `tests/` — pytest harness with FakeSerial + auth + schema + Playwright.
+- `Makefile` — top-level entry points.
+- `docs/wiki/CONTROL-PLANE.md` and 7 other new wiki pages.
+- `docs/v1-critical-path.md`, `docs/v0a-scope-fence.md`, etc.
 
-Bigger lift because phase-e1 needs both iter4e *and* iter14 backported.
+**Revised execution plan (next session)**:
+1. Take iter5's HDL + XDC + docs wholesale (5 of 8 conflicts).
+2. Hand-merge `main.c`: keep mackin's `a`/`t`/`p`/`n`/`f`/`c`/classic_genlock blocks; layer iter5's `J` handler + `k` command + V0a shadow globals on top. Probably ~2 h.
+3. Hand-merge `tcl/build_phase_b.tcl`: keep mackin's NUM_MI=13 base, bump to 14, wire kernel_mode at axi_gpio_9/M13 via `KERNEL_GPIO_NAME`/`KERNEL_M_PORT` substitution. Probably ~30 min.
+4. Build with `KERNEL_GPIO_INDEX=9 KERNEL_M_SLOT=13`.
+5. Bench: 3-boot 720p60 passthrough; mackin alpha round-trip; `k h <N>`/`k v <N>` toggle; V0a browser UI check.
 
-On `phase-e1-pll-spike`:
-1. Merge-from-iter5 (will pull iter4e, iter14, V0a, slot-picker, all audit follow-ups).
-2. Resolve conflicts: keep MMCM `psincdec` work; pick a `KERNEL_GPIO_INDEX` slot that doesn't clash with phase-e1's `axi_gpio_refsel`/`axi_gpio_srcdiv`.
-3. Build.
-4. Bench: 3-boot rule on 60→60 matched-rate first (regression check vs phase-e1's prior LUCKY-BOOT pass); then 60→60 diagonal motion; then runtime kernel-mode toggle.
+**Gate**: 3 cold reboots clean + alpha + kernel-mode + V0a UI round-trip works.
 
-**Gate**: phase-e1's existing bench-clean 60→60 + motion still passes + new iter14 toggle works. **This is also the first opportunity to clear phase-e1's LUCKY-BOOT debt** — 3 boots on the resync'd build promotes it ⚠️→✅.
+### Phase 3 — Resync phase-e1 (revised ~4-5 h + 1 h bench)
+
+phase-e1 is 77 commits behind trunk (vs mackin's 55). Bigger lift because phase-e1 also needs **iter4e** (runtime `in_w_async`/`in_h_async` ports on `scaler_top`) which it never received — iter14 layers on iter4e.
+
+Conflict shape (extrapolating from Phase 2's findings; not yet attempted):
+- Same 8 files conflict, plus probably more in `main.c` because Phase E1 has its own UART command set (`q`/`p`/`c`/`d`/`m`/`L`/`r` etc — see `FIRMWARE-INTERFACE.md`).
+- `scaler_top.v` diff is much larger (mackin already had iter4e; phase-e1 doesn't).
+- BD slot pressure: phase-e1 uses `axi_gpio_refsel` + `axi_gpio_srcdiv` for MMCM tracking. Need to find a `KERNEL_GPIO_INDEX` slot that doesn't clash.
+
+**Revised execution plan (next session, separate from Phase 2)**:
+1. Same wholesale takes on HDL + XDC + docs.
+2. Hand-merge `main.c`: keep all the MMCM tracking commands; layer iter5 V0a `J` + iter14 `k` on top. ~3 h.
+3. Hand-merge `tcl/build_phase_b.tcl`: include iter4e BD changes + iter14 with a free slot index. ~1 h.
+4. Build.
+5. Bench: 3-boot 60→60 matched-rate (regression check); 60→60 motion; kernel-mode toggle; V0a UI. **This 3-boot run also clears phase-e1's LUCKY-BOOT.**
+
+**Gate**: phase-e1's existing bench-clean 60→60 + motion still passes + iter14 toggle + V0a UI work.
 
 ### Phase 4 — Documentation (~30 min, no bench)
 
@@ -84,17 +107,17 @@ After both branches pass their bench gates:
 2. Update `docs/build-manifest.md` with resync session entry.
 3. Close task #65; open follow-up tasks for any deferred items.
 
-## Estimated effort
+## Estimated effort (revised 2026-05-31 evening)
 
 | Phase | Wall-clock | Bench time | Risk |
 |---|---|---|---|
-| 1. Parameterize on iter5 | ~1 hour | 0 (XSA-diff verify) | Low |
-| 2. Resync mackin | ~2 hours + 30 min bench | 30 min | Medium (conflict resolution) |
-| 3. Resync phase-e1 | ~3 hours + 1 hour bench | 1 hour | Medium-High (iter4e is a substrate change phase-e1 has never seen) |
+| 1. Parameterize on iter5 | ~1 hour | 0 (XSA-diff verify) | Low | ✅ SHIPPED |
+| 2. Resync mackin | ~3-4 hours + 30 min bench | 30 min | Medium-High (main.c UART parser merge) |
+| 3. Resync phase-e1 | ~4-5 hours + 1 hour bench | 1 hour | High (iter4e substrate change + own UART command set) |
 | 4. Documentation | ~30 min | 0 | Low |
-| **Total** | **~6.5 hours + 1.5 hours bench** | **1.5 hours** | Medium |
+| **Remaining total** | **~7.5-9.5 h + 1.5 h bench** | **1.5 h** | Medium-High |
 
-Bench windows for Phases 2 and 3 can be scheduled independently — no dependency between them once Phase 1 lands.
+The Phase 2 estimate doubled after the abort showed `main.c` has 8 conflict regions with 3 distinct command-set authorships (mackin alpha + TPG + iter5 V0a+iter14) all overlapping in the UART parser. Bench windows for Phases 2 and 3 can be scheduled independently — no dependency between them once Phase 1 lands.
 
 ## Out of scope for task #65
 
