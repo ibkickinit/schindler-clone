@@ -668,40 +668,43 @@ static void cp_emit_frame_dump(const char *id_lit, const char *params_json)
         out_w = tw; out_h = th;
     }
 
-    xil_printf("{\"jsonrpc\":\"2.0\",\"id\":%s,\"result\":{"
-               "\"mode\":\"%s\",\"slot\":%d,\"w\":%d,\"h\":%d,\"fmt\":\"gbr\",\"data\":\"",
-               id_lit, mode, slot, out_w, out_h);
-
-    int nbuf = 0; u32 acc = 0;
+    /* ---- Phase 1: SNAPSHOT into RAM, fast ----
+     * Read all sampled bytes from the live framebuffer into dump_buf in one
+     * tight loop (microseconds — well under one 16 ms frame), so every sample
+     * comes from ~the same instant. This is what makes it a STILL: without it,
+     * interleaving DDR reads with the slow UART emit spreads the samples over
+     * ~5 s and the live/moving source shows as a top-to-bottom rolling scan.
+     * Max size = 160×120×3 = 57600 (thumbnail cap) ≥ strip (16×720×3=34560). */
+    static u8 dump_buf[57600];
+    int n = 0;
     if (is_strip) {
         for (int r = row0; r <= row1; r++) {
             u32 rb = (u32)r * STRIDE;
-            for (int c = 0; c < 8; c++) {           /* head cols 0..7 */
+            for (int c = 0; c < 8; c++) {                 /* head cols 0..7 */
                 u32 p = rb + (u32)c * BYTES_PP;
-                cp_b64_byte(base[p], &nbuf, &acc, 0);
-                cp_b64_byte(base[p+1], &nbuf, &acc, 0);
-                cp_b64_byte(base[p+2], &nbuf, &acc, 0);
+                dump_buf[n++] = base[p]; dump_buf[n++] = base[p+1]; dump_buf[n++] = base[p+2];
             }
             for (int c = FRAME_W - 8; c < FRAME_W; c++) {  /* tail cols W-8..W-1 */
                 u32 p = rb + (u32)c * BYTES_PP;
-                cp_b64_byte(base[p], &nbuf, &acc, 0);
-                cp_b64_byte(base[p+1], &nbuf, &acc, 0);
-                cp_b64_byte(base[p+2], &nbuf, &acc, 0);
+                dump_buf[n++] = base[p]; dump_buf[n++] = base[p+1]; dump_buf[n++] = base[p+2];
             }
         }
     } else {
         for (int ty = 0; ty < th; ty++) {
-            u32 r = (u32)ty * FRAME_H / (u32)th;
-            u32 rb = r * STRIDE;
+            u32 rb = ((u32)ty * FRAME_H / (u32)th) * STRIDE;
             for (int tx = 0; tx < tw; tx++) {
-                u32 col = (u32)tx * FRAME_W / (u32)tw;
-                u32 p = rb + col * BYTES_PP;
-                cp_b64_byte(base[p], &nbuf, &acc, 0);
-                cp_b64_byte(base[p+1], &nbuf, &acc, 0);
-                cp_b64_byte(base[p+2], &nbuf, &acc, 0);
+                u32 p = rb + ((u32)tx * FRAME_W / (u32)tw) * BYTES_PP;
+                dump_buf[n++] = base[p]; dump_buf[n++] = base[p+1]; dump_buf[n++] = base[p+2];
             }
         }
     }
+
+    /* ---- Phase 2: stream the frozen snapshot over UART, slow ---- */
+    xil_printf("{\"jsonrpc\":\"2.0\",\"id\":%s,\"result\":{"
+               "\"mode\":\"%s\",\"slot\":%d,\"w\":%d,\"h\":%d,\"fmt\":\"gbr\",\"data\":\"",
+               id_lit, mode, slot, out_w, out_h);
+    int nbuf = 0; u32 acc = 0;
+    for (int i = 0; i < n; i++) cp_b64_byte(dump_buf[i], &nbuf, &acc, 0);
     cp_b64_byte(0, &nbuf, &acc, 1);   /* flush tail + padding */
     xil_printf("\"}}\r\n");
 }
