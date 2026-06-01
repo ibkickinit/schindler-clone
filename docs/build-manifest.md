@@ -4,7 +4,7 @@
 
 **Status:** living document. Source of truth for **which builds exist, which ones produce a clean image, and what's broken.** Pairs with [`format-support-matrix.md`](format-support-matrix.md) — that doc tracks **format axis** (what input→output combos), this doc tracks **build axis** (what bitstream lineage).
 
-Last updated: 2026-05-31 — V0a control plane shipped end-to-end (catalog v0.2.0 + firmware J bridge + Python schindlerd daemon + browser UI + status push + version handshake + multi-client + factory profile presets); iter13c backported to mackin + phase-e1; iter5-1080p-clean promoted ⚠️→✅.
+Last updated: 2026-05-31 (44 commits this day — see HISTORICAL-NARRATIVE for the long form). Headline events: iter5-1080p-clean promoted ⚠️→✅; HDMI compliance rule + 1080p60 silicon limit on Zybo Z7-20; V0a control plane shipped end-to-end (catalog v0.2.0 + firmware J + schindlerd + browser UI); V0a+1 polish (status push, version handshake, multi-client, factory profiles); V0a+2 hardening (auth scaffold, multi-client throttle, profile schema + version-mismatch reject, catalog version derived from build, KERNEL_GPIO_INDEX parameterization); 7-agent re-audit absorbed into 5 follow-up bundles; iter13c backported to mackin + phase-e1; test harness from 0 → 78 tests + make ci + make sim + make sim-vivado + make web-smoke all green.
 
 ## Why this document exists
 
