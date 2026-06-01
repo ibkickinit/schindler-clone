@@ -34,6 +34,20 @@ Three load-bearing principles:
 
 For **v1 (HDMI-only)** the two collapse: input format-scale = the existing 1080→720 downscale; present-geometry = the user's size/crop/position knobs on one output.
 
+## ⚠️ Bench finding 2026-06-01 — route B confirmed the hard way
+
+A first G1 implementation **drifted from this doc**: it put runtime size in the *input-side* scaler
+(`ffcd4ce`) and did windowing by *reconfiguring S2MM in firmware* (`scaler_reframe`, `64aabe6`) —
+closer to the rejected input-side draft than to the route-B compositor below. At the bench this
+**broke HDMI output** (monitor black) on any sub-full geometry: stopping/reconfiguring S2MM VSIZE to
+the sub-window diverged it from MM2S's 720-line read and broke the dynamic-genlock handshake. DDR was
+correct; only the genlock output leg died; full-size reset recovered.
+
+**Lesson = this doc was right.** Geometry must NOT touch the genlock ring (S2MM/MM2S must stay
+matched, full-raster). It belongs in the **post-color output compositor (route B)** described below.
+`64aabe6` is dead-on-arrival (do not use); `ffcd4ce` is harmless at default but the wrong layer.
+Full write-up: [`g1-bench-finding-genlock.md`](g1-bench-finding-genlock.md).
+
 ## The resampler we build on
 
 `scaler_h` is a Bresenham/DDA (confirmed in `hdl/scaler_h.v`):

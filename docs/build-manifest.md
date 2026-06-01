@@ -53,6 +53,13 @@ Live tips as of 2026-05-30 walk of `git branch -a` + `git log`:
 | `iter4h-axis-fifo` | `7d5fe09` | 2026-05-17 | ? | ❌ SCROLL | **ARCHIVED 2026-05-31** via tag `archive/iter4h-axis-fifo`. **DO NOT USE.** S2MM VSIZE=747 caused 1-row-per-frame scroll. Forensic only. |
 | `iter5-wip` / `iter4f-wip-pattern-diag` / `iter4g-counter-infra` | various | May 16-17 | ? | various | **ARCHIVED 2026-05-31** via tags `archive/<name>`. Abandoned WIPs / forensic. |
 
+### G1 adjustable-scaler builds (on `iter5-1080p-clean`) — 2026-06-01
+
+| Commit | Buildable | Bench-image | Notes |
+|---|---|---|---|
+| `ffcd4ce` | ✅ Vivado+Vitis (sim no-regression) | ✅ CLEAN at default | G1 runtime output-size in `scaler_h`/`scaler_v`/`scaler_top`. Bit-identical to pre-G1 at out=1280×720. **Wrong layer** for geometry per agreed design — will be reverted/repurposed by the route-B redesign. Harmless as-is. |
+| `64aabe6` | ✅ Vivado+Vitis (WNS +0.150, DRC 0) | ❌ OTHER — **HDMI goes BLACK on any sub-full geometry** | G1 BD size-GPIO (`axi_gpio_8`) + firmware `scaler_reframe`. **DEAD-ON-ARRIVAL, DO NOT USE.** `scaler_reframe` stops/reconfigs S2MM VSIZE to the sub-window → diverges from MM2S 720 → dynamic-genlock handshake breaks → "No Signal." DDR framebuffer is correct (frame-dump good); only the genlock output leg dies. Full-size reset recovers. Reachable only via raw `J` (geometry controls NOT in catalog/UI) so the live bench is safe at full passthrough. Full root cause: [`g1-bench-finding-genlock.md`](g1-bench-finding-genlock.md). Redesign → post-color output compositor (route B). |
+
 **2026-05-31 — Phase 4 of Direction A: branch retirement (tag-only):** Five stale branches tagged as `archive/<name>` and remain on origin (not deleted). Branches stay visible in `git branch -a` but are marked dead in this manifest. Use the tags to recover history if ever needed.
 
 Active branches going forward (4):
