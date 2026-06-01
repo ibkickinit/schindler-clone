@@ -139,10 +139,40 @@ See [COLOR-PIPELINE](COLOR-PIPELINE.md) for stage details + UART command referen
 
 `FRAME_H × STRIDE` per slot; STRIDE = `1280 × 3` bytes for 720p RGB24. Computed in firmware (`sw/phase-b/src/main.c`).
 
+## V0a control-plane sidecar
+
+The pipeline above is the **data plane**. The **control plane** (V0a, shipped 2026-05-31) sits alongside it and drives the per-frame tunables via a JSON-RPC bridge over the existing Zynq PS UART:
+
+```
+┌──────────────────────────┐
+│ Browser / future clients │
+└─────────────┬────────────┘
+              │ JSON-RPC 2.0 over WebSocket :8081
+              ▼
+┌──────────────────────────┐
+│ schindlerd (host Python) │  loads catalog, validates coercion,
+│                          │  pub-sub for status notifications
+└─────────────┬────────────┘
+              │ JSON-RPC bracketed by 'J' UART command, 115200 8N1
+              ▼
+┌──────────────────────────┐
+│ Bare-metal Zynq firmware │  same main.c that runs VDMA + VTC init,
+│  (the "PS" box above)    │  same AXI-Lite writes to GPIO 3/4/5/6/7
+└──────────────────────────┘
+```
+
+- The firmware J handler dispatches `system.identify` / `system.list_controls` / `control.get` / `control.set` to the same color/scaler control table the legacy text commands use. **The data plane is unchanged** — V0a only adds a new transport on top of the existing AXI-Lite GPIO writes.
+- The daemon parses firmware DIAG/TELEMETRY/VTC_RX text lines (the same telemetry the operator sees in picocom) into typed status fields, broadcasts as `status.update` notifications to subscribed clients.
+- Daemon serves the browser UI as static files on `http://localhost:8080`.
+
+See [CONTROL-PLANE](CONTROL-PLANE.md) for the architectural entry point; [SCHINDLERD-RUNBOOK](SCHINDLERD-RUNBOOK.md) for ops; [CATALOG-EVOLUTION](CATALOG-EVOLUTION.md) for the schema discipline; [STATUS-PANEL](STATUS-PANEL.md) for the telemetry pipeline.
+
 ## Sub-pages for deeper detail
 
 - [FRC-ARCHITECTURE](FRC-ARCHITECTURE.md) — Methods A/B/C/D/E, RT4K three-mode framing
 - [COLOR-PIPELINE](COLOR-PIPELINE.md) — color stack details
+- [SCALER-KERNELS](SCALER-KERNELS.md) — iter14 runtime kernel-mode toggle (NN / 2-tap / 4-tap)
+- [CONTROL-PLANE](CONTROL-PLANE.md) — V0a control-plane entry point
 - [XILINX-IP-NOTES](XILINX-IP-NOTES.md) — IP-specific gotchas
 
 <!-- AGENT_TASK[docs-4] DONE 2026-05-31: Mermaid block diagram added at top of "Pipeline topology" section. Shows all major BD cells + AXI-Lite control plane + VTC timing + iter6 fsync wiring. ASCII version retained as plain-text fallback for non-Mermaid renderers. -->

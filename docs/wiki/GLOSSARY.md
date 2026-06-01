@@ -105,5 +105,28 @@ Domain terms used throughout Schindler 2.0 documentation. Search this page first
 - **Build provenance rule** — Every claim references commit + reboot count + symptom.
 - **Suspect equipment first** — When something seems architecturally impossible, check monitor/cable/source before assuming an FPGA bug.
 - **Source first** — When pLocked flickers, swap HDMI source before debugging FPGA.
+- **HDMI compliance rule** — No out-of-spec MMCM, no non-standard TMDS, no patched vendor IP for margin tricks. See [HDMI-COMPLIANCE](HDMI-COMPLIANCE.md).
+- **MS2109 verification trap** — The capture stick masks vertical wraparound + offset artifacts that the bench monitor rejects. Bench monitor is the verification surface, not MS2109.
+
+## V0a control plane
+
+- **V0a** — Host-side bridge daemon + browser UI shipped 2026-05-31. Catalog v0.2.0. No HDL change beyond the firmware `J` UART handler. Bench-host dependency is acceptable for v1.
+- **V0b** — Future: PetaLinux on the Zynq PS so `schindlerd` runs on the board itself. No HDL change. Post-v1 per [`v0a-scope-fence.md`](../v0a-scope-fence.md).
+- **V0c** — Future: RP2040 front-panel firmware + EVE BT817Q TFT. Requires the Pro v2 mezzanine PCB. Post-v1.
+- **Catalog** — Single JSON file (`control-plane/catalog-v0.2.0.json`) declaring every operator-tunable control + read-only status field. Daemon, web UI, and future RP2040 firmware all generate their code from it. See [CATALOG-EVOLUTION](CATALOG-EVOLUTION.md).
+- **schindlerd** — Python daemon at `control-plane/schindlerd/schindlerd.py`. Bridges firmware UART (115200 8N1) ↔ WebSocket (`:8081`) + HTTP for the web UI (`:8080`). See [SCHINDLERD-RUNBOOK](SCHINDLERD-RUNBOOK.md).
+- **JSON-RPC 2.0** — The wire protocol between daemon and clients (over WS), and between daemon and firmware (over UART). Request/response with `id` field; notifications (status push) have no `id`.
+- **J command** — UART prefix: `J {…json…}`. Hand-rolled JSON tokenizer in `sw/phase-b/src/main.c` dispatches to per-control setters/getters.
+- **Profile** — JSON file storing `controls: {id: value, …}` with a `catalog_version` stamp. Daemon best-effort applies on `profile.load`; skips ids the current catalog doesn't recognize. See [FACTORY-PROFILES](FACTORY-PROFILES.md).
+- **Factory profile** — Read-only profile shipped in `control-plane/profiles/factory/`. Identity/grayscale/warm/cool. Shadowed by same-named user profiles.
+- **TelemetryParser** — Daemon-side regex set against firmware DIAG/TELEMETRY/VTC_RX lines. Publishes typed status updates. See [STATUS-PANEL](STATUS-PANEL.md).
+- **status.update** — JSON-RPC notification (no id) the daemon broadcasts to subscribed clients when a status field changes value.
+- **control.changed** — JSON-RPC notification the daemon broadcasts after every successful `control.set` so all open browsers stay in sync.
+- **status.snapshot** — RPC method the UI calls after render to back-fill stable status values that the connect-time replay raced past.
+- **available flag** — Catalog annotation set by the daemon: `true` if the firmware reports the control via `system.list_controls`. The UI hides controls with `available: false`.
+- **requires_status / requires_branch / requires_hw / requires_iter** — Gating attributes on catalog entries. `requires_status: "placeholder"` forces a control unavailable even if firmware lists it (used today for `frc.mackin_alpha`).
+- **surface** — Catalog field listing which operator surfaces should render a control: `["web"]`, `["front"]`, `["front", "web"]`, or `[]` (UART-only meta).
+- **FakeSerial** — `tests/conftest.py` drop-in for `serial.Serial` that lets the daemon run against scripted firmware responses without `/dev/ttyUSB1`. Backbone of `make sim`-style CI.
+- **catalog.schema.json** — JSON Schema 2020-12 document at `control-plane/catalog.schema.json` formalizing the catalog format. Validated by `tests/test_schema.py`.
 
 <!-- AGENT_TASK[docs-12]: When a new domain term appears in any new doc, add it here. Periodic audit: search docs/ + memory for capitalized acronyms not yet in this glossary. -->

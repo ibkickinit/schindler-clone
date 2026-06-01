@@ -95,3 +95,13 @@ def test_invalid_id_pattern_rejected(schema, catalog):
     bad["controls"][0]["id"] = "Color.Saturation!"
     with pytest.raises(jsonschema.ValidationError):
         jsonschema.validate(instance=bad, schema=schema)
+
+
+def test_catalog_filename_matches_schema_version(catalog):
+    """Filename embeds the version; in-file schema_version must agree.
+    Catches the trap that prompted Risk audit N2 — filename + content drift."""
+    import re
+    filename_v = re.search(r"catalog-v(\d+\.\d+\.\d+)\.json$", str(CATALOG)).group(1)
+    assert catalog["schema_version"] == filename_v, (
+        f"catalog filename says v{filename_v} but schema_version field is "
+        f"{catalog['schema_version']!r} — rename the file or fix the field")

@@ -289,34 +289,87 @@ class ProfileStore:
 # status fields broadcast as JSON-RPC notifications to all connected WS clients.
 # ---------------------------------------------------------------------------
 
+class Subscriber:
+    """One bus subscriber: queue + per-client stats. Stats are exposed via
+    system.metrics so an operator can see whether a client is keeping up."""
+    __slots__ = ("q", "label", "published", "dropped", "consecutive_drops",
+                 "last_drop_warned")
+
+    def __init__(self, label: str, maxsize: int = 64):
+        self.q: asyncio.Queue = asyncio.Queue(maxsize=maxsize)
+        self.label = label
+        self.published = 0
+        self.dropped = 0
+        self.consecutive_drops = 0
+        self.last_drop_warned = 0
+
+
 class StatusBus:
-    """In-process pub-sub for status fields. clients call subscribe() with an
-    asyncio.Queue; daemon publish()es a dict and every subscribed queue receives
-    it. WS handler drains the queue and forwards as JSON-RPC notifications."""
+    """In-process pub-sub for status fields. Clients subscribe() and receive a
+    Subscriber wrapping an asyncio.Queue. WS handler drains the queue and
+    forwards as JSON-RPC notifications.
+
+    Drops are tracked per-client. If a single client misses 10 events in a
+    row we log a warning (probable backpressure or runaway client). Total
+    counters survive across subscribers and feed system.metrics."""
+
+    DROP_WARN_THRESHOLD = 10  # consecutive drops before logging
 
     def __init__(self):
-        self._queues: List[asyncio.Queue] = []
+        self._subs: List[Subscriber] = []
         self._lock = asyncio.Lock()
+        self.total_published = 0
+        self.total_dropped = 0
+        self._next_id = 1
 
-    async def subscribe(self) -> asyncio.Queue:
-        q: asyncio.Queue = asyncio.Queue(maxsize=64)
+    async def subscribe(self, label: Optional[str] = None) -> Subscriber:
         async with self._lock:
-            self._queues.append(q)
-        return q
+            sub_id = self._next_id
+            self._next_id += 1
+        sub = Subscriber(label or f"client-{sub_id}")
+        async with self._lock:
+            self._subs.append(sub)
+        return sub
 
-    async def unsubscribe(self, q: asyncio.Queue) -> None:
+    async def unsubscribe(self, sub: Subscriber) -> None:
         async with self._lock:
-            if q in self._queues:
-                self._queues.remove(q)
+            if sub in self._subs:
+                self._subs.remove(sub)
 
     def publish(self, payload: Dict[str, Any]) -> None:
         # Synchronous publish — called from the asyncio loop. Drops events
         # to slow subscribers rather than blocking the pipeline.
-        for q in list(self._queues):
+        self.total_published += 1
+        for sub in list(self._subs):
             try:
-                q.put_nowait(payload)
+                sub.q.put_nowait(payload)
+                sub.published += 1
+                sub.consecutive_drops = 0
             except asyncio.QueueFull:
-                log.warning("status: subscriber queue full, dropping event")
+                sub.dropped += 1
+                sub.consecutive_drops += 1
+                self.total_dropped += 1
+                if (sub.consecutive_drops == self.DROP_WARN_THRESHOLD
+                        and sub.consecutive_drops != sub.last_drop_warned):
+                    log.warning("status: client '%s' dropped %d events in a row "
+                                "(queue full — slow consumer?)",
+                                sub.label, sub.consecutive_drops)
+                    sub.last_drop_warned = sub.consecutive_drops
+
+    def metrics(self) -> Dict[str, Any]:
+        return {
+            "total_published": self.total_published,
+            "total_dropped": self.total_dropped,
+            "subscribers": [
+                {
+                    "label": s.label,
+                    "published": s.published,
+                    "dropped": s.dropped,
+                    "queue_depth": s.q.qsize(),
+                }
+                for s in self._subs
+            ],
+        }
 
 
 class TelemetryParser:
@@ -422,6 +475,7 @@ class Dispatcher:
             "profile.load":         self._m_profile_load,
             "profile.save":         self._m_profile_save,
             "status.snapshot":      self._m_status_snapshot,
+            "system.metrics":       self._m_system_metrics,
         }
         self.telemetry: Optional[TelemetryParser] = None  # set by daemon main
 
@@ -551,6 +605,11 @@ class Dispatcher:
         self.profiles.save(name, profile)
         return {"name": name, "saved": len(controls)}
 
+    async def _m_system_metrics(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Daemon health: bus pub/drop counts + per-client queue depths.
+        Useful when diagnosing whether a slow client is causing event drops."""
+        return self.bus.metrics()
+
     async def _m_status_snapshot(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """Return the current value of every status field the daemon has seen.
         Clients call this after their UI has rendered so they can populate the
@@ -574,8 +633,10 @@ async def ws_handler(ws: "WebSocketServerProtocol", dispatcher: Dispatcher) -> N
     log.info("ws: client connected from %s", getattr(ws, "remote_address", "?"))
     # Subscribe this client to the status bus. A background task drains the
     # queue and forwards each event as a JSON notification.
-    status_q = await dispatcher.bus.subscribe()
-    push_task = asyncio.create_task(_drain_status_to_ws(status_q, ws))
+    addr = getattr(ws, "remote_address", None)
+    label = f"{addr[0]}:{addr[1]}" if addr else "ws-client"
+    sub = await dispatcher.bus.subscribe(label=label)
+    push_task = asyncio.create_task(_drain_status_to_ws(sub.q, ws))
     # Replay last-known status snapshot so a fresh client doesn't have to
     # wait up to ~1s for the next DIAG line.
     try:
@@ -600,7 +661,7 @@ async def ws_handler(ws: "WebSocketServerProtocol", dispatcher: Dispatcher) -> N
         pass
     finally:
         push_task.cancel()
-        await dispatcher.bus.unsubscribe(status_q)
+        await dispatcher.bus.unsubscribe(sub)
         log.info("ws: client disconnected")
 
 

@@ -120,16 +120,30 @@ Justin requested a 7-agent independent audit while wall-clock-limited (new baby)
 
 This wiki is the result. The project is now documented at a navigable conceptual layer for the first time.
 
+## 2026-05-31 — Production substrate ✅ + V0a control plane shipped
+
+Three major events in a single high-velocity session.
+
+**Morning — iter5-1080p-clean promoted ⚠️→✅ (commit `eefa6b0`).** 3-cold-boot rule satisfied. The branch becomes the formal production substrate. GitHub default branch flips later in the day (`ef307b6`). Five stale branches tagged `archive/<name>` as part of "Direction A Phase 4" soft consolidation; `main` left frozen at its 2026-05-16 state pending v1 ship.
+
+**Midday — 1080p60 HDMI OUT investigation, HDMI compliance rule established.** Three builds + thorough investigation concluded that Zybo Z7-20 -1 silicon **cannot produce a spec-compliant 1080p60 HDMI output**: BUFIO 600 MHz cap + rgb2dvi MMCM VCO 1200 MHz cap combine to make every viable config out-of-spec. Production carrier (TE0720 -2 silicon + external HDMI PHY) is the path. Codified as the [HDMI compliance rule](HDMI-COMPLIANCE.md). Matrix row 1 reclassified ❌ on Zybo / ✅ planned on production. v1 scope-cut accepted same day (no upscale, downscale OK): 6×6 HDMI grid + 12 NTSC cells.
+
+**Afternoon/Evening — V0a control plane shipped end-to-end.** Catalog v0.1.0 authored, firmware `J` UART JSON-RPC bridge added (~250 LOC hand-rolled JSON in `main.c`), Python `schindlerd` daemon written (single file, asyncio + pyserial + websockets), browser UI scaffolded (no build step, vanilla JS, catalog-driven). Bench-verified end-to-end: open `http://localhost:8080`, drag sliders, watch color shift live on monitor. Then V0a+1 added status push (firmware DIAG → daemon TelemetryParser → WS notifications → live status panel), catalog version handshake, multi-client coordination, four factory profile presets. Catalog bumped 0.1.0 → 0.2.0 same day. iter14 runtime kernel-mode toggle (NN / 2-tap / 4-tap, indep H+V) shipped on iter5 — `axi_gpio_7` for scaler kernel mode (collides with mackin's Mackin alpha; backport blocked, captured in [BRANCH-RESYNC-PLAYBOOK](BRANCH-RESYNC-PLAYBOOK.md)).
+
+**Late evening — 7-agent re-audit + follow-up bundle.** Each prior audit agent emitted an updated report. Most items closed; key new findings: catalog version partially propagated (filename + code + docs out of sync; fixed mid-session), TelemetryParser regex fragile against firmware print-format drift (closed by `tests/test_telemetry.py`), `axi_gpio_7` slot collision is the structural blocker for sibling backports (closed by branch resync plan + KERNEL_GPIO_INDEX proposal), wiki lagged the V0a delta by exactly one tier (closed by 7 new wiki pages: CONTROL-PLANE, SCHINDLERD-RUNBOOK, CATALOG-EVOLUTION, STATUS-PANEL, FACTORY-PROFILES, BRANCH-RESYNC-PLAYBOOK, HDMI-COMPLIANCE, plus SCALER-KERNELS closing `docs-15`). FakeSerial + pytest harness landed (47 tests, ~1s, daemon now CI-testable without bench). V0a scope-fence doc commits to V0b/V0c being post-v1.
+
+**End of day**: iter5-1080p-clean is the formal production substrate, V0a is the v1 control surface, the test harness gates regressions, and v1 ship list is bounded.
+
 ## What's next
 
-Current open work (in priority order from the 2026-05-30 PM brief):
+Updated priorities (2026-05-31):
 
-1. 3-cold-boot verification of iter5-1080p-clean (formal no-coin-flip retirement)
-2. iter13b backport to mackin + phase-e1
-3. Phase E2 Si5351 multi-byte fix (when at bench)
-4. Phase G ADV7393 resume (when replacement chip arrives)
-5. Scope decision: Phase G first OR Si5351 first when both unblocked
+1. **Matrix Phase 2 verification** — clear 20 ⚠️ cells on production substrate, ~7-10 bench hours, batchable. Largest remaining v1-ship risk after silicon-blocked column.
+2. **Phase G ADV7393 chip bring-up** when replacement arrives. NTSC composite color-bars first-light (matrix row V1).
+3. **Phase E2 Si5351 retest** with hardware fix (1 kΩ pull-ups + 0.1 µF cap on JESSINIE breakout). Firmware staged at `bb06224`.
+4. **Set a v1 ship-date target.** Critical-path math is now possible.
+5. **Branch resync** (task #65) when convenient — not blocking v1.
 
-See [BRANCHES](BRANCHES.md) for tips, [KNOWN-BUGS](KNOWN-BUGS.md) for open work, [PHASES](PHASES.md) for phase status.
+See [BRANCHES](BRANCHES.md) for tips, [KNOWN-BUGS](KNOWN-BUGS.md) for open work, [PHASES](PHASES.md) for phase status, [`v0a-scope-fence.md`](../v0a-scope-fence.md) for what's deliberately NOT in v1.
 
 <!-- AGENT_TASK[docs-14]: This historical narrative needs periodic updates. Pattern: every major phase ship or substrate-altering event gets a section here. -->

@@ -113,16 +113,16 @@ def test_control_set_broadcasts_control_changed(dispatcher_setup):
 
     events: List[Dict[str, Any]] = []
     async def _drain():
-        q = await d.bus.subscribe()
+        sub = await d.bus.subscribe()
         # Run the set, then check the queue
         resp = await d.handle({
             "jsonrpc": "2.0", "id": 1, "method": "control.set",
             "params": {"id": "color.saturation", "value": 175}
         })
         # Pull anything queued
-        while not q.empty():
-            events.append(q.get_nowait())
-        await d.bus.unsubscribe(q)
+        while not sub.q.empty():
+            events.append(sub.q.get_nowait())
+        await d.bus.unsubscribe(sub)
         return resp
 
     resp = asyncio.run(_drain())
