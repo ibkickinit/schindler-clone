@@ -1,6 +1,6 @@
 # Schindler 2.0 — Signal Flow
 
-**Status:** Draft 2026-05-13
+**Status:** Draft 2026-05-13 · updated 2026-06-01 (master + per-output present-geometry; §0 simplified overview added)
 **Sources:** [`01-spec.md`](01-spec.md), [`packaging-skus.md`](packaging-skus.md), `hdl/*.v`
 **Working level:** functional block diagram, not schematic. Wire-level connectivity belongs in the KiCad carrier schematic (later).
 
@@ -13,6 +13,39 @@ This doc captures three views:
 3. **Control plane** — Zynq PS, UI MCU, and how the operator drives the box.
 
 Mermaid block diagrams render natively in GitHub. To edit: change the source between the ` ```mermaid` fences and the rendered diagram updates on push.
+
+---
+
+## 0. Simplified overview (the architecture in one picture)
+
+Added 2026-06-01. The whole box in one shape: **color once on a shared master, then
+per-output present-geometry.** HDMI and SDI carry the *exact same image* (one geometry stage,
+splitting only at the serializer); analog gets its own geometry (4:3 downconvert + NTSC-safe).
+
+```mermaid
+flowchart LR
+    classDef in fill:#d9eaff,stroke:#3a6ea5,color:#000
+    classDef pipe fill:#e6f6e6,stroke:#3a8e3a,color:#000
+    classDef master fill:#fff4d9,stroke:#a58634,color:#000
+    classDef out fill:#ffe2e2,stroke:#a54040,color:#000
+
+    HIN[HDMI IN]:::in --> RX[HDMI RX<br/>TMDS to RGB]:::pipe
+    RX --> FS[Input format-scale<br/>source to 720p master]:::pipe
+    FS --> COL[Creative color<br/>sat · correct · matrix<br/>applied ONCE]:::pipe
+    COL --> MAS[(DDR master frame<br/>colored · un-windowed)]:::master
+
+    MAS --> PGW[Present-geometry — wide<br/>size / crop / position<br/>HDMI + SDI = same image]:::pipe
+    MAS --> PGA[Present-geometry — analog<br/>aspect-fit to 4:3 + NTSC-safe]:::pipe
+
+    PGW --> HTX[HDMI TX]:::pipe --> HOUT[HDMI OUT]:::out
+    PGW --> STX[SDI TX]:::pipe --> SOUT[SDI OUT]:::out
+    PGA --> DAC[ADV7393 DAC<br/>NTSC encode]:::pipe --> AOUT[Analog OUT<br/>CVBS / S-Video / YPbPr]:::out
+```
+
+**Load-bearing principles** (see [`adjustable-scaler-design.md`](adjustable-scaler-design.md)):
+color is applied **once** on the master so every output shows the same grade; **geometry is
+per-output and lives AFTER color**, so each output independently sizes/crops/positions (and the
+analog leg pillarboxes to 4:3 + NTSC-safe). Diagram 1 below is the full-silicon expansion of this.
 
 ---
 
@@ -42,21 +75,20 @@ flowchart TB
     end
 
     subgraph FPGA[Zynq-7020 FPGA fabric on Trenz TE0720 SOM]
-        subgraph PIPE[HD pipeline - RGB or YCbCr 4:2:2, up to 1080p60]
+        subgraph PIPE[Shared master pipeline - color applied ONCE, up to 1080p60]
             SOURCE_MUX{{Source selector<br/>HDMI / SDI / Composite / Component / TPG}}:::pipe
-            VDMA[AXI VDMA<br/>DDR3L HD frame buffer<br/>Xilinx IP]:::pipe
-            SCALE[Polyphase scaler<br/>8-tap H / 4-tap V<br/>HD-to-SD or pass-through<br/>custom HDL]:::pipe
-            COLOR[Color pipeline<br/>1D LUT then 3x3 matrix then trim<br/>custom HDL - Screenie port]:::pipe
-            GEOM[Geometry warp<br/>pincushion / keystone / 4-corner<br/>custom HDL]:::pipe
+            VDMA[AXI VDMA<br/>DDR3L HD frame buffer<br/>Dynamic Genlock<br/>Xilinx IP]:::pipe
+            SCALE[Input format-scale<br/>polyphase H/V<br/>source to master aspect/res<br/>custom HDL]:::pipe
+            COLOR[Creative color<br/>saturation then correct then 3x3 matrix then trim<br/>applied ONCE on the master<br/>custom HDL - Screenie port]:::pipe
             TPG[Test pattern generator<br/>SMPTE bars / PLUGE / grid / ramps<br/>hdl/sample_gen.v]:::pipe
-            HD_BUS([HD signal bus<br/>processed video at master rate]):::pipe
+            HD_BUS([DDR master frame<br/>colored · un-windowed · master rate]):::pipe
         end
 
-        subgraph TERM[Output terminal encoders - independent, concurrent]
-            HDMI_TERM[HDMI passthrough terminal<br/>format match + rate convert<br/>HDCP gate via UI consent<br/>HDMI 1.4 TX TMDS serialize<br/>Xilinx free HDMI IP]:::term
-            COMP_TERM[NTSC/PAL composite encoder<br/>HD-to-SD downconvert + cadence<br/>luma + chroma + sync<br/>hdl/vid_timing.v + vbi_gen.v +<br/>chroma_gen.v]:::term
-            YPBPR_TERM[Component YPbPr encoder<br/>HD pass-through or SD downconvert<br/>custom HDL]:::term
-            SDI_TERM[SDI TX terminal<br/>parallel HD video + clock<br/>to GS2962<br/>custom HDL]:::term
+        subgraph TERM[Per-output presentation + terminal encoders - independent, concurrent]
+            HDMI_TERM[HDMI terminal<br/>**present-geometry** size/crop/pos/aspect<br/>+ rate convert + HDCP gate via UI consent<br/>HDMI 1.4 TX TMDS serialize<br/>Xilinx free HDMI IP]:::term
+            SDI_TERM[SDI TX terminal<br/>**shares HDMI present-geometry — same image**<br/>parallel HD video + clock to GS2962<br/>custom HDL]:::sdi
+            YPBPR_TERM[Component YPbPr terminal<br/>**present-geometry** + HD pass-through or SD downconvert<br/>custom HDL]:::term
+            COMP_TERM[NTSC/PAL composite terminal<br/>**present-geometry** aspect-fit to 4:3<br/>+ NTSC-safe + downconvert + cadence<br/>luma + chroma + sync<br/>hdl/vid_timing.v + vbi_gen.v + chroma_gen.v]:::term
         end
     end
 
@@ -77,12 +109,12 @@ flowchart TB
     YPBPR_IN --> ADV7280 --> SOURCE_MUX
     TPG --> SOURCE_MUX
 
-    SOURCE_MUX --> VDMA --> SCALE --> COLOR --> GEOM --> HD_BUS
+    SOURCE_MUX --> VDMA --> SCALE --> COLOR --> HD_BUS
 
     HD_BUS --> HDMI_TERM
-    HD_BUS --> COMP_TERM
-    HD_BUS --> YPBPR_TERM
     HD_BUS --> SDI_TERM
+    HD_BUS --> YPBPR_TERM
+    HD_BUS --> COMP_TERM
 
     HDMI_TERM --> TPD_OUT --> HDMI_OUT
     COMP_TERM --> ADV7393
@@ -97,6 +129,9 @@ flowchart TB
 
 - **The pipeline carries HD-bandwidth video throughout** (RGB or YCbCr 4:2:2, up to 1080p60 / 148.5 MHz pixel clock). Source resolution and rate are preserved through scaler / color / geometry; downconversion to SD or rate-conversion happens only inside the terminal encoder for outputs that demand it (composite, S-Video, SD component).
 - **Outputs are independent and concurrent.** Same source video → multiple terminal encoders running simultaneously, each at its own format and rate. Example: 1080p60 HDMI source → 1080p60 HDMI OUT (passthrough) + NTSC composite OUT (downconvert + 5:2 cadence + encode) + HD component OUT (YPbPr) live simultaneously.
+- **Color is applied ONCE on the shared master; geometry is per-output, AFTER color** (revised 2026-06-01 — see [`adjustable-scaler-design.md`](adjustable-scaler-design.md)). Each terminal carries its own **present-geometry** stage (size / crop / position / aspect) so outputs frame independently — the analog leg aspect-fits to 4:3 + NTSC-safe while HDMI fills 16:9. **HDMI and SDI share one present-geometry instance** (identical image; they diverge only at the TMDS serializer vs the GS2962 SDI serializer). The earlier draft placed a single geometry-warp block in the shared pipeline *before* the master — that is obsolete; geometry must be post-master so it can differ per output.
+- **Present-geometry is implemented as a random-access DDR reader/resampler per output group** (the genlock-safe route — a *streaming* post-master compositor is BRAM-infeasible for arbitrary vertical position on the 7020; see [`g1-bench-finding-genlock.md`](g1-bench-finding-genlock.md)). For **v1 (HDMI-only)** the present-geometry collapses into the existing input scaler emitting a windowed full raster into the master (the cheap interim); the per-output reader topology lands when the second output (SDI/analog) does.
+- **Pincushion / keystone / warp (the old `GEOM` block) is a V2 per-output stage**, not v1 — it needs a 2-D warp-mesh sampler distinct from the 1-D present-geometry resampler. Removed from the v1 shared pipeline.
 - **Terminal encoders are independent FPGA pipelines** consuming a shared HD signal bus. The composite encoder block contains the HDL we have today (`vid_timing.v`, `vbi_gen.v`, `chroma_gen.v`, `sample_gen.v`); HDMI / YPbPr / SDI terminals haven't been written yet.
 - **HDMI OUT is full-quality HD passthrough** (1080p60 / 1080p24 / etc) — NOT a degraded monitoring view. **HDCP-protected content is blocked from HDMI OUT by default** at the HDMI passthrough terminal. Operator can override via a UI consent dialog ("I attest this is a non-violating use") which unlocks full-quality HDMI passthrough for protected content. Attorney-advised posture — keeps liability with the operator. Non-protected content flows through HDMI OUT without any gate.
 - **`SOURCE_MUX`** picks one input (HDMI / SDI / composite / component) OR the internal test pattern generator. Operator selects via UI; TPG is the default at power-on before any source is connected.

@@ -3,20 +3,27 @@
 Vertical data flow from source HDMI input to monitor output, with clock domains
 and the counters / status registers firmware can read at each stage.
 
+**Updated 2026-06-01** to current `iter5-1080p-clean` reality: 2-tap boxcar scaler
+(iter12/13), iter6 hardware S2MM fsync, 5-slot ring, output color stack, 720p60,
+runtime kernel-mode (iter14), and the **present-geometry insertion point** for the
+adjustable scaler (route B). The iter4g bottom-bars artifact is resolved (iter6).
+
 ```mermaid
 flowchart TD
     SRC["**ImagePro source**<br/>1920×1080 @ 60p<br/>(TMDS over HDMI)"]
     DVI["**dvi2rgb** (Digilent IP)<br/>TMDS deserialize → parallel RGB + sync<br/>vid_pData[23:0], vid_pVDE, vid_pHSync, vid_pVSync<br/>recovers **PixelClk_in** (148.5 MHz)<br/>status: pLocked"]
     VIA["**v_vid_in_axi4s** (Xilinx IP)<br/>parallel video → AXIS<br/>TUSER on first active pixel of frame<br/>TLAST on last active pixel of row"]
-    SCH["**scaler_h** (Schindler HDL)<br/>1920 → 1280 horizontal<br/>8-tap polyphase Lanczos / NN-bypass<br/>runtime in_w_active (iter4e)"]
-    SCV["**scaler_v** (Schindler HDL)<br/>1080 → 720 vertical<br/>4-tap polyphase Lanczos / NN-bypass<br/>runtime in_h_active (iter4e)<br/>v_cross → emit"]
-    S2MM["**VDMA S2MM** (Xilinx IP)<br/>AXIS → DDR3 frame buffer<br/>Dynamic Master, FrameDelay=1<br/>3-slot ring (iter4d-3)<br/>S2MM_VSIZE=720, S2MM_DMASR status"]
-    DDR["**DDR3 frame buffer**<br/>3 slots × (720 rows × 1280×3 bytes + 1 guard row)<br/>at FRAME_BUF_BASE = 0x10000000"]
-    MM2S["**VDMA MM2S** (Xilinx IP)<br/>DDR3 → AXIS<br/>Dynamic Slave, repeat_en=1<br/>fsync from VTC_TX<br/>MM2S_DMASR status"]
-    A2V["**axis_to_vid_io** (Schindler HDL)<br/>AXIS + VTC sync → parallel RGB + sync<br/>enable = pixel-clock MMCM locked<br/>iter4g mm2s_tlast counter"]
+    SCH["**scaler_h** (Schindler HDL)<br/>1920 → 1280 horizontal<br/>2-tap boxcar, newest tap = s_axis_tdata (iter12)<br/>runtime kernel-mode via GPIO (iter14)<br/>runtime in_w_active (iter4e)"]
+    SCV["**scaler_v** (Schindler HDL)<br/>1080 → 720 vertical<br/>2-tap boxcar tap2+tap3 post-rotation (iter13)<br/>+1 round-to-nearest (iter13b)<br/>runtime in_h_active (iter4e)<br/>v_cross → emit"]
+    S2MM["**VDMA S2MM** (Xilinx IP)<br/>AXIS → DDR3 frame buffer<br/>**Dynamic Master, FrameDelay=0**<br/>**hardware fsync from dvi2rgb vid_pVSync (iter6)**<br/>5-slot ring · S2MM_VSIZE=720 · S2MM_DMASR"]
+    DDR["**DDR3 master frame buffer**<br/>5 slots × (720 rows × 1280×3 bytes + guard)<br/>at FRAME_BUF_BASE = 0x10000000<br/>colored downstream — see color stack"]
+    MM2S["**VDMA MM2S** (Xilinx IP)<br/>DDR3 → AXIS<br/>Dynamic Slave, FrameDelay=1, repeat_en=1<br/>mm2s_addr = s2mm_addr + STRIDE<br/>fsync from VTC_TX · MM2S_DMASR status"]
+    COLOR["**color stack** (Schindler HDL)<br/>color_saturation → color_correct → color_matrix<br/>Q-format, runtime via AXI GPIO 3/4/5/6 + UART<br/>applied ONCE on the master (output side)"]
+    PG["**present-geometry** (route B, PLANNED)<br/>size / crop / position / matte<br/>v1 interim: windowed full-raster from input scaler<br/>target: random-access DDR reader/resampler<br/>see adjustable-scaler-design.md + g1-bench-finding-genlock.md"]
+    A2V["**axis_to_vid_io** (Schindler HDL)<br/>AXIS + VTC sync → parallel RGB + sync<br/>s_axis_tready = vtg_active_video<br/>enable = pixel-clock MMCM locked"]
     R2D["**rgb2dvi** (Digilent IP)<br/>parallel RGB → TMDS serialize<br/>internal MMCM, kClkRange=2<br/>status: aRst held until pclk_locked"]
-    TX["**HDMI TX**<br/>1280×720 @ 50p<br/>(or 60p; configurable iter4d-3-FRC)"]
-    MS["**MS2109 capture stick**<br/>/dev/video5 or /dev/video6<br/>(external; on Linux host)"]
+    TX["**HDMI TX**<br/>1280×720 @ 60p<br/>(1080p60 OUT hardware-blocked on Zybo -1)"]
+    MON["**Bench MONITOR** (verification surface)<br/>NOT MS2109 — capture stick masks artifacts<br/>(memory: schindler-ms2109-verification-trap)"]
 
     SRC --> DVI
     DVI -->|"vid_pData/HSync/VSync/VDE"| VIA
@@ -25,10 +32,12 @@ flowchart TD
     SCV -->|"AXIS 1280×720"| S2MM
     S2MM -->|"M_AXI burst writes"| DDR
     DDR -->|"M_AXI burst reads"| MM2S
-    MM2S -->|"AXIS 1280×720"| A2V
+    MM2S -->|"AXIS 1280×720"| COLOR
+    COLOR -->|"AXIS 1280×720 (graded)"| PG
+    PG -->|"AXIS 1280×720"| A2V
     A2V -->|"vid_data/sync"| R2D
     R2D -->|"TMDS"| TX
-    TX -->|"HDMI cable"| MS
+    TX -->|"HDMI cable"| MON
 
     subgraph CLKS["**Clock domains**"]
         direction TB
@@ -87,24 +96,27 @@ flowchart TD
 | `S2MM_DMASR` | VDMA reg 0x34 | bits 4/5/6/8/9/11/12 = 0 (no errors) | Framing errors |
 | `MM2S_DMASR` | VDMA reg 0x04 | same | Framing errors |
 
-## Confirmed so far (iter4g first read)
+## Status (current — iter5-1080p-clean)
 
-- ✅ `h_in = 1080` — v_vid_in_axi4s correct
-- ✅ `v_in = 1080` — scaler_h propagates TLAST 1:1 correctly
-- ✅ `v_emit = 720` — scaler_v emits exactly 720 v_cross per source frame
-- ❓ `mm2s_tlast` — WIP (adding now in iter4g extension)
-- ❓ S2MM/MM2S DMASR — firmware reads pending
+- ✅ `h_in = 1080`, `v_in = 1080`, `v_emit = 720` — scaler counters correct (iter4g read).
+- ✅ Bottom-bars artifact **RESOLVED** by iter6 hardware S2MM fsync (see
+  `iter6-s2mm-fsync-fix.md`); the old "bottom ~15-27 rows show top-of-frame bars" no
+  longer reproduces. The iter4h VSIZE-overallocate "fix" was wrong and reverted
+  (memory: `schindler-iter5-bisect-findings`).
+- ✅ Output color stack (saturation → correct → matrix) live and runtime-tunable over
+  UART (memory: `schindler-color-pipeline`).
+- ✅ 60→24 / 60→60 FRC clean on the 5-slot ring via Dynamic Genlock (memory:
+  `schindler-iter5-1080p-clean` production substrate).
+- 🚧 **present-geometry (adjustable scaler)** — the `PG` block above is the planned
+  insertion. Route B chosen 2026-06-01; the input-side firmware-reframe attempt was
+  reverted because it breaks genlock (`g1-bench-finding-genlock.md`). v1 path under
+  decision: A (windowed full-raster from input scaler) vs a random-access DDR
+  reader/resampler.
 
-## Known artifact
+## Provenance
 
-Bottom ~15-27 rows of every output frame show top-of-frame bars instead of
-expected PLUGE-bottom content. Bug is downstream of scaler (confirmed via
-counters above). Adding more counters to localize between S2MM, MM2S, and
-axis_to_vid_io.
-
-## Source notes for next session
-
-- WIP branch: `iter4g-counter-infra` (built on iter4e at commit 0e6d672)
-- iter4f-wip-pattern-diag branch: row-index test pattern (still useful diagnostic to flip back to)
-- Once root cause is found and fixed, strip diagnostic-only HDL (test pattern,
-  counters can stay as permanent debug surface) and merge to main as iter4f.
+- Production substrate + live build status: [`build-manifest.md`](build-manifest.md) (canonical).
+- Architecture/order-of-operations: [`adjustable-scaler-design.md`](adjustable-scaler-design.md),
+  [`signal-flow.md`](signal-flow.md) §0.
+- **Verify on the bench MONITOR, never the MS2109 capture stick** (memory:
+  `schindler-ms2109-verification-trap`).
