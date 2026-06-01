@@ -91,9 +91,15 @@ puts $fp "#define KERNEL_GPIO_INDEX_H"
 puts $fp "#include \"xparameters.h\""
 puts $fp "#define SCALER_KERNEL_GPIO_INDEX $kernel_gpio_index"
 puts $fp "#define SCALER_KERNEL_GPIO_BASEADDR XPAR_AXI_GPIO_${kernel_gpio_index}_BASEADDR"
+# G1 adjustable-scaler size GPIO index (mirrors SIZE_GPIO_INDEX in
+# tcl/build_phase_b.tcl; default 8 on iter5).
+set size_gpio_index 8
+if {[info exists ::env(SIZE_GPIO_INDEX)]} { set size_gpio_index $::env(SIZE_GPIO_INDEX) }
+puts $fp "#define SIZE_GPIO_INDEX $size_gpio_index"
+puts $fp "#define SIZE_GPIO_BASEADDR XPAR_AXI_GPIO_${size_gpio_index}_BASEADDR"
 puts $fp "#endif"
 close $fp
-puts "FW BUILD: kernel_gpio_index.h ← $kernel_gpio_index"
+puts "FW BUILD: kernel_gpio_index.h ← kernel=$kernel_gpio_index size=$size_gpio_index"
 
 # Platform: maps XSA → platform project + BSP
 platform create -name phase_b_pf -hw $xsa -no-boot-bsp

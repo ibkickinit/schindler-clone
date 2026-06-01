@@ -589,12 +589,24 @@ set KERNEL_GPIO_NAME "axi_gpio_${KERNEL_GPIO_INDEX}"
 set KERNEL_M_PORT    "M[format %02d $KERNEL_M_SLOT]"
 puts "BUILD: iter14 kernel_mode GPIO = $KERNEL_GPIO_NAME at axi_ic_lite/$KERNEL_M_PORT (env: KERNEL_GPIO_INDEX=$KERNEL_GPIO_INDEX KERNEL_M_SLOT=$KERNEL_M_SLOT)"
 
+# G1 adjustable-scaler (2026-06-01): runtime OUTPUT-size GPIO. Dual-channel
+# (ch1 = out_w, ch2 = out_h), defaults full (OUT_W/OUT_H) so boot == pre-G1.
+# Parameterized slot per the KERNEL_GPIO_INDEX lesson — on mackin axi_gpio_8
+# is TPG, so a future merge overrides SIZE_GPIO_INDEX/SIZE_M_SLOT.
+set SIZE_GPIO_INDEX 8
+set SIZE_M_SLOT     11
+if {[info exists ::env(SIZE_GPIO_INDEX)]} { set SIZE_GPIO_INDEX $::env(SIZE_GPIO_INDEX) }
+if {[info exists ::env(SIZE_M_SLOT)]}     { set SIZE_M_SLOT     $::env(SIZE_M_SLOT) }
+set SIZE_GPIO_NAME "axi_gpio_${SIZE_GPIO_INDEX}"
+set SIZE_M_PORT    "M[format %02d $SIZE_M_SLOT]"
+puts "BUILD: G1 size GPIO = $SIZE_GPIO_NAME at axi_ic_lite/$SIZE_M_PORT (env: SIZE_GPIO_INDEX=$SIZE_GPIO_INDEX SIZE_M_SLOT=$SIZE_M_SLOT)"
+
 create_bd_cell -type ip -vlnv xilinx.com:ip:axi_interconnect axi_ic_lite
 # 6 master ports (iter4g expanded 5->6):
 #   M00 = VDMA, M01 = VTC tx (generator), M02 = GPIO 0 (status inputs)
 #   M03 = VTC rx (detector), M04 = GPIO 1 (scaler dim outputs)
 #   M05 = GPIO 2 (iter4g diagnostic counters, new)
-set_property -dict [list CONFIG.NUM_SI {1} CONFIG.NUM_MI {11}] [get_bd_cells axi_ic_lite]  ;# default M10 = axi_gpio_7 (iter14); KERNEL_M_SLOT env var can move it
+set_property -dict [list CONFIG.NUM_SI {1} CONFIG.NUM_MI {12}] [get_bd_cells axi_ic_lite]  ;# M10=axi_gpio_7 (iter14 kernel), M11=axi_gpio_8 (G1 size); both slot-parameterized
 connect_bd_intf_net [get_bd_intf_pins zynq_ps/M_AXI_GP0]     [get_bd_intf_pins axi_ic_lite/S00_AXI]
 connect_bd_intf_net [get_bd_intf_pins axi_ic_lite/M00_AXI]   [get_bd_intf_pins axi_vdma_0/S_AXI_LITE]
 connect_bd_intf_net [get_bd_intf_pins axi_ic_lite/M01_AXI]   [get_bd_intf_pins v_tc_tx/ctrl]
@@ -613,6 +625,7 @@ connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/M07_A
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/M08_ACLK]  ;# axi_gpio_5 (matrix coefs row 1+row 2 start)
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/M09_ACLK]  ;# axi_gpio_6 (matrix m22 + offsets)
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/${KERNEL_M_PORT}_ACLK]  ;# ${KERNEL_GPIO_NAME} (iter14 kernel_mode)
+connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/${SIZE_M_PORT}_ACLK]    ;# ${SIZE_GPIO_NAME} (G1 size)
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_vdma_0/s_axi_lite_aclk]
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins v_tc_tx/s_axi_aclk]
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins v_tc_rx/s_axi_aclk]
@@ -629,6 +642,7 @@ connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_li
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_lite/M08_ARESETN]  ;# axi_gpio_5
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_lite/M09_ARESETN]  ;# axi_gpio_6
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_lite/${KERNEL_M_PORT}_ARESETN]  ;# ${KERNEL_GPIO_NAME} (iter14 kernel_mode)
+connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_lite/${SIZE_M_PORT}_ARESETN]    ;# ${SIZE_GPIO_NAME} (G1 size)
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_vdma_0/axi_resetn]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins v_tc_tx/s_axi_aresetn]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins v_tc_rx/s_axi_aresetn]
@@ -840,6 +854,30 @@ connect_bd_intf_net [get_bd_intf_pins axi_ic_lite/${KERNEL_M_PORT}_AXI] [get_bd_
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]             [get_bd_pins ${KERNEL_GPIO_NAME}/s_axi_aclk]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]    [get_bd_pins ${KERNEL_GPIO_NAME}/s_axi_aresetn]
 connect_bd_net [get_bd_pins ${KERNEL_GPIO_NAME}/gpio_io_o] [get_bd_pins scaler_0/kernel_mode_async]
+
+# =============================================================================
+# G1 adjustable-scaler (2026-06-01): runtime OUTPUT-size GPIO. Dual-channel
+# 16-bit outputs: ch1 = out_w (scaled picture width), ch2 = out_h (height).
+# Boot defaults = OUT_W / OUT_H = full size → scaler_top zero-clamp keeps
+# pre-G1 behavior until firmware writes a smaller size. Firmware drives this
+# alongside the S2MM write-offset + matte-clear (position/matte) on a reframe.
+# =============================================================================
+create_bd_cell -type ip -vlnv xilinx.com:ip:axi_gpio $SIZE_GPIO_NAME
+set_property -dict [list \
+    CONFIG.C_GPIO_WIDTH    {16} \
+    CONFIG.C_GPIO2_WIDTH   {16} \
+    CONFIG.C_ALL_OUTPUTS   {1} \
+    CONFIG.C_ALL_OUTPUTS_2 {1} \
+    CONFIG.C_IS_DUAL       {1} \
+    CONFIG.C_INTERRUPT_PRESENT {0} \
+    CONFIG.C_DOUT_DEFAULT   {0x00000500} \
+    CONFIG.C_DOUT_DEFAULT_2 {0x000002D0} \
+] [get_bd_cells $SIZE_GPIO_NAME]
+connect_bd_intf_net [get_bd_intf_pins axi_ic_lite/${SIZE_M_PORT}_AXI] [get_bd_intf_pins ${SIZE_GPIO_NAME}/S_AXI]
+connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]             [get_bd_pins ${SIZE_GPIO_NAME}/s_axi_aclk]
+connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]    [get_bd_pins ${SIZE_GPIO_NAME}/s_axi_aresetn]
+connect_bd_net [get_bd_pins ${SIZE_GPIO_NAME}/gpio_io_o]   [get_bd_pins scaler_0/out_w_async]
+connect_bd_net [get_bd_pins ${SIZE_GPIO_NAME}/gpio2_io_o]  [get_bd_pins scaler_0/out_h_async]
 
 # =============================================================================
 # iter4g: AXI GPIO 2 — dual-channel, input-only, exposes scaler_top counters
