@@ -116,6 +116,20 @@ sim-pg: ## xsim present-geometry (read-engine-B) module TBs — requires Vivado 
 		echo "FAIL: pg_addrgen_tb"; grep -E 'CASE|MISMATCH|Total errors' sim/xsim-pg.log | head; \
 		exit 1; \
 	fi
+	@echo "→ pg_genlock_tb (Module 2: frame-follow / slot select)..."
+	@cd sim && xvlog pg_genlock_tb.v ../hdl/pg_genlock.v > xvlog-gl.log 2>&1 || \
+		{ tail -10 sim/xvlog-gl.log; exit 1; }
+	@cd sim && xelab -top pg_genlock_tb -snapshot pg_genlock_tb_sim > xelab-gl.log 2>&1 || \
+		{ tail -10 sim/xelab-gl.log; exit 1; }
+	@cd sim && xsim pg_genlock_tb_sim -runall > xsim-gl.log 2>&1
+	@bad=$$(grep -E 'Total errors = ' sim/xsim-gl.log | awk -F'= ' '{print $$2+0}'); \
+	if [ "$$bad" = "0" ]; then \
+		echo "PASS: pg_genlock_tb (Total errors = 0)"; \
+		grep -E 'SCENARIO' sim/xsim-gl.log; \
+	else \
+		echo "FAIL: pg_genlock_tb"; grep -E 'SCENARIO|ERR|Total errors' sim/xsim-gl.log | head; \
+		exit 1; \
+	fi
 
 sim-vivado-mackin: ## xsim Mackin TB suite (3360-vector) — if sources present
 	@command -v xvlog >/dev/null 2>&1 || { echo "source Vivado env first"; exit 2; }
