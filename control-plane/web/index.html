@@ -72,6 +72,14 @@
     #metrics .total { color: var(--text); padding: 4px 0; margin-top: 8px;
                       border-top: 1px solid var(--border); }
 
+    #framedump { background: var(--panel); border: 1px solid var(--border);
+                 border-radius: 6px; margin-bottom: 16px; padding: 12px 16px; }
+    #framedump h3 { margin: 0 0 8px 0; color: var(--text); font-size: 12px;
+                    font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+    #fb-canvas { width: 480px; height: 270px; image-rendering: pixelated;
+                 background: #000; border: 1px solid var(--border); display: block; }
+    #fb-note { color: var(--muted); font: 11px/1.4 "SF Mono", Menlo, monospace; margin-top: 6px; }
+
     #log { background: #000; color: #9aa1ab; font: 11px/1.3 "SF Mono", Menlo, monospace;
            padding: 12px; border-radius: 4px; height: 140px; overflow: auto;
            border: 1px solid var(--border); margin-top: 16px; }
@@ -89,6 +97,7 @@
     <button id="profile-save">Save…</button>
     <button id="profile-snapshot">Snapshot current →</button>
     <button id="reset-all" title="Reset color stack to identity defaults">Reset</button>
+    <button id="dump-frame" title="Capture a DDR framebuffer thumbnail">Dump frame</button>
     <button id="metrics-toggle" title="Toggle daemon metrics panel">⋯</button>
   </header>
 
@@ -96,6 +105,11 @@
     <div id="banner" hidden></div>
     <div id="catalog-mount"></div>
     <div id="metrics" hidden></div>
+    <div id="framedump" hidden>
+      <h3>DDR framebuffer (slot 0 thumbnail)</h3>
+      <canvas id="fb-canvas" width="160" height="90"></canvas>
+      <div id="fb-note"></div>
+    </div>
     <div id="log"></div>
   </main>
 
@@ -204,7 +218,7 @@
     };
   }
 
-  function call(method, params) {
+  function call(method, params, timeoutMs) {
     return new Promise((resolve, reject) => {
       const id = nextId++;
       pending.set(id, m => {
@@ -214,7 +228,7 @@
       ws.send(JSON.stringify({ jsonrpc: "2.0", id, method, params }));
       setTimeout(() => {
         if (pending.has(id)) { pending.delete(id); reject(new Error(`timeout ${method}`)); }
-      }, 3000);
+      }, timeoutMs || 3000);
     });
   }
 
@@ -474,6 +488,40 @@
     } else if (metricsInterval) {
       clearInterval(metricsInterval);
       metricsInterval = null;
+    }
+  });
+
+  // ---- Frame dump (DDR thumbnail) --------------------------------------
+  // Maps the firmware's raw memory bytes to RGB per the "fmt" tag. The
+  // pipeline R-B-G quirk → S2MM stores little-endian → memory order [G,B,R],
+  // so fmt "gbr" means R=byte2, G=byte0, B=byte1. (Calibrate vs SMPTE bars.)
+  function fbBytesToRGB(fmt, b0, b1, b2) {
+    if (fmt === "gbr") return [b2, b0, b1];
+    if (fmt === "rbg") return [b0, b2, b1];
+    return [b0, b1, b2]; // rgb / unknown
+  }
+  document.getElementById("dump-frame").addEventListener("click", async () => {
+    const panel = document.getElementById("framedump");
+    panel.hidden = false;
+    const note = document.getElementById("fb-note");
+    note.textContent = "capturing…";
+    try {
+      const r = await call("debug.dump", { mode: "thumbnail", slot: 0, tw: 160, th: 90 }, 15000);
+      const raw = atob(r.data);                 // base64 → byte string
+      const cv = document.getElementById("fb-canvas");
+      cv.width = r.w; cv.height = r.h;
+      const ctx = cv.getContext("2d");
+      const img = ctx.createImageData(r.w, r.h);
+      for (let i = 0, p = 0; i + 2 < raw.length; i += 3, p += 4) {
+        const [R, G, B] = fbBytesToRGB(r.fmt, raw.charCodeAt(i), raw.charCodeAt(i+1), raw.charCodeAt(i+2));
+        img.data[p] = R; img.data[p+1] = G; img.data[p+2] = B; img.data[p+3] = 255;
+      }
+      ctx.putImageData(img, 0, 0);
+      note.textContent = `slot ${r.slot}  ${r.w}×${r.h}  fmt=${r.fmt}`;
+      log(`frame dump: ${r.w}×${r.h} slot ${r.slot}`, "ok");
+    } catch (e) {
+      note.textContent = `dump failed: ${e.message}`;
+      log(`dump: ${e.message}`, "err");
     }
   });
 

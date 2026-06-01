@@ -476,6 +476,7 @@ class Dispatcher:
             "profile.save":         self._m_profile_save,
             "status.snapshot":      self._m_status_snapshot,
             "system.metrics":       self._m_system_metrics,
+            "debug.dump":           self._m_debug_dump,
         }
         self.telemetry: Optional[TelemetryParser] = None  # set by daemon main
 
@@ -623,6 +624,15 @@ class Dispatcher:
         """Daemon health: bus pub/drop counts + per-client queue depths.
         Useful when diagnosing whether a slow client is causing event drops."""
         return self.bus.metrics()
+
+    async def _m_debug_dump(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """DDR framebuffer dump (scaler-testing instrument). Forwards to the
+        firmware debug.dump J method with a long timeout — dumps stream ~10-20 KB
+        of base64 over UART (1-4 s). Pass-through of {mode,slot,w,h,fmt,data}."""
+        fw = await self.uart.request("debug.dump", params or {}, timeout=12.0)
+        if "error" in fw:
+            raise RuntimeError(f"firmware: {fw['error'].get('message', '?')}")
+        return fw["result"]
 
     async def _m_status_snapshot(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """Return the current value of every status field the daemon has seen.

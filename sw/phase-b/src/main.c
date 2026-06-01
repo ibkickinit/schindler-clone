@@ -597,6 +597,115 @@ static void cp_emit_error(const char *id_lit, int code, const char *msg)
                id_lit, code, msg);
 }
 
+/* ============================================================================
+ * debug.dump — DDR framebuffer dump over JSON-RPC (scaler-testing instrument).
+ *
+ * Two modes (full frame is ~2.7 MB → ~4 min at 115200, so never that):
+ *   thumbnail : downsample slot to tw×th grid, base64 raw bytes → UI canvas.
+ *   strip     : head+tail cols (0..7, W-8..W-1) per row in [row0,row1],
+ *               base64 → pixel-exact edge / H-shift / position checks.
+ *
+ * Pixel byte order in DDR is the pipeline's R-B-G quirk (tdata[23:16]=R,
+ * [15:8]=B, [7:0]=G) stored little-endian by S2MM → memory bytes are
+ * [G,B,R] per pixel. We emit raw memory bytes + tag "fmt":"gbr" so the
+ * client maps to RGB; calibrate against SMPTE bars on first use.
+ * ============================================================================ */
+static const char CP_B64[] =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+/* Streaming base64: feed bytes one at a time; emits 4 chars per 3 bytes.
+ * Call with flush=1 after the last byte to emit the tail + padding. */
+static void cp_b64_byte(u8 v, int *nbuf, u32 *acc, int flush)
+{
+    if (!flush) {
+        *acc = (*acc << 8) | v;
+        if (++(*nbuf) == 3) {
+            xil_printf("%c%c%c%c",
+                CP_B64[(*acc >> 18) & 0x3F], CP_B64[(*acc >> 12) & 0x3F],
+                CP_B64[(*acc >> 6) & 0x3F],  CP_B64[*acc & 0x3F]);
+            *nbuf = 0; *acc = 0;
+        }
+    } else if (*nbuf == 1) {
+        u32 a = *acc << 16;
+        xil_printf("%c%c==", CP_B64[(a >> 18) & 0x3F], CP_B64[(a >> 12) & 0x3F]);
+        *nbuf = 0;
+    } else if (*nbuf == 2) {
+        u32 a = *acc << 8;
+        xil_printf("%c%c%c=", CP_B64[(a >> 18) & 0x3F], CP_B64[(a >> 12) & 0x3F],
+                   CP_B64[(a >> 6) & 0x3F]);
+        *nbuf = 0;
+    }
+}
+
+/* Emit a debug.dump JSON-RPC result. params_json is the raw "params" object. */
+static void cp_emit_frame_dump(const char *id_lit, const char *params_json)
+{
+    const char *vs; int vl;
+    int slot = 0, tw = 80, th = 45, row0 = 0, row1 = 99;
+    char mode[16] = "thumbnail";
+
+    if (cp_find_key(params_json, "slot", &vs, &vl)) cp_parse_int(vs, vl, &slot);
+    if (cp_find_key(params_json, "mode", &vs, &vl)) cp_parse_string(vs, vl, mode, sizeof(mode));
+    if (cp_find_key(params_json, "tw",  &vs, &vl)) cp_parse_int(vs, vl, &tw);
+    if (cp_find_key(params_json, "th",  &vs, &vl)) cp_parse_int(vs, vl, &th);
+    if (cp_find_key(params_json, "row0", &vs, &vl)) cp_parse_int(vs, vl, &row0);
+    if (cp_find_key(params_json, "row1", &vs, &vl)) cp_parse_int(vs, vl, &row1);
+
+    if (slot < 0 || slot >= NUM_FRAMES) { cp_emit_error(id_lit, -32602, "slot out of range"); return; }
+    const u32 SLOT_STRIDE = FRAME_BYTES + STRIDE;
+    volatile u8 *base = (volatile u8 *)(FRAME_BUF_BASE + (u32)slot * SLOT_STRIDE);
+
+    int is_strip = (strcmp(mode, "strip") == 0);
+    int out_w, out_h;
+    if (is_strip) {
+        if (row0 < 0) row0 = 0;
+        if (row1 >= FRAME_H) row1 = FRAME_H - 1;
+        if (row1 < row0) { cp_emit_error(id_lit, -32602, "bad row range"); return; }
+        out_w = 16;                 /* 8 head + 8 tail cols */
+        out_h = row1 - row0 + 1;
+    } else {
+        if (tw < 1 || tw > 160 || th < 1 || th > 120) { cp_emit_error(id_lit, -32602, "thumb dims out of range"); return; }
+        out_w = tw; out_h = th;
+    }
+
+    xil_printf("{\"jsonrpc\":\"2.0\",\"id\":%s,\"result\":{"
+               "\"mode\":\"%s\",\"slot\":%d,\"w\":%d,\"h\":%d,\"fmt\":\"gbr\",\"data\":\"",
+               id_lit, mode, slot, out_w, out_h);
+
+    int nbuf = 0; u32 acc = 0;
+    if (is_strip) {
+        for (int r = row0; r <= row1; r++) {
+            u32 rb = (u32)r * STRIDE;
+            for (int c = 0; c < 8; c++) {           /* head cols 0..7 */
+                u32 p = rb + (u32)c * BYTES_PP;
+                cp_b64_byte(base[p], &nbuf, &acc, 0);
+                cp_b64_byte(base[p+1], &nbuf, &acc, 0);
+                cp_b64_byte(base[p+2], &nbuf, &acc, 0);
+            }
+            for (int c = FRAME_W - 8; c < FRAME_W; c++) {  /* tail cols W-8..W-1 */
+                u32 p = rb + (u32)c * BYTES_PP;
+                cp_b64_byte(base[p], &nbuf, &acc, 0);
+                cp_b64_byte(base[p+1], &nbuf, &acc, 0);
+                cp_b64_byte(base[p+2], &nbuf, &acc, 0);
+            }
+        }
+    } else {
+        for (int ty = 0; ty < th; ty++) {
+            u32 r = (u32)ty * FRAME_H / (u32)th;
+            u32 rb = r * STRIDE;
+            for (int tx = 0; tx < tw; tx++) {
+                u32 col = (u32)tx * FRAME_W / (u32)tw;
+                u32 p = rb + col * BYTES_PP;
+                cp_b64_byte(base[p], &nbuf, &acc, 0);
+                cp_b64_byte(base[p+1], &nbuf, &acc, 0);
+                cp_b64_byte(base[p+2], &nbuf, &acc, 0);
+            }
+        }
+    }
+    cp_b64_byte(0, &nbuf, &acc, 1);   /* flush tail + padding */
+    xil_printf("\"}}\r\n");
+}
+
 static void cp_dispatch_jsonrpc(const char *json)
 {
     const char *vs; int vl;
@@ -634,6 +743,12 @@ static void cp_dispatch_jsonrpc(const char *json)
     const char *ps; int pl;
     if (!cp_find_key(json, "params", &ps, &pl)) {
         cp_emit_error(id_lit, -32602, "missing params");
+        return;
+    }
+    /* debug.dump uses slot/mode params, not a control id — handle before the
+     * control-id extraction below. */
+    if (strcmp(method, "debug.dump") == 0) {
+        cp_emit_frame_dump(id_lit, ps);
         return;
     }
     const char *pid_s; int pid_l;
