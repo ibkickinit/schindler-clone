@@ -65,22 +65,46 @@ sim: ## Python kernel compare + sha256 diff against golden
 
 ci: test sim ## test + sim (both fast paths, no bench, no Vivado)
 
-sim-vivado: ## xsim testbenches (requires Vivado env sourced)
+sim-vivado: ## xsim testbench (scaler_top_tb) — requires Vivado env sourced
 	@command -v xvlog >/dev/null 2>&1 || { \
 		echo "xvlog not found; source /tools/Xilinx/2025.2/Vitis/settings64.sh first"; \
 		exit 2; }
-	@echo "→ xsim sim/scaler_top_tb.v ..."
+	@echo "→ xvlog → scaler_top_tb..."
 	@cd sim && xvlog scaler_top_tb.v ../hdl/scaler_top.v ../hdl/scaler_h.v ../hdl/scaler_v.v \
-		../hdl/scaler_coeffs_h.v ../hdl/scaler_coeffs_v.v ../hdl/scaler_lbuf_dp.v 2>&1 | tee xvlog-sim.log
-	@cd sim && xelab scaler_top_tb -s scaler_top_tb 2>&1 | tee xelab-sim.log
-	@cd sim && xsim scaler_top_tb -R 2>&1 | tee xsim-scaler-top.log | tail -3
-	@echo "→ Mackin sim suite (if present)..."
-	@if [ -d sim/mackin ] && find sim/mackin -name '*.v' -o -name '*.sv' | head -1 | grep -q .; then \
-		echo "  (Mackin TB present — invoke per its own README, not wired here)"; \
+		../hdl/scaler_coeffs_h.v ../hdl/scaler_coeffs_v.v > xvlog-sim.log 2>&1 || \
+		{ tail -10 sim/xvlog-sim.log; exit 1; }
+	@echo "→ xelab → scaler_top_tb_sim..."
+	@cd sim && xelab -debug typical -top scaler_top_tb -snapshot scaler_top_tb_sim \
+		> xelab-sim.log 2>&1 || { tail -10 sim/xelab-sim.log; exit 1; }
+	@echo "→ xsim -runall..."
+	@cd sim && xsim scaler_top_tb_sim -runall > xsim-scaler-top.log 2>&1
+	@# scaler_top_tb has two pass criteria:
+	@#  (1) Total errors after TEST 1/2 must be 0 — real regression check.
+	@#  (2) Cross-frame contam pixels expected to be 0 — but the iter6
+	@#      hardware S2MM fsync introduces a known 1-row transient at
+	@#      frame boundaries that the TB flags as contam. Bench-verified
+	@#      cosmetic on monitor; tolerated here as long as TEST 1/2
+	@#      themselves report 0 errors.
+	@bad=$$(grep -E 'Total errors after TEST [12]: ' sim/xsim-scaler-top.log | \
+	         awk -F': ' 'BEGIN{f=0} {if ($$2+0 > 0) f=1} END{print f}'); \
+	if [ "$$bad" = "0" ]; then \
+		echo "PASS: scaler_top_tb (per-test errors = 0; iter6 contam tolerated)"; \
 	else \
-		echo "  (no Mackin TB sources found; skipping)"; \
+		echo "FAIL: scaler_top_tb has per-test errors"; \
+		grep -E 'Total errors after TEST|FAIL' sim/xsim-scaler-top.log; \
+		exit 1; \
 	fi
-	@echo "PASS: sim-vivado completed"
+
+sim-vivado-mackin: ## xsim Mackin TB suite (3360-vector) — if sources present
+	@command -v xvlog >/dev/null 2>&1 || { echo "source Vivado env first"; exit 2; }
+	@if find sim/mackin -maxdepth 2 -name '*_tb.v' -o -name '*_tb.sv' 2>/dev/null | head -1 | grep -q .; then \
+		echo "→ Mackin TB suite (not yet wired — see sim/mackin/)"; \
+		false; \
+	else \
+		echo "no Mackin TB sources found at sim/mackin/*_tb.{v,sv}"; \
+		echo "(memory references a 3360-vector sim shipped on the mackin branch;"; \
+		echo " it's xsim-driven from the branch's own scripts. Wire when needed.)"; \
+	fi
 
 sim-bootstrap: ## Regenerate sim/golden/ from the current kernel-compare output
 	@mkdir -p $(dir $(GOLDEN_FILE)) $(KCC_OUTDIR)

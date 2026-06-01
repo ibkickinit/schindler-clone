@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/ibkickinit/schindler-clone/control-plane/profile.schema.json",
+  "title": "Schindler operator profile",
+  "description": "Schema for profile files in control-plane/profiles/factory/*.json and ~/.schindler/profiles/*.json. See docs/wiki/FACTORY-PROFILES.md.",
+  "type": "object",
+  "required": ["schema", "schema_version", "catalog_version", "name", "controls"],
+  "properties": {
+    "schema":          { "const": "schindler-profile" },
+    "schema_version":  {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+      "description": "Semver for the profile-file format itself, independent of catalog_version."
+    },
+    "catalog_version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+      "description": "Catalog version this profile was authored against. Daemon best-effort applies on profile.load and skips unknown ids; major-version mismatch is rejected."
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[a-zA-Z0-9_-]+$",
+      "description": "Filesystem-safe identifier. Used as the .json filename stem."
+    },
+    "description": {
+      "type": "string",
+      "description": "Operator-facing one-liner. Optional but recommended for factory profiles."
+    },
+    "factory": {
+      "type": "boolean",
+      "description": "Informational only — read-only-ness comes from filesystem location, not this flag."
+    },
+    "created_at": { "type": "string" },
+    "controls": {
+      "type": "object",
+      "description": "Dot-namespaced catalog id → value. Enum values are strings (matching catalog options[].value); numerics are integers.",
+      "patternProperties": {
+        "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$": {
+          "type": ["string", "number", "boolean", "integer"]
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

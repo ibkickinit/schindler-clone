@@ -570,14 +570,28 @@ class Dispatcher:
     async def _m_profile_load(self, params: Dict[str, Any]) -> Dict[str, Any]:
         name = params["name"]
         prof = self.profiles.load(name)
+        # Reject profiles whose catalog_version major differs from ours.
+        # Minor mismatches still apply best-effort. See CATALOG-EVOLUTION.md.
+        prof_v = prof.get("catalog_version", "0.0.0")
+        try:
+            prof_major = int(prof_v.split(".")[0])
+            live_major = int(self.catalog.version.split(".")[0])
+        except (ValueError, IndexError):
+            prof_major = live_major = 0
+        if prof_major != live_major:
+            raise ValueError(
+                f"catalog major-version mismatch: profile '{name}' authored "
+                f"against catalog {prof_v}, daemon serving {self.catalog.version}")
         applied = []
+        skipped = []
         for cid, value in prof.get("controls", {}).items():
             try:
                 await self._m_control_set({"id": cid, "value": value})
                 applied.append(cid)
             except Exception as e:
                 log.warning("profile '%s': %s failed: %s", name, cid, e)
-        return {"name": name, "applied": applied}
+                skipped.append({"id": cid, "reason": str(e)})
+        return {"name": name, "applied": applied, "skipped": skipped}
 
     async def _m_profile_save(self, params: Dict[str, Any]) -> Dict[str, Any]:
         name = params["name"]
@@ -629,8 +643,34 @@ def _error(rid: Any, code: int, message: str) -> Dict[str, Any]:
 # WebSocket server
 # ---------------------------------------------------------------------------
 
-async def ws_handler(ws: "WebSocketServerProtocol", dispatcher: Dispatcher) -> None:
+async def ws_handler(ws: "WebSocketServerProtocol", dispatcher: Dispatcher,
+                     auth_token: Optional[str] = None) -> None:
     log.info("ws: client connected from %s", getattr(ws, "remote_address", "?"))
+
+    # Auth handshake (Risk N1 prep). When auth_token is set, the first frame
+    # MUST be a system.auth request with the matching token. Anything else
+    # gets a -32001 "unauthorized" and the connection closes. Default is
+    # None (disabled) — preserves today's localhost-only convenience.
+    if auth_token is not None:
+        try:
+            first = await asyncio.wait_for(ws.recv(), timeout=5.0)
+            req = json.loads(first)
+            if (req.get("method") != "system.auth"
+                    or req.get("params", {}).get("token") != auth_token):
+                await ws.send(json.dumps(_error(req.get("id"), -32001,
+                                                "unauthorized")))
+                await ws.close()
+                log.warning("ws: client failed auth from %s",
+                            getattr(ws, "remote_address", "?"))
+                return
+            await ws.send(json.dumps({
+                "jsonrpc": "2.0", "id": req.get("id"),
+                "result": {"authorized": True},
+            }))
+        except (asyncio.TimeoutError, json.JSONDecodeError):
+            await ws.close()
+            return
+
     # Subscribe this client to the status bus. A background task drains the
     # queue and forwards each event as a JSON notification.
     addr = getattr(ws, "remote_address", None)
@@ -756,8 +796,15 @@ async def amain(args: argparse.Namespace) -> int:
         log.warning("web root not found, HTTP disabled: %s", web_root)
         web_root = None
 
+    auth_token = os.environ.get("SCHINDLERD_AUTH_TOKEN") or None
+    if auth_token:
+        log.info("ws: auth ENABLED (SCHINDLERD_AUTH_TOKEN set)")
+    elif args.host != "127.0.0.1" and args.host != "localhost":
+        log.warning("ws: binding non-loopback (%s) without auth — "
+                    "Risk N1 release-gate. Set SCHINDLERD_AUTH_TOKEN.",
+                    args.host)
     ws_server = await websockets.serve(
-        lambda ws: ws_handler(ws, dispatcher),
+        lambda ws: ws_handler(ws, dispatcher, auth_token=auth_token),
         host=args.host, port=args.ws_port,
     )
     log.info("ws: serving on ws://%s:%d", args.host, args.ws_port)
