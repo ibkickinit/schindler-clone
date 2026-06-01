@@ -98,6 +98,25 @@ sim-vivado: ## xsim testbench (scaler_top_tb) — requires Vivado env sourced
 		exit 1; \
 	fi
 
+sim-pg: ## xsim present-geometry (read-engine-B) module TBs — requires Vivado env
+	@command -v xvlog >/dev/null 2>&1 || { \
+		echo "xvlog not found; source /tools/Xilinx/2025.2/Vivado/settings64.sh first"; \
+		exit 2; }
+	@echo "→ pg_addrgen_tb (Module 1: geometry address math)..."
+	@cd sim && xvlog pg_addrgen_tb.v ../hdl/pg_addrgen.v > xvlog-pg.log 2>&1 || \
+		{ tail -10 sim/xvlog-pg.log; exit 1; }
+	@cd sim && xelab -top pg_addrgen_tb -snapshot pg_addrgen_tb_sim > xelab-pg.log 2>&1 || \
+		{ tail -10 sim/xelab-pg.log; exit 1; }
+	@cd sim && xsim pg_addrgen_tb_sim -runall > xsim-pg.log 2>&1
+	@bad=$$(grep -E 'Total errors = ' sim/xsim-pg.log | awk -F'= ' '{print $$2+0}'); \
+	if [ "$$bad" = "0" ]; then \
+		echo "PASS: pg_addrgen_tb (Total errors = 0)"; \
+		grep -E 'CASE' sim/xsim-pg.log; \
+	else \
+		echo "FAIL: pg_addrgen_tb"; grep -E 'CASE|MISMATCH|Total errors' sim/xsim-pg.log | head; \
+		exit 1; \
+	fi
+
 sim-vivado-mackin: ## xsim Mackin TB suite (3360-vector) — if sources present
 	@command -v xvlog >/dev/null 2>&1 || { echo "source Vivado env first"; exit 2; }
 	@if find sim/mackin -maxdepth 2 -name '*_tb.v' -o -name '*_tb.sv' 2>/dev/null | head -1 | grep -q .; then \
