@@ -52,6 +52,11 @@ module scaler_v #(
      * v_cross/v_excess math is frame-atomic. */
     input  wire [11:0] in_h_runtime,
 
+    /* iter14 (2026-05-31): runtime kernel-mode selector. Mirrors scaler_h
+     * mode codes: 0=NN tap3 only, 1=2-tap tap2+tap3 (production), 2=4-tap
+     * tap0..tap3, 3=reserved. */
+    input  wire [1:0]  kernel_mode,
+
     /* iter4g DIAG: per-frame counter snapshots, latched at TUSER.
      *   in_tlast_count_snap   - how many TLASTs came IN from scaler_h
      *   emit_count_snap       - how many v_cross/emits triggered (internal)
@@ -180,12 +185,37 @@ module scaler_v #(
      * output pixel; cumulative H+V cascade = -1 LSB per channel = slight
      * dark shift. Matches the mac4_sat path's existing +1024 rounding at
      * line 163. Cost: 3 LUTs. Per audit-panel HDL Agent 2026-05-30. */
+    /* iter14 (2026-05-31): runtime kernel-mode mux for V scaler. */
+    // Mode 0 — NN single-tap (newest = tap3 post-rotation)
+    wire [7:0] mode0v_r = tap3[23:16];
+    wire [7:0] mode0v_g = tap3[15: 8];
+    wire [7:0] mode0v_b = tap3[ 7: 0];
+
+    // Mode 1 — 2-tap boxcar (production)
     wire [8:0] vs_r = tap2[23:16] + tap3[23:16] + 9'd1;
     wire [8:0] vs_g = tap2[15: 8] + tap3[15: 8] + 9'd1;
     wire [8:0] vs_b = tap2[ 7: 0] + tap3[ 7: 0] + 9'd1;
-    wire [7:0] mac_r = vs_r[8:1];
-    wire [7:0] mac_g = vs_g[8:1];
-    wire [7:0] mac_b = vs_b[8:1];
+    wire [7:0] mode1v_r = vs_r[8:1];
+    wire [7:0] mode1v_g = vs_g[8:1];
+    wire [7:0] mode1v_b = vs_b[8:1];
+
+    // Mode 2 — 4-tap boxcar across all four rotated taps
+    wire [9:0] v4_r = tap0[23:16] + tap1[23:16] + tap2[23:16] + tap3[23:16] + 10'd2;
+    wire [9:0] v4_g = tap0[15: 8] + tap1[15: 8] + tap2[15: 8] + tap3[15: 8] + 10'd2;
+    wire [9:0] v4_b = tap0[ 7: 0] + tap1[ 7: 0] + tap2[ 7: 0] + tap3[ 7: 0] + 10'd2;
+    wire [7:0] mode2v_r = v4_r[9:2];
+    wire [7:0] mode2v_g = v4_g[9:2];
+    wire [7:0] mode2v_b = v4_b[9:2];
+
+    reg [7:0] mac_r, mac_g, mac_b;
+    always @* begin
+        case (kernel_mode)
+            2'd0: begin mac_r = mode0v_r; mac_g = mode0v_g; mac_b = mode0v_b; end
+            2'd1: begin mac_r = mode1v_r; mac_g = mode1v_g; mac_b = mode1v_b; end
+            2'd2: begin mac_r = mode2v_r; mac_g = mode2v_g; mac_b = mode2v_b; end
+            default: begin mac_r = mode1v_r; mac_g = mode1v_g; mac_b = mode1v_b; end
+        endcase
+    end
     wire _vcoef_keep = |{k0, k1, k2, k3};
 
     // Always ready to accept input — internal 4-line BRAM absorbs bursts.
@@ -312,16 +342,26 @@ module scaler_v #(
                     tap_lbuf3_q    <= lbuf_fresh[3] ? lbuf3[out_col] : 24'h0;
                     tap0_slot_q    <= tap0_slot;
                     phase_q        <= v_phase_held;
-                    /* iter13c (2026-05-31, HDL audit follow-up): suppress
-                     * emit when both lbufs that will become tap2/tap3
-                     * post-rotation are unfresh. iter13's MAC is
+                    /* iter13c rev2 (2026-05-31, HDL audit follow-up):
+                     * suppress emit when both lbufs that will become
+                     * tap2/tap3 post-rotation are unfresh. iter13's MAC is
                      * (tap2+tap3)/2; at frame start with neither fresh,
-                     * we'd emit (0+0)/2 = black. Better to hold valid
-                     * low so the picture sees a clean blank/hold rather
-                     * than a black band that flickers at top-of-frame.
-                     * tap2 = lbuf[(tap0_slot+2)%4]; tap3 = lbuf[+3%4]. */
-                    stage0_valid_q <= lbuf_fresh[(tap0_slot + 2'd2) & 2'd3]
-                                   || lbuf_fresh[(tap0_slot + 2'd3) & 2'd3];
+                     * we'd emit (0+0)/2 = black. Better to hold valid low
+                     * so the picture sees a clean blank/hold rather than
+                     * a black band that flickers at top-of-frame.
+                     *
+                     * v1 used variable bit-select with expression index
+                     * (lbuf_fresh[(tap0_slot+2)&3]) — Vivado synth
+                     * accepted it but impl_1 saw scaler_top as a black
+                     * box (one of those "synth pass, downstream fail"
+                     * cases). v2 uses an explicit case statement:
+                     * identical behavior, all synthesizers handle it. */
+                    case (tap0_slot)
+                        2'd0: stage0_valid_q <= lbuf_fresh[2] | lbuf_fresh[3];
+                        2'd1: stage0_valid_q <= lbuf_fresh[3] | lbuf_fresh[0];
+                        2'd2: stage0_valid_q <= lbuf_fresh[0] | lbuf_fresh[1];
+                        2'd3: stage0_valid_q <= lbuf_fresh[1] | lbuf_fresh[2];
+                    endcase
                     tlast_q        <= (out_col == IN_W - 1);
                     tuser_q        <= (out_col == 0) && emit_first_row;
 

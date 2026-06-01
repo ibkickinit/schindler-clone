@@ -51,6 +51,14 @@ module scaler_top #(
     input  wire [15:0] in_w_async,
     input  wire [15:0] in_h_async,
 
+    /* iter14 (2026-05-31): runtime kernel-mode select from AXI GPIO.
+     *   [1:0] = kernel_mode_h_async
+     *   [3:2] = kernel_mode_v_async
+     * CDC'd into aclk inside scaler_top below. 4-bit slice from a 32-bit
+     * GPIO; bits 31:4 reserved. Default = 4'b0101 → H=1, V=1 (production
+     * 2-tap boxcar). Setting to 4'b0000 would give pure NN H+V. */
+    input  wire [3:0]  kernel_mode_async,
+
     /* iter4g DIAG: per-frame counter snapshots (latched at TUSER inside the
      * scaler modules). Packed into a 48-bit bus for routing through the BD
      * to a CDC + AXI GPIO. Firmware reads via GPIO + prints via UART.
@@ -67,15 +75,22 @@ module scaler_top #(
     /* 2-FF synchronizers on each bit. Marked ASYNC_REG for the placer. */
     (* ASYNC_REG = "TRUE" *) reg [15:0] in_w_q1, in_w_q2;
     (* ASYNC_REG = "TRUE" *) reg [15:0] in_h_q1, in_h_q2;
+    /* iter14 kernel_mode CDC: 4-bit (2 bits per axis). Reset default
+     * 4'b0101 = H mode 1 + V mode 1 = production 2-tap boxcar. */
+    (* ASYNC_REG = "TRUE" *) reg [3:0]  km_q1, km_q2;
     always @(posedge aclk) begin
         if (!aresetn) begin
             in_w_q1 <= IN_W_DEFAULT[15:0]; in_w_q2 <= IN_W_DEFAULT[15:0];
             in_h_q1 <= IN_H_DEFAULT[15:0]; in_h_q2 <= IN_H_DEFAULT[15:0];
+            km_q1   <= 4'b0101;            km_q2   <= 4'b0101;
         end else begin
             in_w_q1 <= in_w_async; in_w_q2 <= in_w_q1;
             in_h_q1 <= in_h_async; in_h_q2 <= in_h_q1;
+            km_q1   <= kernel_mode_async; km_q2 <= km_q1;
         end
     end
+    wire [1:0] kernel_mode_h = km_q2[1:0];
+    wire [1:0] kernel_mode_v = km_q2[3:2];
     /* Zero-clamp: if firmware hasn't programmed valid dimensions yet (or GPIO
      * default applied wrong), substitute IN_W_DEFAULT / IN_H_DEFAULT so the
      * scaler's emit_now / v_cross math doesn't break. Without this, in_w==0
@@ -117,6 +132,7 @@ module scaler_top #(
         .m_axis_tlast  (mid_tlast),
         .m_axis_tuser  (mid_tuser),
         .in_w_runtime  (in_w_eff),
+        .kernel_mode   (kernel_mode_h),
         .in_tlast_count_snap (scaler_h_in_tlast_snap)
     );
 
@@ -140,6 +156,7 @@ module scaler_top #(
         .m_axis_tlast  (m_axis_tlast),
         .m_axis_tuser  (m_axis_tuser),
         .in_h_runtime  (in_h_eff),
+        .kernel_mode   (kernel_mode_v),
         .in_tlast_count_snap  (scaler_v_in_tlast_snap),
         .emit_count_snap      (scaler_v_emit_snap),
         .out_tlast_count_snap (scaler_v_out_tlast_snap)

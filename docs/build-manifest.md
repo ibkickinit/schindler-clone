@@ -1,8 +1,10 @@
 # Schindler Build Manifest
 
+> **New to the project?** Start at [`wiki/START-HERE.md`](wiki/START-HERE.md). This manifest is the live build ledger; the wiki has the conceptual map. Both are canonical for different things.
+
 **Status:** living document. Source of truth for **which builds exist, which ones produce a clean image, and what's broken.** Pairs with [`format-support-matrix.md`](format-support-matrix.md) — that doc tracks **format axis** (what input→output combos), this doc tracks **build axis** (what bitstream lineage).
 
-Last updated: 2026-05-22 ~15:30 — iter6 bottom-bars artifact resolved via S2MM hardware fsync.
+Last updated: 2026-05-31 (44 commits this day — see HISTORICAL-NARRATIVE for the long form). Headline events: iter5-1080p-clean promoted ⚠️→✅; HDMI compliance rule + 1080p60 silicon limit on Zybo Z7-20; V0a control plane shipped end-to-end (catalog v0.2.0 + firmware J + schindlerd + browser UI); V0a+1 polish (status push, version handshake, multi-client, factory profiles); V0a+2 hardening (auth scaffold, multi-client throttle, profile schema + version-mismatch reject, catalog version derived from build, KERNEL_GPIO_INDEX parameterization); 7-agent re-audit absorbed into 5 follow-up bundles; iter13c backported to mackin + phase-e1; test harness from 0 → 78 tests + make ci + make sim + make sim-vivado + make web-smoke all green.
 
 ## Why this document exists
 
@@ -34,9 +36,35 @@ Memory entries claiming `SHIPPED` or matrix entries claiming `✅` are **point-i
 
 ---
 
-## Branches snapshot — 2026-05-21
+## Branches snapshot — 2026-05-30 (current)
 
-Walked `git branch` 2026-05-21 16:30. Tip commits + best-known status:
+> 2026-05-21 snapshot retained below as historical record.
+
+Live tips as of 2026-05-30 walk of `git branch -a` + `git log`:
+
+| Branch | Tip | Date | Buildable | Bench-image | Notes |
+|---|---|---|---|---|---|
+| `main` | `045f09b` | 2026-05-16 | ? | ? | Cold storage — frozen at pre-iter5. **GitHub default branch flipped to `iter5-1080p-clean` 2026-05-31.** Will force-update at v1 ship; don't target until then. |
+| `iter5-1080p-clean` | `abb83e8` | 2026-05-31 | ✅ Vivado+Vitis 2026-05-31 | ✅ CLEAN (verified 2026-05-31, iter12+13+13b 3-reboot rule satisfied; iter14 hands-on verified across 3 Osee sources) | **PRODUCTION SUBSTRATE / EFFECTIVE MAIN.** GitHub default branch as of 2026-05-31. iter4d-3 + 1080p substrate + color stack + iter6 S2MM hardware fsync + iter12 (H 2-tap `(s_axis_tdata + window[0])/2`) + iter13 (V 2-tap `(tap2 + tap3)/2`) + iter13b (+1 round-to-nearest) + iter13c (lbuf_fresh emit suppression) + iter14 (runtime kernel-mode toggle via UART `k h/v <0-3>`). Auto-archive system live. |
+| `mackin-impl-wip` | `fedb51a` | 2026-05-24 | ✅ Vivado+Vitis 2026-05-24 | ⚠️ LUCKY-BOOT-fingerprint (DDR3 byte dump matches iter5; no end-to-end picture test — placeholder axis_clone wiring still in place) | iter12+13 backport on `4b8067e` + dump_slot_head_pixels diag firmware on `fedb51a`. Pushed to origin. **Mackin blender still placeholder until dual-VDMA bench wiring lands.** |
+| `phase-e1-pll-spike` | `81df37b` | 2026-05-24 | ✅ Vivado+Vitis 2026-05-30 | ⚠️ LUCKY-BOOT (1 boot, monitor-clean under ImagePro diagonal 2026-05-30 — no 3-boot rule yet) | iter12+13 backport (`78ee7ad`) + `F` UART command for live framebuffer dump (`81df37b`). MMCM tracking loop active; ±500 ppm tracking range per `[[schindler_phase_e1_state]]`. Pushed to origin. |
+| `phase-g-iter1` | `d94f6cb` | 2026-05-21 | ⚠️ (Vivado not re-run since 2026-05-21) | N/A | ADV7393 BD + Si5351 Phase A-D firmware. **All 9 commits of Si5351 progression** (Phase A→B→C-lite→D-WIP) pushed to origin 2026-05-30. Both ADV7393 and Si5351 are hardware-blocked (chips dead/marginal). |
+| `iter5-bisect-720p` | `81e17a8` | 2026-05-17 | ? | ⚠️ LUCKY-BOOT | **ARCHIVED 2026-05-31** via tag `archive/iter5-bisect-720p`. Forensic — the bisect endpoint that proved iter4h structurally wrong. Keep for archaeology; don't ship from. |
+| `iter4h-axis-fifo` | `7d5fe09` | 2026-05-17 | ? | ❌ SCROLL | **ARCHIVED 2026-05-31** via tag `archive/iter4h-axis-fifo`. **DO NOT USE.** S2MM VSIZE=747 caused 1-row-per-frame scroll. Forensic only. |
+| `iter5-wip` / `iter4f-wip-pattern-diag` / `iter4g-counter-infra` | various | May 16-17 | ? | various | **ARCHIVED 2026-05-31** via tags `archive/<name>`. Abandoned WIPs / forensic. |
+
+**2026-05-31 — Phase 4 of Direction A: branch retirement (tag-only):** Five stale branches tagged as `archive/<name>` and remain on origin (not deleted). Branches stay visible in `git branch -a` but are marked dead in this manifest. Use the tags to recover history if ever needed.
+
+Active branches going forward (4):
+- `main` — cold storage (pre-iter5)
+- `iter5-1080p-clean` — **production substrate**
+- `mackin-impl-wip` — temporal blender (placeholder wiring)
+- `phase-e1-pll-spike` — MMCM tracking spike
+- `phase-g-iter1` — analog out (hardware-blocked)
+
+## Branches snapshot — 2026-05-21 (historical)
+
+Original walk of `git branch` 2026-05-21 16:30, retained for archaeology. **DO NOT USE FOR CURRENT WORK** — see 2026-05-30 table above.
 
 | Branch | Tip | Date | Buildable | Bench-image | Notes |
 |---|---|---|---|---|---|
@@ -482,6 +510,189 @@ See [`docs/iter6-s2mm-fsync-fix.md`](iter6-s2mm-fsync-fix.md) for: detailed root
 
 ---
 
+## 2026-05-22 evening — iter6 H-shift discovered on ALL branches (re-opened)
+
+After closing out iter6 across three branches, Justin re-checked iter5-1080p-clean carefully on the monitor and **the 2-3 pixel per-line H-shift is present here too**. Originally seen on phase-e1-pll-spike and attributed there to branch-specific differences (FRC mode, c_num_fstores=3). That theory is now **refuted** — same H-shift on iter5 substrate.
+
+**Net iter6 status:**
+- ✅ 27-row vertical bottom-bars artifact: **FIXED** (DDR3 dump confirms uniform PLUGE in slot tails, no leak).
+- ❌ 2-3 pixel per-line horizontal shift: **NEW REGRESSION (or pre-existing + unmasked).** Each output row starts ~3 pixels late; last 3 pixels of row N appear at start of row N+1.
+
+**Tomorrow's investigation needs to disambiguate:** was the H-shift pre-existing (hidden behind the more dramatic V-wrap and the MS2109's framebuffer) or newly introduced by the iter6 fsync wiring? Hypotheses ranked in `docs/iter6-s2mm-fsync-fix.md`'s new "Known residual: H-shift" section.
+
+**Matrix Row 2 demoted** back to ⚠️ until H-shift fix lands.
+
+---
+
+## 2026-05-24 — iter7→iter13: scaler kernel rework, H-shift RESOLVED
+
+iter6 left a residual artifact ("each line starts 2-3 pixels late, last pixels of row N appear at start of row N+1"). DDR3 boundary-col dumps localized the bug to **scaler_h.v's MAC window**, not S2MM or MM2S as originally hypothesized: the polyphase 8-tap horizontal scaler was using NN-bypass single-tap output WITHOUT clearing the shift register at row boundaries, so the first 2-3 pixels of each output row read leftover tail data from the previous row. Vertical missing-lines was the same class of bug in scaler_v.v (NN-bypass `mac_r = tap1` dropped 1 of every 3 source rows for 1080→720).
+
+**Tested branch:** `iter5-1080p-clean`. Output config = **720p60** (1280×720 @ 1650×750, ~74.25 MHz pixclk).
+
+### Patch progression
+
+| iter | Change | Bench result |
+|---|---|---|
+| iter7 | scaler_h.v: clear `window[0..7]` on TLAST | 2-pixel left margin — window now correctly zero at row start, but old-tap-pick reads pre-row pixel |
+| iter8 | tap window[3] → window[0] (= newest pre-shift) | Left margin gone but image shifted left ~3 cols, right edge falls off screen |
+| iter9 | tap = window[1] (intermediate) | 1-col left + 2-col right hard black margin — better balance but still NN band-aid |
+| iter10 | 8-tap boxcar MAC (all 1/8 coefficients) | Vertical lines too soft (~7-col fade), right edge content past col ~1910 still invisible |
+| iter11 | 2-tap boxcar `(window[0] + window[1])/2` | Tight 2-col blur, lines visible, **right edge still missing** (last MAC reads cols 1917,1918) |
+| **iter12** | **2-tap with newest = `s_axis_tdata`** | **✅ Full src col range 0..1919 sampled. Left + right vertical lines at output cols 0 + 1279 as half-bright.** |
+| **iter13** | **scaler_v.v: NN tap1 → 2-tap `(tap2 + tap3)/2`** | **✅ All horizontal grid lines now visible (no dropouts). Previously hidden every-other-line restored. Visible as 2 output rows half-bright (= V-equivalent of H scaler's 2-col half-bright vertical lines).** |
+
+### Verdict
+
+`iter5-1080p-clean` @ iter12+iter13 = **canonical post-iter6 scaler substrate.** Patches are:
+- `hdl/scaler_h.v` ~lines 164-179 (2-tap with newest = `s_axis_tdata`).
+- `hdl/scaler_v.v` ~lines 170-184 (2-tap with newest = tap3 post-rotation).
+
+### Generalization (for replicating to other output resolutions)
+
+| Output res | Ratio | Min taps | Pattern |
+|---|---|---|---|
+| 1920→1920 (passthrough) | 1.0 | 1 | NN `s_axis_tdata` only |
+| 1920→1440 | 4:3 | 2 | iter12 as-is |
+| **1920→1280 (current)** | **3:2** | **2** | **iter12 = sweet spot** |
+| 1920→960 | 2:1 | 2 | iter12 |
+| 1920→720 | 8:3 | 3 | extend MAC to `(s_axis_tdata + window[0] + window[1]) / 3` |
+| 1920→640 | 3:1 | 3 | same as 720 |
+| 1920→480 | 4:1 | 4 | 4-tap newest |
+
+Rule: tap count ≥ `ceil(IN_W / OUT_W)`, with newest tap = `s_axis_tdata`. V scaler same pattern with line-buffer taps (newest = tap3 after `tap0_slot` rotation).
+
+### Deferred (planned iter14)
+
+Runtime kernel-mode toggle via AXI GPIO + UART `kh`/`kv` commands, independent H/V:
+- mode 0: NN (newest tap only)
+- mode 1: 2-tap boxcar (current iter12/13)
+- mode 2: 4-tap boxcar (more blur)
+- mode 3: reserved (future polyphase or separate blur module)
+
+Cost: ~5 LUTs, ~30 min Vivado rebuild, ~30s UART parser extension. Add when needed for live A/B.
+
+### Known cosmetic
+
+- **First output row of frame:** tap3 lbuf may not be fresh yet (lbuf_fresh gating). Output row 0 reads as half-bright instead of full where source row 0 is bright. Pre-existing warmup; not from iter13.
+- **Horizontal lines now half-bright across 2 output rows** instead of full-bright across 1 row. Symmetric to vertical lines on H. Inherent to 2-tap boxcar; user-accepted trade.
+
+### Outstanding
+
+- Replicate iter12+iter13 to `mackin-impl-wip` and `phase-e1-pll-spike`.
+- Re-test SMPTE bars / motion (Osee inputs 1 and 2) on iter12+13 substrate; current grid-pattern tests were on input 3.
+- iter14 kernel-mode toggle when desired.
+
+---
+
+## 2026-05-30 — Motion-source verification on phase-e1 + iter12+13
+
+Bench-tested phase-e1-pll-spike @ `81df37b` (iter12+iter13 scaler kernel +
+F UART command for DDR3 dump) with Osee input 2 (4K motion loop) then
+ImagePro diagonal full-frame motion. Output: 720p60.
+
+**Result:** CLEAN. Eyeball verification of diagonal-motion content on bench
+monitor (the strictest tearing test — full-frame movement makes any seam
+instantly visible) showed no tearing, no judder, no smear, no glitches.
+Earlier webcam photos with apparent multi-frame ghosting were camera
+exposure-integration artifacts only; not visible on direct monitor view.
+
+**MMCM tracking loop** (phase-e1's primary feature) held cleanly under
+60→60 matched-rate motion. No slip events observed.
+
+**Scope established:** phase-e1 is designed for near-matched rates
+(±500 ppm). 5:2 or other large FRC ratios are explicitly out of scope
+for this branch — use iter5-1080p-clean (Method D drop/repeat) or
+mackin-impl-wip (temporal blend) for those.
+
+**Bench rule reinforced:** all motion-artifact verification MUST be on
+the bench monitor directly, not webcam or MS2109 (both have integration
+windows that mask tearing/race artifacts). Webcam useful only for
+captured-to-disk record of static content.
+
+---
+
+## 2026-05-31 — iter5-1080p-clean ⚠️→✅ promotion (3-boot rule satisfied)
+
+Bench-tested iter5-1080p-clean @ `ec13ab2` (post-iter13b round-to-nearest
+fix on top of iter12+13 scaler kernel rework). Output: 720p60. Source:
+ImagePro static SMPTE bars via Osee input 1.
+
+**Verification:** 3 cold reloads via xsct, picture identical across all 3.
+Boot 1: clean. Boot 2: clean ("is good"). Boot 3: clean ("looks identical").
+
+**Result:** ✅ CLEAN. Formally satisfies the no-coin-flip rule. Promoted in
+branch snapshot table above. Format matrix Row 2 (1080p60→720p60) was
+already ✅ on `f8f143e` based on multi-reload-in-spirit evidence; now
+formally backed by a documented 3-boot run on the iter13b substrate.
+
+**What this resolves:**
+- iter12+iter13 LUCKY-BOOT → CLEAN on production substrate ✅
+- iter13b rounding fix verified at the bench (visual; the −0.5 LSB DC bias
+  is below monitor visibility threshold, so this is a "no regression"
+  result rather than a "visible improvement" result — exactly as expected)
+
+**Open:**
+- Backport iter13b to mackin-impl-wip and phase-e1-pll-spike (queued)
+- Motion test on iter5 (ImagePro diagonal) still owed — phase-e1 got it
+  2026-05-30 but iter5 didn't
+- 3-boot verification of mackin and phase-e1 substrates still owed
+
+---
+
+## 2026-05-31 (later) — 1080p investigation + infra parametrization + Tier-1 audit cleanup
+
+After the iter5 ✅ promotion (above), this session tackled two threads:
+
+### 1080p output investigation (Row 1 + passthrough testing)
+
+User asked to verify Row 1 (1080p60→1080p60). Three builds + thorough investigation:
+
+| Build | Config | Result | Cause |
+|---|---|---|---|
+| 1080p60 + scaler_bypass + color enabled | rgb2dvi kClkRange=2 (production default) | Vivado AVAL-46 CRIT WARN — VCO 1485 MHz > 1200 MHz -1 max + timing failure | kClkRange=2 → MULT_F=10; correct for 720p60 at 74.25 MHz pclk, wrong for 1080p60 at 148.5 MHz |
+| 1080p60 + scaler_bypass + COLOR_PIPELINE=bypass + kClkRange=1 | tcl rgb2dvi auto-derived from OUTPUT_MODE | Build closed timing (WNS +0.13) BUT bench monitor reported "signal out of spec" | OSERDESE2 SerialClk = 5 × 148.5 = 742.5 MHz exceeds -1 BUFIO 600 MHz max → non-HDMI-compliant TMDS |
+| 1080p30 + scaler_bypass + color enabled | 74.25 MHz pclk (same as 720p60) | Build clean; bench monitor reported "signal out of range" — sink rejected sub-50Hz refresh | Dell desktop monitor doesn't accept 1080p30 (CEA-861 mode 34); pipeline output is correct |
+
+**Result: Row 1 reclassified as "❌ on Zybo / ✅ planned on production"** — production carrier has external HDMI PHY chip + -2 silicon, either alone solves the row. Caught a VTC mode #ifdef hardcode bug in firmware along the way (commit `083239a`). New project rule established: HDMI output must be spec-compliant (memory [[hdmi_compliance_rule]]).
+
+### Infrastructure parametrization (commits `891e834`, `ce1b671`, `0625876`)
+
+tcl/build_phase_b.tcl + tcl/build_phase_b_app.tcl now have three orthogonal env vars, all defaulting to production behavior:
+
+- **OUTPUT_MODE** = `720p` (default) | `1080p30` | `1080p60`
+- **SCALER_MODULE** = `scaler_top` (default) | `scaler_bypass_1080p` | `scaler_crop_bypass`
+- **COLOR_PIPELINE** = `enable` (default) | `bypass`
+- rgb2dvi kClkRange auto-derived from OUTPUT_MODE (1080p60 → 1=MULT_F=5; else 2=MULT_F=10)
+- Firmware `OUTPUT_1080P` compile define auto-set from `OUTPUT_MODE`; selects FRAME_W/FRAME_H + VTC mode
+
+Default build (no env vars) = bit-identical to production 720p60 + color stack.
+
+### Tier-1 audit cleanup (queued for next Vivado run)
+
+Commits `0937574`, `5881322` — picked up next time Vivado runs:
+
+- **SOFLate DIAG suppression** — cosmetic firmware noise, gone (S2MM only; MM2S not suppressed)
+- **iter7 window-clear** — only clear `window[0]` (tap[1..7] are dead post-iter12; saves 168 flop-loads/row)
+- **iter13c lbuf_fresh emit suppression** — top-of-frame black band → clean blank when both tap2/tap3 lbufs unfresh
+- **XDC false-paths for color_matrix + scaler_top** — fixes the chronic WNS=-3.5 ns false-positive from missing constraint coverage
+
+Production substrate continues to be `iter5-1080p-clean` @ `ec13ab2` (verified ✅ CLEAN). Subsequent commits (`5881322` onwards) add the queued fixes; verification of those happens on the next Vivado-cycle program + bench run.
+
+### Forward-looking work also produced
+
+- `docs/control-plane-architecture.md` (308 lines) — designs the production web UI / RP2040 / Linux daemon stack. V0a buildout plan (host-side bridge daemon) ~2-3 days, no PetaLinux required. Tabled by user for now.
+- Memory entries `zynq7020_rgb2dvi_1080p60_limit` + `hdmi_compliance_rule` capture the 1080p60 investigation findings as durable rules.
+
+### Outstanding
+
+- 720p60 production substrate rebuild in progress (verifying queued Tier-1 fixes don't break the production path); user to bench-verify after program
+- iter13b backport to mackin + phase-e1 still owed (~50 min wall-clock; pure cherry-pick)
+- Matrix scope cut decision (Risk #4 mitigation) deferred to strategic-mind session
+- Phase G vs E2 priority decision deferred
+
+---
+
 ## Going-forward convention
 
 Every bench session must end with an update to this manifest:
@@ -492,3 +703,72 @@ Every bench session must end with an update to this manifest:
 - If broken: what's the symptom, what's the next investigation step
 
 Memory entries are point-in-time; this manifest is the canonical "current state" SSOT.
+
+---
+
+## Reproduction — toolchain + external dependencies
+
+Pinned 2026-05-30 to remove the "what version of X did this build use" ambiguity. If a future build breaks, check these commits first.
+
+| Dependency | Version / commit | Path | Why this matters |
+|---|---|---|---|
+| Vivado | **2025.2** | `/tools/Xilinx/2025.2/Vivado` | IP versions (`axi_vdma 6.3`, `v_tc`, `dvi2rgb`, `rgb2dvi`) move between Vivado releases. A Vivado upgrade silently changes BD-generated wrapper code. |
+| Vitis | **2025.2** | `/tools/Xilinx/2025.2/Vitis` | `importsources` stale-copy gotcha is version-specific; see `[[vitis_importsources_stale_copy]]`. |
+| Digilent board files | `36f34ab687b7fa9c778b779d027f3bce63b3ace9` ("Fix typo in README", 2025-07-15) | `~/fpga/vivado-boards/new/board_files` | The Zybo Z7-20 board preset definitions. Pulled via `BOARD_PARTS_REPO_PATHS` env var in `tcl/build_phase_b.tcl`. |
+| Digilent IP library | `f4613fff005b098065fd5d619a2b88e55720a423` ("Fixed zmod ID GUI parameter", 2024-05-16) | `~/fpga/vivado-library/ip` | Source of `dvi2rgb` + `rgb2dvi`. The `kClkRange` patch (`[[digilent_rgb2dvi_kclkrange_limit]]`) lives in this checkout and must persist across updates. |
+| Target device | Zynq-7020 (XC7Z020-1CLG400C) on Zybo Z7-20 dev board | — | All MMCM/PLL/BRAM/DSP budgets are this device's. |
+
+**If `~/fpga/vivado-boards` or `~/fpga/vivado-library` ever change tip**, re-verify Phase A passthrough + iter5-1080p-clean 720p60 build before continuing. Patch state (kClkRange edit, etc.) lives in those checkouts, not in this repo.
+
+---
+
+## Branch model — soft consolidation (committed 2026-05-31)
+
+**`iter5-1080p-clean` is the effective `main`** as of 2026-05-31. GitHub default branch was flipped via `gh repo edit --default-branch`.
+
+**Rules going forward:**
+- New features land directly on `iter5-1080p-clean` whenever possible.
+- Existing feature branches (`mackin-impl-wip`, `phase-e1-pll-spike`, `phase-g-iter1`) merge BACK to `iter5-1080p-clean` when their feature is bench-stable — NOT parallel-and-cherry-pick like the iter12+13/iter13b/iter13c three-way fan-out we did before today.
+- `main` branch stays frozen at cold-storage (`045f09b`) until v1 ship, then gets force-updated to `iter5-1080p-clean`'s tip and `iter5-1080p-clean` is retired.
+- New short-lived feature branches off `iter5-1080p-clean` are fine; they should merge back within a week or two.
+
+**Why this and not full consolidation now:** force-updating `main` mid-development carries risk (PR refs, external links, watchers). Soft consolidation gets the benefit of one effective trunk (no more 3-way cherry-picks of every fix) without the disruption. At v1 ship the model converges to industry norm.
+
+**Why not status quo:** today's session cost three separate `iter13b` cherry-picks across branches plus a fourth on `iter13c`. If we keep that model, every new feature pays that tax. Soft consolidation makes `iter5-1080p-clean` the gravity well — features land there first, propagate to feature branches only when needed.
+
+### Reference: Phase G hardware test
+
+User has a test carrier board for TE0720 verification (the production target -2 silicon). **TE0720 builds are available on request** when 1080p60 OUT verification or other production-silicon work is needed. Not gating any current v1 path.
+
+## 2026-05-31 — V0a control plane: end-to-end bench smoke ✅
+
+V0a build (catalog + firmware J bridge + Python schindlerd daemon + browser UI) reached green end-to-end on `iter5-1080p-clean`.
+
+**Build provenance**
+- Branch: `iter5-1080p-clean`
+- Commit at smoke: `9eaab60` (firmware bridge); polish lands at `3d393c6`
+- HDL substrate: identical to `abb83e8` (iter14 runtime kernel mode) — XSA reused, only firmware ELF rebuilt
+- Archive tag: `iter5-1080p-clean-720p-scaler_top-enable-8bb72e9` in `build/artifacts/`
+- Firmware ELF: `build/vitis-phase-b/vdma_init/Debug/vdma_init.elf` (324 KB)
+- Toolchain: Vitis 2025.2
+
+**What was verified (bench, 2026-05-31 ~15:00-15:15)**
+- Boot banner clean; source detected 1920×1080 @ 60.895 Hz; output 720p60; passthrough regime; no error bits
+- `?` UART help shows new `J <json>` line
+- `control-plane/schindlerd/jsmoke.py` direct-UART smoke: 9/9 happy + 2/2 error paths PASS
+- WebSocket round-trip via daemon: identify / control.set / control.get / enum string↔int translation all clean
+- Browser UI at http://127.0.0.1:8080: 3 sections render (Color / Scaler), saturation slider drags smoothly post-coalesce fix, kernel-mode dropdowns toggle live, profile snapshot+load round-trip works
+- `frc.mackin_alpha` correctly hidden via daemon firmware-availability probe (depends on `mackin-impl-wip` branch which isn't this substrate)
+
+**Issues found and fixed in-session**
+- UI was firing 100 control.set/sec during slider drag → daemon UART queue overflow → 1.5 s timeouts. Fix: per-control coalescing in `web/index.html` — only newest queued value sent next; intermediates dropped.
+- UI was rendering controls firmware doesn't implement (mackin alpha placeholder, status entries). Fix: daemon probes firmware `system.list_controls` at first `system.catalog` request and tags each catalog entry `available: true/false`; UI skips `false`.
+- UI was calling `control.get` on read-only / trigger controls → noisy daemon stderr (firmware doesn't expose status reads). Fix: skip these in `refreshAllValues`.
+
+**Open items (V0a+1)**
+- Status push: daemon polling task for `status.*` controls → broadcast `notification` frames to subscribed WS clients. Status entries currently show "—".
+- Catalog version compatibility handshake at WS open.
+- Multi-client coordination — second open browser doesn't see first's changes until refresh.
+- Mackin alpha will turn on automatically once dual-VDMA wiring lands on `mackin-impl-wip` and the firmware J table gains the control.
+
+**Pass/fail**: ✅ PASS — V0a stack is end-to-end functional and ready for daily bench use. The "rebuild + re-program + run schindlerd → browser" loop replaces the picocom + manual UART commands workflow.

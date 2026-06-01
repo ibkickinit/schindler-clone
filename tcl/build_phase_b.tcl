@@ -149,11 +149,54 @@ puts "STAGE_OK: Zynq PS configured"
 #
 # Hardcoded to 720p output. If we ever need to switch output resolution
 # at runtime, clk_wiz needs dynamic-reconfig wiring + firmware.
+# OUTPUT_MODE env var:
+#   720p     (default, production) — 720p60 @ 74.25 MHz pclk
+#   1080p30                        — 1080p30 @ 74.25 MHz pclk (passthrough testing,
+#                                    same pclk + VCO as 720p60 → fully in -1 spec)
+#   1080p60                        — 1080p60 @ 148.5 MHz pclk (DEV-BOARD BLOCKED:
+#                                    even with kClkRange=1 in spec, OSERDESE2
+#                                    SerialClk 742.5 MHz > -1 BUFIO 600 MHz max →
+#                                    bench monitor reports "signal out of spec".
+#                                    Only works on production carrier with external
+#                                    HDMI PHY chip + -2 silicon. See memory
+#                                    zynq7020_rgb2dvi_1080p60_limit.)
+# Affects clk_wiz_pixclk_out + v_tc_tx + rgb2dvi/kClkRange config below.
+if {[info exists ::env(OUTPUT_MODE)]} { set OUTPUT_MODE $::env(OUTPUT_MODE) }
+if {![info exists OUTPUT_MODE]} { set OUTPUT_MODE 720p }
+puts "BUILD: using OUTPUT_MODE=$OUTPUT_MODE"
+if {$OUTPUT_MODE eq "1080p60" || $OUTPUT_MODE eq "1080p"} {
+    # NOTE: "1080p" alias preserved for legacy callers; prefer 1080p60.
+    set TX_PIXCLK_MHZ        148.500
+    set TX_VIDEO_MODE        1080p
+    set TX_GEN_HACTIVE       1920
+    set TX_GEN_VACTIVE       1080
+    set TX_GEN_HFRAME        2200
+    set TX_GEN_F0_VFRAME     1125
+} elseif {$OUTPUT_MODE eq "1080p30"} {
+    # Same pclk as 720p60 (74.25 MHz) — fully in -1 spec for rgb2dvi/OSERDESE2.
+    # VTC timing is 1080p though (HACTIVE/VACTIVE 1920×1080, HTOTAL/VTOTAL
+    # 2200×1125). 30 Hz comes from the half-rate pclk vs 1080p60.
+    set TX_PIXCLK_MHZ        74.250
+    set TX_VIDEO_MODE        1080p
+    set TX_GEN_HACTIVE       1920
+    set TX_GEN_VACTIVE       1080
+    set TX_GEN_HFRAME        2200
+    set TX_GEN_F0_VFRAME     1125
+} else {
+    # 720p (default): 720p60 @ 74.25 MHz pclk. Current production.
+    set TX_PIXCLK_MHZ        74.250
+    set TX_VIDEO_MODE        720p
+    set TX_GEN_HACTIVE       1280
+    set TX_GEN_VACTIVE       720
+    set TX_GEN_HFRAME        1650
+    set TX_GEN_F0_VFRAME     750
+}
+
 create_bd_cell -type ip -vlnv xilinx.com:ip:clk_wiz clk_wiz_pixclk_out
 set_property -dict [list \
     CONFIG.PRIMITIVE {MMCM} \
     CONFIG.PRIM_IN_FREQ {100.000} \
-    CONFIG.CLKOUT1_REQUESTED_OUT_FREQ {74.250} \
+    CONFIG.CLKOUT1_REQUESTED_OUT_FREQ $TX_PIXCLK_MHZ \
     CONFIG.USE_LOCKED {true} \
     CONFIG.USE_RESET {true} \
 ] [get_bd_cells clk_wiz_pixclk_out]
@@ -391,13 +434,13 @@ create_bd_cell -type ip -vlnv xilinx.com:ip:v_tc v_tc_tx
 set_property -dict [list \
     CONFIG.enable_detection {false} \
     CONFIG.enable_generation {true} \
-    CONFIG.VIDEO_MODE {720p} \
+    CONFIG.VIDEO_MODE $TX_VIDEO_MODE \
     CONFIG.MAX_CLOCKS_PER_LINE {4096} \
     CONFIG.MAX_LINES_PER_FRAME {4096} \
-    CONFIG.GEN_HACTIVE_SIZE {1280} \
-    CONFIG.GEN_VACTIVE_SIZE {720} \
-    CONFIG.GEN_HFRAME_SIZE {1650} \
-    CONFIG.GEN_F0_VFRAME_SIZE {750} \
+    CONFIG.GEN_HACTIVE_SIZE $TX_GEN_HACTIVE \
+    CONFIG.GEN_VACTIVE_SIZE $TX_GEN_VACTIVE \
+    CONFIG.GEN_HFRAME_SIZE $TX_GEN_HFRAME \
+    CONFIG.GEN_F0_VFRAME_SIZE $TX_GEN_F0_VFRAME \
 ] [get_bd_cells v_tc_tx]
 
 # =============================================================================
@@ -464,34 +507,48 @@ connect_bd_net [get_bd_pins v_tc_tx/vblank_out]       [get_bd_pins axis_to_vid_i
 # color_saturation: Rec.601 luma-mix, single sat knob (0=gray..255=identity).
 # color_correct:    per-channel black/white diagonal scale + offset.
 # Both clock on pclk_out; aresetn from rst_pixclk_out wired further down.
-create_bd_cell -type module -reference color_saturation color_saturation_0
-create_bd_cell -type module -reference color_correct    color_correct_0
-# color_matrix_0: general 3x3 RGB matrix + 3 offsets. Identity at boot.
-# Inserted DOWNSTREAM of color_correct so the new matrix can be tested
-# independently while existing sat/correct keep working (set to identity if
-# desired). Future: retire color_saturation_0 + color_correct_0 once matrix
-# preset coverage is verified.
-create_bd_cell -type module -reference color_matrix     color_matrix_0
-# mackin_blender_0: per-pixel temporal lerp between two AXIS streams.
-# OVERNIGHT 2026-05-18: placeholder wiring — both inputs cloned from the same
-# MM2S via axis_clone_0. When curr == prev, diff == 0, output == curr regardless
-# of alpha (logical no-op). Next iter: replace axis_clone with second VDMA
-# instance (axi_vdma_1, MM2S-only, Genlock Slave FrmDly=2) for real dual-stream
-# temporal blending. See docs/mackin-blender-design.md for the dual-VDMA recipe.
-create_bd_cell -type module -reference axis_clone       axis_clone_0
-create_bd_cell -type module -reference mackin_blender   mackin_blender_0
-connect_bd_intf_net [get_bd_intf_pins axi_vdma_0/M_AXIS_MM2S]    [get_bd_intf_pins axis_clone_0/s_axis]
-connect_bd_intf_net [get_bd_intf_pins axis_clone_0/m1_axis]      [get_bd_intf_pins mackin_blender_0/s_curr]
-connect_bd_intf_net [get_bd_intf_pins axis_clone_0/m2_axis]      [get_bd_intf_pins mackin_blender_0/s_prev]
-connect_bd_net [get_bd_pins clk_wiz_pixclk_out/clk_out1]         [get_bd_pins axis_clone_0/aclk]
-connect_bd_intf_net [get_bd_intf_pins mackin_blender_0/m_axis]   [get_bd_intf_pins color_saturation_0/s_axis]
-connect_bd_intf_net [get_bd_intf_pins color_saturation_0/m_axis] [get_bd_intf_pins color_correct_0/s_axis]
-connect_bd_intf_net [get_bd_intf_pins color_correct_0/m_axis]    [get_bd_intf_pins color_matrix_0/s_axis]
-connect_bd_intf_net [get_bd_intf_pins color_matrix_0/m_axis]     [get_bd_intf_pins axis_to_vid_io_0/s_axis]
-connect_bd_net [get_bd_pins clk_wiz_pixclk_out/clk_out1]         [get_bd_pins color_matrix_0/aclk]
-connect_bd_net [get_bd_pins clk_wiz_pixclk_out/clk_out1]         [get_bd_pins color_saturation_0/aclk]
-connect_bd_net [get_bd_pins clk_wiz_pixclk_out/clk_out1]         [get_bd_pins color_correct_0/aclk]
-connect_bd_net [get_bd_pins clk_wiz_pixclk_out/clk_out1]         [get_bd_pins mackin_blender_0/aclk]
+#
+# COLOR_PIPELINE env var (2026-05-31): default "enable" preserves production
+# behavior; "bypass" skips the color + mackin cells entirely and wires MM2S
+# straight to axis_to_vid_io. Bypass mode is for timing-margin investigation
+# at 1080p60 output on -1 silicon. Bypass disables UART color commands at
+# runtime; firmware still boots fine.
+if {[info exists ::env(COLOR_PIPELINE)]} { set COLOR_PIPELINE $::env(COLOR_PIPELINE) }
+if {![info exists COLOR_PIPELINE]} { set COLOR_PIPELINE enable }
+puts "BUILD: using COLOR_PIPELINE=$COLOR_PIPELINE"
+if {$COLOR_PIPELINE eq "bypass"} {
+    # No color or mackin cells; MM2S → axis_to_vid_io directly.
+    connect_bd_intf_net [get_bd_intf_pins axi_vdma_0/M_AXIS_MM2S] [get_bd_intf_pins axis_to_vid_io_0/s_axis]
+} else {
+    create_bd_cell -type module -reference color_saturation color_saturation_0
+    create_bd_cell -type module -reference color_correct    color_correct_0
+    # color_matrix_0: general 3x3 RGB matrix + 3 offsets. Identity at boot.
+    # Inserted DOWNSTREAM of color_correct so the new matrix can be tested
+    # independently while existing sat/correct keep working (set to identity if
+    # desired). Future: retire color_saturation_0 + color_correct_0 once matrix
+    # preset coverage is verified.
+    create_bd_cell -type module -reference color_matrix     color_matrix_0
+    # mackin_blender_0: per-pixel temporal lerp between two AXIS streams.
+    # OVERNIGHT 2026-05-18: placeholder wiring — both inputs cloned from the same
+    # MM2S via axis_clone_0. When curr == prev, diff == 0, output == curr regardless
+    # of alpha (logical no-op). Next iter: replace axis_clone with second VDMA
+    # instance (axi_vdma_1, MM2S-only, Genlock Slave FrmDly=2) for real dual-stream
+    # temporal blending.
+    create_bd_cell -type module -reference axis_clone       axis_clone_0
+    create_bd_cell -type module -reference mackin_blender   mackin_blender_0
+    connect_bd_intf_net [get_bd_intf_pins axi_vdma_0/M_AXIS_MM2S]    [get_bd_intf_pins axis_clone_0/s_axis]
+    connect_bd_intf_net [get_bd_intf_pins axis_clone_0/m1_axis]      [get_bd_intf_pins mackin_blender_0/s_curr]
+    connect_bd_intf_net [get_bd_intf_pins axis_clone_0/m2_axis]      [get_bd_intf_pins mackin_blender_0/s_prev]
+    connect_bd_net [get_bd_pins clk_wiz_pixclk_out/clk_out1]         [get_bd_pins axis_clone_0/aclk]
+    connect_bd_intf_net [get_bd_intf_pins mackin_blender_0/m_axis]   [get_bd_intf_pins color_saturation_0/s_axis]
+    connect_bd_intf_net [get_bd_intf_pins color_saturation_0/m_axis] [get_bd_intf_pins color_correct_0/s_axis]
+    connect_bd_intf_net [get_bd_intf_pins color_correct_0/m_axis]    [get_bd_intf_pins color_matrix_0/s_axis]
+    connect_bd_intf_net [get_bd_intf_pins color_matrix_0/m_axis]     [get_bd_intf_pins axis_to_vid_io_0/s_axis]
+    connect_bd_net [get_bd_pins clk_wiz_pixclk_out/clk_out1]         [get_bd_pins color_matrix_0/aclk]
+    connect_bd_net [get_bd_pins clk_wiz_pixclk_out/clk_out1]         [get_bd_pins color_saturation_0/aclk]
+    connect_bd_net [get_bd_pins clk_wiz_pixclk_out/clk_out1]         [get_bd_pins color_correct_0/aclk]
+    connect_bd_net [get_bd_pins clk_wiz_pixclk_out/clk_out1]         [get_bd_pins mackin_blender_0/aclk]
+}
 # fsync: VTC's frame-start pulse → VDMA MM2S so MM2S SOF aligns with VTC frame.
 # VTC is free-running on output clock — output frame rate is exactly
 # clk_wiz_pixclk_out/(2200*1125) = 60.000 Hz. Slow walk vs source is
@@ -503,11 +560,28 @@ connect_bd_net [get_bd_pins v_tc_tx/fsync_out] [get_bd_pins axi_vdma_0/mm2s_fsyn
 # =============================================================================
 # rgb2dvi (HDMI TX) — same MMCM/kClkRange=2 lessons as Phase A
 # =============================================================================
+# rgb2dvi kClkRange depends on OUTPUT_MODE (per research 2026-05-31):
+#   - 720p60 (74.25 MHz pclk): kClkRange=2 → MULT_F=10 → VCO=742.5 MHz ✓
+#     (kClkRange=1 → MULT_F=5 → VCO=371 MHz which is BELOW 600 MHz MIN)
+#   - 1080p60 (148.5 MHz pclk): kClkRange=1 → MULT_F=5 → VCO=742.5 MHz ✓
+#     (kClkRange=2 → MULT_F=10 → VCO=1485 MHz which is ABOVE 1200 MHz MAX)
+# Both pclks hit the SAME 742.5 MHz VCO at the right kClkRange.
+# Caveat: at 1080p60, OSERDESE2 SerialClk = 5×148.5 = 742.5 MHz which is
+# above -1 BUFIO 600 MHz max. Investigative only; not a shipping path.
+if {$OUTPUT_MODE eq "1080p60" || $OUTPUT_MODE eq "1080p"} {
+    set RGB2DVI_KCLKRANGE 1
+} else {
+    # 720p60 + 1080p30 + future low-rate modes all use 74.25 MHz pclk →
+    # kClkRange=2 keeps VCO at 742.5 MHz (well within -1 spec).
+    set RGB2DVI_KCLKRANGE 2
+}
+puts "BUILD: using rgb2dvi kClkRange=$RGB2DVI_KCLKRANGE for OUTPUT_MODE=$OUTPUT_MODE"
+
 create_bd_cell -type ip -vlnv digilentinc.com:ip:rgb2dvi rgb2dvi_0
 set_property -dict [list \
     CONFIG.kGenerateSerialClk {true} \
     CONFIG.kClkPrimitive      {MMCM} \
-    CONFIG.kClkRange          {2} \
+    CONFIG.kClkRange          $RGB2DVI_KCLKRANGE \
     CONFIG.kRstActiveHigh     {true} \
 ] [get_bd_cells rgb2dvi_0]
 # Phase C.1 pivoted to 720p output (74.25 MHz). rgb2dvi only accepts
@@ -591,6 +665,27 @@ connect_bd_net [get_bd_pins rst_pixclk_out/peripheral_reset] [get_bd_pins rgb2dv
 # =============================================================================
 # AXI-Lite control path: PS GP0 → 1×2 Interconnect → VDMA, VTC
 # =============================================================================
+# KERNEL_GPIO_INDEX (task #65 Phase 1, 2026-05-31): the AXI GPIO slot used for
+# the iter14 scaler kernel-mode select is exposed as a build-time env var so
+# branches with a different topology (e.g. mackin-impl-wip's axi_gpio_7 for
+# Mackin alpha) can choose a free slot without forking this TCL.
+#
+# Defaults: gpio_index=7, m_slot=10 → identical to the pre-parameterized
+# build. Override on the command line:
+#   KERNEL_GPIO_INDEX=8 KERNEL_M_SLOT=13 vivado ...
+# Bench expectation on iter5: bit-identical XSA at defaults.
+# =============================================================================
+# Branch defaults for mackin-impl-wip: axi_gpio_7 is Mackin alpha and M10 is
+# taken (ADV7393 is at M11, TPG at M12); iter14 kernel_mode lands at the
+# next free slot. Env vars still override.
+set KERNEL_GPIO_INDEX 9
+set KERNEL_M_SLOT     13
+if {[info exists ::env(KERNEL_GPIO_INDEX)]} { set KERNEL_GPIO_INDEX $::env(KERNEL_GPIO_INDEX) }
+if {[info exists ::env(KERNEL_M_SLOT)]}     { set KERNEL_M_SLOT     $::env(KERNEL_M_SLOT) }
+set KERNEL_GPIO_NAME "axi_gpio_${KERNEL_GPIO_INDEX}"
+set KERNEL_M_PORT    "M[format %02d $KERNEL_M_SLOT]"
+puts "BUILD: iter14 kernel_mode GPIO = $KERNEL_GPIO_NAME at axi_ic_lite/$KERNEL_M_PORT (env: KERNEL_GPIO_INDEX=$KERNEL_GPIO_INDEX KERNEL_M_SLOT=$KERNEL_M_SLOT)"
+
 create_bd_cell -type ip -vlnv xilinx.com:ip:axi_interconnect axi_ic_lite
 # 13 master ports (post-reconcile mackin + phase-g + TPG):
 #   M00 = VDMA, M01 = VTC tx (generator), M02 = GPIO 0 (status inputs)
@@ -603,7 +698,8 @@ create_bd_cell -type ip -vlnv xilinx.com:ip:axi_interconnect axi_ic_lite
 #   M10 = axi_gpio_7 (mackin alpha)
 #   M11 = axi_iic_adv7393 (Phase G: ADV7393 chip config via Pmod JD7/JD8)
 #   M12 = axi_gpio_8 (TPG: pattern + motion + rate + solid color + src mux)
-set_property -dict [list CONFIG.NUM_SI {1} CONFIG.NUM_MI {13}] [get_bd_cells axi_ic_lite]
+#   M13 = ${KERNEL_GPIO_NAME} (iter14 kernel_mode; mackin default = axi_gpio_9 / M13)
+set_property -dict [list CONFIG.NUM_SI {1} CONFIG.NUM_MI {14}] [get_bd_cells axi_ic_lite]
 connect_bd_intf_net [get_bd_intf_pins zynq_ps/M_AXI_GP0]     [get_bd_intf_pins axi_ic_lite/S00_AXI]
 connect_bd_intf_net [get_bd_intf_pins axi_ic_lite/M00_AXI]   [get_bd_intf_pins axi_vdma_0/S_AXI_LITE]
 connect_bd_intf_net [get_bd_intf_pins axi_ic_lite/M01_AXI]   [get_bd_intf_pins v_tc_tx/ctrl]
@@ -624,6 +720,7 @@ connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/M09_A
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/M10_ACLK]  ;# axi_gpio_7 (mackin alpha)
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/M11_ACLK]  ;# axi_iic_adv7393
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/M12_ACLK]  ;# axi_gpio_8 (TPG)
+connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/${KERNEL_M_PORT}_ACLK]  ;# ${KERNEL_GPIO_NAME} (iter14 kernel_mode)
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_vdma_0/s_axi_lite_aclk]
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins v_tc_tx/s_axi_aclk]
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins v_tc_rx/s_axi_aclk]
@@ -639,9 +736,10 @@ connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_li
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_lite/M07_ARESETN]  ;# axi_gpio_4
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_lite/M08_ARESETN]  ;# axi_gpio_5
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_lite/M09_ARESETN]  ;# axi_gpio_6
-connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_lite/M10_ARESETN]  ;# axi_gpio_7
+connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_lite/M10_ARESETN]  ;# axi_gpio_7 (mackin alpha)
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_lite/M11_ARESETN]  ;# axi_iic_adv7393
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_lite/M12_ARESETN]  ;# axi_gpio_8 (TPG)
+connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_lite/${KERNEL_M_PORT}_ARESETN]  ;# ${KERNEL_GPIO_NAME} (iter14 kernel_mode)
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_vdma_0/axi_resetn]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins v_tc_tx/s_axi_aresetn]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins v_tc_rx/s_axi_aresetn]
@@ -652,11 +750,13 @@ connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins v_tc_rx/s
 # async to it but the IP handles its own internal reset synchronization.
 connect_bd_net [get_bd_pins rst_pixclk_out/peripheral_aresetn] [get_bd_pins v_tc_tx/resetn]
 connect_bd_net [get_bd_pins rst_pixclk_out/peripheral_aresetn] [get_bd_pins fsync_pulse_gen_0/aresetn]
-connect_bd_net [get_bd_pins rst_pixclk_out/peripheral_aresetn] [get_bd_pins color_correct_0/aresetn]
-connect_bd_net [get_bd_pins rst_pixclk_out/peripheral_aresetn] [get_bd_pins color_saturation_0/aresetn]
-connect_bd_net [get_bd_pins rst_pixclk_out/peripheral_aresetn] [get_bd_pins color_matrix_0/aresetn]
-connect_bd_net [get_bd_pins rst_pixclk_out/peripheral_aresetn] [get_bd_pins mackin_blender_0/aresetn]
-connect_bd_net [get_bd_pins rst_pixclk_out/peripheral_aresetn] [get_bd_pins axis_clone_0/aresetn]
+if {$COLOR_PIPELINE ne "bypass"} {
+    connect_bd_net [get_bd_pins rst_pixclk_out/peripheral_aresetn] [get_bd_pins color_correct_0/aresetn]
+    connect_bd_net [get_bd_pins rst_pixclk_out/peripheral_aresetn] [get_bd_pins color_saturation_0/aresetn]
+    connect_bd_net [get_bd_pins rst_pixclk_out/peripheral_aresetn] [get_bd_pins color_matrix_0/aresetn]
+    connect_bd_net [get_bd_pins rst_pixclk_out/peripheral_aresetn] [get_bd_pins mackin_blender_0/aresetn]
+    connect_bd_net [get_bd_pins rst_pixclk_out/peripheral_aresetn] [get_bd_pins axis_clone_0/aresetn]
+}
 # VTC_rx detector also on pclk_in — reset comes from axi (input-side IP)
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]        [get_bd_pins v_tc_rx/resetn]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]        [get_bd_pins v_vid_in_axi4s_0/aresetn]
@@ -835,6 +935,29 @@ connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]             [get_bd_pins axi_gpio
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]    [get_bd_pins axi_gpio_1/s_axi_aresetn]
 
 # =============================================================================
+# iter14 (2026-05-31): scaler kernel-mode select GPIO. 4-bit output, bits [1:0]
+# = kernel_mode_h, bits [3:2] = kernel_mode_v. Default 0x5 = 0b0101 =
+# H mode 1 + V mode 1 = production 2-tap boxcar. Firmware `k h|v <0-3>`
+# (and V0a `J control.set scaler.kernel_h/v`) tweaks this at runtime.
+#
+# Cell name + interconnect slot are parameterized via KERNEL_GPIO_INDEX /
+# KERNEL_M_SLOT env vars set at the top of this file. iter5 default is
+# (7, 10); siblings with their own GPIO topology override.
+# =============================================================================
+create_bd_cell -type ip -vlnv xilinx.com:ip:axi_gpio $KERNEL_GPIO_NAME
+set_property -dict [list \
+    CONFIG.C_GPIO_WIDTH    {4} \
+    CONFIG.C_ALL_OUTPUTS   {1} \
+    CONFIG.C_IS_DUAL       {0} \
+    CONFIG.C_INTERRUPT_PRESENT {0} \
+    CONFIG.C_DOUT_DEFAULT   {0x00000005} \
+] [get_bd_cells $KERNEL_GPIO_NAME]
+connect_bd_intf_net [get_bd_intf_pins axi_ic_lite/${KERNEL_M_PORT}_AXI] [get_bd_intf_pins ${KERNEL_GPIO_NAME}/S_AXI]
+connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]             [get_bd_pins ${KERNEL_GPIO_NAME}/s_axi_aclk]
+connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]    [get_bd_pins ${KERNEL_GPIO_NAME}/s_axi_aresetn]
+connect_bd_net [get_bd_pins ${KERNEL_GPIO_NAME}/gpio_io_o] [get_bd_pins scaler_0/kernel_mode_async]
+
+# =============================================================================
 # iter4g: AXI GPIO 2 — dual-channel, input-only, exposes scaler_top counters
 # CDC'd to FCLK_CLK0. Firmware reads + prints per frame to identify the
 # pipeline stage that drops/adds rows.
@@ -920,12 +1043,14 @@ foreach {name din_from} {slice_color_wr 7  slice_color_wg 15  slice_color_wb 23}
     set_property -dict [list CONFIG.DIN_WIDTH {32} CONFIG.DIN_FROM $din_from CONFIG.DIN_TO $din_to CONFIG.DOUT_WIDTH {8}] [get_bd_cells $name]
     connect_bd_net [get_bd_pins axi_gpio_3/gpio2_io_o] [get_bd_pins ${name}/Din]
 }
-connect_bd_net [get_bd_pins slice_color_br/Dout] [get_bd_pins color_correct_0/black_r_async]
-connect_bd_net [get_bd_pins slice_color_bg/Dout] [get_bd_pins color_correct_0/black_g_async]
-connect_bd_net [get_bd_pins slice_color_bb/Dout] [get_bd_pins color_correct_0/black_b_async]
-connect_bd_net [get_bd_pins slice_color_wr/Dout] [get_bd_pins color_correct_0/white_r_async]
-connect_bd_net [get_bd_pins slice_color_wg/Dout] [get_bd_pins color_correct_0/white_g_async]
-connect_bd_net [get_bd_pins slice_color_wb/Dout] [get_bd_pins color_correct_0/white_b_async]
+if {$COLOR_PIPELINE ne "bypass"} {
+    connect_bd_net [get_bd_pins slice_color_br/Dout] [get_bd_pins color_correct_0/black_r_async]
+    connect_bd_net [get_bd_pins slice_color_bg/Dout] [get_bd_pins color_correct_0/black_g_async]
+    connect_bd_net [get_bd_pins slice_color_bb/Dout] [get_bd_pins color_correct_0/black_b_async]
+    connect_bd_net [get_bd_pins slice_color_wr/Dout] [get_bd_pins color_correct_0/white_r_async]
+    connect_bd_net [get_bd_pins slice_color_wg/Dout] [get_bd_pins color_correct_0/white_g_async]
+    connect_bd_net [get_bd_pins slice_color_wb/Dout] [get_bd_pins color_correct_0/white_b_async]
+}
 
 # 16-bit saturation (Q1.15 fixed-point) packed across both axi_gpio_3 spare bytes.
 #   ch1[31:24] = sat_low [7:0]    ch2[31:24] = sat_high [15:8]
@@ -942,7 +1067,9 @@ create_bd_cell -type ip -vlnv xilinx.com:ip:xlconcat concat_color_sat
 set_property -dict [list CONFIG.NUM_PORTS {2} CONFIG.IN0_WIDTH {8} CONFIG.IN1_WIDTH {8}] [get_bd_cells concat_color_sat]
 connect_bd_net [get_bd_pins slice_color_sat_lo/Dout] [get_bd_pins concat_color_sat/In0]  ;# lower 8 bits
 connect_bd_net [get_bd_pins slice_color_sat_hi/Dout] [get_bd_pins concat_color_sat/In1]  ;# upper 8 bits
-connect_bd_net [get_bd_pins concat_color_sat/dout]   [get_bd_pins color_saturation_0/sat_async]
+if {$COLOR_PIPELINE ne "bypass"} {
+    connect_bd_net [get_bd_pins concat_color_sat/dout]   [get_bd_pins color_saturation_0/sat_async]
+}
 
 # =============================================================================
 # color_matrix coefficient + offset AXI GPIOs (axi_gpio_4/5/6).
@@ -994,7 +1121,9 @@ foreach {sname gpio ch hi lo dest} {
     set width [expr $hi - $lo + 1]
     set_property -dict [list CONFIG.DIN_WIDTH {32} CONFIG.DIN_FROM $hi CONFIG.DIN_TO $lo CONFIG.DOUT_WIDTH $width] [get_bd_cells $sname]
     connect_bd_net [get_bd_pins ${gpio}/${ch}] [get_bd_pins ${sname}/Din]
-    connect_bd_net [get_bd_pins ${sname}/Dout] [get_bd_pins color_matrix_0/${dest}]
+    if {$COLOR_PIPELINE ne "bypass"} {
+        connect_bd_net [get_bd_pins ${sname}/Dout] [get_bd_pins color_matrix_0/${dest}]
+    }
 }
 
 # Offsets — 8-bit each from axi_gpio_6/gpio2_io_o.
@@ -1006,7 +1135,9 @@ foreach {sname hi lo dest} {
     create_bd_cell -type ip -vlnv xilinx.com:ip:xlslice $sname
     set_property -dict [list CONFIG.DIN_WIDTH {32} CONFIG.DIN_FROM $hi CONFIG.DIN_TO $lo CONFIG.DOUT_WIDTH {8}] [get_bd_cells $sname]
     connect_bd_net [get_bd_pins axi_gpio_6/gpio2_io_o] [get_bd_pins ${sname}/Din]
-    connect_bd_net [get_bd_pins ${sname}/Dout]         [get_bd_pins color_matrix_0/${dest}]
+    if {$COLOR_PIPELINE ne "bypass"} {
+        connect_bd_net [get_bd_pins ${sname}/Dout]         [get_bd_pins color_matrix_0/${dest}]
+    }
 }
 
 connect_bd_intf_net [get_bd_intf_pins axi_ic_lite/M06_AXI] [get_bd_intf_pins axi_gpio_3/S_AXI]

@@ -1,0 +1,119 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/ibkickinit/schindler-clone/control-plane/catalog.schema.json",
+  "title": "Schindler control catalog",
+  "description": "Schema for catalog-vX.Y.Z.json files. Loaded by schindlerd at startup and used to generate the web UI, RP2040 firmware client, and other operator surfaces. See docs/wiki/CATALOG-EVOLUTION.md for semver discipline.",
+  "type": "object",
+  "required": ["schema", "schema_version", "categories", "controls"],
+  "properties": {
+    "$schema":          { "type": "string" },
+    "schema":           { "const": "schindler-control-catalog" },
+    "schema_version":   {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+      "description": "Semver. Patch = bug fix; minor = additive (new control, new enum option, default change); major = breaking (rename, remove, retype)."
+    },
+    "title":            { "type": "string" },
+    "description":      { "type": "string" },
+    "generated_at":     { "type": "string" },
+    "source_substrate": { "type": "object" },
+
+    "categories": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "title"],
+        "properties": {
+          "id":          { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+          "title":       { "type": "string", "minLength": 1 },
+          "description": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+
+    "controls": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/control" }
+    },
+
+    "profile_format":        { "type": "object" },
+    "open_questions":        { "type": "array", "items": { "type": "string" } },
+    "next_catalog_versions": { "type": "object" }
+  },
+  "additionalProperties": false,
+
+  "$defs": {
+    "control": {
+      "type": "object",
+      "required": ["id", "title", "category", "type", "surface"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$",
+          "description": "Dot-namespaced. First segment matches a category id; later segments are free-form lowercase + underscores."
+        },
+        "title":       { "type": "string", "minLength": 1 },
+        "category":    { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+        "type":        { "enum": ["number", "enum", "boolean", "trigger", "text"] },
+        "unit":        { "type": "string" },
+        "range":       {
+          "type": "array",
+          "items": { "type": "number" },
+          "minItems": 2, "maxItems": 2
+        },
+        "default":     {},
+        "persistent":  { "type": "boolean" },
+        "read_only":   { "type": "boolean" },
+        "surface": {
+          "type": "array",
+          "items": { "enum": ["front", "web", "mobile", "api"] },
+          "uniqueItems": true,
+          "description": "Empty array means 'exists but no operator surface should render this' (UART-only meta)."
+        },
+
+        "options": {
+          "type": "array",
+          "description": "Required for enum-typed controls. Order = canonical integer mapping (index 0 = firmware value 0).",
+          "items": {
+            "type": "object",
+            "required": ["value"],
+            "properties": {
+              "value": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+              "label": { "type": "string" }
+            },
+            "additionalProperties": true
+          }
+        },
+
+        "uart_command":      { "type": ["string", "null"] },
+        "hdl_module":        { "type": "string" },
+        "axi_gpio_register": { "type": "string" },
+        "axi_register":      { "type": "string" },
+        "encoding":          { "type": "string" },
+        "notes":             { "type": "string" },
+        "example_values":    { "type": "array" },
+        "bitfield_legend":   { "type": "object" },
+        "source":            { "type": "string" },
+        "poll_interval_ms":  { "type": "integer", "minimum": 1 },
+
+        "requires_iter":    { "type": "integer", "minimum": 0 },
+        "requires_branch":  { "type": "string" },
+        "requires_hw":      { "type": "string" },
+        "requires_status":  { "enum": ["placeholder", "experimental"] }
+      },
+      "allOf": [
+        {
+          "if":   { "properties": { "type": { "const": "enum" } }, "required": ["type"] },
+          "then": { "required": ["options"] }
+        },
+        {
+          "if":   { "properties": { "type": { "const": "trigger" } }, "required": ["type"] },
+          "then": { "not": { "required": ["range"] } }
+        }
+      ],
+      "additionalProperties": false
+    }
+  }
+}

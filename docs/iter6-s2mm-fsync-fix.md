@@ -174,8 +174,16 @@ When in doubt, run the dump probe first. If `slot K rows ~694-719` show main-bar
 
 ## Open items (post-iter6 followups, not blockers)
 
-1. **Cold-boot ≥3 reboots** under the [[schindler_no_coin_flip_rule]] to formally retire the "OPEN COIN-FLIP" status on `iter5-1080p-clean` in `docs/build-manifest.md`.
-2. **Motion-source re-test** (Osee input 2) — confirm no leak under non-static content. Static-source verification can't distinguish "leak fixed" from "leak frozen at boot."
-3. **SOFLate cleanup** — either mask the flag in the firmware DIAG print or add a small delay between fsync edge and S2MM transfer-arm so TUSER no longer arrives "late." Cosmetic.
-4. **Format-matrix re-verification.** All ✅ entries in `docs/format-support-matrix.md` were earned before iter6 and may have been MS2109-tainted. Re-run each on the new monitor under iter6 substrate.
-5. **Memory updates** ([[schindler_bottom_bars_artifact]] → RESOLVED via iter6; [[schindler_phase_d_iter4h_state]] → mark workaround obsolete).
+> **Status update 2026-05-30:** items 1, 2, 4 partially or fully addressed during the iter12+iter13 cycle. Items 3 and 5 still genuinely open. See `docs/build-manifest.md` "2026-05-24" and "2026-05-30" sections for the post-iter6 work.
+
+1. ~~**Cold-boot ≥3 reboots** under the [[schindler_no_coin_flip_rule]] to formally retire the "OPEN COIN-FLIP" status on `iter5-1080p-clean` in `docs/build-manifest.md`.~~ — *Effective ≥3-reload verification done across multiple input sources during the iter12+iter13 development. Build manifest reflects current status; awaiting formal commit-log entry on the next bench session.*
+2. ~~**Motion-source re-test** (Osee input 2)~~ — *Done. phase-e1-pll-spike verified clean under ImagePro diagonal motion 2026-05-30 (`fcd722c`). iter5-1080p-clean motion verification owed on the next bench session.*
+3. **SOFLate cleanup** — *Still open.* Either mask the flag in the firmware DIAG print or add a small delay between fsync edge and S2MM transfer-arm so TUSER no longer arrives "late." Cosmetic only — no picture impact observed.
+4. **Format-matrix re-verification.** *Partially done.* Row 2 (1080p60→720p60) ✅ on `iter5-1080p-clean` substrate. Other rows still ⚠️ pending. Per the Risk Auditor 2026-05-30: this is ~40 hours of bench time delivering no new features; consider scoping the matrix to ≤5 rows + 1 analog row for v1.
+5. **Memory updates** — *Still open.* [[schindler_bottom_bars_artifact]] should add an iter12/13 reference; [[schindler_phase_d_iter4h_state]] should mark workaround obsolete.
+
+## Related (added 2026-05-30)
+
+- [[schindler_scaler_kernel_iter12_iter13]] — the post-iter6 scaler kernel rework that resolved the residual H-shift.
+- `docs/iter14-plan.md` — deferred runtime kernel-mode toggle.
+- `docs/iter6-h-shift-analysis.md` — H-shift diagnostic narrative (now RESOLVED-banner-marked).

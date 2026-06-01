@@ -75,27 +75,27 @@ set_false_path -to [get_pins {phase_b_bd_i/axi_sync_inputs_0/inst/plocked_q1_reg
 set_false_path -to [get_pins {phase_b_bd_i/axi_sync_inputs_0/inst/vsync_out_q1_reg/D}]
 set_false_path -to [get_pins {phase_b_bd_i/axi_sync_inputs_0/inst/pclk_locked_q1_reg/D}]
 
-# Color GPIO-to-pclk_out CDC false-paths. ASYNC_REG handles metastability;
-# these inform the timing engine the inter-clock paths are async and shouldn't
-# be constrained. Without them Vivado tries to meet setup from clk_fpga_0
-# (100 MHz) to clk_out1_pclk_out (74.25 MHz) on the first-stage flops, fails
-# badly (~-3.5 ns WNS).
+# Color-correct GPIO-to-pclk_out CDC false-paths. ASYNC_REG handles
+# metastability; these inform the timing engine the inter-clock paths are
+# async and shouldn't be constrained. Without them Vivado tries to meet
+# setup from clk_fpga_0 (100 MHz) to clk_out1_pclk_out (74.25 MHz) on
+# the first-stage flops, fails badly (~-3.5 ns WNS).
 #
-# NOTE the `/inst/` level in the hierarchical path. BD module-reference cells
-# (-type module -reference foo) get an inner `inst` wrapper around the user
-# HDL inside the bd_wrapper. The pre-2026-05-18 patterns omitted this and
-# silently matched nothing; WNS stayed at -3.5ns until 2026-05-18.
-#
-# color_correct: 6 channels (black + white per RGB)
+# 2026-05-31 fix: hierarchical names include `/inst/` after the BD cell
+# name because BD wraps custom modules in a generated wrapper. Previous
+# constraints (without /inst/) silently failed with "No valid object(s)
+# found" and the WNS chronic -3.5 ns came from these paths NOT being
+# constrained. Confirmed via report_timing in build/.../impl_1/.
 set_false_path -to [get_pins {phase_b_bd_i/color_correct_0/inst/br_q1_reg[*]/D}]
 set_false_path -to [get_pins {phase_b_bd_i/color_correct_0/inst/bg_q1_reg[*]/D}]
 set_false_path -to [get_pins {phase_b_bd_i/color_correct_0/inst/bb_q1_reg[*]/D}]
 set_false_path -to [get_pins {phase_b_bd_i/color_correct_0/inst/wr_q1_reg[*]/D}]
 set_false_path -to [get_pins {phase_b_bd_i/color_correct_0/inst/wg_q1_reg[*]/D}]
 set_false_path -to [get_pins {phase_b_bd_i/color_correct_0/inst/wb_q1_reg[*]/D}]
-# color_saturation: single 16-bit alpha
 set_false_path -to [get_pins {phase_b_bd_i/color_saturation_0/inst/sat_q1_reg[*]/D}]
-# color_matrix: 9 × 16-bit coefs + 3 × 8-bit offsets
+
+# Color-matrix GPIO-to-pclk_out CDC false-paths (added 2026-05-31).
+# color_matrix.v has the same 2-FF ASYNC_REG pattern; same /inst/ rule.
 set_false_path -to [get_pins {phase_b_bd_i/color_matrix_0/inst/m00_q1_reg[*]/D}]
 set_false_path -to [get_pins {phase_b_bd_i/color_matrix_0/inst/m01_q1_reg[*]/D}]
 set_false_path -to [get_pins {phase_b_bd_i/color_matrix_0/inst/m02_q1_reg[*]/D}]
@@ -108,22 +108,31 @@ set_false_path -to [get_pins {phase_b_bd_i/color_matrix_0/inst/m22_q1_reg[*]/D}]
 set_false_path -to [get_pins {phase_b_bd_i/color_matrix_0/inst/off_r_q1_reg[*]/D}]
 set_false_path -to [get_pins {phase_b_bd_i/color_matrix_0/inst/off_g_q1_reg[*]/D}]
 set_false_path -to [get_pins {phase_b_bd_i/color_matrix_0/inst/off_b_q1_reg[*]/D}]
-# mackin_blender: alpha
+
+# scaler_top runtime IN_W/IN_H CDC false-paths (axi clock → pclk_in domain).
+# Same /inst/ rule.
+set_false_path -to [get_pins {phase_b_bd_i/scaler_0/inst/in_w_q1_reg[*]/D}]
+set_false_path -to [get_pins {phase_b_bd_i/scaler_0/inst/in_h_q1_reg[*]/D}]
+# iter14 kernel_mode CDC (axi clock → pclk_in): 4-bit ASYNC_REG synchronizer
+# in scaler_top.v line 80. Same chronic-WNS class that 1ec218c just closed for
+# color_matrix — flagged by 2026-05-31 HDL re-audit before next impl run.
+set_false_path -to [get_pins {phase_b_bd_i/scaler_0/inst/km_q1_reg[*]/D}]
+# mackin_blender alpha CDC (axi clock → pclk_out): 16-bit ASYNC_REG synchronizer.
+# Same chronic-WNS class as the color stack — must follow the /inst/ rule.
 set_false_path -to [get_pins {phase_b_bd_i/mackin_blender_0/inst/alpha_q1_reg[*]/D}]
 
 # ============================================================================
-# Phase G iter1 (2026-05-17): AXI I2C to ADV7393 eval board.
+# Phase G iter1: AXI I²C to ADV7393 eval board.
 # Pmod JD pin assignments per Zybo Z7-20 reference manual:
 #   JD7 = U14 -> iic_adv7393_sda_io
 #   JD8 = U15 -> iic_adv7393_scl_io
 # PULLUP TRUE enables internal FPGA pull-up in case the eval board lacks
-# external pull-ups. Standard 3.3V I2C signaling.
+# external pull-ups. Standard 3.3V I²C signaling.
 # ============================================================================
 set_property -dict { PACKAGE_PIN U14 IOSTANDARD LVCMOS33 PULLUP TRUE } [get_ports iic_adv7393_sda_io]
 set_property -dict { PACKAGE_PIN U15 IOSTANDARD LVCMOS33 PULLUP TRUE } [get_ports iic_adv7393_scl_io]
 
 # Phase G iter1: 27 MHz CLKIN to ADV7393 via JD1 = T14.
-# Justin's bench wire: Pmod JD1 -> chip pin 19 (CLKIN). LVCMOS33 3.3V drive
-# is fine for ADV7393's 3.3V CMOS clock input. No pull resistor needed for
-# a clock signal — slew is what matters, drive is FAST by default.
+# LVCMOS33 3.3V drive is fine for ADV7393's 3.3V CMOS clock input. No pull
+# resistor needed for a clock signal — slew is what matters, drive is FAST.
 set_property -dict { PACKAGE_PIN T14 IOSTANDARD LVCMOS33 SLEW FAST DRIVE 12 } [get_ports adv7393_clkin]

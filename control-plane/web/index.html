@@ -1,0 +1,483 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Schindler 2.0 — Control Panel</title>
+  <style>
+    :root {
+      --bg: #1a1d23;
+      --panel: #23272e;
+      --panel-2: #2c3038;
+      --text: #e0e3e8;
+      --muted: #9aa1ab;
+      --accent: #5aa9e6;
+      --accent-2: #4d8fc4;
+      --good: #4caf50;
+      --bad: #ef5350;
+      --border: #353a44;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text);
+                 font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    header { background: var(--panel); border-bottom: 1px solid var(--border);
+             padding: 12px 20px; display: flex; align-items: center; gap: 16px; }
+    header h1 { margin: 0; font-size: 16px; font-weight: 600; }
+    header .status { font-size: 12px; color: var(--muted); }
+    header .status .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+                           background: var(--bad); margin-right: 6px; vertical-align: 1px; }
+    header .status.connected .dot { background: var(--good); }
+    header .spacer { flex: 1; }
+    header select, header button {
+      background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
+      padding: 6px 10px; border-radius: 4px; font-size: 13px;
+    }
+    header button { cursor: pointer; }
+    header button:hover { background: var(--border); }
+
+    main { padding: 20px; max-width: 1100px; margin: 0 auto; }
+    .category { background: var(--panel); border: 1px solid var(--border);
+                border-radius: 6px; margin-bottom: 16px; }
+    .category > h2 { margin: 0; padding: 12px 16px; border-bottom: 1px solid var(--border);
+                     font-size: 13px; font-weight: 600; text-transform: uppercase;
+                     letter-spacing: 0.5px; color: var(--muted); }
+    .controls { padding: 12px 16px; display: grid; grid-template-columns: 200px 1fr 90px;
+                gap: 6px 16px; align-items: center; }
+    .controls .ctl-title { font-weight: 500; }
+    .controls .ctl-title small { display: block; font-weight: normal; color: var(--muted); font-size: 11px; }
+    .controls input[type=range] { width: 100%; }
+    .controls input[type=number] { background: var(--panel-2); color: var(--text);
+                                    border: 1px solid var(--border); padding: 4px 8px;
+                                    border-radius: 3px; width: 80px; font: inherit; }
+    .controls select { background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
+                       padding: 4px 8px; border-radius: 3px; font: inherit; width: 100%; }
+    .ctl-value { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 12px; text-align: right; }
+    .ctl-row.dirty .ctl-value { color: var(--accent); }
+    .ctl-row.error .ctl-value { color: var(--bad); }
+    .ctl-row.read_only input, .ctl-row.read_only select { opacity: 0.6; pointer-events: none; }
+
+    #banner { padding: 10px 14px; border-radius: 6px; margin-bottom: 16px; font-size: 13px; }
+    #banner.warn  { background: #4d3f1d; border: 1px solid #8b6f2a; color: #ffd97a; }
+    #banner.error { background: #4d1d1d; border: 1px solid #8b2a2a; color: #ff9d9d; }
+
+    #metrics { background: var(--panel); border: 1px solid var(--border);
+                border-radius: 6px; margin-bottom: 16px; padding: 12px 16px;
+                font: 12px/1.4 "SF Mono", Menlo, monospace; color: var(--muted); }
+    #metrics h3 { margin: 0 0 8px 0; color: var(--text); font-size: 12px;
+                  font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+    #metrics .row { display: grid; grid-template-columns: 1fr 80px 80px 80px;
+                    gap: 4px 12px; }
+    #metrics .row.header { color: var(--text); border-bottom: 1px solid var(--border);
+                            padding-bottom: 4px; margin-bottom: 4px; }
+    #metrics .total { color: var(--text); padding: 4px 0; margin-top: 8px;
+                      border-top: 1px solid var(--border); }
+
+    #log { background: #000; color: #9aa1ab; font: 11px/1.3 "SF Mono", Menlo, monospace;
+           padding: 12px; border-radius: 4px; height: 140px; overflow: auto;
+           border: 1px solid var(--border); margin-top: 16px; }
+    #log .err { color: var(--bad); }
+    #log .ok  { color: var(--good); }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Schindler 2.0</h1>
+    <span class="status" id="status"><span class="dot"></span><span id="status-text">disconnected</span></span>
+    <div class="spacer"></div>
+    <select id="profile-select" title="Profiles"></select>
+    <button id="profile-load">Load</button>
+    <button id="profile-save">Save…</button>
+    <button id="profile-snapshot">Snapshot current →</button>
+    <button id="reset-all" title="Reset color stack to identity defaults">Reset</button>
+    <button id="metrics-toggle" title="Toggle daemon metrics panel">⋯</button>
+  </header>
+
+  <main>
+    <div id="banner" hidden></div>
+    <div id="catalog-mount"></div>
+    <div id="metrics" hidden></div>
+    <div id="log"></div>
+  </main>
+
+  <script>
+  // -------------------------------------------------------------------------
+  // JSON-RPC over WebSocket
+  // -------------------------------------------------------------------------
+  const WS_URL = `ws://${location.hostname}:8081`;
+  // What catalog schema this UI was written against. Bump in lockstep with
+  // the catalog file when new schema features land (new unit, new type, etc.)
+  const UI_CATALOG_VERSION = "0.2.0";
+  let ws = null;
+  let nextId = 1;
+  const pending = new Map();
+
+  function compareSemver(a, b) {
+    const [aM, am, ap] = a.split(".").map(Number);
+    const [bM, bm, bp] = b.split(".").map(Number);
+    if (aM !== bM) return aM - bM;
+    if (am !== bm) return am - bm;
+    return (ap || 0) - (bp || 0);
+  }
+
+  function showBanner(text, kind = "warn") {
+    const el = document.getElementById("banner");
+    el.textContent = text;
+    el.className = kind;
+    el.hidden = false;
+  }
+  function clearBanner() {
+    document.getElementById("banner").hidden = true;
+  }
+
+  function checkCatalogCompat(daemonCatalogVersion) {
+    const cmp = compareSemver(daemonCatalogVersion, UI_CATALOG_VERSION);
+    const [uiMajor] = UI_CATALOG_VERSION.split(".").map(Number);
+    const [dMajor]  = daemonCatalogVersion.split(".").map(Number);
+    if (uiMajor !== dMajor) {
+      showBanner(
+        `Catalog major mismatch: UI expects ${UI_CATALOG_VERSION}, daemon has ${daemonCatalogVersion}. Some controls may not render or may misbehave.`,
+        "error");
+      return false;
+    }
+    if (cmp < 0) {
+      showBanner(
+        `Daemon catalog ${daemonCatalogVersion} is older than this UI's expected ${UI_CATALOG_VERSION}. Continuing — unknown new UI features will be inert.`,
+        "warn");
+      return true;
+    }
+    // cmp >= 0 same major: daemon has equal or newer minor. UI is forward-
+    // compatible (ignores unknown control entries gracefully).
+    clearBanner();
+    return true;
+  }
+
+  function log(msg, cls = "") {
+    const el = document.getElementById("log");
+    const t = new Date().toISOString().slice(11, 23);
+    const span = document.createElement("div");
+    if (cls) span.className = cls;
+    span.textContent = `[${t}] ${msg}`;
+    el.appendChild(span);
+    el.scrollTop = el.scrollHeight;
+  }
+
+  function connect() {
+    log(`connecting to ${WS_URL}`);
+    ws = new WebSocket(WS_URL);
+    ws.onopen = async () => {
+      setStatus(true);
+      log("connected", "ok");
+      try {
+        const ident = await call("system.identify");
+        log(`firmware: ${JSON.stringify(ident.firmware)} | catalog v${ident.catalog}`);
+        checkCatalogCompat(ident.catalog);
+        const cat = await call("system.catalog");
+        renderCatalog(cat);
+        await refreshAllValues();
+        await refreshProfiles();
+        // Pull the daemon's current status snapshot. The connect-time replay
+        // raced our renderCatalog; this back-fills any stable values (S2MM_SR,
+        // source_lock, output_format, etc.) that dedup prevented from re-publishing.
+        try {
+          const snap = await call("status.snapshot");
+          for (const [id, value] of Object.entries(snap)) {
+            handleStatusUpdate({ id, value });
+          }
+        } catch (e) { log(`snapshot: ${e.message}`, "err"); }
+      } catch (e) {
+        log(`init error: ${e.message}`, "err");
+      }
+    };
+    ws.onclose = () => { setStatus(false); log("disconnected", "err"); setTimeout(connect, 2000); };
+    ws.onerror = () => log("ws error", "err");
+    ws.onmessage = ev => {
+      let m;
+      try { m = JSON.parse(ev.data); } catch (e) { return; }
+      // JSON-RPC notification (no id) — route to status handler.
+      if (m.method && m.id === undefined) {
+        if (m.method === "status.update") handleStatusUpdate(m.params);
+        else if (m.method === "control.changed") handleControlChanged(m.params);
+        return;
+      }
+      const cb = pending.get(m.id);
+      if (cb) { pending.delete(m.id); cb(m); }
+    };
+  }
+
+  function call(method, params) {
+    return new Promise((resolve, reject) => {
+      const id = nextId++;
+      pending.set(id, m => {
+        if (m.error) reject(new Error(m.error.message));
+        else resolve(m.result);
+      });
+      ws.send(JSON.stringify({ jsonrpc: "2.0", id, method, params }));
+      setTimeout(() => {
+        if (pending.has(id)) { pending.delete(id); reject(new Error(`timeout ${method}`)); }
+      }, 3000);
+    });
+  }
+
+  function setStatus(connected) {
+    const el = document.getElementById("status");
+    el.classList.toggle("connected", connected);
+    document.getElementById("status-text").textContent = connected ? "connected" : "disconnected";
+  }
+
+  // -------------------------------------------------------------------------
+  // Catalog → UI
+  // -------------------------------------------------------------------------
+  let catalog = null;
+  const controlRows = new Map();   // id -> {el, valueEl, input}
+
+  function renderCatalog(cat) {
+    catalog = cat;
+    const mount = document.getElementById("catalog-mount");
+    mount.innerHTML = "";
+    const byCategory = new Map();
+    for (const c of cat.controls) {
+      if (!c.surface || c.surface.indexOf("web") === -1) continue;
+      if (c.available === false) continue;  // firmware doesn't implement it / gated by branch
+      const k = c.category || "other";
+      if (!byCategory.has(k)) byCategory.set(k, []);
+      byCategory.get(k).push(c);
+    }
+    for (const catDef of cat.categories || []) {
+      const items = byCategory.get(catDef.id) || [];
+      if (!items.length) continue;
+      const sec = document.createElement("section");
+      sec.className = "category";
+      sec.innerHTML = `<h2>${catDef.title}</h2>`;
+      const grid = document.createElement("div");
+      grid.className = "controls";
+      for (const c of items) grid.appendChild(renderControl(c));
+      sec.appendChild(grid);
+      mount.appendChild(sec);
+    }
+  }
+
+  function renderControl(c) {
+    const row = document.createElement("div");
+    row.className = "ctl-row";
+    row.style.display = "contents";
+    if (c.read_only) row.classList.add("read_only");
+
+    const title = document.createElement("div");
+    title.className = "ctl-title";
+    title.innerHTML = `${c.title}<small>${c.id}</small>`;
+
+    const ctrl = document.createElement("div");
+    let input;
+    if (c.read_only) {
+      // Status / telemetry — no editable widget, value cell does the work.
+      input = document.createElement("span");
+      input.className = "ctl-readonly-spacer";
+      input.textContent = "";
+    } else if (c.type === "number") {
+      input = document.createElement("input");
+      input.type = "range";
+      input.min = c.range ? c.range[0] : 0;
+      input.max = c.range ? c.range[1] : 100;
+      input.step = 1;
+      input.value = c.default ?? input.min;
+      input.addEventListener("input", () => setValue(c.id, +input.value));
+    } else if (c.type === "enum") {
+      input = document.createElement("select");
+      for (const opt of c.options || []) {
+        const o = document.createElement("option");
+        o.value = opt.value; o.textContent = opt.label || opt.value;
+        input.appendChild(o);
+      }
+      input.addEventListener("change", () => setValue(c.id, input.value));
+    } else if (c.type === "boolean") {
+      input = document.createElement("input");
+      input.type = "checkbox";
+      input.addEventListener("change", () => setValue(c.id, input.checked));
+    } else if (c.type === "trigger") {
+      input = document.createElement("button");
+      input.textContent = c.title;
+      input.addEventListener("click", () => setValue(c.id, true));
+    } else {
+      input = document.createElement("span");
+      input.textContent = `(${c.type})`;
+    }
+    ctrl.appendChild(input);
+
+    const val = document.createElement("div");
+    val.className = "ctl-value";
+    val.textContent = "—";
+
+    // display: contents on row lets title/ctrl/val land in the parent grid columns.
+    row.appendChild(title);
+    row.appendChild(ctrl);
+    row.appendChild(val);
+    controlRows.set(c.id, { row, value: val, input, control: c });
+    return row;
+  }
+
+  // Per-control coalescing: a slider firing 100 input events per second would
+  // overwhelm the serialized UART. We keep one request inflight per control
+  // and drop intermediate values — only the latest queued value gets sent
+  // when the current request completes.
+  const pendingValue = new Map();   // id -> latest queued value
+  const inflight = new Set();        // id -> request currently on the wire
+
+  async function setValue(id, value) {
+    pendingValue.set(id, value);
+    if (inflight.has(id)) return;     // a coroutine is already draining this id
+    inflight.add(id);
+    const rec = controlRows.get(id);
+    rec.row.classList.add("dirty");
+    rec.row.classList.remove("error");
+    try {
+      while (pendingValue.has(id)) {
+        const v = pendingValue.get(id);
+        pendingValue.delete(id);
+        try {
+          const r = await call("control.set", { id, value: v });
+          rec.value.textContent = formatValue(rec.control, r.value);
+          rec.row.classList.remove("error");
+        } catch (e) {
+          rec.row.classList.add("error");
+          rec.value.textContent = "ERR";
+          log(`set ${id}=${v}: ${e.message}`, "err");
+        }
+      }
+    } finally {
+      inflight.delete(id);
+      rec.row.classList.remove("dirty");
+    }
+  }
+
+  function formatValue(c, v) {
+    if (v === null || v === undefined) return "—";
+    if (c.unit === "percent") return v + "%";
+    if (c.unit === "raw8") return String(v);
+    if (c.unit === "hex32" && typeof v === "number") return "0x" + v.toString(16).padStart(8, "0").toUpperCase();
+    if (c.unit === "hz" && typeof v === "number") return v + " Hz";
+    if (typeof v === "boolean") return v ? "✓" : "✗";
+    return String(v);
+  }
+
+  // status.update {id, value} from the daemon's TelemetryParser.
+  function handleStatusUpdate(p) {
+    const rec = controlRows.get(p.id);
+    if (!rec) return;  // unknown id (e.g. catalog 0.2.0 fields not in this catalog)
+    rec.value.textContent = formatValue(rec.control, p.value);
+  }
+
+  // control.changed {id, value} from another client.
+  function handleControlChanged(p) {
+    const rec = controlRows.get(p.id);
+    if (!rec) return;
+    // Don't ricochet — if we're the one currently dragging, ignore the echo.
+    if (inflight.has(p.id) || pendingValue.has(p.id)) return;
+    rec.value.textContent = formatValue(rec.control, p.value);
+    if (rec.input.tagName === "INPUT" && rec.input.type === "range") rec.input.value = p.value;
+    else if (rec.input.tagName === "SELECT") rec.input.value = p.value;
+    else if (rec.input.tagName === "INPUT" && rec.input.type === "checkbox") rec.input.checked = !!p.value;
+  }
+
+  async function refreshAllValues() {
+    for (const [id, rec] of controlRows) {
+      // Skip read-only / trigger controls — there's nothing to get and the
+      // firmware doesn't expose status reads via control.get yet.
+      if (rec.control.read_only || rec.control.type === "trigger") continue;
+      try {
+        const r = await call("control.get", { id });
+        rec.value.textContent = formatValue(rec.control, r.value);
+        if (rec.input.tagName === "INPUT" && rec.input.type === "range") rec.input.value = r.value;
+        else if (rec.input.tagName === "SELECT") rec.input.value = r.value;
+        else if (rec.input.tagName === "INPUT" && rec.input.type === "checkbox") rec.input.checked = !!r.value;
+      } catch (e) { /* leave dash */ }
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Profiles
+  // -------------------------------------------------------------------------
+  async function refreshProfiles() {
+    const items = await call("profile.list");
+    const sel = document.getElementById("profile-select");
+    sel.innerHTML = "";
+    for (const it of items) {
+      const o = document.createElement("option");
+      o.value = it.name;
+      o.textContent = it.factory ? `${it.name} (factory)` : it.name;
+      sel.appendChild(o);
+    }
+  }
+
+  document.getElementById("profile-load").addEventListener("click", async () => {
+    const name = document.getElementById("profile-select").value;
+    if (!name) return;
+    try {
+      const r = await call("profile.load", { name });
+      log(`loaded '${name}': applied ${r.applied.length} controls`, "ok");
+      await refreshAllValues();
+    } catch (e) { log(`load: ${e.message}`, "err"); }
+  });
+
+  document.getElementById("profile-snapshot").addEventListener("click", async () => {
+    const name = prompt("Snapshot name:");
+    if (!name) return;
+    try {
+      const r = await call("profile.save", { name });
+      log(`saved '${name}' (${r.saved} controls)`, "ok");
+      await refreshProfiles();
+    } catch (e) { log(`save: ${e.message}`, "err"); }
+  });
+
+  document.getElementById("profile-save").addEventListener("click", async () => {
+    const name = document.getElementById("profile-select").value;
+    if (!name) return alert("pick a profile first or use 'Snapshot current'");
+    if (!confirm(`Overwrite '${name}' with current state?`)) return;
+    try {
+      const r = await call("profile.save", { name });
+      log(`saved '${name}' (${r.saved} controls)`, "ok");
+    } catch (e) { log(`save: ${e.message}`, "err"); }
+  });
+
+  document.getElementById("reset-all").addEventListener("click", async () => {
+    if (!confirm("Reset color stack to identity defaults?")) return;
+    try {
+      await call("profile.load", { name: "identity" });
+      log("reset → identity profile loaded", "ok");
+      await refreshAllValues();
+    } catch (e) { log(`reset: ${e.message}`, "err"); }
+  });
+
+  // ---- Metrics panel ----------------------------------------------------
+  let metricsInterval = null;
+  async function refreshMetrics() {
+    try {
+      const m = await call("system.metrics");
+      const el = document.getElementById("metrics");
+      const rows = (m.subscribers || []).map(s =>
+        `<div class="row"><span>${s.label}</span><span>${s.published}</span>` +
+        `<span>${s.dropped}</span><span>${s.queue_depth}</span></div>`
+      ).join("");
+      el.innerHTML =
+        `<h3>Daemon metrics</h3>` +
+        `<div class="row header"><span>client</span><span>published</span>` +
+        `<span>dropped</span><span>queue</span></div>` +
+        rows +
+        `<div class="total">total: published ${m.total_published}, dropped ${m.total_dropped}</div>`;
+    } catch (e) { /* swallow — daemon may have churned */ }
+  }
+  document.getElementById("metrics-toggle").addEventListener("click", () => {
+    const el = document.getElementById("metrics");
+    el.hidden = !el.hidden;
+    if (!el.hidden) {
+      refreshMetrics();
+      metricsInterval = setInterval(refreshMetrics, 2000);
+    } else if (metricsInterval) {
+      clearInterval(metricsInterval);
+      metricsInterval = null;
+    }
+  });
+
+  connect();
+  </script>
+</body>
+</html>

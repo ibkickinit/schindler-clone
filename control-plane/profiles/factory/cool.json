@@ -1,0 +1,21 @@
+{
+  "schema": "schindler-profile",
+  "schema_version": "0.1.0",
+  "catalog_version": "0.2.0",
+  "name": "cool",
+  "description": "Slightly punchy saturation (110%) with a cool white balance (B full, R/G dialed back). Daylight-leaning look — good for outdoor footage.",
+  "factory": true,
+  "controls": {
+    "color.saturation":         110,
+    "color.matrix.preset":      "identity",
+    "color.matrix_saturation":  100,
+    "color.correct.black_r":    0,
+    "color.correct.black_g":    0,
+    "color.correct.black_b":    0,
+    "color.correct.white_r":    220,
+    "color.correct.white_g":    240,
+    "color.correct.white_b":    255,
+    "scaler.kernel_h":          "boxcar_2tap",
+    "scaler.kernel_v":          "boxcar_2tap"
+  }
+}
