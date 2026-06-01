@@ -4,7 +4,7 @@
 
 ## STATUS (2026-06-01)
 - **Phase 1 (KERNEL_GPIO_INDEX parameterization on iter5):** ✅ shipped.
-- **Phase 2 (merge iter5 → mackin-impl-wip):** ✅ merged + build-verified (WNS +0.149 ns, DRC 0 err) + programmed. Firmware fully verified: J-smoke PASS; iter14 kernel toggle live at `axi_gpio_9`; Mackin alpha live at `axi_gpio_7` (no slot collision); no error bits. mackin builds with `KERNEL_GPIO_INDEX=9 KERNEL_M_SLOT=13`. **⚠️ Bench picture: 1-boot CLEAN (LUCKY-BOOT) — 3-cold-reload no-coin-flip check still owed before a formal ✅** (per [[schindler_no_coin_flip_rule]]; same bar as iter5's `eefa6b0` promotion).
+- **Phase 2 (merge iter5 → mackin-impl-wip):** ✅ merged + build-verified (WNS +0.149 ns, DRC 0 err) + programmed. Firmware fully verified: J-smoke PASS; iter14 kernel toggle live at `axi_gpio_9`; Mackin alpha live at `axi_gpio_7` (no slot collision); no error bits. mackin builds with `KERNEL_GPIO_INDEX=9 KERNEL_M_SLOT=13`. ✅ **Bench picture: 3-cold-reload CLEAN (no-coin-flip rule satisfied 2026-06-01)** — reloads 1/2/3 all came up identically clean on the monitor. Phase 2 formally PASSES. mackin-impl-wip is now a verified merge of iter5 trunk.
   - **Known benign:** web-UI slider shows occasional `control.set` timeouts under fast drag — UART contention between the firmware's autonomous DIAG telemetry spew and on-demand J request/response. Pre-existing (same on iter5), not a merge regression; values still land via the coalescer. Real fix is firmware-side (quiet telemetry during pending J / drop the debug DDR-dump bursts), lands on iter5 first. Tracked as a follow-up, non-blocking.
 - **Phase 3 (merge iter5 → phase-e1-pll-spike):** not started. Bigger lift — phase-e1 also lacks iter4e. ~4–5 h + 1 h bench.
 
