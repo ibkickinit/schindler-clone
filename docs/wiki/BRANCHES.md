@@ -18,12 +18,16 @@ Tip: `2bfaa7f` (V0a + V0a+1 stack). Clean substrate baseline at `ec13ab2`; promo
 Status: **✅ CLEAN** at `ec13ab2` (3-boot rule satisfied 2026-05-31 morning); V0a control plane bench-verified end-to-end 2026-05-31 afternoon (catalog + firmware J + daemon + browser UI + status push + multi-client + factory presets).
 Contains: iter4d-3 lineage + 1080p substrate + color stack + iter6 S2MM hardware fsync + iter12 (H 2-tap boxcar with `s_axis_tdata` newest tap) + iter13 (V 2-tap `tap2+tap3` post-rotation) + iter13b (+1 round-to-nearest, removes −0.5 LSB DC bias) + iter13c (lbuf_fresh emit suppression + XDC false-paths) + iter14 (runtime kernel-mode toggle via axi_gpio_7) + V0a control plane.
 
-### `phase-e1-pll-spike` — MMCM tracking ("Gen Lock" mode)
+### `phase-e1-pll-spike` — ARCHIVED + CLOSED 2026-06-01
 
-Tip: `d7d2acf` (iter13c backported today).
-Status: Bench-clean 60→60 matched-rate + diagonal motion. ⚠️ LUCKY-BOOT formally; not promoted.
-Contains: iter5 substrate + iter6 + iter12+iter13 + iter13c + MMCM `psincdec` closed-loop tracking. **iter4e + iter14 + V0a not backported** (substrate divergence — task #65 captures the planned resync).
-Scope: ±500 ppm pull range. NOT designed for large FRC ratios (5:2, etc.).
+**Branch deleted (local + remote); preserved as tag `archive/phase-e1-pll-spike` @ `d7d2acf`.**
+Closed because all v1-relevant work was already on iter5 trunk; phase-e1's unique
+content is the **Phase-E2 MMCM `psincdec` closed-loop tracking** (vsync_timestamp,
+src_vsync_divider, clk_wiz MMCM, refsel/srcdiv GPIOs, PI-loop UART cmds) — that's
+**v2**, scope-fenced out of v1. A full merge would've been throwaway (the resync is
+better done fresh from then-current iter5 when E2 actually revives).
+**Revive E2:** `git checkout -b <new> archive/phase-e1-pll-spike` then merge-from-iter5.
+Scope (for reference): ±500 ppm pull range; NOT designed for large FRC ratios (5:2, etc.).
 
 ### `mackin-impl-wip` — Temporal blender (placeholder wiring)
 
