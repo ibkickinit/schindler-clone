@@ -65,6 +65,9 @@ sim: ## Python kernel compare + sha256 diff against golden
 
 ci: test sim ## test + sim (both fast paths, no bench, no Vivado)
 
+web-smoke: ## Playwright headless smoke against the LIVE daemon at :8080
+	@$(PYTEST) $(PYTEST_FLAGS) tests/test_web_smoke.py
+
 sim-vivado: ## xsim testbench (scaler_top_tb) — requires Vivado env sourced
 	@command -v xvlog >/dev/null 2>&1 || { \
 		echo "xvlog not found; source /tools/Xilinx/2025.2/Vitis/settings64.sh first"; \
