@@ -81,6 +81,46 @@ S2MM+MM2S) against genlock-correctness, throughput/timing on -1 silicon, archite
 implementation/bench risk; its synthesis + implementation sketch + first bench checkpoint will be
 appended here.
 
+## Design panel result (2026-06-01, 5-agent workflow)
+
+Lenses: genlock correctness / throughput+timing on -1 / architecture fit / implementation risk.
+
+**Recommendation: HYBRID — ship A for v1 single-output, migrate to B when the analog output lands.**
+
+- **C (reconfigure both S2MM+MM2S): REJECTED, fatal.** Bench-confirmed black screen; even repaired,
+  a sub-raster MM2S read can't feed VTC's fixed full raster (axis_to_vid_io starves) → you build B
+  anyway, with blackout risk. Scored 1-2 on three lenses.
+- **A (scaler emits full raster) and B (output compositor) are BOTH genlock-safe** — both keep
+  S2MM/MM2S at full 1280×720, handshake + iter6 fsync byte-identical to production.
+- **A:** comparator + 24-bit matte mux on the existing emit path; **0 new BRAM/DSP**; bit-identical
+  at default by construction; 1-2 bench iterations. Cost: geometry baked *pre-color into the DDR
+  master* — wrong layer for a future second (analog) output.
+- **B:** VTC-timed pull resampler between `color_matrix_0/m_axis` and `axis_to_vid_io_0/s_axis`;
+  +4-6 BRAM18, hard no-starve obligation, new pull-model sim TB, 3-5 iterations. Cost: more work,
+  but it IS the agreed route B (post-color, per-output) — a future analog leg instances a second
+  `present_geom` on the same master.
+- **Hybrid rationale:** one output exists today; A is visually indistinguishable from B for a single
+  output, retires the broken bench fast, and the A→B migration is a clean module-add.
+- **Dissent (stated fairly):** A is knowingly throwaway HDL; route B is already the agreed
+  architecture. The load-bearing risk in A is the full-raster TLAST/TUSER emit-boundary rework
+  (pad matte beats to full 1280×720 regardless of picture extent) — *if* that's as hard as B's
+  resampler, A's advantage shrinks. Mitigation: A's hard part is fully simulatable pre-bench.
+
+### First bench checkpoint (valid under BOTH A and B)
+Delete `scaler_reframe`'s S2MM `DmaStop`/`DmaConfig`/`DmaStart` + per-slot matte memset (main.c
+~623-665); firmware then ONLY writes the size GPIO — no VDMA reconfig, ever. Rebuild ELF (firmware
+only, no bitstream), cold-boot at default, confirm clean shipping iter6 picture across 3 boots on the
+MONITOR. This returns the genlock ring to known-good and isolates all remaining work to the geometry
+engine.
+
+### Open questions to resolve during build
+- How hard is the full-raster TLAST/TUSER emit-boundary rework really? (governs hybrid's advantage)
+- POS_Y_FUDGE/+STRIDE: with full S2MM/MM2S geometry, is vertical position purely the scaler `pos_y`
+  reg with STRIDE unchanged from production?
+- Throughput at zoom/near-1:1 + large pos_x (many matte beats) — sim at extremes per design-doc risk 1.
+- Matte is pre-color under A (color stack acts on the border) — fine for #000000; confirm non-black.
+- Should v1 GPIO/catalog encoding already match the namespaced `hdmi.*` surface so A→B doesn't churn it?
+
 ## Cross-refs
 
 - `docs/adjustable-scaler-design.md` — the agreed master+presentation architecture (route B).

@@ -38,14 +38,6 @@
 #    define SCALER_KERNEL_GPIO_BASEADDR XPAR_AXI_GPIO_7_BASEADDR
 #  endif
 #endif
-/* G1 adjustable-scaler size GPIO (dual-channel: ch1 @ +0x00 = out_w, ch2 @
- * +0x08 = out_h). Build emits SIZE_GPIO_BASEADDR from SIZE_GPIO_INDEX; fall
- * back to the iter5-production axi_gpio_8 slot. */
-#ifndef SIZE_GPIO_BASEADDR
-#  ifdef XPAR_AXI_GPIO_8_BASEADDR
-#    define SIZE_GPIO_BASEADDR XPAR_AXI_GPIO_8_BASEADDR
-#  endif
-#endif
 #include "xil_cache.h"
 #include "xil_io.h"
 #include "sleep.h"
@@ -582,110 +574,6 @@ static int cp_set_kv(int v) { (void)v; return -2; }
 static int cp_get_kv(int *o) { *o = -1; return -2; }
 #endif
 
-/* ============================================================================
- * G1 adjustable scaler — size + position + matte (reframe).
- *
- * The scaler emits a g_out_w × g_out_h picture (runtime size via SIZE_GPIO).
- * S2MM writes that picture into a matte-cleared full raster at (g_pos_x,
- * g_pos_y); MM2S reads the full raster for the VTC. So a "reframe" coordinates
- * three things atomically: the scaler size GPIO, the S2MM geometry+offset, and
- * the framebuffer matte.
- *
- * NOTE the existing +STRIDE read offset (mm2s_addr = s2mm_addr + STRIDE), an
- * iter6-era quirk: MM2S display row 0 == S2MM physical row 1. So the displayed
- * vertical position is ~(g_pos_y - 1). This is BENCH-CALIBRATED via the frame
- * dump — the constant POS_Y_FUDGE absorbs it once we see where it lands.
- *
- * reframe() is heavy (matte memset of all slots + S2MM stop/reconfig/start);
- * it's called per control.set for first-light calibration. Debounce / an
- * explicit Apply is a later optimization (see catalog notes).
- * ============================================================================ */
-#if defined(SIZE_GPIO_BASEADDR)
-static unsigned g_out_w   = FRAME_W;   /* scaled picture width  (≤ FRAME_W) */
-static unsigned g_out_h   = FRAME_H;   /* scaled picture height (≤ FRAME_H) */
-static unsigned g_pos_x   = 0;         /* window left in output raster */
-static unsigned g_pos_y   = 0;         /* window top  in output raster */
-static unsigned g_matte   = 0x000000;  /* 0xRRGGBB matte/background */
-#define POS_Y_FUDGE 1                  /* +STRIDE read-offset compensation (calibrate at bench) */
-
-static void scaler_reframe(void)
-{
-    /* Clamp window to raster. */
-    if (g_out_w < 16) g_out_w = 16;  if (g_out_w > FRAME_W) g_out_w = FRAME_W;
-    if (g_out_h < 16) g_out_h = 16;  if (g_out_h > FRAME_H) g_out_h = FRAME_H;
-    if (g_pos_x + g_out_w > FRAME_W) g_pos_x = FRAME_W - g_out_w;
-    if (g_pos_y + g_out_h > FRAME_H) g_pos_y = FRAME_H - g_out_h;
-
-    /* 1. Drive the scaler output size (ch1 = out_w @ +0x00, ch2 = out_h @ +0x08). */
-    Xil_Out32(SIZE_GPIO_BASEADDR + 0x00, g_out_w);
-    Xil_Out32(SIZE_GPIO_BASEADDR + 0x08, g_out_h);
-
-    /* 2. Stop S2MM so we can re-anchor geometry; MM2S keeps running full raster. */
-    XAxiVdma_DmaStop(&vdma, XAXIVDMA_WRITE);
-
-    /* 3. Matte-fill every slot's full-raster region. gbr memory order
-     *    (pipeline R-B-G stored little-endian): byte0=G, byte1=B, byte2=R. */
-    u8 mb0 = (u8)(g_matte & 0xFF);          /* G */
-    u8 mb1 = (u8)((g_matte >> 8) & 0xFF);   /* B */
-    u8 mb2 = (u8)((g_matte >> 16) & 0xFF);  /* R */
-    const u32 SLOT_BYTES = FRAME_BYTES + STRIDE;
-    for (int i = 0; i < NUM_FRAMES; i++) {
-        volatile u8 *s = (volatile u8 *)(FRAME_BUF_BASE + (u32)i * SLOT_BYTES);
-        if (mb0 == mb1 && mb1 == mb2) {
-            memset((void *)s, mb0, FRAME_BYTES + STRIDE);   /* fast path (black/gray) */
-        } else {
-            for (u32 b = 0; b + 2 < FRAME_BYTES + STRIDE; b += 3) {
-                s[b] = mb0; s[b+1] = mb1; s[b+2] = mb2;
-            }
-        }
-    }
-    Xil_DCacheFlush();
-
-    /* 4. Reconfigure S2MM: write a out_w×out_h sub-rect at (pos_x,pos_y) with
-     *    full-raster stride; addresses offset into each slot. */
-    XAxiVdma_DmaSetup cfg;
-    cfg.VertSizeInput      = g_out_h;
-    cfg.HoriSizeInput      = g_out_w * BYTES_PP;   /* bytes/line of the picture */
-    cfg.Stride             = STRIDE;               /* full-raster line pitch */
-    cfg.FrameDelay         = 0;
-    cfg.EnableCircularBuf  = 1;
-    cfg.EnableSync         = 0;
-    cfg.PointNum           = 0;
-    cfg.EnableFrameCounter = 0;
-    cfg.FixedFrameStoreAddr= 0;
-    (void)XAxiVdma_DmaConfig(&vdma, XAXIVDMA_WRITE, &cfg);
-
-    UINTPTR addrs[NUM_FRAMES];
-    u32 off = (g_pos_y + POS_Y_FUDGE) * STRIDE + g_pos_x * BYTES_PP;
-    for (int i = 0; i < NUM_FRAMES; i++)
-        addrs[i] = FRAME_BUF_BASE + (UINTPTR)i * SLOT_BYTES + off;
-    (void)XAxiVdma_DmaSetBufferAddr(&vdma, XAXIVDMA_WRITE, addrs);
-
-    /* 5. Restart S2MM; hardware fsync re-anchors on the next source vsync. */
-    (void)XAxiVdma_DmaStart(&vdma, XAXIVDMA_WRITE);
-
-    xil_printf("REFRAME: out=%ux%u pos=(%u,%u) matte=0x%06x\r\n",
-               g_out_w, g_out_h, g_pos_x, g_pos_y, g_matte);
-}
-
-static int cp_set_out_w(int v) { if (v < 16 || v > FRAME_W) return -2; g_out_w = (unsigned)v; scaler_reframe(); return 0; }
-static int cp_get_out_w(int *o) { *o = (int)g_out_w; return 0; }
-static int cp_set_out_h(int v) { if (v < 16 || v > FRAME_H) return -2; g_out_h = (unsigned)v; scaler_reframe(); return 0; }
-static int cp_get_out_h(int *o) { *o = (int)g_out_h; return 0; }
-static int cp_set_pos_x(int v) { if (v < 0 || v >= FRAME_W) return -2; g_pos_x = (unsigned)v; scaler_reframe(); return 0; }
-static int cp_get_pos_x(int *o) { *o = (int)g_pos_x; return 0; }
-static int cp_set_pos_y(int v) { if (v < 0 || v >= FRAME_H) return -2; g_pos_y = (unsigned)v; scaler_reframe(); return 0; }
-static int cp_get_pos_y(int *o) { *o = (int)g_pos_y; return 0; }
-static int cp_set_matte(int v) { g_matte = (unsigned)v & 0xFFFFFF; scaler_reframe(); return 0; }
-static int cp_get_matte(int *o) { *o = (int)g_matte; return 0; }
-#else
-static int cp_set_out_w(int v) { (void)v; return -2; }  static int cp_get_out_w(int *o) { *o = -1; return -2; }
-static int cp_set_out_h(int v) { (void)v; return -2; }  static int cp_get_out_h(int *o) { *o = -1; return -2; }
-static int cp_set_pos_x(int v) { (void)v; return -2; }  static int cp_get_pos_x(int *o) { *o = -1; return -2; }
-static int cp_set_pos_y(int v) { (void)v; return -2; }  static int cp_get_pos_y(int *o) { *o = -1; return -2; }
-static int cp_set_matte(int v) { (void)v; return -2; }  static int cp_get_matte(int *o) { *o = -1; return -2; }
-#endif
-
 static const cp_control_t CP_CONTROLS[] = {
     {"color.saturation",         cp_set_sat,    cp_get_sat   },
     {"color.matrix_saturation",  cp_set_msat,   cp_get_msat  },
@@ -698,11 +586,6 @@ static const cp_control_t CP_CONTROLS[] = {
     {"color.correct.white_b",    cp_set_wht_b,  cp_get_wht_b },
     {"scaler.kernel_h",          cp_set_kh,     cp_get_kh    },
     {"scaler.kernel_v",          cp_set_kv,     cp_get_kv    },
-    {"hdmi.out_w",               cp_set_out_w,  cp_get_out_w },
-    {"hdmi.out_h",               cp_set_out_h,  cp_get_out_h },
-    {"hdmi.pos_x",               cp_set_pos_x,  cp_get_pos_x },
-    {"hdmi.pos_y",               cp_set_pos_y,  cp_get_pos_y },
-    {"hdmi.matte_rgb",           cp_set_matte,  cp_get_matte },
     {NULL, NULL, NULL}
 };
 

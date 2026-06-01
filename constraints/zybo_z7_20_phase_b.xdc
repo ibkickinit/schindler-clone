@@ -117,7 +117,3 @@ set_false_path -to [get_pins {phase_b_bd_i/scaler_0/inst/in_h_q1_reg[*]/D}]
 # in scaler_top.v line 80. Same chronic-WNS class that 1ec218c just closed for
 # color_matrix — flagged by 2026-05-31 HDL re-audit before next impl run.
 set_false_path -to [get_pins {phase_b_bd_i/scaler_0/inst/km_q1_reg[*]/D}]
-# G1 adjustable-scaler runtime output-size CDC (axi clock → pclk_in): 16-bit
-# ASYNC_REG synchronizers ow_q1/oh_q1 in scaler_top.v. Same /inst/ rule.
-set_false_path -to [get_pins {phase_b_bd_i/scaler_0/inst/ow_q1_reg[*]/D}]
-set_false_path -to [get_pins {phase_b_bd_i/scaler_0/inst/oh_q1_reg[*]/D}]

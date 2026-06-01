@@ -54,14 +54,6 @@ module scaler_h #(
      * value used for emit_now/excess is frame-atomic. */
     input  wire [11:0] in_w_runtime,
 
-    /* G1 adjustable-scaler (2026-06-01): runtime OUTPUT width = the DDA
-     * accumulator step. ratio = out_w_runtime / in_w_active. Smaller value →
-     * fewer emits per line → narrower picture (the rest of the raster is
-     * matte, filled downstream). Latched at TUSER for frame-atomic commit,
-     * exactly like in_w_runtime. scaler_top zero-clamps to OUT_W so an
-     * undriven/zero GPIO == full size == pre-G1 behavior (bit-identical). */
-    input  wire [11:0] out_w_runtime,
-
     /* iter14 (2026-05-31): runtime kernel-mode selector.
      *   2'd0 = NN single-tap (newest pixel only) — sharpest; loses cols at non-1:1
      *   2'd1 = 2-tap boxcar (iter12+iter13b production default; rounded)
@@ -91,13 +83,9 @@ module scaler_h #(
      * count). */
     reg [15:0] in_tlast_count;
 
-    // Runtime OUTPUT width (DDA step), latched at TUSER. Default OUT_W so
-    // pre-firmware-write behavior == compile-time OUT_W.
-    reg [11:0] out_w_active;
-
-    // Accumulator. Step is the runtime out_w_active (was the OUT_W param).
+    // Accumulator
     reg  [11:0] accum;
-    wire [11:0] accum_next = accum + out_w_active;
+    wire [11:0] accum_next = accum + OUT_W[11:0];
     wire        emit_now   = accum_next >= in_w_active;
     wire [11:0] excess     = accum_next - in_w_active;   // valid when emit_now=1
 
@@ -250,7 +238,6 @@ module scaler_h #(
             m_axis_tlast  <= 1'b0;
             m_axis_tuser  <= 1'b0;
             in_w_active   <= IN_W_DEFAULT[11:0];
-            out_w_active  <= OUT_W[11:0];
             in_tlast_count       <= 16'd0;
             in_tlast_count_snap  <= 16'd0;
         end else begin
@@ -275,17 +262,12 @@ module scaler_h #(
 
                 // Update accumulator and possibly emit
                 if (s_axis_tuser) begin
-                    // Start of frame: prime accum with the (new) step + latch
-                    // TUSER for next emit. Priming with out_w_active's new value
-                    // keeps the DDA self-consistent at any size; at size=100%
-                    // (out_w_runtime==OUT_W) this is identical to the old
-                    // `accum <= OUT_W`.
-                    accum         <= out_w_runtime;
+                    // Start of frame: reset accum and latch TUSER for next emit.
+                    accum         <= OUT_W[11:0];
                     pending_tuser <= 1'b1;
-                    // Frame-atomic commit of runtime IN_W + OUT_W (AXI-Lite
-                    // changes between frames take effect here, not mid-frame).
+                    // Frame-atomic commit of runtime IN_W (any AXI-Lite
+                    // change between frames takes effect here, not mid-frame).
                     in_w_active   <= in_w_runtime;
-                    out_w_active  <= out_w_runtime;
                     /* iter4g DIAG: snapshot previous frame's TLAST count
                      * for firmware to read, then reset for new frame.
                      * If TUSER and TLAST coincide on same pixel, count

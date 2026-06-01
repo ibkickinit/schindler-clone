@@ -52,12 +52,6 @@ module scaler_v #(
      * v_cross/v_excess math is frame-atomic. */
     input  wire [11:0] in_h_runtime,
 
-    /* G1 adjustable-scaler (2026-06-01): runtime OUTPUT height = the vertical
-     * DDA step. ratio = out_h_runtime / in_h_active. Smaller → fewer emit rows
-     * → shorter picture (rest of raster is matte). Latched at TUSER like
-     * in_h_runtime; scaler_top zero-clamps to OUT_H so undriven == full size. */
-    input  wire [11:0] out_h_runtime,
-
     /* iter14 (2026-05-31): runtime kernel-mode selector. Mirrors scaler_h
      * mode codes: 0=NN tap3 only, 1=2-tap tap2+tap3 (production), 2=4-tap
      * tap0..tap3, 3=reserved. */
@@ -95,13 +89,9 @@ module scaler_v #(
     reg [15:0] emit_count;
     reg [15:0] out_tlast_count;
 
-    // Runtime OUTPUT height (vertical DDA step), latched at TUSER. Default
-    // OUT_H so pre-firmware-write behavior == compile-time OUT_H.
-    reg [11:0] out_h_active;
-
-    // Vertical accumulator. Step is the runtime out_h_active (was OUT_H param).
+    // Vertical accumulator
     reg  [11:0] v_accum;
-    wire [11:0] v_accum_next = v_accum + out_h_active;
+    wire [11:0] v_accum_next = v_accum + OUT_H[11:0];
     wire        v_cross      = v_accum_next >= in_h_active;
     wire [11:0] v_excess     = v_accum_next - in_h_active;
 
@@ -259,7 +249,6 @@ module scaler_v #(
             m_axis_tlast    <= 1'b0;
             m_axis_tuser    <= 1'b0;
             in_h_active     <= IN_H_DEFAULT[11:0];
-            out_h_active    <= OUT_H[11:0];
             in_tlast_count       <= 16'd0;
             in_tlast_count_snap  <= 16'd0;
             emit_count           <= 16'd0;
@@ -282,10 +271,9 @@ module scaler_v #(
                     v_accum        <= 12'd0;
                     emit_first_row <= 1'b1;
                     lbuf_fresh     <= 4'h0;  // new frame: all lbufs are now stale
-                    /* Frame-atomic commit of runtime IN_H + OUT_H — any
-                     * AXI-Lite change between frames takes effect here. */
+                    /* Frame-atomic commit of runtime IN_H — any AXI-Lite
+                     * change between frames takes effect here, not mid-frame. */
                     in_h_active    <= in_h_runtime;
-                    out_h_active   <= out_h_runtime;
                     /* iter4g DIAG: snapshot + reset per-frame counters. */
                     in_tlast_count_snap  <= in_tlast_count;
                     in_tlast_count       <= s_axis_tlast ? 16'd1 : 16'd0;
