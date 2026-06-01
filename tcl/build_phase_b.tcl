@@ -571,12 +571,30 @@ connect_bd_net [get_bd_pins rst_pixclk_out/peripheral_reset] [get_bd_pins rgb2dv
 # =============================================================================
 # AXI-Lite control path: PS GP0 → 1×2 Interconnect → VDMA, VTC
 # =============================================================================
+# KERNEL_GPIO_INDEX (task #65 Phase 1, 2026-05-31): the AXI GPIO slot used for
+# the iter14 scaler kernel-mode select is exposed as a build-time env var so
+# branches with a different topology (e.g. mackin-impl-wip's axi_gpio_7 for
+# Mackin alpha) can choose a free slot without forking this TCL.
+#
+# Defaults: gpio_index=7, m_slot=10 → identical to the pre-parameterized
+# build. Override on the command line:
+#   KERNEL_GPIO_INDEX=8 KERNEL_M_SLOT=13 vivado ...
+# Bench expectation on iter5: bit-identical XSA at defaults.
+# =============================================================================
+set KERNEL_GPIO_INDEX 7
+set KERNEL_M_SLOT     10
+if {[info exists ::env(KERNEL_GPIO_INDEX)]} { set KERNEL_GPIO_INDEX $::env(KERNEL_GPIO_INDEX) }
+if {[info exists ::env(KERNEL_M_SLOT)]}     { set KERNEL_M_SLOT     $::env(KERNEL_M_SLOT) }
+set KERNEL_GPIO_NAME "axi_gpio_${KERNEL_GPIO_INDEX}"
+set KERNEL_M_PORT    "M[format %02d $KERNEL_M_SLOT]"
+puts "BUILD: iter14 kernel_mode GPIO = $KERNEL_GPIO_NAME at axi_ic_lite/$KERNEL_M_PORT (env: KERNEL_GPIO_INDEX=$KERNEL_GPIO_INDEX KERNEL_M_SLOT=$KERNEL_M_SLOT)"
+
 create_bd_cell -type ip -vlnv xilinx.com:ip:axi_interconnect axi_ic_lite
 # 6 master ports (iter4g expanded 5->6):
 #   M00 = VDMA, M01 = VTC tx (generator), M02 = GPIO 0 (status inputs)
 #   M03 = VTC rx (detector), M04 = GPIO 1 (scaler dim outputs)
 #   M05 = GPIO 2 (iter4g diagnostic counters, new)
-set_property -dict [list CONFIG.NUM_SI {1} CONFIG.NUM_MI {11}] [get_bd_cells axi_ic_lite]  ;# M10 = axi_gpio_7 (iter14 kernel_mode)
+set_property -dict [list CONFIG.NUM_SI {1} CONFIG.NUM_MI {11}] [get_bd_cells axi_ic_lite]  ;# default M10 = axi_gpio_7 (iter14); KERNEL_M_SLOT env var can move it
 connect_bd_intf_net [get_bd_intf_pins zynq_ps/M_AXI_GP0]     [get_bd_intf_pins axi_ic_lite/S00_AXI]
 connect_bd_intf_net [get_bd_intf_pins axi_ic_lite/M00_AXI]   [get_bd_intf_pins axi_vdma_0/S_AXI_LITE]
 connect_bd_intf_net [get_bd_intf_pins axi_ic_lite/M01_AXI]   [get_bd_intf_pins v_tc_tx/ctrl]
@@ -594,7 +612,7 @@ connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/M06_A
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/M07_ACLK]  ;# axi_gpio_4 (matrix coefs row 0)
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/M08_ACLK]  ;# axi_gpio_5 (matrix coefs row 1+row 2 start)
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/M09_ACLK]  ;# axi_gpio_6 (matrix m22 + offsets)
-connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/M10_ACLK]  ;# axi_gpio_7 (iter14 kernel_mode)
+connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_ic_lite/${KERNEL_M_PORT}_ACLK]  ;# ${KERNEL_GPIO_NAME} (iter14 kernel_mode)
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins axi_vdma_0/s_axi_lite_aclk]
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins v_tc_tx/s_axi_aclk]
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]    [get_bd_pins v_tc_rx/s_axi_aclk]
@@ -610,7 +628,7 @@ connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_li
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_lite/M07_ARESETN]  ;# axi_gpio_4
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_lite/M08_ARESETN]  ;# axi_gpio_5
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_lite/M09_ARESETN]  ;# axi_gpio_6
-connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_lite/M10_ARESETN]  ;# axi_gpio_7
+connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_lite/${KERNEL_M_PORT}_ARESETN]  ;# ${KERNEL_GPIO_NAME} (iter14 kernel_mode)
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_vdma_0/axi_resetn]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins v_tc_tx/s_axi_aresetn]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins v_tc_rx/s_axi_aresetn]
@@ -801,23 +819,27 @@ connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]             [get_bd_pins axi_gpio
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]    [get_bd_pins axi_gpio_1/s_axi_aresetn]
 
 # =============================================================================
-# iter14 (2026-05-31): AXI GPIO 7 — 4-bit output for scaler kernel-mode select.
-# Bits [1:0] = kernel_mode_h, bits [3:2] = kernel_mode_v.
-# Default 0x5 = 0b0101 = H mode 1 + V mode 1 = production 2-tap boxcar.
-# Firmware UART `k h|v <0|1|2|3>` commands tweak this at runtime.
+# iter14 (2026-05-31): scaler kernel-mode select GPIO. 4-bit output, bits [1:0]
+# = kernel_mode_h, bits [3:2] = kernel_mode_v. Default 0x5 = 0b0101 =
+# H mode 1 + V mode 1 = production 2-tap boxcar. Firmware `k h|v <0-3>`
+# (and V0a `J control.set scaler.kernel_h/v`) tweaks this at runtime.
+#
+# Cell name + interconnect slot are parameterized via KERNEL_GPIO_INDEX /
+# KERNEL_M_SLOT env vars set at the top of this file. iter5 default is
+# (7, 10); siblings with their own GPIO topology override.
 # =============================================================================
-create_bd_cell -type ip -vlnv xilinx.com:ip:axi_gpio axi_gpio_7
+create_bd_cell -type ip -vlnv xilinx.com:ip:axi_gpio $KERNEL_GPIO_NAME
 set_property -dict [list \
     CONFIG.C_GPIO_WIDTH    {4} \
     CONFIG.C_ALL_OUTPUTS   {1} \
     CONFIG.C_IS_DUAL       {0} \
     CONFIG.C_INTERRUPT_PRESENT {0} \
     CONFIG.C_DOUT_DEFAULT   {0x00000005} \
-] [get_bd_cells axi_gpio_7]
-connect_bd_intf_net [get_bd_intf_pins axi_ic_lite/M10_AXI] [get_bd_intf_pins axi_gpio_7/S_AXI]
-connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]             [get_bd_pins axi_gpio_7/s_axi_aclk]
-connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]    [get_bd_pins axi_gpio_7/s_axi_aresetn]
-connect_bd_net [get_bd_pins axi_gpio_7/gpio_io_o]          [get_bd_pins scaler_0/kernel_mode_async]
+] [get_bd_cells $KERNEL_GPIO_NAME]
+connect_bd_intf_net [get_bd_intf_pins axi_ic_lite/${KERNEL_M_PORT}_AXI] [get_bd_intf_pins ${KERNEL_GPIO_NAME}/S_AXI]
+connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]             [get_bd_pins ${KERNEL_GPIO_NAME}/s_axi_aclk]
+connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]    [get_bd_pins ${KERNEL_GPIO_NAME}/s_axi_aresetn]
+connect_bd_net [get_bd_pins ${KERNEL_GPIO_NAME}/gpio_io_o] [get_bd_pins scaler_0/kernel_mode_async]
 
 # =============================================================================
 # iter4g: AXI GPIO 2 — dual-channel, input-only, exposes scaler_top counters

@@ -89,6 +89,39 @@ These are load-bearing and stay at their current paths:
 
 The wiki under `docs/wiki/` is the conceptual / onboarding layer; these files are the canonical ledgers.
 
+## 2026-05-31 — Soft consolidation (5 branches → archive tags)
+
+Five WIP branches that had run their course were tagged `archive/<name>` and remain on origin per soft-consolidation policy:
+
+- `iter4f-wip-pattern-diag`
+- `iter4g-counter-infra`
+- `iter4h-axis-fifo`
+- `iter5-bisect-720p`
+- `iter5-wip`
+
+Each tag resolves to the terminal commit on its respective branch. Branches stay visible in `git branch -a` (intentional — searchability and history) but are marked dead in `build-manifest.md` and don't receive new commits. Recovery: `git checkout archive/<name>`.
+
+GitHub default branch flipped to `iter5-1080p-clean` (`ef307b6`). `main` is frozen at its 2026-05-16 state pending v1 ship; the documented force-update happens then.
+
+See [BRANCHES.md](BRANCHES.md) for the live branch table and [`../build-manifest.md`](../build-manifest.md) §"Branch model — soft consolidation" for the policy detail.
+
+## 2026-05-31 — V0a control plane introduced (new tier)
+
+The bare-metal firmware UART command parser stayed in place; V0a added a JSON-RPC bracket (`J <json>`) so the new control plane can talk to the firmware over the same UART without disturbing legacy users. The text commands (`s 100`, `m 50`, `b 0 0 0`, etc.) are unchanged.
+
+What's new:
+- `control-plane/catalog-v0.2.0.json` — single catalog file, semver-discipline filename.
+- `control-plane/schindlerd/` — Python daemon bridging UART ↔ WebSocket + HTTP.
+- `control-plane/web/` — browser UI served by the daemon.
+- `control-plane/profiles/factory/` — four shipped baselines.
+- `sw/phase-b/src/catalog_version.h` — generated at build time from the catalog filename (Risk N2 mitigation).
+- `tests/` — pytest harness with FakeSerial drop-in (54 tests, no bench).
+- `Makefile` — top-level `make test` / `make sim` / `make ci` / `make build` / `make program`.
+
+The wiki added 7 new pages under `docs/wiki/`: [CONTROL-PLANE](CONTROL-PLANE.md), [SCHINDLERD-RUNBOOK](SCHINDLERD-RUNBOOK.md), [CATALOG-EVOLUTION](CATALOG-EVOLUTION.md), [STATUS-PANEL](STATUS-PANEL.md), [FACTORY-PROFILES](FACTORY-PROFILES.md), [BRANCH-RESYNC-PLAYBOOK](BRANCH-RESYNC-PLAYBOOK.md), [HDMI-COMPLIANCE](HDMI-COMPLIANCE.md), plus [SCALER-KERNELS](SCALER-KERNELS.md) closing the long-pending `AGENT_TASK[docs-15]`. The [ARCHITECTURE](ARCHITECTURE.md) page gained a V0a sidecar block and [GLOSSARY](GLOSSARY.md) gained ~20 V0a terms.
+
+V0b PetaLinux and V0c RP2040 + EVE front panel are explicitly post-v1 per [`../v0a-scope-fence.md`](../v0a-scope-fence.md).
+
 ## Pattern for future overturning
 
 When a memory entry or doc claim is overturned:

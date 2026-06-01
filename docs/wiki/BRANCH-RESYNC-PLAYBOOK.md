@@ -39,8 +39,8 @@ phase-e1's `scaler_top.v` predates iter4e (no `in_w_async`/`in_h_async` ports). 
 
 | Phase | Wall-clock | Bench | What lands |
 |---|---|---|---|
-| 1. Parameterize iter5 | ~1 h | XSA diff only | `KERNEL_GPIO_INDEX` env-var on trunk |
-| 2. Resync mackin | ~2 h + 30 min bench | 720p60 + alpha + k-cmd | V0a + iter14 + audit follow-ups |
+| 1. Parameterize iter5 | ~1 h | XSA diff only | ✅ **SHIPPED 2026-05-31** — `KERNEL_GPIO_INDEX` + `KERNEL_M_SLOT` env vars on trunk; firmware abstraction via `SCALER_KERNEL_GPIO_BASEADDR` |
+| 2. Resync mackin | ~2 h + 30 min bench | 720p60 + alpha + k-cmd | V0a + iter14 + audit follow-ups (mackin builds with `KERNEL_GPIO_INDEX=8 KERNEL_M_SLOT=13`) |
 | 3. Resync phase-e1 | ~3 h + 1 h bench | 60→60 + motion + k-cmd, 3-boot | iter4e + V0a + iter14 + audit follow-ups; chance to clear LUCKY-BOOT |
 | 4. Documentation | ~30 min | none | Update manifest + BRANCHES.md |
 

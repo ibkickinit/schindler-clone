@@ -27,15 +27,28 @@ Matrix Row 1 reclassified as "❌ on Zybo / ✅ planned on production."
 **Substrate:** iter5-1080p-clean (and to-be-backported).
 **Resolution:** firmware DIAG print suppression — commit `0937574`. S2MM SOFLate is cosmetic post-iter6 (hardware fsync arrives slightly ahead of AXIS TUSER). Suppressed from DIAG print; raw `s2mm_sr` hex still visible for diagnostics. MM2S SOFLate NOT suppressed (no fsync re-timing on that side).
 
-### ~~Async-CDC WNS = -3.5 ns~~ — FIX QUEUED 2026-05-31
+### ~~Async-CDC WNS = -3.5 ns~~ — RESOLVED 2026-05-31
 
 **Substrate:** all branches with color stack.
-**Resolution queued:** XDC false-path constraints added for color_matrix's `m**_q1`/`off_*_q1` and scaler_top's `in_w_q1`/`in_h_q1` synchronizer flops — commit `5881322`. The existing constraints covered color_correct and color_saturation but were never extended when color_matrix + scaler_top runtime-IN_W/H landed. Will be picked up by the next Vivado run after the in-progress 720p60 restore build.
+**Resolution:** XDC false-path constraints added for color_matrix's `m**_q1`/`off_*_q1` and scaler_top's `in_w_q1`/`in_h_q1` synchronizer flops. The existing constraints covered color_correct and color_saturation but were never extended when color_matrix + scaler_top runtime-IN_W/H landed. Root cause was missing `/inst/` segment in BD-wrapped pin paths — fixed in commit `1ec218c` (iter5), then color_matrix entries added in `5881322`. Plus an iter14 follow-up in `d5876c4` for the `km_q1` synchronizer flagged by the 2026-05-31 HDL re-audit. WNS reported clean at +0.19 ns post-fix.
 
-### ~~Top-of-frame black band (iter13 cosmetic)~~ — FIX QUEUED 2026-05-31
+iter13c backported to mackin (`73e8d04`) and phase-e1 (`d7d2acf`). iter14's `km_q1` constraint is iter5-only; will travel to siblings as part of the task #65 branch resync.
 
-**Substrate:** iter5-1080p-clean (and to-be-backported).
-**Resolution queued:** iter13c suppression in `scaler_v.v` — commit `5881322`. When both lbufs that'll become tap2/tap3 post-rotation are unfresh, `stage0_valid_q` is held low so no output is emitted instead of `(0+0)/2 = 0` black band. Will be picked up by the next Vivado run.
+### ~~Top-of-frame black band (iter13 cosmetic)~~ — RESOLVED 2026-05-31
+
+**Substrate:** iter5-1080p-clean + backported.
+**Resolution:** iter13c suppression in `scaler_v.v` — commit `5881322`. When both lbufs that'll become tap2/tap3 post-rotation are unfresh, `stage0_valid_q` is held low so no output is emitted instead of `(0+0)/2 = 0` black band. Bench-verified on iter5; iter13c backported to mackin (`73e8d04`) and phase-e1 (`d7d2acf`).
+
+### V0a known limitations (V0a+1 candidates)
+
+**Substrate:** iter5-1080p-clean (V0a-only branch).
+**Symptoms:**
+- Daemon binds `127.0.0.1` only — no auth, no TLS. Acceptable today (bench tool, single operator). FAIL the day it binds non-loopback; tracked as Risk N1 in the 2026-05-31 risk audit.
+- Single-client UART contention: only one process can hold `/dev/ttyUSB1` at a time. picocom and schindlerd are mutually exclusive.
+- Profile validation is loose — `profile.load` skips unknown ids best-effort; no major-version mismatch banner yet.
+- `make sim` covers the Python kernel comparator only; `make sim-vivado` is scaffolded but xsim invocation isn't fully wired (Mackin TB suite needs its own README+target).
+
+See [CONTROL-PLANE](CONTROL-PLANE.md) + [SCHINDLERD-RUNBOOK](SCHINDLERD-RUNBOOK.md) for context.
 
 ### ~~`.claude/settings.local.json` not gitignored~~ — RESOLVED 2026-05-31
 

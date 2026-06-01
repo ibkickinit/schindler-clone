@@ -90,9 +90,48 @@ Same canonical Zynq-7000 bring-up sequence as `program_phase_b_full.tcl`. ~30 se
 
 **Caveat:** archive happens at successful end of build. If you run only Vivado without Vitis, the tag dir gets the XSA + manifest but not the `.bit`/`.elf`. Re-running Vitis backfills.
 
+## Interacting with the running firmware
+
+Two options, **mutually exclusive** because both want exclusive access to `/dev/ttyUSB1`:
+
+### Option A — picocom (human-facing UART)
+
 ```bash
 picocom -b 115200 /dev/ttyUSB1
 ```
+
+Type `?` for the command list. See [FIRMWARE-INTERFACE](FIRMWARE-INTERFACE.md) for the full reference.
+
+### Option B — schindlerd + browser (V0a control plane)
+
+```bash
+# One-time install
+python3 -m venv /tmp/schindlerd-venv
+/tmp/schindlerd-venv/bin/pip install -r control-plane/schindlerd/requirements.txt
+
+# Run
+/tmp/schindlerd-venv/bin/python control-plane/schindlerd/schindlerd.py -v
+```
+
+Then open [http://127.0.0.1:8080](http://127.0.0.1:8080). Daemon owns `/dev/ttyUSB1` while running; pkill it to switch back to picocom. See [SCHINDLERD-RUNBOOK](SCHINDLERD-RUNBOOK.md) for troubleshooting + ports + flags.
+
+## Makefile shortcuts
+
+Top-level `Makefile` wraps the common operations:
+
+```bash
+make test          # pytest harness (53+ tests, ~1s, no bench)
+make sim           # Python kernel-compare sim + sha256 diff vs golden
+make ci            # test + sim
+make build         # Vivado HDL build (Vivado env required)
+make build-app     # Vitis ELF build (xsct env required)
+make program       # JTAG program (xsct env required)
+make sim-vivado    # xsim testbenches (Vivado env required)
+make sim-bootstrap # regenerate sim/golden/ from a legitimate kernel change
+make help          # one-line summary of every target
+```
+
+`make ci` is the recommended check before committing — fast, no bench, catches catalog/parser/daemon regressions plus kernel-sim divergence.
 
 ## Common pitfalls
 
