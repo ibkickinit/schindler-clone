@@ -23,7 +23,8 @@ module pg_read_engine_top_tb;
     reg clk = 1'b0; always #5 clk = ~clk;
     reg rstn;
 
-    reg         src_vsync, out_vsync, m_tready;
+    reg         out_vsync, m_tready;
+    reg  [5:0]  frame_ptr;
     reg  [11:0] out_w_win,out_h_win,pos_x,pos_y,hsi,hsf,vsi,vsf;
     reg  [23:0] matte;
 
@@ -35,7 +36,7 @@ module pg_read_engine_top_tb;
     pg_read_engine_top #(.OUT_W(OUT_W),.OUT_H(OUT_H),.IN_W(IN_W),.IN_H(IN_H),
         .STRIDE(STRIDE),.FRAME_BUF_BASE(BASE),.NUM_FRAMES(NUMF),
         .SLOT_STRIDE(SLOT_STRIDE),.READ_DELAY(RDLY)) dut (
-        .clk(clk),.rstn(rstn),.src_vsync(src_vsync),.out_vsync(out_vsync),
+        .clk(clk),.rstn(rstn),.frame_ptr(frame_ptr),.out_vsync(out_vsync),
         .out_w_win(out_w_win),.out_h_win(out_h_win),.pos_x(pos_x),.pos_y(pos_y),
         .h_step_int(hsi),.h_step_frac(hsf),.v_step_int(vsi),.v_step_frac(vsf),.matte_rgb(matte),
         .m_axis_tdata(m_tdata),.m_axis_tvalid(m_tvalid),.m_axis_tready(m_tready),
@@ -109,7 +110,11 @@ module pg_read_engine_top_tb;
     end
 
     task run_frame; integer line; begin
-        out_vsync<=1; src_vsync<=1; repeat(3)@(posedge clk); out_vsync<=0; src_vsync<=0;
+        // advance S2MM framestore pointer (mimic the master), settle CDC/debounce,
+        // then SOF latches read_slot = frame_ptr-READ_DELAY. DDR pattern is
+        // slot-independent in this TB, so any settled frame_ptr yields golden.
+        frame_ptr <= (frame_ptr + 1) % 5; repeat(8)@(posedge clk);
+        out_vsync<=1; repeat(3)@(posedge clk); out_vsync<=0;
         vox=0; voy=0; seen=0; starv=0; checking=1; in_active=0;
         repeat(VBLANK)@(posedge clk);
         for (line=0; line<OUT_H; line=line+1) begin
@@ -135,11 +140,11 @@ module pg_read_engine_top_tb;
     end endtask
 
     initial begin
-        errors=0; rstn=0; src_vsync=0; out_vsync=0; m_tready=0; checking=0; in_active=0;
+        errors=0; rstn=0; frame_ptr=0; out_vsync=0; m_tready=0; checking=0; in_active=0;
         out_w_win=OUT_W;out_h_win=OUT_H;pos_x=0;pos_y=0;hsi=1;hsf=0;vsi=1;vsf=0;matte=0;
         repeat(6)@(posedge clk); rstn=1; repeat(3)@(posedge clk);
         // advance the ring a few frames so read_slot is well-defined
-        repeat(3) begin src_vsync<=1; repeat(2)@(posedge clk); src_vsync<=0; repeat(8)@(posedge clk); end
+        repeat(20) @(posedge clk);   // let things settle after reset
 
         run_case(64,48, 0, 0, 2);
         run_case(32,24,16,12, 2);

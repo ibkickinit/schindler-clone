@@ -128,6 +128,6 @@ set_false_path -to [get_pins {phase_b_bd_i/scaler_0/inst/km_q1_reg[*]/D}]
 # hierarchy by name (a fixed phase_b_bd_i/.../inst/ path silently misses — same
 # trap the scaler in_w/km false-paths hit).
 set_false_path -quiet -to [get_pins -hier -filter {NAME =~ */g_q1_reg[*]/D}]
-set_false_path -quiet -to [get_pins -hier -filter {NAME =~ */sv_q1_reg/D}]
+set_false_path -quiet -to [get_pins -hier -filter {NAME =~ */fp_q1_reg[*]/D}]
 # axis_mux2 select 2-FF sync (AXI GPIO FCLK_CLK0 → output pixel clock).
 set_false_path -quiet -to [get_pins -hier -filter {NAME =~ */sel_q1_reg/D}]

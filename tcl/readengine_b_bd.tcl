@@ -95,8 +95,11 @@ re_slice sl_sel    axi_gpio_10 gpio2_io_o 0  0
 create_bd_cell -type module -reference pg_read_engine_top pg_re_0
 connect_bd_net $pclk  [get_bd_pins pg_re_0/clk]
 connect_bd_net $prstn [get_bd_pins pg_re_0/rstn]
-connect_bd_net [get_bd_pins dvi2rgb_0/vid_pVSync] [get_bd_pins pg_re_0/src_vsync]
-connect_bd_net [get_bd_pins v_tc_tx/vsync_out]    [get_bd_pins pg_re_0/out_vsync]
+# Tap S2MM's real framestore pointer (exposed even with internal genlock ON,
+# so the VDMA genlock config is UNTOUCHED — passthrough unaffected). pg_genlock
+# CDCs it (FCLK_CLK1 → pixel clock) and reads frame_ptr-READ_DELAY.
+connect_bd_net [get_bd_pins axi_vdma_0/s2mm_frame_ptr_out] [get_bd_pins pg_re_0/frame_ptr]
+connect_bd_net [get_bd_pins v_tc_tx/vsync_out]            [get_bd_pins pg_re_0/out_vsync]
 connect_bd_net [get_bd_pins sl_out_w/Dout]  [get_bd_pins pg_re_0/out_w_win]
 connect_bd_net [get_bd_pins sl_out_h/Dout]  [get_bd_pins pg_re_0/out_h_win]
 connect_bd_net [get_bd_pins sl_pos_x/Dout]  [get_bd_pins pg_re_0/pos_x]

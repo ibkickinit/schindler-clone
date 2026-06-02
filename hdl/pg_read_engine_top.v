@@ -38,7 +38,7 @@ module pg_read_engine_top #(
     input  wire        rstn,
 
     // sync
-    input  wire        src_vsync,        // dvi2rgb vid_pVSync (async; CDC'd internally)
+    input  wire [5:0]  frame_ptr,        // axi_vdma s2mm_frame_ptr_out (FCLK_CLK1, async)
     input  wire        out_vsync,        // v_tc_tx vsync_out (this domain)
 
     // runtime geometry (AXI GPIO, firmware-computed DDA steps)
@@ -104,7 +104,7 @@ module pg_read_engine_top #(
     wire [31:0] frame_base;
     pg_genlock #(.FRAME_BUF_BASE(FRAME_BUF_BASE), .NUM_FRAMES(NUM_FRAMES),
                  .SLOT_STRIDE(SLOT_STRIDE), .READ_DELAY(READ_DELAY)) u_genlock (
-        .clk(clk), .rstn(rstn), .src_vsync(src_vsync), .out_vsync(out_vsync),
+        .clk(clk), .rstn(rstn), .frame_ptr(frame_ptr), .out_vsync(out_vsync),
         .read_slot(dbg_read_slot), .read_base_addr(frame_base), .write_slot(dbg_write_slot)
     );
 
