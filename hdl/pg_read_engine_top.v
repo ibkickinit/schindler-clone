@@ -116,7 +116,7 @@ module pg_read_engine_top #(
     wire [23:0] up_pdata;
 
     pg_compose #(.OUT_W(OUT_W), .OUT_H(OUT_H), .IN_W(IN_W), .IN_H(IN_H),
-                 .STRIDE(STRIDE), .FIFO_DEPTH(16)) u_compose (
+                 .STRIDE(STRIDE), .FIFO_DEPTH(64)) u_compose (
         .clk(clk), .rstn(rstn), .vtg_vsync(out_vsync), .frame_base_addr(frame_base),
         .out_w_win(s_out_w), .out_h_win(s_out_h), .pos_x(s_pos_x), .pos_y(s_pos_y),
         .h_step_int(s_hsi), .h_step_frac(s_hsf),
