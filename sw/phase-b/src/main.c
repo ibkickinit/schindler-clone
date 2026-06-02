@@ -60,13 +60,22 @@
  *   OUTPUT_MODE=1080p30               → 1080p30 passthrough (in -1 spec)
  *   OUTPUT_MODE=1080p60               → 1080p60 (dev-board blocked; see
  *                                        zynq7020_rgb2dvi_1080p60_limit) */
-#ifdef OUTPUT_1080P
+/* READENGINE_FULLMASTER (route-B): the input scaler is bypassed
+ * (SCALER_MODULE=scaler_bypass_1080p) so S2MM captures the FULL 1920×1080
+ * source as the DDR master; the read-engine scales it per output. FRAME_W/H
+ * (= VDMA/DDR master size) becomes 1920×1080, but the VTC output stays 720p
+ * (see vtc_setup below — gated on OUTPUT_1080P, NOT this). Without it, S2MM
+ * sized to 720p over a bypassed 1080p stream stores only the top-left crop. */
+#if defined(OUTPUT_1080P) || defined(READENGINE_FULLMASTER)
 #define FRAME_W           1920
 #define FRAME_H           1080
 #else
 #define FRAME_W           1280
 #define FRAME_H           720
 #endif
+/* Output raster (VTC + read-engine OUT_W/OUT_H). 720p regardless of master. */
+#define OUT_RASTER_W      1280
+#define OUT_RASTER_H      720
 /* AXIS data width on the VDMA is 24-bit (RGB888, one pixel-per-clock with no
  * padding). Memory stride must therefore be 3 bytes/pixel, NOT 4 — using 4
  * was the actual reason v_axi4s_vid_out couldn't lock and S2MM was reporting
@@ -1914,6 +1923,19 @@ int main(void)
     if (vdma_setup_channel(XAXIVDMA_READ,  mm2s_frame_addrs) != XST_SUCCESS) return -1;
 
     xil_printf("VDMA running — S2MM + MM2S enabled, %d-frame ring\r\n", NUM_FRAMES);
+
+#if defined(READENGINE_FULLMASTER) && defined(GEO_A_BASE)
+    /* Full-master route-B: scaler bypassed → S2MM stores the full 1920×1080
+     * master; engage the read-engine at boot to scale it into the 720p output
+     * raster (mux→read-engine). MM2S can't downscale a 1080 master into 720p,
+     * so the read-engine is the output path. re_write_geometry sets the DDA
+     * steps (FRAME_W/out_w = 1920/1280, etc.) + mux sel = 1. */
+    g_re_w = OUT_RASTER_W; g_re_h = OUT_RASTER_H; g_re_x = 0; g_re_y = 0;
+    g_re_matte = 0; g_re_engine = 1;
+    re_write_geometry();
+    xil_printf("READ-ENGINE engaged: full master %ux%u -> %ux%u output raster\r\n",
+               FRAME_W, FRAME_H, OUT_RASTER_W, OUT_RASTER_H);
+#endif
 
     /* iter4g DIAG: correct PG020 register offsets:
      *   MM2S: VSIZE@0x50, HSIZE@0x54, FRMDLY_STRIDE@0x58

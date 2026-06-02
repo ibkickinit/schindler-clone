@@ -119,6 +119,12 @@ if {$FW_OUTPUT_1080P == 1} {
     app config -name vdma_init -add define-compiler-symbols OUTPUT_1080P=1
     puts "FW BUILD: added -DOUTPUT_1080P=1 to vdma_init compile flags"
 }
+# Route-B full-master: FRAME_W/H → 1920×1080 master (VTC stays 720p), boot-engage
+# the read-engine to scale it into the 720p output raster.
+if {[info exists ::env(READENGINE_FULLMASTER)] && $::env(READENGINE_FULLMASTER) ne "0"} {
+    app config -name vdma_init -add define-compiler-symbols READENGINE_FULLMASTER=1
+    puts "FW BUILD: added -DREADENGINE_FULLMASTER=1 (full 1080p master → 720p via read-engine)"
+}
 
 app build -name vdma_init
 
