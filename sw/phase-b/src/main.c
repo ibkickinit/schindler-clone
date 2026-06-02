@@ -913,6 +913,29 @@ static void uart_dispatch(const char *line)
 #else
         xil_printf("UART: kernel-mode GPIO not present in this build\r\n");
 #endif
+    } else if (op == 'G') {
+        /* Route-B read-engine geometry (additive+mux build):
+         *   G <w> <h> <x> <y>  — size window to w×h at (x,y), engage read-engine
+         *   G 0                — passthrough (mux→VDMA MM2S, the boot default)
+         *   G                  — re-emit / query current geometry
+         * NO VDMA reconfig — just GPIO writes (contrast the reverted reframe). */
+#ifdef GEO_A_BASE
+        unsigned w, h, x, y;
+        if (parse_uint(&p, &w)) {
+            if (w == 0) {
+                g_re_engine = 0; re_write_geometry();
+            } else if (parse_uint(&p, &h) && parse_uint(&p, &x) && parse_uint(&p, &y)) {
+                g_re_w = w; g_re_h = h; g_re_x = x; g_re_y = y; g_re_engine = 1;
+                re_write_geometry();
+            } else {
+                xil_printf("UART: usage 'G w h x y' or 'G 0' (passthrough)\r\n");
+            }
+        } else {
+            re_write_geometry();   /* query / re-emit */
+        }
+#else
+        xil_printf("UART: read-engine geometry not present in this build\r\n");
+#endif
     } else {
         xil_printf("UART: unknown cmd '%s' — type ? for help\r\n", line);
     }
