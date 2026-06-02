@@ -37,8 +37,14 @@ module axis_mux2 (
 
     assign m_tdata   = sel_q2 ? s1_tdata  : s0_tdata;
     assign m_tvalid  = sel_q2 ? s1_tvalid : s0_tvalid;
-    assign s0_tready = (sel_q2 == 1'b0) && m_tready;   // idle input is back-pressured
-    assign s1_tready = (sel_q2 == 1'b1) && m_tready;
+    // DRAIN BOTH inputs (do NOT back-pressure the unselected one). If the idle
+    // input is back-pressured, the VDMA MM2S slave parks → S2MM (Dynamic Master)
+    // skips the parked slots → only ~2 ring slots rotate, the rest freeze, and
+    // any independent reader (the read-engine) lands on the frozen slots. Keeping
+    // both consumers advancing at the output rate keeps S2MM's 5-slot rotation
+    // clean. The unselected input's data is simply discarded.
+    assign s0_tready = m_tready;
+    assign s1_tready = m_tready;
 endmodule
 
 `default_nettype wire
