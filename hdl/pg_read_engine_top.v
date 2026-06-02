@@ -62,10 +62,22 @@ module pg_read_engine_top #(
     output wire        s_axis_dm_tready,
     input  wire        s_axis_dm_tlast,
 
+    // AXI DataMover MM2S status stream (← datamover M_AXIS_MM2S_STS) — drained
+    input  wire [7:0]  s_axis_sts_tdata,
+    input  wire        s_axis_sts_tkeep,
+    input  wire        s_axis_sts_tlast,
+    input  wire        s_axis_sts_tvalid,
+    output wire        s_axis_sts_tready,
+
     // debug
     output wire [2:0]  dbg_read_slot,
     output wire [2:0]  dbg_write_slot
 );
+    // status stream is informational (per-line completion) — always drain it
+    // so the DataMover's status FIFO never fills and stalls command intake.
+    assign s_axis_sts_tready = 1'b1;
+    wire _sts_keep = s_axis_sts_tvalid & s_axis_sts_tlast & s_axis_sts_tkeep & (|s_axis_sts_tdata);
+
     // ---- geometry CDC: AXI GPIO (FCLK_CLK0) → this pixel-clock domain ----
     // Quasi-static (firmware writes between frames) + frame-atomic latch in
     // pg_compose/pg_addrgen at SOF, so per-bit 2-FF sync is sufficient. XDC

@@ -21,20 +21,22 @@ set prstn  [get_bd_pins rst_pixclk_out/peripheral_aresetn]
 # AXI DataMover (MM2S only) — random-access DDR reader for the read-engine
 # ---------------------------------------------------------------------------
 create_bd_cell -type ip -vlnv xilinx.com:ip:axi_datamover re_datamover
+# MM2S-only: disable the S2MM (write) channel via c_enable_s2mm 0 (c_include_*
+# is the channel TYPE and can't be "Omit" in this IP version; c_enable_* gates it).
 set_property -dict [list \
     CONFIG.c_include_mm2s {Full} \
-    CONFIG.c_include_s2mm {Omit} \
+    CONFIG.c_enable_mm2s {1} \
+    CONFIG.c_enable_s2mm {0} \
     CONFIG.c_m_axi_mm2s_data_width {64} \
     CONFIG.c_m_axis_mm2s_tdata_width {64} \
     CONFIG.c_mm2s_burst_size {16} \
-    CONFIG.c_addr_width {32} \
-    CONFIG.c_include_mm2s_stsfifo {1} \
-    CONFIG.c_enable_mm2s {1} \
+    CONFIG.c_m_axi_mm2s_addr_width {32} \
+    CONFIG.c_include_mm2s_stsfifo {true} \
 ] [get_bd_cells re_datamover]
 
 # DataMover memory-path → its own smartconnect → PS S_AXI_HP1
 create_bd_cell -type ip -vlnv xilinx.com:ip:smartconnect axi_sc_mem2
-set_property -dict [list CONFIG.NUM_SI {1} CONFIG.NUM_MI {1}] [get_bd_cells axi_sc_mem2]
+set_property -dict [list CONFIG.NUM_SI {1} CONFIG.NUM_MI {1} CONFIG.NUM_CLKS {2}] [get_bd_cells axi_sc_mem2]
 connect_bd_intf_net [get_bd_intf_pins re_datamover/M_AXI_MM2S] [get_bd_intf_pins axi_sc_mem2/S00_AXI]
 connect_bd_intf_net [get_bd_intf_pins axi_sc_mem2/M00_AXI]     [get_bd_intf_pins zynq_ps/S_AXI_HP1]
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK1] [get_bd_pins zynq_ps/S_AXI_HP1_ACLK]
@@ -104,9 +106,10 @@ connect_bd_net [get_bd_pins sl_hsf/Dout]    [get_bd_pins pg_re_0/h_step_frac]
 connect_bd_net [get_bd_pins sl_vsi/Dout]    [get_bd_pins pg_re_0/v_step_int]
 connect_bd_net [get_bd_pins sl_vsf/Dout]    [get_bd_pins pg_re_0/v_step_frac]
 connect_bd_net [get_bd_pins sl_matte/Dout]  [get_bd_pins pg_re_0/matte_rgb]
-# DataMover command + data streams
+# DataMover command + data + status streams
 connect_bd_intf_net [get_bd_intf_pins pg_re_0/m_axis_cmd] [get_bd_intf_pins re_datamover/S_AXIS_MM2S_CMD]
 connect_bd_intf_net [get_bd_intf_pins re_datamover/M_AXIS_MM2S] [get_bd_intf_pins pg_re_0/s_axis_dm]
+connect_bd_intf_net [get_bd_intf_pins re_datamover/M_AXIS_MM2S_STS] [get_bd_intf_pins pg_re_0/s_axis_sts]
 
 # ---------------------------------------------------------------------------
 # 2:1 AXIS mux before the color stack (sel default 0 = VDMA MM2S passthrough)
