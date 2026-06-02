@@ -123,5 +123,11 @@ set_false_path -to [get_pins {phase_b_bd_i/scaler_0/inst/km_q1_reg[*]/D}]
 # Quasi-static + frame-atomic latch; ASYNC_REG handles metastability. Same
 # /inst/ hierarchy rule as the scaler/color CDC paths. -quiet so the constraint
 # is harmless when the read-engine cell is absent (READENGINE_B=0 builds).
-set_false_path -to [get_pins -quiet {phase_b_bd_i/pg_re_0/inst/g_q1_reg[*]/D}]
-set_false_path -to [get_pins -quiet {phase_b_bd_i/pg_re_0/inst/u_genlock/sv_q1_reg/D}]
+# Hierarchy-robust matching: the BD wraps -reference modules in a generated
+# wrapper whose inst level varies, so match the sync FF's D pin anywhere in the
+# hierarchy by name (a fixed phase_b_bd_i/.../inst/ path silently misses — same
+# trap the scaler in_w/km false-paths hit).
+set_false_path -quiet -to [get_pins -hier -filter {NAME =~ */g_q1_reg[*]/D}]
+set_false_path -quiet -to [get_pins -hier -filter {NAME =~ */sv_q1_reg/D}]
+# axis_mux2 select 2-FF sync (AXI GPIO FCLK_CLK0 → output pixel clock).
+set_false_path -quiet -to [get_pins -hier -filter {NAME =~ */sel_q1_reg/D}]
