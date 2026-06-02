@@ -149,6 +149,16 @@ sim-pg: ## xsim present-geometry (read-engine-B) module TBs — requires Vivado 
 	if [ "$$bad" = "0" ]; then echo "PASS: pg_compose_tb (Total errors = 0)"; \
 		grep -E 'CASE' sim/xsim-co.log; \
 	else echo "FAIL: pg_compose_tb"; grep -E 'CASE|ERR|Total errors' sim/xsim-co.log | head; exit 1; fi
+	@echo "→ pg_unpack_tb (64b→24b pixel gearbox, [G,B,R] byte order)..."
+	@cd sim && xvlog pg_unpack_tb.v ../hdl/pg_unpack.v > xvlog-up.log 2>&1 || \
+		{ tail -10 sim/xvlog-up.log; exit 1; }
+	@cd sim && xelab -top pg_unpack_tb -snapshot pg_unpack_tb_sim > xelab-up.log 2>&1 || \
+		{ tail -10 sim/xelab-up.log; exit 1; }
+	@cd sim && xsim pg_unpack_tb_sim -runall > xsim-up.log 2>&1
+	@bad=$$(grep -E 'Total errors = ' sim/xsim-up.log | awk -F'= ' '{print $$2+0}'); \
+	if [ "$$bad" = "0" ]; then echo "PASS: pg_unpack_tb (Total errors = 0)"; \
+	else echo "FAIL: pg_unpack_tb"; grep -E 'ERR|Total errors' sim/xsim-up.log | head; exit 1; fi
+	@echo "=== read-engine-B sim suite (M1+M2+M3+M4+unpack): ALL PASS ==="
 
 sim-vivado-mackin: ## xsim Mackin TB suite (3360-vector) — if sources present
 	@command -v xvlog >/dev/null 2>&1 || { echo "source Vivado env first"; exit 2; }
