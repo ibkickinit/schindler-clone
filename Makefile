@@ -158,7 +158,18 @@ sim-pg: ## xsim present-geometry (read-engine-B) module TBs — requires Vivado 
 	@bad=$$(grep -E 'Total errors = ' sim/xsim-up.log | awk -F'= ' '{print $$2+0}'); \
 	if [ "$$bad" = "0" ]; then echo "PASS: pg_unpack_tb (Total errors = 0)"; \
 	else echo "FAIL: pg_unpack_tb"; grep -E 'ERR|Total errors' sim/xsim-up.log | head; exit 1; fi
-	@echo "=== read-engine-B sim suite (M1+M2+M3+M4+unpack): ALL PASS ==="
+	@echo "→ pg_read_engine_top_tb (capstone: full engine via AXI DataMover iface)..."
+	@cd sim && xvlog pg_read_engine_top_tb.v ../hdl/pg_read_engine_top.v ../hdl/pg_genlock.v \
+		../hdl/pg_compose.v ../hdl/pg_addrgen.v ../hdl/pg_linefetch.v ../hdl/pg_unpack.v \
+		> xvlog-top.log 2>&1 || { tail -10 sim/xvlog-top.log; exit 1; }
+	@cd sim && xelab -top pg_read_engine_top_tb -snapshot pg_re_top_sim > xelab-top.log 2>&1 || \
+		{ tail -10 sim/xelab-top.log; exit 1; }
+	@cd sim && xsim pg_re_top_sim -runall > xsim-top.log 2>&1
+	@bad=$$(grep -E 'Total errors = ' sim/xsim-top.log | awk -F'= ' '{print $$2+0}'); \
+	if [ "$$bad" = "0" ]; then echo "PASS: pg_read_engine_top_tb (Total errors = 0)"; \
+		grep -E 'CASE' sim/xsim-top.log; \
+	else echo "FAIL: pg_read_engine_top_tb"; grep -E 'CASE|ERR|Total errors' sim/xsim-top.log | head; exit 1; fi
+	@echo "=== read-engine-B sim suite (M1+M2+M3+M4+unpack+top): ALL PASS ==="
 
 sim-vivado-mackin: ## xsim Mackin TB suite (3360-vector) — if sources present
 	@command -v xvlog >/dev/null 2>&1 || { echo "source Vivado env first"; exit 2; }
