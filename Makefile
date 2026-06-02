@@ -130,6 +130,15 @@ sim-pg: ## xsim present-geometry (read-engine-B) module TBs — requires Vivado 
 		echo "FAIL: pg_genlock_tb"; grep -E 'SCENARIO|ERR|Total errors' sim/xsim-gl.log | head; \
 		exit 1; \
 	fi
+	@echo "→ pg_linefetch_tb (Module 3: DDR fetch + double buffer)..."
+	@cd sim && xvlog pg_linefetch_tb.v ../hdl/pg_linefetch.v > xvlog-lf.log 2>&1 || \
+		{ tail -10 sim/xvlog-lf.log; exit 1; }
+	@cd sim && xelab -top pg_linefetch_tb -snapshot pg_linefetch_tb_sim > xelab-lf.log 2>&1 || \
+		{ tail -10 sim/xelab-lf.log; exit 1; }
+	@cd sim && xsim pg_linefetch_tb_sim -runall > xsim-lf.log 2>&1
+	@bad=$$(grep -E 'Total errors = ' sim/xsim-lf.log | awk -F'= ' '{print $$2+0}'); \
+	if [ "$$bad" = "0" ]; then echo "PASS: pg_linefetch_tb (Total errors = 0)"; \
+	else echo "FAIL: pg_linefetch_tb"; grep -E 'ERR|Total errors' sim/xsim-lf.log | head; exit 1; fi
 
 sim-vivado-mackin: ## xsim Mackin TB suite (3360-vector) — if sources present
 	@command -v xvlog >/dev/null 2>&1 || { echo "source Vivado env first"; exit 2; }
