@@ -129,6 +129,7 @@ module pg_read_engine_top_tb;
 
     task run_case; input [11:0] ow,oh,ppx,ppy; input integer fr; integer f,e0; begin
         e0=errors; set_geom(ow,oh,ppx,ppy);
+        repeat(6) @(posedge clk);   // let the geometry CDC settle (firmware writes then waits)
         for (f=0;f<fr;f=f+1) run_frame;
         $display("CASE %0dx%0d @ (%0d,%0d) x%0d : errors=%0d", ow,oh,ppx,ppy,fr,errors-e0);
     end endtask

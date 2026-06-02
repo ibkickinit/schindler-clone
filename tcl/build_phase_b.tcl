@@ -106,6 +106,8 @@ apply_bd_automation -rule xilinx.com:bd_rule:processing_system7 \
 set_property -dict [list \
     CONFIG.PCW_USE_S_AXI_HP0 {1} \
     CONFIG.PCW_S_AXI_HP0_DATA_WIDTH {64} \
+    CONFIG.PCW_USE_S_AXI_HP1 {1} \
+    CONFIG.PCW_S_AXI_HP1_DATA_WIDTH {64} \
     CONFIG.PCW_FPGA0_PERIPHERAL_FREQMHZ {100} \
     CONFIG.PCW_FPGA1_PERIPHERAL_FREQMHZ {150} \
     CONFIG.PCW_FPGA2_PERIPHERAL_FREQMHZ {200} \
@@ -1095,6 +1097,15 @@ set_property -dict [list \
 connect_bd_intf_net [get_bd_intf_pins axi_vdma_0/M_AXI_S2MM] [get_bd_intf_pins ila_s2mm_axi/SLOT_0_AXI]
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK1]              [get_bd_pins ila_s2mm_axi/clk]
 connect_bd_net [get_bd_pins rst_mem/peripheral_aresetn]     [get_bd_pins ila_s2mm_axi/resetn]
+
+# =============================================================================
+# Route-B present-geometry read-engine (additive + mux). Sourced here so all
+# referenced cells (VDMA, color stack, VTC, dvi2rgb, interconnect, clocks)
+# already exist. Gated by READENGINE_B env (default on for this branch build).
+# =============================================================================
+if {![info exists ::env(READENGINE_B)] || $::env(READENGINE_B) ne "0"} {
+    source [file join $project_root tcl readengine_b_bd.tcl]
+}
 
 # =============================================================================
 # Address map + validate + wrapper

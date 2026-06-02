@@ -117,3 +117,11 @@ set_false_path -to [get_pins {phase_b_bd_i/scaler_0/inst/in_h_q1_reg[*]/D}]
 # in scaler_top.v line 80. Same chronic-WNS class that 1ec218c just closed for
 # color_matrix — flagged by 2026-05-31 HDL re-audit before next impl run.
 set_false_path -to [get_pins {phase_b_bd_i/scaler_0/inst/km_q1_reg[*]/D}]
+
+# Route-B read-engine CDC false-paths (AXI GPIO FCLK_CLK0 → output pixel clock).
+# Geometry bus 2-FF sync (g_q1) + genlock source-vsync 2-FF sync (sv_q1).
+# Quasi-static + frame-atomic latch; ASYNC_REG handles metastability. Same
+# /inst/ hierarchy rule as the scaler/color CDC paths. -quiet so the constraint
+# is harmless when the read-engine cell is absent (READENGINE_B=0 builds).
+set_false_path -to [get_pins -quiet {phase_b_bd_i/pg_re_0/inst/g_q1_reg[*]/D}]
+set_false_path -to [get_pins -quiet {phase_b_bd_i/pg_re_0/inst/u_genlock/sv_q1_reg/D}]

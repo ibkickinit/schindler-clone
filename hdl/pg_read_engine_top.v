@@ -66,6 +66,28 @@ module pg_read_engine_top #(
     output wire [2:0]  dbg_read_slot,
     output wire [2:0]  dbg_write_slot
 );
+    // ---- geometry CDC: AXI GPIO (FCLK_CLK0) → this pixel-clock domain ----
+    // Quasi-static (firmware writes between frames) + frame-atomic latch in
+    // pg_compose/pg_addrgen at SOF, so per-bit 2-FF sync is sufficient. XDC
+    // false-paths target g_q1_reg[*]/D.
+    localparam integer GW = 8*12 + 24;   // 8 step/pos/size fields + matte
+    wire [GW-1:0] g_in = {matte_rgb, v_step_frac, v_step_int, h_step_frac, h_step_int,
+                          pos_y, pos_x, out_h_win, out_w_win};
+    (* ASYNC_REG = "TRUE" *) reg [GW-1:0] g_q1, g_q2;
+    always @(posedge clk) begin
+        if (!rstn) begin g_q1 <= {GW{1'b0}}; g_q2 <= {GW{1'b0}}; end
+        else       begin g_q1 <= g_in; g_q2 <= g_q1; end
+    end
+    wire [11:0] s_out_w = g_q2[11:0];
+    wire [11:0] s_out_h = g_q2[23:12];
+    wire [11:0] s_pos_x = g_q2[35:24];
+    wire [11:0] s_pos_y = g_q2[47:36];
+    wire [11:0] s_hsi   = g_q2[59:48];
+    wire [11:0] s_hsf   = g_q2[71:60];
+    wire [11:0] s_vsi   = g_q2[83:72];
+    wire [11:0] s_vsf   = g_q2[95:84];
+    wire [23:0] s_matte = g_q2[119:96];
+
     // ---- frame-follow: which completed slot to read ----
     wire [31:0] frame_base;
     pg_genlock #(.FRAME_BUF_BASE(FRAME_BUF_BASE), .NUM_FRAMES(NUM_FRAMES),
@@ -84,9 +106,9 @@ module pg_read_engine_top #(
     pg_compose #(.OUT_W(OUT_W), .OUT_H(OUT_H), .IN_W(IN_W), .IN_H(IN_H),
                  .STRIDE(STRIDE), .FIFO_DEPTH(16)) u_compose (
         .clk(clk), .rstn(rstn), .vtg_vsync(out_vsync), .frame_base_addr(frame_base),
-        .out_w_win(out_w_win), .out_h_win(out_h_win), .pos_x(pos_x), .pos_y(pos_y),
-        .h_step_int(h_step_int), .h_step_frac(h_step_frac),
-        .v_step_int(v_step_int), .v_step_frac(v_step_frac), .matte_rgb(matte_rgb),
+        .out_w_win(s_out_w), .out_h_win(s_out_h), .pos_x(s_pos_x), .pos_y(s_pos_y),
+        .h_step_int(s_hsi), .h_step_frac(s_hsf),
+        .v_step_int(s_vsi), .v_step_frac(s_vsf), .matte_rgb(s_matte),
         .m_tdata(m_axis_tdata), .m_tvalid(m_axis_tvalid), .m_tready(m_axis_tready),
         .fetch_req(fetch_req), .fetch_addr(fetch_addr), .fetch_len(fetch_len),
         .fetch_pvalid(up_pvalid), .fetch_pdata(up_pdata), .fetch_last(up_plast)
