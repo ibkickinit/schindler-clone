@@ -120,7 +120,7 @@ connect_bd_net [get_bd_pins sl_sel/Dout] [get_bd_pins re_mux/sel]
 # remove the MM2S debug ILA so its tap doesn't entangle the reroute
 catch { delete_bd_cell [get_bd_cells ila_mm2s_out] }
 # detach MM2S → color_saturation, reroute through the mux
-delete_bd_intf_net [get_bd_intf_nets -of_objects [get_bd_intf_pins color_saturation_0/s_axis]]
+delete_bd_objs [get_bd_intf_nets -of_objects [get_bd_intf_pins color_saturation_0/s_axis]]
 connect_bd_intf_net [get_bd_intf_pins axi_vdma_0/M_AXIS_MM2S] [get_bd_intf_pins re_mux/s0]
 connect_bd_intf_net [get_bd_intf_pins pg_re_0/m_axis]         [get_bd_intf_pins re_mux/s1]
 connect_bd_intf_net [get_bd_intf_pins re_mux/m]              [get_bd_intf_pins color_saturation_0/s_axis]

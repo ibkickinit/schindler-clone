@@ -799,6 +799,52 @@ static void cp_dispatch_jsonrpc(const char *json)
     cp_emit_error(id_lit, -32601, "unknown method");
 }
 
+/* ============================================================================
+ * Route-B present-geometry read-engine control (additive + mux build).
+ * Geometry GPIOs axi_gpio_8/9/10 feed pg_read_engine_top; firmware computes the
+ * divider-free DDA steps (IN/out) so the HDL needs no divider. The 2:1 mux
+ * (axi_gpio_10 ch2 bit0) selects read-engine (1) vs VDMA MM2S passthrough (0,
+ * boot default). NO VDMA reconfig — unlike the reverted scaler_reframe.
+ * ========================================================================== */
+#if defined(XPAR_AXI_GPIO_8_BASEADDR)
+#  define GEO_A_BASE XPAR_AXI_GPIO_8_BASEADDR
+#elif defined(XPAR_PHASE_B_BD_AXI_GPIO_8_BASEADDR)
+#  define GEO_A_BASE XPAR_PHASE_B_BD_AXI_GPIO_8_BASEADDR
+#endif
+#if defined(XPAR_AXI_GPIO_9_BASEADDR)
+#  define GEO_B_BASE XPAR_AXI_GPIO_9_BASEADDR
+#elif defined(XPAR_PHASE_B_BD_AXI_GPIO_9_BASEADDR)
+#  define GEO_B_BASE XPAR_PHASE_B_BD_AXI_GPIO_9_BASEADDR
+#endif
+#if defined(XPAR_AXI_GPIO_10_BASEADDR)
+#  define GEO_C_BASE XPAR_AXI_GPIO_10_BASEADDR
+#elif defined(XPAR_PHASE_B_BD_AXI_GPIO_10_BASEADDR)
+#  define GEO_C_BASE XPAR_PHASE_B_BD_AXI_GPIO_10_BASEADDR
+#endif
+
+#ifdef GEO_A_BASE
+static unsigned g_re_w = FRAME_W, g_re_h = FRAME_H, g_re_x = 0, g_re_y = 0;
+static unsigned g_re_matte = 0, g_re_engine = 0;
+static void re_write_geometry(void)
+{
+    unsigned w = g_re_w, h = g_re_h, x = g_re_x, y = g_re_y;
+    if (w < 1) w = 1; if (w > FRAME_W) w = FRAME_W;
+    if (h < 1) h = 1; if (h > FRAME_H) h = FRAME_H;
+    if (x > FRAME_W - w) x = FRAME_W - w;
+    if (y > FRAME_H - h) y = FRAME_H - h;
+    unsigned hsi = FRAME_W / w, hsf = FRAME_W % w;   /* floor(IN_W/out_w), IN_W%out_w */
+    unsigned vsi = FRAME_H / h, vsf = FRAME_H % h;
+    Xil_Out32(GEO_A_BASE + 0x00, ((h & 0xFFF) << 16) | (w & 0xFFF));
+    Xil_Out32(GEO_A_BASE + 0x08, ((y & 0xFFF) << 16) | (x & 0xFFF));
+    Xil_Out32(GEO_B_BASE + 0x00, ((hsf & 0xFFF) << 16) | (hsi & 0xFFF));
+    Xil_Out32(GEO_B_BASE + 0x08, ((vsf & 0xFFF) << 16) | (vsi & 0xFFF));
+    Xil_Out32(GEO_C_BASE + 0x00, g_re_matte & 0xFFFFFF);
+    Xil_Out32(GEO_C_BASE + 0x08, g_re_engine ? 1u : 0u);
+    xil_printf("GEO: %ux%u @ (%u,%u) hstep=%u+%u/%u vstep=%u+%u/%u matte=%06x engine=%u\r\n",
+               w, h, x, y, hsi, hsf, w, vsi, vsf, h, g_re_matte, g_re_engine);
+}
+#endif
+
 static void uart_dispatch(const char *line)
 {
     if (line[0] == '\0') return;
