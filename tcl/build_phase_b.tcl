@@ -58,6 +58,14 @@ add_files -norecurse [file join $project_root hdl scaler_bypass_1080p.v] ;# iter
 add_files -norecurse [file join $project_root hdl color_correct.v]      ;# white-balance / color-temp
 add_files -norecurse [file join $project_root hdl color_saturation.v]   ;# Rec.601 luma-mix saturation
 add_files -norecurse [file join $project_root hdl color_matrix.v]       ;# general 3x3 color matrix
+# Route-B present-geometry read-engine (additive; mux-selected, default = MM2S passthrough)
+add_files -norecurse [file join $project_root hdl pg_addrgen.v]
+add_files -norecurse [file join $project_root hdl pg_genlock.v]
+add_files -norecurse [file join $project_root hdl pg_linefetch.v]
+add_files -norecurse [file join $project_root hdl pg_unpack.v]
+add_files -norecurse [file join $project_root hdl pg_compose.v]
+add_files -norecurse [file join $project_root hdl pg_read_engine_top.v]
+add_files -norecurse [file join $project_root hdl axis_mux2.v]
 add_files -norecurse [file join $project_root hdl scaler_top.v]
 add_files -norecurse [file join $project_root hdl scaler_h.v]
 add_files -norecurse [file join $project_root hdl scaler_v.v]

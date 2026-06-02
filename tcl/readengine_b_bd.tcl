@@ -75,7 +75,7 @@ proc re_slice {name gpio port hi lo} {
     create_bd_cell -type ip -vlnv xilinx.com:ip:xlslice $name
     set w [expr {$hi - $lo + 1}]
     set_property -dict [list CONFIG.DIN_WIDTH {32} CONFIG.DIN_FROM $hi CONFIG.DIN_TO $lo \
-        CONFIG.DIN_WIDTH_TO $w] [get_bd_cells $name]
+        CONFIG.DOUT_WIDTH $w] [get_bd_cells $name]
     connect_bd_net [get_bd_pins ${gpio}/${port}] [get_bd_pins ${name}/Din]
 }
 re_slice sl_out_w  axi_gpio_8 gpio_io_o  11 0
