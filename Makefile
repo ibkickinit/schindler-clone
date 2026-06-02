@@ -139,6 +139,16 @@ sim-pg: ## xsim present-geometry (read-engine-B) module TBs — requires Vivado 
 	@bad=$$(grep -E 'Total errors = ' sim/xsim-lf.log | awk -F'= ' '{print $$2+0}'); \
 	if [ "$$bad" = "0" ]; then echo "PASS: pg_linefetch_tb (Total errors = 0)"; \
 	else echo "FAIL: pg_linefetch_tb"; grep -E 'ERR|Total errors' sim/xsim-lf.log | head; exit 1; fi
+	@echo "→ pg_compose_tb (Module 4: full read-engine, golden frame check)..."
+	@cd sim && xvlog pg_compose_tb.v ../hdl/pg_compose.v ../hdl/pg_addrgen.v ../hdl/pg_linefetch.v \
+		> xvlog-co.log 2>&1 || { tail -10 sim/xvlog-co.log; exit 1; }
+	@cd sim && xelab -top pg_compose_tb -snapshot pg_compose_tb_sim > xelab-co.log 2>&1 || \
+		{ tail -10 sim/xelab-co.log; exit 1; }
+	@cd sim && xsim pg_compose_tb_sim -runall > xsim-co.log 2>&1
+	@bad=$$(grep -E 'Total errors = ' sim/xsim-co.log | awk -F'= ' '{print $$2+0}'); \
+	if [ "$$bad" = "0" ]; then echo "PASS: pg_compose_tb (Total errors = 0)"; \
+		grep -E 'CASE' sim/xsim-co.log; \
+	else echo "FAIL: pg_compose_tb"; grep -E 'CASE|ERR|Total errors' sim/xsim-co.log | head; exit 1; fi
 
 sim-vivado-mackin: ## xsim Mackin TB suite (3360-vector) — if sources present
 	@command -v xvlog >/dev/null 2>&1 || { echo "source Vivado env first"; exit 2; }
