@@ -779,3 +779,74 @@ V0a build (catalog + firmware J bridge + Python schindlerd daemon + browser UI) 
 - Mackin alpha will turn on automatically once dual-VDMA wiring lands on `mackin-impl-wip` and the firmware J table gains the control.
 
 **Pass/fail**: ✅ PASS — V0a stack is end-to-end functional and ready for daily bench use. The "rebuild + re-program + run schindlerd → browser" loop replaces the picocom + manual UART commands workflow.
+
+## 2026-06-02 — Read-engine-B full-master: shear root-caused, NBUF=4 fix (build #10) ⚠️ in-flight
+
+Route-B post-color read-engine (runtime size/position/matte). Full doc:
+[`readengine-b.md`](readengine-b.md); live resume state:
+[`readengine-b-SESSION-HANDOFF.md`](readengine-b-SESSION-HANDOFF.md).
+
+**Branch:** `readengine-b-integration` (off `iter5-1080p-clean`). **Last commit:** `5407677`
+(build #9). Build #10's `NBUF=4` HDL is **uncommitted working-tree** at this writing.
+
+**Build lineage (bench, monitor-verified):**
+| # | Change | Build | Bench |
+|---|---|---|---|
+| #7 | genlock frame-follow, 720p master (H 1:1) | met | ✅ CLEAN — core validated, steady windowed scaling |
+| #8 | full-master 1920×1080 | met | ❌ crop fixed but SHEARS ("lines late") |
+| #9 (`5407677`) | DataMover burst 16→256, out FIFO 16→64 | met (WNS +0.091/WHS +0.014) | ❌ no change — disproves throughput-tuning |
+| #10 | `pg_linefetch` → `NBUF=4` ring + `pg_compose` 2-row lookahead | *building* | *pending — discriminator (see below)* |
+
+**Root cause (2026-06-02):** shear = two independent ceilings, both in the line-fetch path.
+(1) **Depth/latency** — old 2-buffer/1-ahead double buffer had zero slack for the 3-master DDR
+contention (S2MM + VDMA-MM2S + read-engine). FIXED in #10. (2) **Rate** — `pg_unpack` fills at
+1 px/clk = 1920 clk/line; full 1280×720 window needs 720·1920 = 1.382M clk/frame > 720p60 budget
+1.2375M (~11% over) → rate-bound, depth can't fix. 960×540 window fits (1.037M) → there the
+wobble was pure latency.
+
+**Build #10 is a discriminator.** Predict: `G 960 540 0 0` CLEAN, boot `1280×720` still wobbles.
+If confirmed → build the **packed-beat fill** (store 64b beats @1 beat/clk, extract pixel on
+read; 2.4× margin) per `readengine-b.md` §5. If both clean → done, skip packed-beat.
+
+**Provenance:**
+- Sim: `pg_compose_tb` + `pg_read_engine_top_tb` run directly = `Total errors = 0` at `NBUF=4`
+  (the `make sim-pg` wrapper mis-reports an xsim exit and aborts after genlock — run TBs by hand).
+- Build env (mandatory): `BOARD_PARTS_REPO_PATHS=$HOME/fpga/vivado-boards/new/board_files`,
+  `DIGILENT_IP_REPO_PATH=$HOME/fpga/vivado-library/ip`.
+- Firmware: `READENGINE_FULLMASTER=1 make build-app` (full-master, VTC stays 720p).
+- Verify on **monitor only** — MS2109 + PS-cache frame-dump both mask the artifact.
+
+**Pass/fail:** ⚠️ IN-FLIGHT — #10 not yet bench-verified; do NOT mark ✅ until the §3 experiment
++ 3-boot rule pass. Builds #8/#9 are ❌ (shear). Build #7 (720p master) was the last clean
+read-engine build.
+
+## 2026-06-02 (cont.) — Read-engine-B: ILA proves ALIASING, not an engine bug ⚠️ open
+
+Continues the read-engine-B entry above. Builds #11–#13 on `readengine-b-integration`
+(uncommitted working tree; last commit `5407677`).
+
+| # | Change | Bench |
+|---|---|---|
+| #11 | read-during-write collision fix (read-select excludes fill_buf) + `NBUF=5` + `LOOKAHEAD=NBUF-3` | ❌ ghost UNCHANGED → collision was not the cause |
+| #12 | +ILA (first attempt) | killed mid-synth (my pkill); ILA dbg-probe unconnected (missing `C_PROBE0_WIDTH`) |
+| #13 | +ILA hardened (`C_PROBE0_WIDTH`, probe-name match) | **ILA captured cleanly** |
+
+**ILA verdict (build #13, both `ila_re_dbg` 96-bit + `ila_re_beats`):** the read-engine is
+CORRECT — `src_col` is a perfect `floor(col×1.5)` decimating DDA (monotonic, resets per row),
+`src_row` steps right, `rd_data`/`up_pdata` bit-clean (grid black runs = pure `000000`). The
+visible artifact is therefore **nearest-neighbor decimation aliasing** — full-master storage
+(`scaler_bypass_1080p`) bypassed `scaler_h/scaler_v`'s anti-alias boxcar. All earlier theories
+(lines-late shear, buffer depth, fill rate, read-during-write collision, stride, addressing skew)
+are **disproven** by hardware capture.
+
+**Fix (4-agent consensus):** un-bypass the input scaler (`SCALER_MODULE=scaler_top`) → pre-filtered
+1280×720 master, read-engine does size/position/matte = the build #7 clean config. Read-path box
+filter is G2-only (full record + golden-model spec: `docs/readengine-b.md` §10).
+
+**⚠️ OPEN / BLOCKING:** truly-flat GREEN/RED/ORANGE fields ALL show the same fine pattern, which
+pure aliasing does not predict and the ILA-on-grid couldn't test (only flat black, which is clean).
+Resolve before the fix via engine on/off toggle on a flat color + `ila_re_dbg` on a flat color
+(`docs/readengine-b.md` §11 Q1). Leading hypothesis: laptop dithers solid colors; the dither is
+aliased. **Status: ⚠️ root cause of the GRID artifact known (aliasing); the FLAT-COLOR pattern is
+unresolved. Do NOT mark ✅ until Q1 closes + the fix lands + 3-boot verify.** Capture tooling:
+`tcl/capture_re_ila.tcl`, `/tmp/decode_dbg.py`. Verify on monitor (MS2109 masks this class).

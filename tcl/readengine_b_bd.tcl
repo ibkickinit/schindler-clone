@@ -150,4 +150,44 @@ foreach {slot gname} {11 axi_gpio_8 12 axi_gpio_9 13 axi_gpio_10} {
     connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn] [get_bd_pins ${gname}/s_axi_aresetn]
 }
 
-puts "READENGINE-B: integration block complete"
+# ---------------------------------------------------------------------------
+# ILA instrumentation (2026-06-02) — pin the read-engine ghost: addressing vs
+# beat-corruption vs aliasing. Both on the pixel clock ($pclk).
+#   ila_re_dbg   : NATIVE 96-bit dbg_probe from pg_re_0 — src_col/src_row,
+#                  a_valid/inwin/newrow, resident, up_pvalid/last, m_tvalid/ready,
+#                  rd_data (buffer->out), up_pdata (unpack->buffer). Bit layout in
+#                  hdl/pg_read_engine_top.v. Trigger on a_newrow to catch a row.
+#   ila_re_beats : AXIS on the DataMover M_AXIS_MM2S (64-bit beats from DDR) —
+#                  confirms the source data ARRIVES clean (separates "read wrong"
+#                  from "process wrong").
+# ---------------------------------------------------------------------------
+create_bd_cell -type ip -vlnv xilinx.com:ip:system_ila ila_re_dbg
+set_property CONFIG.C_MON_TYPE {NATIVE} [get_bd_cells ila_re_dbg]
+set_property -dict [list \
+    CONFIG.C_NUM_OF_PROBES {1} \
+    CONFIG.C_PROBE0_WIDTH  {192} \
+    CONFIG.C_DATA_DEPTH    {2048} \
+    CONFIG.C_ADV_TRIGGER   {true} \
+] [get_bd_cells ila_re_dbg]
+# Diagnostics: print the ACTUAL pin names so we stop guessing the probe pin name.
+puts "ILA-DBG: pg_re_0 dbg pins  = [get_bd_pins -quiet pg_re_0/dbg*]"
+puts "ILA-DBG: ila_re_dbg pins   = [get_bd_pins -quiet ila_re_dbg/*]"
+set _dbg_ok 0
+if {![catch { connect_bd_net [get_bd_pins pg_re_0/dbg_probe] [get_bd_pins ila_re_dbg/probe0] }]} {
+    set _dbg_ok 1
+}
+if {$_dbg_ok} {
+    connect_bd_net $pclk [get_bd_pins ila_re_dbg/clk]
+    puts "ILA-DBG: dbg_probe -> ila_re_dbg/probe0 connected"
+} else {
+    # Probe pin name guess was wrong — remove the cell so the build still
+    # completes (ila_re_beats stays). The pin dump above gives the real names.
+    puts "ILA-DBG: probe0 connect failed; removing ila_re_dbg (see pin dump). Beats ILA retained."
+    catch { delete_bd_cell [get_bd_cells ila_re_dbg] }
+}
+
+# ila_re_beats DROPPED for build #14: the 192-bit dbg_probe now carries up_pdata
+# (data-in from DDR) + push_data (data-out), so the separate 64-bit beats ILA is
+# redundant — and dropping it frees the BRAM the widened dbg_probe needs.
+
+puts "READENGINE-B: integration block complete (+ILA: ila_re_dbg 192-bit prefetch-state)"

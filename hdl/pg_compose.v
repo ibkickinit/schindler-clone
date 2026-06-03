@@ -34,7 +34,8 @@ module pg_compose #(
     parameter integer IN_W  = 1280,
     parameter integer IN_H  = 720,
     parameter integer STRIDE = 3840,
-    parameter integer FIFO_DEPTH = 16
+    parameter integer FIFO_DEPTH = 16,
+    parameter integer NBUF = 4          // line-buffer ring depth (see pg_linefetch)
 ) (
     input  wire        clk,
     input  wire        rstn,
@@ -53,9 +54,32 @@ module pg_compose #(
     output wire        fetch_req,
     output wire [31:0] fetch_addr,
     output wire [11:0] fetch_len,
-    input  wire        fetch_pvalid,
-    input  wire [23:0] fetch_pdata,
-    input  wire        fetch_last
+    // packed-beat fill (64-bit DataMover beats; pg_unpack removed from datapath)
+    input  wire [63:0] beat_data,
+    input  wire        beat_valid,
+    output wire        beat_ready,
+    input  wire        beat_last,
+
+    // ---- debug taps (ILA) ----
+    output wire [11:0] dbg_src_col,   // pg_addrgen o_src_col
+    output wire [11:0] dbg_src_row,   // pg_addrgen o_src_row
+    output wire        dbg_a_valid,   // pg_addrgen o_valid
+    output wire        dbg_a_inwin,   // pg_addrgen o_in_window
+    output wire        dbg_a_newrow,  // pg_addrgen o_new_row
+    output wire        dbg_resident,  // line-buffer rd_resident for the skid head
+    output wire [23:0] dbg_rd_data,   // line-buffer rd_data for the skid head
+    // ---- prefetch-state taps (ILA, build #14) ----
+    output wire [11:0] dbg_rd_row,    // skid head src_row = the row being READ
+    output wire [11:0] dbg_pf_src,    // prefetch current src row
+    output wire [11:0] dbg_pf_next_k, // prefetch window-row index
+    output wire [11:0] dbg_served,    // served_count (window rows entered)
+    output wire        dbg_m3_busy,   // fetch in progress
+    output wire        dbg_pf_req,    // prefetch request pulse
+    output wire        dbg_push_en,   // pixel actually pushed to output FIFO
+    output wire [23:0] dbg_push_data, // the actually-pushed pixel
+    output wire [3:0]  dbg_fill_sel,  // pg_linefetch round-robin fill buffer
+    output wire [3:0]  dbg_rd_sel,    // pg_linefetch read buffer select
+    output wire        dbg_have_row   // pg_linefetch: pf_row already resident
 );
     // ---------- SOF edge + frame-atomic geometry latch ----------
     reg vs_q;
@@ -128,13 +152,14 @@ module pg_compose #(
     wire [11:0] h_srow  = skid[srd][23:12];
     wire [11:0] h_scol  = skid[srd][11:0];
 
-    pg_linefetch #(.LINE_W(IN_W), .STRIDE(STRIDE)) u_fetch (
+    pg_linefetch #(.LINE_W(IN_W), .STRIDE(STRIDE), .NBUF(NBUF)) u_fetch (
         .clk(clk), .rstn(rstn), .frame_base_addr(frame_base_addr),
         .pf_req(pf_req_r), .pf_row(pf_row_r),
         .rd_row(h_srow), .rd_col(h_scol),       // read keyed on skid head
         .rd_data(m3_rd_data), .rd_resident(m3_resident),
+        .dbg_fill_sel(dbg_fill_sel), .dbg_rd_sel(dbg_rd_sel), .dbg_have_row(dbg_have_row),
         .fetch_req(fetch_req), .fetch_addr(fetch_addr), .fetch_len(fetch_len),
-        .fetch_pvalid(fetch_pvalid), .fetch_pdata(fetch_pdata), .fetch_last(fetch_last),
+        .beat_data(beat_data), .beat_valid(beat_valid), .beat_ready(beat_ready), .beat_last(beat_last),
         .busy(m3_busy)
     );
 
@@ -195,9 +220,17 @@ module pg_compose #(
     wire [12:0] pf_frac_sum = {1'b0, pf_frac} + {1'b0, vsf_l};
     wire        pf_carry    = (pf_frac_sum >= {1'b0, win_h_l});
     // served_count = #window rows the CONSUMER has entered (pop of a new_row).
-    // Gating prefetch on consumption (not production) keeps exactly 1 row ahead,
-    // so the 2-buffer ping-pong never clobbers the row being read.
-    wire want_pf = (pf_next_k < win_h_l) && (pf_next_k <= served_count);
+    // Gate prefetch on consumption (not production) so the ring never clobbers a
+    // row still being/awaiting read. The read row is (served_count-1) and the
+    // round-robin recycle target for fetch pf_next_k last held row (pf_next_k-NBUF).
+    // To keep that recycle at least ONE row behind the read row (a guard band so
+    // a fill never laps onto the buffer the consumer is reading — the
+    // read-during-write collision that produced the sparse "wavy ghost"), require
+    // pf_next_k-NBUF <= read_row-2  ->  pf_next_k <= served_count + (NBUF-3).
+    // (Paired with pg_linefetch excluding the in-flight fill buffer from the read
+    //  select, this makes the ring safe by construction. NBUF<3 clamps to 0.)
+    localparam [11:0] LOOKAHEAD = (NBUF >= 3) ? (NBUF - 3) : 12'd0;
+    wire want_pf = (pf_next_k < win_h_l) && (pf_next_k <= served_count + LOOKAHEAD);
     wire do_pf   = want_pf && !m3_busy && !issued_q && !pf_req_r;
 
     always @(posedge clk) begin
@@ -217,6 +250,24 @@ module pg_compose #(
             end
         end
     end
+
+    // ---- debug taps ----
+    assign dbg_src_col  = a_src_col;
+    assign dbg_src_row  = a_src_row;
+    assign dbg_a_valid  = a_valid;
+    assign dbg_a_inwin  = a_inwin;
+    assign dbg_a_newrow = a_newrow;
+    assign dbg_resident = m3_resident;
+    assign dbg_rd_data  = m3_rd_data;
+    // prefetch-state taps (build #14)
+    assign dbg_rd_row    = h_srow;
+    assign dbg_pf_src    = pf_src;
+    assign dbg_pf_next_k = pf_next_k;
+    assign dbg_served    = served_count;
+    assign dbg_m3_busy   = m3_busy;
+    assign dbg_pf_req    = pf_req_r;
+    assign dbg_push_en   = push_en;
+    assign dbg_push_data = push_data;
 endmodule
 
 `default_nettype wire

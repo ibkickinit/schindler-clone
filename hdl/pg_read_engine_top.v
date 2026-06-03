@@ -32,7 +32,8 @@ module pg_read_engine_top #(
     parameter [31:0]  FRAME_BUF_BASE = 32'h1000_0000,
     parameter integer NUM_FRAMES = 5,
     parameter integer SLOT_STRIDE = 2768640,         // FRAME_BYTES + STRIDE guard
-    parameter integer READ_DELAY = 2
+    parameter integer READ_DELAY = 2,
+    parameter integer NBUF = 5                        // line-buffer ring depth: 1 read + 2 prefetch + 1 fill + 1 guard
 ) (
     input  wire        clk,
     input  wire        rstn,
@@ -71,7 +72,8 @@ module pg_read_engine_top #(
 
     // debug
     output wire [2:0]  dbg_read_slot,
-    output wire [2:0]  dbg_write_slot
+    output wire [2:0]  dbg_write_slot,
+    output wire [191:0] dbg_probe       // ILA tap; bit layout in body
 );
     // status stream is informational (per-line completion) — always drain it
     // so the DataMover's status FIFO never fills and stalls command intake.
@@ -108,31 +110,59 @@ module pg_read_engine_top #(
         .read_slot(dbg_read_slot), .read_base_addr(frame_base), .write_slot(dbg_write_slot)
     );
 
-    // ---- compositor (owns pg_addrgen + pg_linefetch); fetch_* is DataMover-pixel ----
+    // ---- compositor (owns pg_addrgen + pg_linefetch); packed-beat fill ----
+    // DataMover M_AXIS (64-bit beats) feeds pg_compose -> pg_linefetch directly;
+    // pg_unpack is gone (extraction is now read-side, inside pg_linefetch).
     wire        fetch_req;
     wire [31:0] fetch_addr;
     wire [11:0] fetch_len;
-    wire        up_pvalid, up_plast;
-    wire [23:0] up_pdata;
+
+    // debug taps from the compositor (wired in u_compose below)
+    wire [11:0] dc_src_col, dc_src_row;
+    wire        dc_a_valid, dc_a_inwin, dc_a_newrow, dc_resident;
+    wire [23:0] dc_rd_data;
+    // prefetch-state taps (build #14)
+    wire [11:0] dc_rd_row, dc_pf_src, dc_pf_next_k, dc_served;
+    wire        dc_m3_busy, dc_pf_req, dc_push_en, dc_have_row;
+    wire [23:0] dc_push_data;
+    wire [3:0]  dc_fill_sel, dc_rd_sel;
 
     pg_compose #(.OUT_W(OUT_W), .OUT_H(OUT_H), .IN_W(IN_W), .IN_H(IN_H),
-                 .STRIDE(STRIDE), .FIFO_DEPTH(64)) u_compose (
+                 .STRIDE(STRIDE), .FIFO_DEPTH(64), .NBUF(NBUF)) u_compose (
         .clk(clk), .rstn(rstn), .vtg_vsync(out_vsync), .frame_base_addr(frame_base),
         .out_w_win(s_out_w), .out_h_win(s_out_h), .pos_x(s_pos_x), .pos_y(s_pos_y),
         .h_step_int(s_hsi), .h_step_frac(s_hsf),
         .v_step_int(s_vsi), .v_step_frac(s_vsf), .matte_rgb(s_matte),
         .m_tdata(m_axis_tdata), .m_tvalid(m_axis_tvalid), .m_tready(m_axis_tready),
         .fetch_req(fetch_req), .fetch_addr(fetch_addr), .fetch_len(fetch_len),
-        .fetch_pvalid(up_pvalid), .fetch_pdata(up_pdata), .fetch_last(up_plast)
+        .beat_data(s_axis_dm_tdata), .beat_valid(s_axis_dm_tvalid),
+        .beat_ready(s_axis_dm_tready), .beat_last(s_axis_dm_tlast),
+        .dbg_src_col(dc_src_col), .dbg_src_row(dc_src_row),
+        .dbg_a_valid(dc_a_valid), .dbg_a_inwin(dc_a_inwin), .dbg_a_newrow(dc_a_newrow),
+        .dbg_resident(dc_resident), .dbg_rd_data(dc_rd_data),
+        .dbg_rd_row(dc_rd_row), .dbg_pf_src(dc_pf_src), .dbg_pf_next_k(dc_pf_next_k),
+        .dbg_served(dc_served), .dbg_m3_busy(dc_m3_busy), .dbg_pf_req(dc_pf_req),
+        .dbg_push_en(dc_push_en), .dbg_push_data(dc_push_data),
+        .dbg_fill_sel(dc_fill_sel), .dbg_rd_sel(dc_rd_sel), .dbg_have_row(dc_have_row)
     );
 
-    // ---- DataMover beats → pixels for the compositor's fetch port ----
-    pg_unpack u_unpack (
-        .clk(clk), .rstn(rstn), .line_px(IN_W[11:0]),
-        .s_tdata(s_axis_dm_tdata), .s_tvalid(s_axis_dm_tvalid),
-        .s_tready(s_axis_dm_tready),
-        .p_valid(up_pvalid), .p_data(up_pdata), .p_last(up_plast)
-    );
+    // ---- debug probe bus (ILA, NATIVE, 192-bit; build #14) ----
+    //  [11:0] src_col   [23:12] src_row   [35:24] rd_row(read)  [47:36] pf_src
+    //  [59:48] pf_next_k [71:60] served    [75:72] fill_sel(4)  [79:76] rd_sel(4)
+    //  [80] a_valid  [81] a_inwin  [82] a_newrow  [83] resident  [84] m3_busy
+    //  [85] pf_req   [86] have_row [87] push_en   [88] up_pvalid [89] up_plast
+    //  [90] m_tvalid [91] m_tready [95:92] pad
+    //  [119:96] rd_data  [143:120] up_pdata  [167:144] push_data  [191:168] pad
+    assign dbg_probe = {24'd0, dc_push_data, s_axis_dm_tdata[23:0], dc_rd_data,
+                        4'd0, m_axis_tready, m_axis_tvalid, s_axis_dm_tlast, s_axis_dm_tvalid,
+                        dc_push_en, dc_have_row, dc_pf_req, dc_m3_busy, dc_resident,
+                        dc_a_newrow, dc_a_inwin, dc_a_valid,
+                        dc_rd_sel, dc_fill_sel,
+                        dc_served, dc_pf_next_k, dc_pf_src, dc_rd_row,
+                        dc_src_row, dc_src_col};
+
+    // (pg_unpack removed — packed-beat: DataMover beats go straight to pg_linefetch
+    //  via pg_compose's beat port; pixel extraction is read-side in pg_linefetch.)
 
     // ---- DataMover command formatter (one line per fetch request) ----
     reg        cmd_valid;

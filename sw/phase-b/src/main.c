@@ -108,6 +108,23 @@ static int vdma_setup_channel(int direction, UINTPTR *frame_addrs)
     cfg.VertSizeInput     = FRAME_H;
     cfg.HoriSizeInput     = STRIDE;
     cfg.Stride            = STRIDE;
+#if defined(READENGINE_FULLMASTER)
+    /* DIAGNOSTIC 2026-06-02: in full-master mode S2MM stores the full 1920×1080
+     * master, but the output VTC raster is 1280×720. The MM2S (read) leg must
+     * therefore read a geometry-correct CROP, else it streams a 1920-wide raster
+     * into 1280-wide output timing and the lines wrap ("doubling" seen at
+     * engine=0). Give MM2S: HSIZE = 1280*3 valid bytes/line, Stride = 5760 (the
+     * master line pitch in DDR, unchanged), VSIZE = 720 lines → a clean top-left
+     * 1280×720 crop of the master with NO scaling. S2MM (write) stays full
+     * 1920×1080. NOTE: this makes the read geometry differ from the write
+     * geometry — watch the dynamic-genlock handshake (see
+     * schindler_genlock_geometry_must_match); revert if HDMI loses lock. */
+    if (direction == XAXIVDMA_READ) {
+        cfg.VertSizeInput = OUT_RASTER_H;            /* 720 lines              */
+        cfg.HoriSizeInput = OUT_RASTER_W * BYTES_PP; /* 1280*3 = 3840 valid B  */
+        /* cfg.Stride stays STRIDE (5760) = DDR master line pitch */
+    }
+#endif
     /* Phase D iter-4d-3: MM2S as genlock slave with FrameDelay=1 — slave
      * trails master by 1 frame in the 3-FB ring, hardware-enforced (PG020:
      * "Slave follows the Master by the frames set in Frame Delay register

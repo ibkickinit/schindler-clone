@@ -2,6 +2,16 @@
 
 Open and recently-resolved bugs tracked by status. Source: `../build-manifest.md` "Outstanding" sections + memory entries.
 
+## Open (feature in development)
+
+### Read-engine-B full-master shear ("lines late")
+
+**Substrate:** `readengine-b-integration` full-master builds (#8/#9). **Status: actively being fixed** (build #10 in flight).
+**Symptom:** scaled output shears — horizontal lines straight/placed correctly, vertical lines *oscillate* (per-row horizontal offset wanders and snaps back down the frame). Justin: "writing lines late."
+**Root cause (2026-06-02):** two independent line-fetch ceilings. (1) **Depth** — old 2-buffer/1-row-ahead design had zero slack for 3-master DDR contention. (2) **Rate** — `pg_unpack` fills 1 px/clk = 1920 clk/line; full 1280×720 window needs ~11% more clk/frame than 720p60 has → rate-bound.
+**Fix:** (1) `NBUF=4` ring + 2-row lookahead (build #10, sim-clean). (2) if bench confirms rate-bound at full window → packed-beat fill (64b beats @1 beat/clk). Full write-up + resume state: [`../readengine-b.md`](../readengine-b.md), [`../readengine-b-SESSION-HANDOFF.md`](../readengine-b-SESSION-HANDOFF.md). Memory `[[schindler_readengine_b_state]]`.
+**Verify:** monitor only (MS2109 + PS-cache frame-dump both mask it — `[[schindler_ms2109_verification_trap]]`).
+
 ## Open (cosmetic; not blocking)
 
 ### 1080p60 HDMI output on Zybo Z7-20
