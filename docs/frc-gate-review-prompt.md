@@ -161,7 +161,8 @@ stays as a permanent Gray-aware health bit.
 ## Round 4 — bench result + the residual pixel-shift (2026-06-03)
 
 Full record: `docs/readengine-b-cadence-bench-result.md`. Build #21b (pg_cadence gen-lock mode,
-WNS +0.235) on board.
+WNS +0.235) validated motion; build #22 (WNS +0.153, +δ-measurement diag) measured the residual
+offset. Both on board, both clean on motion.
 
 **Result — the round-3 open risks closed favourably on MOTION:**
 - Motion (Osee input 2) and 1080p60 laptop (input 3) are **clean on the monitor** — no judder,
@@ -185,22 +186,62 @@ Resample/address math is clean (output(0,0)→source(0,0); addrgen DDA no init p
 `rd_col=0`=src px0; compose SOF on genuine first pixel). The content is right; only its horizontal
 **anchor** is off by δ.
 
-**Our lead hypothesis:** `axis_to_vid_io` has `s_axis_tready = vtg_active_video && enable`, so it
-consumes **only during active video**. The SOF-realign re-arms each frame (`started<=0` at vsync)
-and discards non-SOF head beats until the SOF beat appears. Because tready is active-gated, δ
-residual beats (frame N's tail still in the output FIFO at blanking start) can only be drained by
-**burning the first δ active-pixel slots** → the SOF beat (pixel 0) lands at active column δ →
-every line shifted +δ, last δ px wrap to next line. δ in 64-bit beats (~2.67 px) → "a few pixels."
+**Mechanism (hypothesised, then MEASURED).** `axis_to_vid_io` has
+`s_axis_tready = vtg_active_video && enable` → it consumes **only during active video**. The
+SOF-realign re-arms each frame (`started<=0` at the `vtg_vsync` rising edge) and discards non-SOF
+head beats until the SOF beat appears (then SOF=pixel 0). Because tready is active-gated, the δ
+residual beats (the prior frame's tail still queued when blanking began) can only be drained by
+**burning the first δ active-pixel slots** → the SOF beat lands at active column δ → every line is
+shifted +δ and the last δ px wrap to the next line. (At this interface the stream is 24-bit, one
+pixel per beat, so δ is directly in pixels.)
 
-**Proposed fix:** flush pre-SOF residue during **blanking** — assert tready while `!started` to
-drain non-SOF head beats in blanking, then hold once the head IS the SOF beat so it becomes pixel
-0 at active column 0. Gate to active-video thereafter as today.
+**MEASUREMENT (build #22, 2026-06-03).** We added `axis_to_vid_io.predrain_snap[31:0]`
+(`[15:0]`=δ = active cycles before the SOF beat emits; `[31:16]`=of those, stale beats discarded
+vs the rest being starves), routed onto the dead-in-route-B scaler diag ch1, firmware `DRAIN:`
+line. Result, **constant every frame**:
+
+    DRAIN: delta_px=6 (stale=6 starve=0)
+
+δ = **6 px constant, 100% stale, 0 starve.** Confirms the mechanism: six residual beats discarded
+in active video; producer is never late (starve=0 ⇒ NOT a `pg_compose` priming issue).
+
+**PROPOSED FIX (for your review — not yet committed).** Flush the residue during **blanking** so
+the SOF beat is at the FIFO head exactly when active video begins. In `hdl/axis_to_vid_io.v`:
+
+```verilog
+// today:
+assign s_axis_tready = vtg_active_video && enable;
+
+// proposed:
+wire in_blank     = !vtg_active_video;
+// While not yet started, drain non-SOF head beats during blanking; once the SOF
+// beat reaches the head, drain_presof deasserts so SOF waits and becomes pixel 0
+// at active column 0. SOF beat is never consumed in blanking (excluded via !tuser).
+wire drain_presof = enable && !started && in_blank && s_axis_tvalid && !s_axis_tuser;
+assign s_axis_tready = enable && (vtg_active_video || drain_presof);
+```
+
+`consume`/`emit_pix`/`started` logic is unchanged: drained beats fall in blanking
+(`vtg_active_video=0` → emit black, not shown), `started` stays 0 (drain excludes `tuser`), and on
+the SOF beat at active col 0 `started` latches as today. Built-in check: after the fix
+`DRAIN: delta_px` should read **0**.
+
+**BLAST RADIUS.** `axis_to_vid_io` is **shared** by the read-engine path AND the proven VDMA
+passthrough/scaler path (route-B was deliberately additive-with-a-mux to protect passthrough; this
+fix is NOT additive). The wrap is "as before" (common to all builds), so fixing it on both is
+correct — but passthrough regression is the risk to vet.
+
+**Verification plan (before bench):** extend `sim/axis_sof_tb.v` with a case that injects δ pre-SOF
+residue and asserts pixel 0 lands at column 0 (and `predrain_snap`→0); then build #23 → confirm
+`DRAIN: delta_px=0` on the read engine AND a passthrough (mux sel=0) sanity pass.
 
 **Questions for you:**
-1. Does the residue-drain-in-active mechanism hold up, or is there a more fundamental reason pixel
-   0 lands at column δ (e.g., producer leaving a deterministic FIFO residue across the frame
-   boundary that we should fix producer-side in `pg_compose` instead)?
-2. Is the proposed blanking-flush safe against (a) a SOF that never arrives / arrives mid-active,
-   (b) over-draining into the next frame, (c) the `vtg_vsync` re-arm timing? Any edge cases?
-3. Best ILA signal to confirm δ before we touch RTL — beats drained before SOF emit per frame, or
-   output-FIFO occupancy latched at `vtg_vsync` rising?
+1. Mechanism + fix sound? Anything that makes the blanking-flush wrong or incomplete?
+2. **Shared-path safety (the real risk):** on the VDMA MM2S path, does asserting tready during our
+   blanking to drain residue risk desyncing VDMA's frame/genlock accounting, or is draining the
+   prior frame's tail beats benign there as it is for the `pg_compose` FIFO?
+3. Edge cases: (a) SOF never arrives / arrives mid-active (we measured starve=0, but is the
+   degrade-to-today's-behaviour path correct?); (b) any way to over-drain past the SOF beat;
+   (c) `vtg_vsync` re-arm vs the start of blanking — timing hazard?
+4. Is `in_blank = !vtg_active_video` the right blanking signal, or should it be
+   `vtg_hblank || vtg_vblank` (the dedicated VTC blank outputs we already bring in)?
