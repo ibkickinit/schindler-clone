@@ -327,6 +327,55 @@ for A drops A to 1 slot**, making it a lever on depth as well as DDR.
 5. **Independent adversarial Q7 review** — hand over the controller + hardened model; break the
    invariant against real slot lifetimes.
 
+## 12. Gate hardened + min-N PINNED (session 2, 2026-06-02) ✅
+
+`sim/frc_cadence_model_tb.v` rebuilt as a **DDR shared-bandwidth model with real slot
+lifetimes**: the writer and both readers' fetches are byte transfers that split bandwidth
+when concurrent, so a read takes real time and a slot is in-use read-START→read-COMPLETE
+(can overlap the next frame = the O term). Collision = writer actively writing slot X
+while a reader actively reads X. This replaces the toothless snapshot gate.
+
+**Controls (guard against the self-fulfilling trap):**
+- **hi-BW vs default-BW (16) → identical, O=0** ⇒ one full-raster read **fits inside one
+  output frame** at realistic bandwidth (~1/4 frame); reads don't overlap. lo-BW(5) stress
+  correctly shows writer overflow + O=1 (contention regime).
+- **clamp-OFF → real collisions at BOTH N=5 AND N=8.** So the **safety clamp is the
+  load-bearing mechanism, not the depth** — without it even a deep ring collides.
+
+**Measured:** O = 0 (reads fit), J ≈ 1 (max writes/output-frame at 2.5× ≈ ⌈R⌉, +1 on jitter).
+
+**Validated clamp formula** (the review's closed form, now grounded):
+```
+    max_lag (clamp ceiling) = N − ⌈R⌉ − 1 − J − MARGIN          (occ_collide − MARGIN)
+    occ_collide = N − 1 − ⌈R⌉ − J     (writer laps a read slot when occupancy reaches this)
+```
+Operating at/below this ceiling gives `min_lap ≥ MARGIN` by construction (measured min_lap
+= 3–4 for MARGIN=2). **Key design correction: the occupancy SETPOINT must be SMALL (read
+near the head); depth becomes margin + blend-coverage, NOT lag.** Targeting N/2 (mid-ring)
+was the bug — it spent all the depth on lag and pinned margin at ~1 regardless of N.
+
+**Ring-depth result (R=2.5 / 60→24, the worst blend ratio; MARGIN=2, J=1, B single-fetch):**
+
+| N | safety (min_lap≥2) | blend coverage (engine A) |
+|---|---|---|
+| 6 | SAFE-PASS | 158/378 = **42%** (can't blend at 2.5×) |
+| 7 | SAFE-PASS | 316/376 = **84%** |
+| **8** | **SAFE-PASS** | **353/376 = 94%  ← knee (full Mackin blend)** |
+| 9 | SAFE-PASS | 359/376 = 95% (saturated) |
+
+So: **N=6 is the safe minimum for drop/repeat; N=8 is the knee for full Mackin blend at
+the worst ratio** (N=7 loses ~16% of blends → judder on those frames). Engine B single-fetch
+keeps the two-reader occupied-slot sum at 4, so N=8 fits with headroom; A blend-disable
+(α-snap) at extreme ratios drops A to 1 slot — a depth lever for 1080p.
+
+**Remaining gate-polish (non-blocking):** the model fetches S,S+1 forward; for the repeat
+case (R<1) real Mackin blends the *bracketing* pair (S−1,S) — refine when wiring Mackin.
+The `suppress` metric is superseded by the blend-coverage report.
+
+**→ Next (task #101): apply this to `hdl/pg_cadence.v`** — validated clamp `N−⌈R⌉−1−J−MARGIN`,
+small setpoint, real deadband + anti-windup, blend-disable/α-snap mode; then `sim/pg_cadence_tb.v`
+gates the RTL against this model; then the adversarial Q7 review.
+
 ### Repo pointers for the reviewer
 - Read engine: `hdl/pg_read_engine_top.v`, `hdl/pg_compose.v`, `hdl/pg_genlock.v`,
   `hdl/pg_addrgen.v`, `hdl/pg_linefetch.v`
