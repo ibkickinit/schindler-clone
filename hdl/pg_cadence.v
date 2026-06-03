@@ -94,7 +94,20 @@ module pg_cadence #(
             else                                    fp_stable <= fp_cand;
         end
     end
-    wire [5:0] fp_use = (fp_stable >= NUM_FRAMES[5:0]) ? 6'd0 : fp_stable;
+    // s2mm_frame_ptr_out is GRAY-CODED (bench-confirmed 2026-06-03: 1 bit changes per frame,
+    // the CDC-safe encoding). Decode to binary, then mod NUM_FRAMES → a clean +1 slot cycle.
+    // (Treating the Gray value as binary — as the original code did — manufactures phantom
+    // non-monotonic jumps; that was the root cause of the fp_mon "decreased" false positives.)
+    function [5:0] gray2bin; input [5:0] g; begin
+        gray2bin[5] = g[5];
+        gray2bin[4] = gray2bin[5] ^ g[4];
+        gray2bin[3] = gray2bin[4] ^ g[3];
+        gray2bin[2] = gray2bin[3] ^ g[2];
+        gray2bin[1] = gray2bin[2] ^ g[1];
+        gray2bin[0] = gray2bin[1] ^ g[0];
+    end endfunction
+    wire [5:0] fp_bin = gray2bin(fp_stable);
+    wire [5:0] fp_use = fp_bin % NUM_FRAMES[5:0];
 
     // ---------- blend_mode CDC ----------
     (* ASYNC_REG = "TRUE" *) reg bm_q1, bm_q2;

@@ -52,7 +52,14 @@ module pg_genlock #(
     wire ov_pulse = out_vsync & ~ov_q;
 
     // ---- read_slot = (frame_ptr - READ_DELAY) mod NUM_FRAMES ----
-    wire [5:0] fp_use = (fp_stable >= NUM_FRAMES[5:0]) ? 6'd0 : fp_stable;   // guard
+    // s2mm_frame_ptr_out is GRAY-CODED (bench-confirmed 2026-06-03). It MUST be decoded
+    // before use; treating it as binary mis-tracks frames (only looked clean on a static
+    // grid, where every framestore is identical). gray2bin then mod NUM_FRAMES → clean slot.
+    function [5:0] gray2bin; input [5:0] g; begin
+        gray2bin[5]=g[5]; gray2bin[4]=gray2bin[5]^g[4]; gray2bin[3]=gray2bin[4]^g[3];
+        gray2bin[2]=gray2bin[3]^g[2]; gray2bin[1]=gray2bin[2]^g[1]; gray2bin[0]=gray2bin[1]^g[0];
+    end endfunction
+    wire [5:0] fp_use = gray2bin(fp_stable) % NUM_FRAMES[5:0];
     wire [3:0] rs = (fp_use >= READ_DELAY[5:0]) ? (fp_use[3:0] - READ_DELAY[3:0])
                                                 : (fp_use[3:0] + NUM_FRAMES[3:0] - READ_DELAY[3:0]);
 

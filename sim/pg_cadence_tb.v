@@ -46,6 +46,9 @@ module pg_cadence_tb #(
     // pg_genlock-v1 was bench-disproven on. Both the DUT (via dut_fp) and the collision/lap
     // checks use eslot, so the gate sees whatever the real pointer might do.
     integer eslot, cseed, n_dec;   // n_dec = # of pointer-DECREASES injected (the dividing line)
+    // present the writer slot as GRAY code (like real s2mm_frame_ptr_out), so the DUT's
+    // gray2bin decoder is exercised end-to-end. A monotonic +1 eslot → 1-bit-per-step Gray.
+    function [5:0] bin2gray; input [5:0] b; begin bin2gray = b ^ (b >> 1); end endfunction
     // Chaos taxonomy, made EXPLICIT (per review): the ONLY unhandled hazard is a pointer
     // DECREASE (the writer moving to an older framestore). FP_CHAOS=1 advances eslot by
     // {0,+1,+2,+3} — strictly NON-DECREASING in ring order (repeat / +1 / skip / bigger-skip);
@@ -138,7 +141,7 @@ module pg_cadence_tb #(
             end else src_cnt=src_cnt+1;
             if (out_cnt >= out_period-1) out_cnt=0; else out_cnt=out_cnt+1;
             dut_ov <= (out_cnt < 4);       // registered DUT inputs (nonblocking, no race)
-            dut_fp <= eslot[5:0];
+            dut_fp <= bin2gray(eslot[5:0]);   // present Gray-coded pointer (real-HW behaviour)
 
             // DDR drain
             n_act = count_active(0);
