@@ -417,6 +417,31 @@ A's larger reads**. Net design constants for `pg_cadence.v`: clamp `N−⌈R⌉�
 setpoint, bracketing pair, deadband + anti-windup, blend-disable/α-snap (which also halves A's
 1080p read demand — directly relieving the bandwidth constraint).
 
+## 14. Cadence RTL written + gated (session 2, 2026-06-03) ✅
+
+`hdl/pg_cadence.v` (commit `5da13c0`) — fixed-point cadence controller, drop-in superset of
+`pg_genlock`, implementing the §13 validated design (clamp `N−⌈R⌉−1−J−O−MARGIN`, small
+setpoint, bracketing pair, blend-disable/α-snap). Gated by `sim/pg_cadence_tb.v` against the
+DDR-contention harness: **PASS at N≥6 (720p + 1080p-scaled-BW, blend & disable); correctly
+FAILs the 1080p-starvation case on `writer_overflow`.** Matches the model exactly.
+
+**Two bugs the RTL gate caught (build-then-verify value):**
+1. `fp_delta` wrap — `(fp_use−fp_prev)%N` wrapped mod 64 on a slot wrap (N−1→0 gave +N−1, not
+   +1); fixed to `(fp_use+N−fp_prev)%N`.
+2. **Rate-learning deadlock** — the behavioral model computed `⌈R⌉` from the true period ratio,
+   masking that the RTL must *estimate* the async rate. A pure occupancy servo deadlocks (the
+   clamp's `⌈inc⌉` pins occupancy in the deadband, so `inc` never learns R). **Fix: feedforward
+   — `inc` tracks measured `R = Δnewest`/output-frame (IIR) + a gentle occupancy phase-trim.**
+   This is the one place the RTL genuinely departs from the model.
+
+**Open (non-blocking for safety):** blend coverage 275/437 (63%) vs the model's ~99% — the
+feedforward IIR lags at rate steps, so some transient frames don't blend. A filter-tuning
+(FILT_SH) refinement, not a safety issue.
+
+**Next:** (a) independent adversarial **Q7 review on the actual RTL** + the harness; (b)
+integrate into `pg_read_engine_top` (replace `pg_genlock`) + BD + firmware `blend_mode` GPIO;
+(c) Vivado build + bench. Not yet integrated.
+
 ### Repo pointers for the reviewer
 - Read engine: `hdl/pg_read_engine_top.v`, `hdl/pg_compose.v`, `hdl/pg_genlock.v`,
   `hdl/pg_addrgen.v`, `hdl/pg_linefetch.v`

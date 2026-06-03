@@ -76,3 +76,32 @@ PI fixes (deadband/anti-windup) + a blend-disable/α-snap mode to `hdl/pg_cadenc
 companion `sim/pg_cadence_tb.v` gates the RTL against this model, then you get the adversarial
 Q7 pass on the actual controller. **So: is the gate sound enough to pin the clamp formula and
 N=8, or does (A)/(B)/(C) move the answer?**
+
+---
+
+## ROUND 2 — adversarial Q7 review of the actual RTL (2026-06-03)
+
+The gate held under your last review (fixes applied: writer_overflow in PASS, O in clamp,
+bracketing pair, 1080p profile → §13). The cadence RTL is now written and gated:
+
+**Artifacts @ commit `5da13c0`:** `hdl/pg_cadence.v` + `sim/pg_cadence_tb.v` (gates the RTL
+against the §13 DDR-contention harness). Result: PASS at N≥6 (720p + 1080p-scaled-BW, blend &
+disable); FAILs the 1080p-starvation case on `writer_overflow`. §14 has the summary.
+
+**Please try to break the actual controller against the Q7 safety invariant — on real slot
+lifetimes.** Specifically:
+1. **The one model→RTL departure:** the RTL can't use true R, so `inc` is a FEEDFORWARD IIR of
+   `Δnewest`/output-frame + a gentle occupancy trim (pure occupancy servo deadlocked — the
+   clamp's `⌈inc⌉` pinned occupancy in the deadband). **Does the IIR lag at a rate STEP make
+   `⌈inc⌉` transiently wrong → clamp transiently too loose → a collision the steady-state gate
+   misses?** This is the highest-risk seam.
+2. **`fp_delta` reconstruction** of the absolute write index from a mod-N pointer — safe if
+   VDMA advances `frame_ptr` by <N between samples. Is that assumption sound for real S2MM
+   Dynamic-Genlock (can it jump >1, repeat, or briefly glitch the pointer)?
+3. **Blend coverage 63% vs the model's 99%** — is the gap purely benign (feedforward lag in
+   near-1:1 phases where α≈0 anyway), or is the controller silently dropping blends it should do?
+4. The TB registers DUT inputs (nonblocking) to kill a posedge race — does that hide any real
+   1-cycle timing hazard the integrated design would have against live VTC vsync / VDMA frame_ptr?
+
+If it survives this, the plan is: integrate `pg_cadence` into `pg_read_engine_top` (replace
+`pg_genlock`) + BD + firmware `blend_mode` GPIO, then Vivado build + bench.
