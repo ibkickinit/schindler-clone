@@ -274,6 +274,59 @@ confirmed it. **Locked design:**
 N=7: **0 collisions, occupancy bounded [0..4], cadence tracks ratio.** This is the gate the
 cadence-controller RTL must keep passing.
 
+## 11. Next session — clamp-margin closed form + ordering (start here)
+
+Independent review worked the clamp margin through analytically so next session validates a
+closed form instead of re-deriving it.
+
+**Derivation.** At output-frame start `newest = W`, in-progress slot `= W+1`. The reader holds
+`want = W − d` (lag `d`) for the whole frame; during the frame the writer sweeps in-progress
+slots `W+1 … W+⌈R⌉+1`. No wrap-collision requires:
+
+```
+    N − d > ⌈R⌉ + 1     →     d ≤ N − ⌈R⌉ − 2          (idealized: max_lag = N−⌈R⌉−2)
+```
+
+Exact only when (a) the writer completes ≤⌈R⌉ slots/frame and (b) the reader holds exactly one
+slot for exactly one frame. Both break in the directions we suspected:
+- **Jitter J:** a source frame landing ~1 src-period early lets the writer complete `⌈R⌉+1` in a
+  frame → subtract `J` (≈1).
+- **Slot-lifetime overlap O:** a reader's DataMover for frame K can still be draining when frame
+  K+1's read starts → it transiently holds *two* consecutive frames' slots → subtract `O` (≈0–1,
+  and `>0` exactly when DDR contention stretches a read past the frame boundary — when you most
+  need margin). **This is the `read_active`/stale-`read_slot` modeling bug**: the model must mark
+  a slot in-use from read-START to read-COMPLETE (which may overlap the next `out_evt`), not
+  snapshot only the latest pick.
+
+```
+    max_lag_robust = N − ⌈R⌉ − 2 − J − O
+```
+
+For `R=2.5` (60→24), keeping a real margin ≥2 lands at **N≈8–9 worst-case-stacked**, **~6 if reads
+never overlap** — so the exact minimum N hinges on whether *one full-raster read provably fits
+inside one output frame with slack* (it should — prove it) and on the real jitter bound. ⇒ the
+collisions-at-N=7 seen after hardening are **plausibly REAL** (exactly what `−J−O` predicts), not
+pure artifact — but the slot-lifetime bug must be fixed first to tell signal from artifact.
+
+**Depth math with two readers (load-bearing):** the writer must dodge both readers, so
+simultaneously-held slots = A(2 when blending) + B(1) + in-progress(1) = **4**; `N−4` absorbs
+jitter + overlap + phase-spread. **Keeping engine B single-fetch holds that sum at 4 instead of 5
+— so B-single-fetch buys ring margin, not just bandwidth.** Likewise the **blend-disable fallback
+for A drops A to 1 slot**, making it a lever on depth as well as DDR.
+
+**Next-session ordering:**
+1. **Fix the gate's slot-lifetime model** — mark a slot in-use from read-start to read-complete
+   (allow overlap past `out_evt`); have the model **measure J and O** rather than assume them.
+2. **Pin true minimum N + clamp margin** against the closed form `N−⌈R⌉−2−J−O`; prove one
+   full-raster read fits inside one output frame with slack.
+3. **Write the RTL correctly** (`hdl/pg_cadence.v` WIP): real deadband (no integrate at |err|≤1),
+   anti-windup integral clamp, power-of-two KP/KI, the validated clamp margin, blend-disable /
+   α-snap mode (default-on-blend@720p, off-available@1080p).
+4. **Companion `sim/pg_cadence_tb.v`** wrapping the RTL in the (now-honest) writer+ring+safety
+   harness; gate the RTL against it.
+5. **Independent adversarial Q7 review** — hand over the controller + hardened model; break the
+   invariant against real slot lifetimes.
+
 ### Repo pointers for the reviewer
 - Read engine: `hdl/pg_read_engine_top.v`, `hdl/pg_compose.v`, `hdl/pg_genlock.v`,
   `hdl/pg_addrgen.v`, `hdl/pg_linefetch.v`
