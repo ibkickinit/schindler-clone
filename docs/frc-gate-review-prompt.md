@@ -155,3 +155,41 @@ exercise cadence/decode timing). Building + programming now; bench wrap-kill is 
 
 We'll bring the bench result (does the wrap die? motion behaviour?) to this. fp_mon_detector
 stays as a permanent Gray-aware health bit.
+
+---
+
+## Round 4 — bench result + the residual pixel-shift (2026-06-03)
+
+Full record: `docs/readengine-b-cadence-bench-result.md`. Build #21b (pg_cadence gen-lock mode,
+WNS +0.235) on board.
+
+**Result — the round-3 open risks closed favourably on MOTION:**
+- Motion (Osee input 2) and 1080p60 laptop (input 3) are **clean on the monitor** — no judder,
+  roll, tear, or periodic hitch. Telemetry tracked (`in=1920x1080 src=60 out=60`).
+- This validates the **gen-lock cadence**, the **Gray decode**, and crucially the
+  **decode→slot mapping** (round-3 risk #1): a wrong `gray2bin(fp) % 5` offset/period would have
+  surfaced as a constant temporal offset or hitch on motion — it did not. The static grid could
+  not disambiguate this; live motion does. So `framestore = gray2bin(fp) % NUM_FRAMES` is
+  empirically pointing at the freshest frame, and gen-lock-mode (drop/repeat, no blend) kills the
+  wrap cleanly on its own (round-3 Q5: yes, for this 60→60 case).
+- Color pipeline confirmed at identity (UART `i`) — not a factor.
+
+**New question for you — the residual constant pixel offset.** A small constant spatial offset
+has been on **every** read-engine-B build, **identical across all three sources** (static grid,
+motion, laptop) → structural to read-engine-B output geometry, source-independent, and unrelated
+to the cadence/Gray work. We audited the datapath and it is **clean**: `pg_addrgen` DDA resets to
+`src=0,frac=0` at SOF (no init phase); `pg_linefetch` packed-beat read at `rd_col=0` yields source
+pixel 0 exactly (`o=0,beat_b=0,sub=0`); `pg_compose` `push_col` tracks raster from 0;
+`axis_to_vid_io` registers data+active+hsync+vsync **together** (no relative skew). So output(0,0)
+→ source(0,0) through the whole datapath.
+
+That leaves the **output-stage raster placement vs sync** as the suspect:
+1. **VTC TX porch split** — totals correct (`HTOTAL=1650 VTOTAL=750`), but the active-region
+   position is set by HFP/HSYNC/HBP & VFP/VSYNC/VBP. Deviation from CEA-861-D 720p60 (HFP=110,
+   HSYNC=40, HBP=220; VFP=5, VSYNC=5, VBP=20) shifts the image on a panel that keys active off
+   sync. **Is this the likely cause, and is there a subtler datapath origin we missed?**
+2. **rgb2dvi DE-vs-sync handoff** — uniform registration argues against it, but a fixed DE/sync
+   skew at that boundary is also source-independent. Worth ruling in/out?
+
+We will measure whether the offset is H, V, or both (localizes to HBP vs VBP) before chasing it.
+What's your ranked read of the cause, and what would you measure to pin it definitively?
