@@ -327,7 +327,7 @@ for A drops A to 1 slot**, making it a lever on depth as well as DDR.
 5. **Independent adversarial Q7 review** — hand over the controller + hardened model; break the
    invariant against real slot lifetimes.
 
-## 12. Gate hardened + min-N PINNED (session 2, 2026-06-02) ✅
+## 12. Gate hardened + min-N (session 2, 2026-06-02) — ⚠️ knee SUPERSEDED by §13
 
 `sim/frc_cadence_model_tb.v` rebuilt as a **DDR shared-bandwidth model with real slot
 lifetimes**: the writer and both readers' fetches are byte transfers that split bandwidth
@@ -375,6 +375,47 @@ The `suppress` metric is superseded by the blend-coverage report.
 **→ Next (task #101): apply this to `hdl/pg_cadence.v`** — validated clamp `N−⌈R⌉−1−J−MARGIN`,
 small setpoint, real deadband + anti-windup, blend-disable/α-snap mode; then `sim/pg_cadence_tb.v`
 gates the RTL against this model; then the adversarial Q7 review.
+
+## 13. Gate review fixes applied → CORRECTED min-N (session 2, 2026-06-03) ✅
+
+Independent review reproduced §12 and found two 1080p failure modes the gate missed, plus a
+blend-coverage artifact. All four fixes applied to `sim/frc_cadence_model_tb.v` and re-run:
+
+1. **`writer_overflow==0` added to PASS** — at 1080p bytes with 720p-calibrated BW, the S2MM
+   writer can't finish a frame write (torn INPUT); the old gate printed SAFE-PASS anyway.
+2. **Measured O fed into the clamp**: `max_lag = N − ⌈R⌉ − 1 − J − O − MARGIN` (code had
+   dropped O; harmless at 720p where O=0, but 1 too loose at 1080p where O=1).
+3. **1080p byte profile** run (A 4100→6200, W→9300) — see bandwidth finding below.
+4. **Bracketing-pair fetch**: a blend reader caps read at `newest−1` so the partner `S+1=newest`
+   always exists (the repeat case can no longer lose its blend).
+
+**Corrected results (MARGIN=2, J=1, engine B single-fetch; clamp-off still collides → teeth intact):**
+
+| profile | N=6 | N=7 | N=8 |
+|---|---|---|---|
+| 720p (A=4100, BW=16) | SAFE-PASS, **blend 100%** | 100% | 100% |
+| 1080p, BW scaled to keep A≈¼-frame (BW=24) | SAFE-PASS, **100%** | 100% | 100% |
+| 1080p, **720p-calibrated BW=16** | **FAIL — writer_overflow=166, O=1** | FAIL | FAIL |
+
+**The §12 "N=8 blend knee" was a forward-fetch ARTIFACT.** With bracketing, **blend coverage is
+100% at the safety floor N=6** — there is no knee. So:
+
+- **Ring depth: N=6** for full blended FRC at 720p AND 1080p (MARGIN=2, J=1, O accounted). The
+  clamp using ⌈R⌉ (full-frame writer advance) is conservatively safe — the real read takes ~¼
+  frame, so the writer advances far less during it, keeping min_lap ≥ 3 even at the R=4 hot-plug.
+- **The binding 1080p constraint is DDR BANDWIDTH, not ring depth.** Engine A's 1080p read is
+  ~1.5× the 720p bytes; with the same BW the writer starves (overflow=166, gate now FAILs).
+  Needs ~1.5× more usable bandwidth for A, OR S2MM AXI write-QoS priority (the model's
+  equal-share arbitration is pessimistic for the writer — real S2MM with write priority starves
+  less, but the gate must still surface the pressure). **#3's true calibration — usable DDR3 BW
+  under contention + S2MM QoS — is a bench/datasheet item, not pure sim; the gate now FLAGS
+  insufficiency rather than hiding it.**
+
+**Status: gate is sharp and green for the RTL.** 720p blended FRC at N=6 is fully validated;
+1080p is depth-OK at N=6 but **gated on confirming real usable DDR3 bandwidth (+QoS) for engine
+A's larger reads**. Net design constants for `pg_cadence.v`: clamp `N−⌈R⌉−1−J−O−MARGIN`, small
+setpoint, bracketing pair, deadband + anti-windup, blend-disable/α-snap (which also halves A's
+1080p read demand — directly relieving the bandwidth constraint).
 
 ### Repo pointers for the reviewer
 - Read engine: `hdl/pg_read_engine_top.v`, `hdl/pg_compose.v`, `hdl/pg_genlock.v`,

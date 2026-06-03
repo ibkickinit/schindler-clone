@@ -132,14 +132,16 @@ module frc_cadence_model_tb #(
 
             Rr = (out_period[rdr]*1.0)/(src_period*1.0);
             ceilR = $ceil(Rr);
-            // Clamp ceiling set to the collision bound minus the target safety margin:
-            //   occ_collide = N-1-ceil(R)-J  (writer laps read slot when occ reaches this)
-            //   max_lag     = occ_collide - MARGIN = N - ceil(R) - 1 - JMARG - MARGIN
-            // Operating at/below this ceiling guarantees min_lap >= MARGIN. Blend needs
-            // max_lag >= 1 (so S+1 is inside the safe window) → the depth requirement.
-            max_lag = N - ceilR - 1 - JMARG - MARGIN; if (max_lag<0) max_lag=0;
-            hi = newest;
-            lo = newest - max_lag; if (lo<0) lo=0;
+            // Clamp ceiling = collision bound - target margin, INCLUDING measured O
+            // (read-overlap-past-frame). Review fix: code previously dropped O so at 1080p
+            // (O=1) the clamp was 1 too loose vs its own derivation.
+            //   occ_collide = N-1-ceil(R)-J-O
+            //   max_lag     = occ_collide - MARGIN = N - ceil(R) - 1 - JMARG - O - MARGIN
+            max_lag = N - ceilR - 1 - JMARG - O_meas[rdr] - MARGIN; if (max_lag<0) max_lag=0;
+            // Bracketing-pair fetch (review B): a blend reader caps read at newest-1 so the
+            // forward partner S+1=newest always EXISTS (the repeat case can't lose its blend).
+            hi = (can_blend[rdr]) ? (newest-1) : newest; if (hi<0) hi=0;
+            lo = newest - max_lag; if (lo<0) lo=0; if (lo>hi) lo=hi;
             if (SAFETY_CLAMP_ON!=0) begin
                 if (want>hi) want=hi;
                 if (want<lo) want=lo;
@@ -271,6 +273,7 @@ module frc_cadence_model_tb #(
         run_phase(1000,1200,1000,80,"P3 STEP 60->50");
         run_phase(1000,2500,1000,60,"P4 STEP 60->24 (2.5x)");
         run_phase(1200,1000,1000,80,"P5 STEP 50->60");
+        run_phase(1000,4000,1000,60,"P6 HOT-PLUG 60->15 (R=4, long dwell)");
 
         $display("==== frc_cadence_model_tb v3  N=%0d CLAMP=%0d JIT=%0d BW=%0d/100 ====", N,SAFETY_CLAMP_ON,JIT,BWx100);
         $display("  collisions=%0d  writer_overflow=%0d  J_meas(extra writes/outframe)=%0d",
@@ -283,13 +286,16 @@ module frc_cadence_model_tb #(
         // true safety metric (writer never within MARGIN frames of lapping a read slot).
         // blend coverage (blend/want) is the QUALITY metric — read off the min-N where it's
         // high (low coverage => ring too shallow to blend at that ratio, judder returns).
-        pass = (collisions==0) && (min_lap[0]>=MARGIN);
+        // PASS now also requires the writer never starved (review A1): writer_overflow>0
+        // = S2MM couldn't finish a frame write under read contention = torn INPUT, which
+        // collisions+min_lap alone don't catch.
+        pass = (collisions==0) && (min_lap[0]>=MARGIN) && (w_overflow==0);
         if (SAFETY_CLAMP_ON==0) begin
             if (collisions>0) $display("FRC: HAZARD CONFIRMED (clamp off -> collisions)");
             else              $display("FRC: UNEXPECTED (clamp off, no collision)");
         end else begin
-            if (pass) $display("FRC_CADENCE_TB: SAFE-PASS  (blend coverage A = %0d/%0d)", m_blend[0], m_wantblend[0]);
-            else      $display("FRC_CADENCE_TB: FAIL (collision or min_lap<MARGIN)");
+            if (pass) $display("FRC_CADENCE_TB: SAFE-PASS  (blend coverage A = %0d/%0d, w_overflow=0)", m_blend[0], m_wantblend[0]);
+            else      $display("FRC_CADENCE_TB: FAIL (collisions=%0d min_lap=%0d w_overflow=%0d)", collisions, min_lap[0], w_overflow);
         end
         $finish;
     end
