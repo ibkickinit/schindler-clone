@@ -174,22 +174,33 @@ WNS +0.235) on board.
   wrap cleanly on its own (round-3 Q5: yes, for this 60→60 case).
 - Color pipeline confirmed at identity (UART `i`) — not a factor.
 
-**New question for you — the residual constant pixel offset.** A small constant spatial offset
-has been on **every** read-engine-B build, **identical across all three sources** (static grid,
-motion, laptop) → structural to read-engine-B output geometry, source-independent, and unrelated
-to the cadence/Gray work. We audited the datapath and it is **clean**: `pg_addrgen` DDA resets to
-`src=0,frac=0` at SOF (no init phase); `pg_linefetch` packed-beat read at `rd_col=0` yields source
-pixel 0 exactly (`o=0,beat_b=0,sub=0`); `pg_compose` `push_col` tracks raster from 0;
-`axis_to_vid_io` registers data+active+hsync+vsync **together** (no relative skew). So output(0,0)
-→ source(0,0) through the whole datapath.
+**New question for you — the residual offset is a per-line WRAP (symptom refined at bench).**
+Closer look: source pixel 0 lands a few pixels IN from the left, and **each line's last few
+pixels wrap into the START of the next line**, constant and **non-accumulating** (vertical grid
+lines stay straight — no shear). Same on every source. This is a **horizontal phase offset in the
+AXIS→video stream, not a rigid raster shift** — a VTC porch shift can't wrap end-of-line content
+into the next line, so we are *withdrawing the VTC-porch hypothesis*.
 
-That leaves the **output-stage raster placement vs sync** as the suspect:
-1. **VTC TX porch split** — totals correct (`HTOTAL=1650 VTOTAL=750`), but the active-region
-   position is set by HFP/HSYNC/HBP & VFP/VSYNC/VBP. Deviation from CEA-861-D 720p60 (HFP=110,
-   HSYNC=40, HBP=220; VFP=5, VSYNC=5, VBP=20) shifts the image on a panel that keys active off
-   sync. **Is this the likely cause, and is there a subtler datapath origin we missed?**
-2. **rgb2dvi DE-vs-sync handoff** — uniform registration argues against it, but a fixed DE/sync
-   skew at that boundary is also source-independent. Worth ruling in/out?
+Resample/address math is clean (output(0,0)→source(0,0); addrgen DDA no init phase; linefetch
+`rd_col=0`=src px0; compose SOF on genuine first pixel). The content is right; only its horizontal
+**anchor** is off by δ.
 
-We will measure whether the offset is H, V, or both (localizes to HBP vs VBP) before chasing it.
-What's your ranked read of the cause, and what would you measure to pin it definitively?
+**Our lead hypothesis:** `axis_to_vid_io` has `s_axis_tready = vtg_active_video && enable`, so it
+consumes **only during active video**. The SOF-realign re-arms each frame (`started<=0` at vsync)
+and discards non-SOF head beats until the SOF beat appears. Because tready is active-gated, δ
+residual beats (frame N's tail still in the output FIFO at blanking start) can only be drained by
+**burning the first δ active-pixel slots** → the SOF beat (pixel 0) lands at active column δ →
+every line shifted +δ, last δ px wrap to next line. δ in 64-bit beats (~2.67 px) → "a few pixels."
+
+**Proposed fix:** flush pre-SOF residue during **blanking** — assert tready while `!started` to
+drain non-SOF head beats in blanking, then hold once the head IS the SOF beat so it becomes pixel
+0 at active column 0. Gate to active-video thereafter as today.
+
+**Questions for you:**
+1. Does the residue-drain-in-active mechanism hold up, or is there a more fundamental reason pixel
+   0 lands at column δ (e.g., producer leaving a deterministic FIFO residue across the frame
+   boundary that we should fix producer-side in `pg_compose` instead)?
+2. Is the proposed blanking-flush safe against (a) a SOF that never arrives / arrives mid-active,
+   (b) over-draining into the next frame, (c) the `vtg_vsync` re-arm timing? Any edge cases?
+3. Best ILA signal to confirm δ before we touch RTL — beats drained before SOF emit per frame, or
+   output-FIFO occupancy latched at `vtg_vsync` rising?

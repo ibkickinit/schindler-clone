@@ -24,31 +24,40 @@ artifacts — see `schindler_ms2109_verification_trap`).
   white=(255,255,255), matrix `[4000 0/0 4000 0/0 0 4000]` diag (1.0 Q2.14), offsets (0,0,0).
   The box is not altering color; any tint in webcam captures is camera white balance.
 
-## Open: constant few-pixel offset (pre-dates cadence — "same as before")
+## Open: constant per-line horizontal WRAP (pre-dates cadence — "same as before")
 
-A small constant spatial offset is present on **every** read-engine-B build, **independent of
-source** (static grid, motion, laptop all show it identically). It is therefore **structural to
-read-engine-B's output geometry**, not a cadence/genlock/Gray artifact, and not source-side.
+**Observed symptom (bench, 2026-06-03):** source pixel 0 lands a few pixels IN from the left;
+each line's last few pixels wrap to the START of the next line; the pattern is **identical on
+every line and does NOT accumulate** (vertical grid lines stay straight, no shear). Constant δ
+≈ a few pixels, source-independent (static/motion/laptop all show it).
 
-**Datapath audited clean — the offset is NOT born in the resample/unpack/adapter:**
-- `pg_addrgen`: H/V DDA reset to `src=0, frac=0` at SOF; at 1:1 `src_col(0)=0`. No init phase.
-- `pg_linefetch` (packed-beat): `rd_col=0 → o=3*0=0 → beat_b=0, sub=0 → window[23:0]` = source
-  pixel 0 exactly. The 64-bit-beat byte-address read introduces no fixed pixel offset at col 0.
-- `pg_compose`: `push_col` tracks raster from 0; SOF/EOL computed at push. No offset.
-- `axis_to_vid_io`: `{vid_data, vid_active, vid_hsync, vid_vsync}` all registered **together**
-  (uniform 1-cycle delay) → no data-vs-sync skew, no relative H shift.
+**This is a horizontal phase offset in the AXIS→video stream, NOT a rigid raster shift.** A VTC
+porch shift moves the whole active rectangle and blanks the edge — it cannot wrap end-of-line
+content into the next line. The wrap is the giveaway: pixel 0 is landing at active column δ.
 
-So output(0,0) maps to source(0,0) through the whole read-engine datapath. **The remaining
-suspect is the output stage's raster *placement* relative to sync**, common to all builds:
+**Datapath resample/address math is clean** (output(0,0)→source(0,0)): `pg_addrgen` DDA resets to
+`src=0,frac=0` at SOF (no init phase); `pg_linefetch` `rd_col=0 → o=0,beat_b=0,sub=0` = source
+pixel 0; `pg_compose` `push_col` from 0, SOF on genuine first pixel. So the content is correct;
+only its horizontal *anchor* in the output raster is off by δ.
 
-1. **VTC TX generator porch split (lead hypothesis).** Totals are correct (`HTOTAL=1650
-   VTOTAL=750`, confirmed via UART), but the active-region *position* is set by the porch split
-   (HFP/HSYNC/HBP, VFP/VSYNC/VBP). If the firmware's VTC config deviates from CEA-861-D 720p60
-   (HFP=110, HSYNC=40, HBP=220; VFP=5, VSYNC=5, VBP=20), a digital panel that keys active off
-   sync shows a constant shift. **Discriminator:** is the offset H, V, or both? H → HBP/HFP
-   split; V → VBP/VFP split. Then dump the programmed VTC generator porch regs vs CEA.
-2. **rgb2dvi DE-vs-sync handoff** — lower likelihood (axis_to_vid_io registration is uniform),
-   but a fixed 1–2 px DE/sync skew at the rgb2dvi boundary would also be source-independent.
+**Lead hypothesis — `axis_to_vid_io` SOF-realign drains pre-SOF residue inside the active window:**
+`s_axis_tready = vtg_active_video && enable` → the adapter consumes **only during active video**.
+The SOF-realign re-arms each frame (`started<=0` at vsync) and discards non-SOF head beats until
+the SOF beat appears (then SOF = pixel 0). But because tready is active-gated, those δ residual
+beats (frame N's tail still queued in the output FIFO at blanking start) can only be drained by
+**burning the first δ active-pixel slots** (shown black at top-left). So the **SOF beat lands at
+active column δ**, every subsequent line is shifted +δ, and each line's last δ pixels wrap into
+the next line's head — constant, non-accumulating. δ is counted in 64-bit beats (≈2.67 px each)
+→ "a few pixels." Matches the symptom exactly.
 
-**Next datum to collect:** measure whether the offset is horizontal, vertical, or both, and its
-magnitude in pixels — that single fact localizes it to HBP vs VBP and confirms/kills hypothesis 1.
+**Proposed fix:** flush pre-SOF residue during **blanking**, not active video. While `!started`,
+assert `tready` to drain non-SOF head beats during blanking; once the FIFO head IS the SOF beat,
+hold (deassert) so SOF waits at the head and becomes the first pixel at active column 0. Then gate
+to active-video as today. Makes pixel-0 placement deterministic at column 0 → kills the wrap.
+
+**Confirm before fixing (ILA/diag):** count beats drained before the SOF emit per frame (= δ),
+and/or output-FIFO occupancy at the vsync rising edge (should be ~0 if no residue). A nonzero,
+roughly-constant drain count confirms the mechanism.
+
+**Lower-likelihood alternates:** producer leaves a deterministic FIFO residue at frame end
+(fixable producer-side instead); rgb2dvi DE-vs-sync skew (but that wouldn't wrap content).
