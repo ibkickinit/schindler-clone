@@ -60,7 +60,20 @@ module axis_to_vid_io (
      * vtg_vsync rising edges = VTC output frame boundary). Tells us how
      * many rows MM2S actually delivered per output frame. Latched snapshot
      * for firmware read via AXI GPIO 2. */
-    output reg  [15:0] mm2s_tlast_snap
+    output reg  [15:0] mm2s_tlast_snap,
+
+    /* δ-measurement (2026-06-03): per-frame count of active-video pixel slots
+     * that elapse BEFORE the SOF beat emits as pixel 0 — i.e. the output column
+     * where pixel 0 lands, which is exactly the per-line horizontal wrap offset
+     * we see at the bench. Decomposed:
+     *   [15:0]  = total pre-SOF active cycles  (= δ, the wrap offset in pixels)
+     *   [31:16] = of those, STALE beats discarded (consume && !SOF) — "drain"
+     * The remainder (δ - drain) are STARVES (active slot with no data, waiting on
+     * the SOF beat). drain>0 ⇒ residual beats from the prior frame's tail were
+     * burned in active video (the SOF-realign/active-gated-tready hypothesis);
+     * starve>0 ⇒ the producer was simply late delivering pixel 0. Snapshotted at
+     * vtg_vsync rising (reports the just-completed frame). */
+    output reg  [31:0] predrain_snap
 );
 
     // ---- SOF-gated frame start ----
@@ -152,6 +165,26 @@ module axis_to_vid_io (
             mm2s_tlast_count <= tlast_handshake ? 16'd1 : 16'd0;
         end else if (tlast_handshake) begin
             mm2s_tlast_count <= mm2s_tlast_count + 16'd1;
+        end
+    end
+
+    /* ---- δ (pre-SOF) measurement ----
+     * presof: an active-video cycle that elapses before pixel 0 emits. The SOF
+     * cycle itself (consume && s_axis_tuser) emits pixel 0, so it is EXCLUDED —
+     * presof_cnt is therefore the column index at which pixel 0 lands. */
+    wire presof       = vtg_active_video && enable && !started
+                        && !(consume && s_axis_tuser);
+    wire presof_drain = presof && consume && !s_axis_tuser;   // stale beat discarded
+    reg [15:0] presof_cnt, drain_cnt;
+    always @(posedge clk) begin
+        if (!enable) begin
+            presof_cnt <= 16'd0; drain_cnt <= 16'd0; predrain_snap <= 32'd0;
+        end else if (vsync_rising) begin
+            predrain_snap <= {drain_cnt, presof_cnt};   // {[31:16]=drain, [15:0]=δ}
+            presof_cnt <= 16'd0; drain_cnt <= 16'd0;
+        end else begin
+            if (presof)       presof_cnt <= presof_cnt + 16'd1;
+            if (presof_drain) drain_cnt  <= drain_cnt  + 16'd1;
         end
     end
 

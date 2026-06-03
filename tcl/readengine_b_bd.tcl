@@ -191,3 +191,16 @@ if {$_dbg_ok} {
 # redundant — and dropping it frees the BRAM the widened dbg_probe needs.
 
 puts "READENGINE-B: integration block complete (+ILA: ila_re_dbg 192-bit prefetch-state)"
+
+# ---------------------------------------------------------------------------
+# δ-measurement diag (2026-06-03): route axis_to_vid_io_0/predrain_snap onto the
+# DEAD scaler ch1 of axi_gpio_2 (gpio_io_i). In route-B the scaler is muxed out,
+# so its {v_tlast,h_tlast} diag on ch1 reads garbage — free to repurpose. fp_mon
+# stays on ch2 (gpio2_io_i) as the frame_ptr health bit. Firmware reads ch1:
+#   ch1[15:0]  = δ  (active pixels before SOF emits = the per-line wrap offset)
+#   ch1[31:16] = of those, stale beats discarded ("drain"); rest = starves.
+# Confirms/quantifies the pixel-wrap diagnosis before we touch axis_to_vid_io RTL.
+# ---------------------------------------------------------------------------
+delete_bd_objs [get_bd_nets -of_objects [get_bd_pins axi_gpio_2/gpio_io_i]]
+connect_bd_net [get_bd_pins axis_to_vid_io_0/predrain_snap] [get_bd_pins axi_gpio_2/gpio_io_i]
+puts "READENGINE-B: predrain_snap (δ) -> axi_gpio_2 ch1 (scaler diag repurposed)"
