@@ -223,6 +223,48 @@ which depend on no blocked hardware.
 
 ---
 
+## 10. Review resolved (2026-06-02) + behavioral-model gate result
+
+Independent review answered all of §9 and the behavioral model (`sim/frc_cadence_model_tb.v`)
+confirmed it. **Locked design:**
+
+- **Q1 cadence = phase accumulator + occupancy PI servo.** Per output frame (frame-atomic,
+  at vblank): `acc += inc; n_adv = floor(acc); acc -= n_adv` → `n_adv` 0=repeat / 1=advance /
+  ≥2=drop; `frac(acc)` = Mackin α. `inc` is the *measured* source rate — the source is async,
+  so a PI loop servos `inc` to hold ring occupancy at ~N/2 (video async-SRC, ascal `o_lltune`).
+  Hysteresis is inherent in the integer carry; add a ±0.5-frame deadband on occupancy error.
+  Widths: ~24-bit acc/inc (~20 bits tracks ±100 ppm), α = top 8 frac bits.
+- **Q3 BRAM-hold is IMPOSSIBLE — deleted.** XC7Z020 = 140×36 Kb ≈ **0.63 MB** BRAM, no UltraRAM
+  on 7-series; a 1080p frame is 6.2 MB (even 480p = 0.92 MB). The "previous frame" can only live
+  in DDR — which is what dual-fetch already is. There is no BRAM-vs-DDR tradeoff for HD blend.
+- **Q4 = α-gated conditional dual-fetch (the key bandwidth decision).** Single DDR fetch when
+  α∈{0,1} (locked 60→60, 60→30 never blend), dual fetch only when α∈(ε,1−ε). The 2× read is a
+  *peak* (59.94→60 hits it rarely), not a floor. α is known per-frame before the frame.
+- **Q7 = hard safety invariant + ring depth.** Never pick a slot (or pair S,S+1 when blending)
+  the write pointer can reach before the output frame completes; if a repeat would let the
+  writer close within margin, force-advance and eat a 1-frame cadence error. Depth: two readers
+  at different phases × 2 slots (blend) + writer = up to 5 occupied on a 5-slot ring → zero
+  headroom. **Model proof:** N=5 *collides* at 60→24 (writer laps mid-read during the long
+  output frame); **N=7 with A=dual-fetch/blend + B=single-fetch/no-blend → 0 collisions across
+  all rate steps.** → **bump framestores to 6–7**, and constrain engine B (SD analog) to
+  single-fetch/no-blend. Danger is the rate-step *transient* (resolution change/hot-plug), not
+  steady ppm drift — size the ring for the worst transient (Q2).
+- **Q5 interlace:** true 60-field (cadence-on-fields) for engine B — but raw alternate-line
+  decimation twitters on HD verticals; **add a vertical lowpass / interlace filter before field
+  decimation** in the B path.
+- **Q6 sync:** free-running Si5351 at a programmed rate first (cadence absorbs the async
+  source); house-reference steering is a later loop. Controller is identical either way.
+- **Q8 structural check:** sound, with one addition — the per-frame slot-switch (and dual-fetch
+  pair) **must be frame-atomic and pre-primed at vblank**, composing with the SOF-realign
+  alignment layer. If slot-switch isn't atomic+primed, every cadence event throws a one-frame
+  alignment transient. **Build the cadence controller ON TOP of the proven alignment layer
+  (build #16), not in parallel** — which is exactly the current ordering.
+
+**Model gate:** `sim/frc_cadence_model_tb.v` — S2MM writer + N-slot ring + 2 cadence readers
+(accumulator + PI servo + safety clamp), rate steps {59.94↔60, 60→50, 60→24, 50→60}. Result at
+N=7: **0 collisions, occupancy bounded [0..4], cadence tracks ratio.** This is the gate the
+cadence-controller RTL must keep passing.
+
 ### Repo pointers for the reviewer
 - Read engine: `hdl/pg_read_engine_top.v`, `hdl/pg_compose.v`, `hdl/pg_genlock.v`,
   `hdl/pg_addrgen.v`, `hdl/pg_linefetch.v`
