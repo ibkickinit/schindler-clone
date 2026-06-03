@@ -442,6 +442,45 @@ feedforward IIR lags at rate steps, so some transient frames don't blend. A filt
 integrate into `pg_read_engine_top` (replace `pg_genlock`) + BD + firmware `blend_mode` GPIO;
 (c) Vivado build + bench. Not yet integrated.
 
+## 15. Q7 review of the RTL → integration BLOCKED on frame_ptr (session 2, 2026-06-03)
+
+Independent adversarial review of `pg_cadence.v` + the harness. Reprioritized the risk:
+
+- **Feedforward seam (the #1 worry) — GREEN.** The TB already drives the real estimating DUT
+  through R-up steps (P4 60→24, P6 hot-plug 60→15, R:1→4) and `min_lap` (global min, incl.
+  transients) holds at 3 (N=6) / 4 (N=7) — the IIR lag never eroded margin. Why: the clamp
+  reserves a full-frame `⌈inc⌉` of writer advance but a read finishes in ~¼ frame → ~4× over-
+  reservation absorbs the lag. Not a blocker.
+- **1080p FAIL (writer_overflow) — the gate working.** Bandwidth-bound, per §13. Good.
+- **⚠️ BLOCKER — `frame_ptr` absolute reconstruction (items 2+4).** `pg_cadence` rebuilds an
+  absolute `write_idx` from `fp_delta = (fp_use+N−fp_prev)%N`, assuming small monotonic +1
+  pointer moves. **`pg_genlock.v`'s own comments record that S2MM Dynamic-Master genlock was
+  BENCH-DISPROVEN (2026-06-01) to advance framestores linearly — that's why v2 follows the raw
+  pointer.** `pg_cadence` reintroduces that assumption in a new form: a single backward pointer
+  move (fp 2→1) gives `fp_delta=(1+6−2)%6=5` → `write_idx += 5`, permanent unrecoverable
+  corruption; a forward skip counts a stale framestore as completed. **And both TBs feed
+  `frame_ptr = wid%N` (clean +1), so the gate is blind to exactly the behavior the project
+  bench-proved is real** — the same class as the "model used true R" confound.
+- **Blend coverage 63% — metric uninterpretable** (divides blends by ALL frames, not α-
+  fractional frames; P3/P4/P6 are near-integer so low is partly correct). Non-blocking; fix the
+  denominator before judging.
+
+**Fix before `pg_cadence` replaces `pg_genlock` (the agent's caveat: confirm the real pointer
+BEFORE rewriting):**
+1. **Confirm real `s2mm_frame_ptr_out` behavior** (ILA / bench) — monotonic +1, or irregular
+   (skip/backward)? Prior bench evidence says irregular, but confirm in *this* genlock config.
+2. **Make write-tracking robust to non-monotonic `frame_ptr`** — either stay in mod-N space and
+   follow the raw pointer like `pg_genlock` v2 (no absolute reconstruction), or clamp `fp_delta`
+   to small forward deltas + recover from backward/large moves.
+3. **Add non-monotonic + async `frame_ptr` injection to `pg_cadence_tb`** and re-gate (close the
+   blind spot the gate currently has).
+4. **(cheap)** clamp uses `⌈max(inc, dnew)⌉` (react to measured rate in 1 frame; matters at
+   1080p where reads stretch). **(housekeeping)** fix the blend-coverage denominator.
+
+Net: the RTL is well-built and the feedforward departure is sound + absorbed, but it traded
+v2's raw-pointer-follow for an absolute reconstruction that reintroduces the v1 assumption, and
+the gate can't see it because both TBs feed an idealized pointer. **Close this before bench.**
+
 ### Repo pointers for the reviewer
 - Read engine: `hdl/pg_read_engine_top.v`, `hdl/pg_compose.v`, `hdl/pg_genlock.v`,
   `hdl/pg_addrgen.v`, `hdl/pg_linefetch.v`
