@@ -45,21 +45,22 @@ module pg_cadence_tb #(
     // FP_CHAOS it goes non-monotonic (skip +2 / backward -1 / repeat +0) — the exact behavior
     // pg_genlock-v1 was bench-disproven on. Both the DUT (via dut_fp) and the collision/lap
     // checks use eslot, so the gate sees whatever the real pointer might do.
-    integer eslot, cseed;
-    // FORWARD-ONLY non-monotonicity (skip / bigger-skip / repeat). A backward writer move
-    // is excluded ON PURPOSE: it is physically impossible for a forward-writing ring (the
-    // writer always writes a NEWER frame), and it would corrupt ANY reader incl. pg_genlock
-    // v2 — no read-side logic can stop the writer from writing the slot it writes. The v1
-    // bench finding was non-LINEAR (skip/reorder), still forward; that is what we must survive.
-    // FP_CHAOS=2 additionally injects a backward move to confirm it's a hard hazard (expected
-    // FAIL), gating the assumption that real s2mm_frame_ptr_out never decreases.
+    integer eslot, cseed, n_dec;   // n_dec = # of pointer-DECREASES injected (the dividing line)
+    // Chaos taxonomy, made EXPLICIT (per review): the ONLY unhandled hazard is a pointer
+    // DECREASE (the writer moving to an older framestore). FP_CHAOS=1 advances eslot by
+    // {0,+1,+2,+3} — strictly NON-DECREASING in ring order (repeat / +1 / skip / bigger-skip);
+    // it injects ZERO decreases (asserted via n_dec below). This is the physically-real
+    // "non-linear but forward-writing" behavior (the v1 bench finding). FP_CHAOS=2 additionally
+    // injects a step of N-1 == −1 (mod N) = a true ring-decrease, to confirm a decrease is the
+    // hard hazard (expected FAIL) — it would corrupt ANY reader incl. pg_genlock v2. So
+    // "decrease = the one unhandled case" is the TESTED dividing line, not a sampling artifact.
     function integer chaos_step; input integer d; integer r; begin
         cseed = (cseed*1103515245 + 12345) & 32'h7fff_ffff; r = cseed % 16;
-        if      (r==0) chaos_step = 2;                    // skip a framestore
-        else if (r==1) chaos_step = 3;                    // bigger skip
-        else if (r==2) chaos_step = 0;                    // repeat (no advance)
-        else if (r==3 && FP_CHAOS==2) chaos_step = N-1;   // backward (only in FP_CHAOS=2)
-        else           chaos_step = 1;                    // normal +1
+        if      (r==0) chaos_step = 2;                                  // skip a framestore (fwd)
+        else if (r==1) chaos_step = 3;                                  // bigger skip (fwd)
+        else if (r==2) chaos_step = 0;                                  // repeat (no advance)
+        else if (r==3 && FP_CHAOS==2) begin chaos_step = N-1; n_dec = n_dec + 1; end // DECREASE
+        else           chaos_step = 1;                                  // normal +1 (fwd)
     end endfunction
 
     // ---- DUT inputs: registered (nonblocking) so the real RTL sees clean signals,
@@ -116,7 +117,7 @@ module pg_cadence_tb #(
     initial begin
         src_period=1001; src_target=1001; src_cnt=0; out_period=1000; out_cnt=0; jseed=32'h1234_5678;
         wid=0; w_active=0; w_slot=0; w_rem=0.0; w_completes_this_outframe=0; w_overflow=0;
-        dut_ov=0; dut_fp=0; eslot=0; cseed=32'h00C0FFEE; collisions=0; started=0; min_lap=99999; m_blend=0; m_tot=0; outstanding=0;
+        dut_ov=0; dut_fp=0; eslot=0; cseed=32'h00C0FFEE; n_dec=0; collisions=0; started=0; min_lap=99999; m_blend=0; m_tot=0; outstanding=0;
         for (k=0;k<MAXT;k=k+1) begin rt_valid[k]=0; rt_slot[k]=0; rt_rem[k]=0.0; end
     end
 
@@ -197,8 +198,11 @@ module pg_cadence_tb #(
 
         $display("==== pg_cadence_tb  N=%0d MARGIN=%0d O=%0d BLEND=%0d BW=%0d/100 A=%0d ====",
                  N,MARGIN,O_MARG,BLEND,BWx100,A_BYTES);
-        $display("  collisions=%0d  min_lap=%0d  writer_overflow=%0d  blend=%0d/%0d  (dut inc=%0d occ=%0d maxlag=%0d)",
-                 collisions, (min_lap==99999)?-1:min_lap, w_overflow, m_blend, m_tot, d_inc, d_dnew, d_lag);
+        $display("  collisions=%0d  min_lap=%0d  writer_overflow=%0d  blend=%0d/%0d  pointer_decreases_injected=%0d",
+                 collisions, (min_lap==99999)?-1:min_lap, w_overflow, m_blend, m_tot, n_dec);
+        // sanity: FP_CHAOS=1 must inject ZERO decreases (so a PASS can't be hiding one)
+        if (FP_CHAOS==1 && n_dec != 0)
+            $display("PG_CADENCE_TB: TAXONOMY-ERROR (FP_CHAOS=1 injected %0d decreases — boundary not clean)", n_dec);
         pass = (collisions==0) && (min_lap>=MARGIN) && (w_overflow==0);
         if (pass) $display("PG_CADENCE_TB: PASS (RTL meets the gate)");
         else      $display("PG_CADENCE_TB: FAIL (collisions=%0d min_lap=%0d overflow=%0d)", collisions, min_lap, w_overflow);
