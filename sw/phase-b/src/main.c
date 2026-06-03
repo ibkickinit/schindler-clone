@@ -1495,12 +1495,17 @@ static void telemetry_loop(UINTPTR vdma_base)
                  * pointer is forward-monotonic). decreased MUST stay 0 across genlock drift +
                  * resolution change + hot-plug, run for minutes/hours. max_fwd_delta shows the
                  * real pointer motion (1=normal, 2+=skip); changes confirms the detector is live. */
-                xil_printf("FPMON: decreased=%u  visited=0x%02x  max_slot=%u  max_fwd=%u  count=%u\r\n",
-                           (unsigned)(v_out_tlast & 0x1u),           /* [0]     >N/2 event seen */
-                           (unsigned)((v_out_tlast >> 1) & 0x1Fu),   /* [5:1]   visited bitmask (slots 0..4) */
-                           (unsigned)((v_out_tlast >> 6) & 0x7u),    /* [8:6]   max_slot */
-                           (unsigned)((v_out_tlast >> 9) & 0x7u),    /* [11:9]  max_fwd */
-                           (unsigned)((v_out_tlast >> 12) & 0xFu));  /* [15:12] count */
+                /* FPMON v4: full 32-bit diag ch2 = raw-value history of s2mm_frame_ptr_out.
+                 * Prints the recent accepted values (newest first) + OR-mask of all bits ever
+                 * seen, so we can read what the pointer actually does (range, monotonicity). */
+                u32 fpseq = Xil_In32(DIAG_GPIO_BASEADDR + 0x08);
+                xil_printf("FPSEQ: recent(new->old) %u %u %u %u  ormask=0x%02x  chg=%u\r\n",
+                           (unsigned)(fpseq & 0x3Fu),          /* h0 newest */
+                           (unsigned)((fpseq >> 6) & 0x3Fu),   /* h1 */
+                           (unsigned)((fpseq >> 12) & 0x3Fu),  /* h2 */
+                           (unsigned)((fpseq >> 18) & 0x3Fu),  /* h3 oldest */
+                           (unsigned)((fpseq >> 24) & 0x3Fu),  /* or_mask */
+                           (unsigned)((fpseq >> 30) & 0x1u));  /* chg_seen */
                 /* Phase tracking dump — recent per-output-frame source-frame
                  * deltas. Start from oldest entry (right after the last write
                  * position) so the sequence reads left-to-right in time. */

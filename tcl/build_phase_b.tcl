@@ -907,8 +907,9 @@ set_property -dict [list CONFIG.NUM_FRAMES {5}] [get_bd_cells fp_mon]
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]             [get_bd_pins fp_mon/clk]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]    [get_bd_pins fp_mon/rstn]
 connect_bd_net [get_bd_pins axi_vdma_0/s2mm_frame_ptr_out] [get_bd_pins fp_mon/frame_ptr_async]
-connect_bd_net [get_bd_pins fp_mon/mon]                     [get_bd_pins gpio2_ch2_concat/In1]
-connect_bd_net [get_bd_pins gpio2_ch2_concat/dout]   [get_bd_pins axi_gpio_2/gpio2_io_i]
+# fp_mon (v4) drives the FULL 32-bit diag ch2 = raw-value history capture of
+# s2mm_frame_ptr_out (the v_emit scaler-diag field on ch2 is dropped for this debug).
+connect_bd_net [get_bd_pins fp_mon/mon] [get_bd_pins axi_gpio_2/gpio2_io_i]
 
 # AXI-Lite — needs axi_ic_lite NUM_MI expanded 5 -> 6 (handled in earlier edit)
 connect_bd_intf_net [get_bd_intf_pins axi_ic_lite/M05_AXI] [get_bd_intf_pins axi_gpio_2/S_AXI]

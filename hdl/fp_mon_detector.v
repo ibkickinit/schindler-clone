@@ -1,40 +1,32 @@
-// fp_mon_detector.v — sticky monitor: does s2mm_frame_ptr_out ever DECREASE (mod N)?
+// fp_mon_detector.v — RAW capture of s2mm_frame_ptr_out behaviour.
 //
-// The pg_cadence (FRC cadence controller) safety argument rests on ONE physical assumption:
-// the VDMA S2MM write pointer is forward-monotonic. That's load-bearing and must be VALIDATED,
-// not assumed. An ILA window (<1 s) can't catch a rare genlock-corner event; this LATCHES it in
-// fabric, polled over UART for minutes/hours across drift + resolution change + hot-plug.
+// v4 (2026-06-03): earlier versions derived "decreased" from a mod-NUM_FRAMES model, but the
+// bench showed the pointer takes values up to 7 (visited=0x15, max_slot=7) — NOT a clean 0..4
+// framestore index. So the model was wrong; stop deriving flags from it and just LOG the raw
+// values. This records a rolling 4-deep history of the robustly-debounced accepted pointer plus
+// an OR-mask of every bit ever seen, so firmware can print the actual recent sequence and we can
+// see what s2mm_frame_ptr_out really does (range, which bits move, monotonic or not).
 //
-// v2 (2026-06-03) — HARDENED after the v1 simple debounce gave a false `decreased=1` at steady
-// state (live read-engine on the same pointer is visually clean, so a real frequent decrease was
-// implausible). s2mm_frame_ptr_out is a multi-bit BINARY pointer crossing an async CDC; during a
-// ~1-cycle transition (e.g. 3→4 flips all bits) a 1-sample debounce can latch a transient mixed
-// value → spurious large delta → false decrease. FIX: accept a new value only after it is STABLE
-// for STABLE_CYC consecutive synced samples (the pointer is constant for ~ms between frames, so
-// real values pass trivially; 1-2-cycle transition glitches never reach STABLE_CYC). Plus full
-// DIAGNOSTICS so a real decrease is unmistakable: latch the first decrease's from→to slots and a
-// saturating count.
-//
-// Clocked on FCLK_CLK0; frame_ptr_async (S2MM clock domain) brought over with a 2-FF sync feeding
-// the stability filter. A forward delta (mod N) > N/2 is the signature of a decrease.
+// Clocked on FCLK_CLK0; frame_ptr_async (S2MM clock domain) brought over with a 2-FF sync + a
+// STABLE_CYC-cycle stability filter (the pointer holds ~ms between frames, so real values pass;
+// 1-2-cycle CDC transition glitches on this multi-bit binary signal are rejected).
 
 `default_nettype none
 `timescale 1ns / 1ps
 
 module fp_mon_detector #(
-    parameter integer NUM_FRAMES = 5,
-    parameter integer STABLE_CYC = 8       // consecutive equal samples required to accept a value
+    parameter integer NUM_FRAMES = 5,      // unused for the raw capture; kept for port compat
+    parameter integer STABLE_CYC = 8
 ) (
     input  wire        clk,                // FCLK_CLK0
     input  wire        rstn,
     input  wire [5:0]  frame_ptr_async,    // s2mm_frame_ptr_out (async to clk)
-    // 16-bit summary (diag GPIO's mm2s field):
-    //   [0]      decreased  — STICKY: forward-delta > N/2 seen (decrease OR wrap of a <N cycle)
-    //   [5:1]    visited    — bitmask of which slots 0..4 the pointer was EVER seen at
-    //   [8:6]    max_slot   — highest slot value seen  (resolves the real cycle depth / modulus)
-    //   [11:9]   max_fwd    — largest forward step <=N/2 (1=linear, 2+=skip)
-    //   [15:12]  dec_count  — # of >N/2 events (4-bit saturating)
-    output wire [15:0] mon
+    // 32-bit RAW capture:
+    //   [5:0]   h0  — most-recent accepted value     [11:6]  h1
+    //   [17:12] h2                                    [23:18] h3 (oldest of the 4)
+    //   [29:24] or_mask — OR of every accepted value (which bits ever toggle)
+    //   [30]    chg_seen (any change observed)        [31] spare
+    output wire [31:0] mon
 );
     // ---- 2-FF sync ----
     (* ASYNC_REG = "TRUE" *) reg [5:0] q1, q2;
@@ -43,44 +35,35 @@ module fp_mon_detector #(
         else begin q1<=frame_ptr_async; q2<=q1; end
     end
 
-    // ---- robust stability filter: accept `fp` only after q2 stable STABLE_CYC samples ----
+    // ---- robust stability filter ----
     reg [5:0] cand, fp;
     reg [3:0] stbl;
     reg       seen;
     always @(posedge clk) begin
         if (!rstn) begin cand<=0; fp<=0; stbl<=0; seen<=0; end
-        else if (q2 != cand) begin cand<=q2; stbl<=0; end       // value moving → restart count
-        else if (stbl < STABLE_CYC[3:0]) stbl<=stbl+4'd1;       // counting up to stable
-        else if (!seen) begin seen<=1'b1; fp<=cand; end          // first accepted value
-        else fp<=cand;                                           // settled; fp tracks accepted value
+        else if (q2 != cand) begin cand<=q2; stbl<=0; end
+        else if (stbl < STABLE_CYC[3:0]) stbl<=stbl+4'd1;
+        else if (!seen) begin seen<=1'b1; fp<=cand; end
+        else fp<=cand;
     end
 
-    // ---- decrease detector + range characterization on the robustly-accepted `fp` ----
-    reg [5:0]  fp_seen;
-    reg        seen2, decreased;
-    reg [2:0]  max_fwd, max_slot;
-    reg [4:0]  visited;            // bitmask: which of slots 0..4 the pointer was ever at
-    reg [3:0]  dec_count;
-    wire [5:0] d = (fp + NUM_FRAMES[5:0] - fp_seen) % NUM_FRAMES[5:0];   // forward delta [0..N-1]
+    // ---- rolling history of accepted values (shift on change) ----
+    reg [5:0] h0, h1, h2, h3, fp_seen, or_mask;
+    reg       seen2, chg_seen;
     always @(posedge clk) begin
-        if (!rstn) begin
-            fp_seen<=0; seen2<=0; decreased<=0; max_fwd<=0; max_slot<=0; visited<=0; dec_count<=0;
-        end else if (seen) begin
-            // characterize range on every accepted value
-            if (fp[2:0] <= 3'd4) visited <= visited | (5'd1 << fp[2:0]);
-            if (fp[2:0] > max_slot) max_slot <= fp[2:0];
-            if (!seen2) begin seen2<=1'b1; fp_seen<=fp; end
+        if (!rstn) begin h0<=0;h1<=0;h2<=0;h3<=0; fp_seen<=0; or_mask<=0; seen2<=0; chg_seen<=0; end
+        else if (seen) begin
+            if (!seen2) begin seen2<=1'b1; fp_seen<=fp; h0<=fp; or_mask<=fp; end
             else if (fp != fp_seen) begin
-                if (d > (NUM_FRAMES[5:0]>>1)) begin                       // > N/2 ⇒ decrease OR wrap-of-<N-cycle
-                    decreased <= 1'b1;
-                    if (dec_count != 4'hF) dec_count <= dec_count + 4'd1;
-                end else if (d[2:0] > max_fwd) max_fwd <= d[2:0];         // largest forward skip
+                h3<=h2; h2<=h1; h1<=h0; h0<=fp;     // newest at h0
+                or_mask <= or_mask | fp;
+                chg_seen <= 1'b1;
                 fp_seen <= fp;
             end
         end
     end
 
-    assign mon = {dec_count, max_fwd, max_slot, visited, decreased};
+    assign mon = {1'b0, chg_seen, or_mask, h3, h2, h1, h0};
 endmodule
 
 `default_nettype wire
