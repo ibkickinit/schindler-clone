@@ -528,6 +528,40 @@ confirm that real `s2mm_frame_ptr_out` is forward-monotonic (never decreases —
 v2 already ships on); (2) integrate into `pg_read_engine_top` (replace `pg_genlock`) + BD +
 firmware `blend_mode` GPIO; (3) Q7 round-3 on the integrated controller; (4) Vivado build + bench.
 
+## 18. End-state simplifications + unblock-by-borrowing (session 2, 2026-06-03)
+
+Two architectural moves that remove dependence on blocked hardware and on the frame_ptr
+assumption. Recorded as targets; not changing the current transitional build.
+
+**(A) S2MM → plain circular writer (makes the frame_ptr assumption true BY CONSTRUCTION).**
+The decrease concern (§15–§17) exists only because S2MM runs in **`Dynamic Master` genlock
+(`c_s2mm_genlock_mode=2`)** — a holdover from when the VDMA's own MM2S did the FRC (Slave). That
+master-mode framestore management is what makes `s2mm_frame_ptr_out` non-linear. Now that our
+read engine + `pg_cadence` own ALL the FRC, the S2MM genlock-master role is redundant. **In the
+end-state (dual read engines, VDMA MM2S retired), set S2MM to a plain circular writer (genlock
+off):** it then writes framestores 0,1,2,3,4,0,… monotonically and `s2mm_frame_ptr_out` becomes
+a monotonic counter — **a decrease is impossible by design**, and `fp_mon_detector` demotes from
+load-bearing gate to a cheap permanent sanity-check. *Not a today-switch:* the current build
+still has the VDMA MM2S in the mux (`sel=0` passthrough), whose Slave genlock needs the S2MM
+Master to follow — so this lands when the VDMA MM2S is retired (which the dual-engine end-state
+does anyway). If it ever jumps back before then: the pointer-follow design degrades to a
+one-frame tear and self-heals next frame (NOT permanent — that was the old absolute-index trap).
+
+**(B) Borrow an FPGA clock to validate the architecture NOW — don't wait on the Si5351.**
+`pg_cadence` + the dual-engine path are **clock-source-agnostic** (they convert the async source
+to whatever the output rate is, regardless of clock origin). The Si5351 only adds two *separable*
+features: runtime-programmable rate, and steering/locking to an external reference — neither is
+needed to prove the FRC stack. So **synthesize the second output rate from a fixed on-chip clock**
+(on-board crystal / PS `FCLK` / `clk_wiz`) at a rate deliberately different from output A (e.g.
+A=60, B=59.94 or 50) → two genuinely independent rates exercising the two per-engine cadence
+controllers in the final topology. Swap the Si5351 in later only to add programmability +
+external lock to an already-proven core. Caveats: (i) MMCM/CMT budget is tight on the 7020 — a
+fixed borrowed clock fits where 2×HDMI wouldn't, and the analog leg's 27 MHz needs no serializer
+(cheap on-chip); (ii) the clock is not the analog path's only dependency — the **ADV7393 DAC**
+(dead, replacement inbound) is still needed for a physical analog *output*, but the dual-engine /
+dual-cadence / independent-rate **logic** is testable now (engine B to a borrowed clock domain,
+verified via ILA/scope, or a second HDMI at a borrowed offset rate as a stand-in).
+
 ### Repo pointers for the reviewer
 - Read engine: `hdl/pg_read_engine_top.v`, `hdl/pg_compose.v`, `hdl/pg_genlock.v`,
   `hdl/pg_addrgen.v`, `hdl/pg_linefetch.v`
