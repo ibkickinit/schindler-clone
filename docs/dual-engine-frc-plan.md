@@ -570,3 +570,36 @@ verified via ILA/scope, or a second HDMI at a borrowed offset rate as a stand-in
 - BD build: `tcl/build_phase_b.tcl` (+ `tcl/readengine_b_bd.tcl` additive integration)
 - Prior forensics: `docs/readengine-b.md`, `docs/build-manifest.md`, project wiki
   `docs/wiki/START-HERE.md`
+
+## 19. frame_ptr monotonicity RESOLVED — it's Gray-coded (session 2, 2026-06-03) ✅
+
+Bench validation of the "s2mm_frame_ptr_out never decreases" assumption (via fp_mon_detector
+builds #17–#20). The detector kept reporting `decreased=1`; raw-value capture (v4) showed the
+pointer taking values {2,4,5,6,7,10,12,13,14,15} — NOT a clean 0..4 index. Root cause found:
+
+**`s2mm_frame_ptr_out` is GRAY-CODED.** Every consecutive value differs by exactly one bit
+(the standard CDC-safe encoding). Gray→binary decode of the captured cycle gives
+3,4,5,6,7,8,9,10,11,12 — a monotonic +1 counter; step distribution after decode = {+1: 79,
+wrap: 8, other: 0}. **The pointer is perfectly monotonic; it never decreases.** Every "decrease"
+across detector v1–v4 was the detector (and the cadence/genlock) reading Gray as binary.
+
+**=> The monotonicity assumption HOLDS on real silicon.** pg_cadence's pointer-follow safety is
+sound. The detector did its job: it surfaced that the pointer is NOT plain binary.
+
+**Latent bug uncovered (the high-value finding):** `pg_cadence` AND `pg_genlock` treat `frame_ptr`
+as binary (clamp `>=N`, `-READ_DELAY`, `mod N`). It is Gray. They MUST Gray-decode first:
+`framestore_index = gray2bin(s2mm_frame_ptr_out) mod NUM_FRAMES`. `pg_genlock` v2 only LOOKED
+clean because a static grid makes every framestore identical (a mis-decoded slot shows the same
+image) — on motion it would mis-track. This must be fixed before motion FRC / integration.
+
+**Consequences:**
+- §18(A) "S2MM → plain circular writer" downgrades from NECESSARY to optional cleanup — the VDMA
+  pointer is usable once Gray-decoded; no need to replace the write path for monotonicity.
+- fp_mon_detector should Gray-decode internally if kept as a permanent health bit (so `decreased`
+  is meaningful); harmless as-is once we know to read it as Gray.
+- Decoded cycle is 10 states (3..12) for c_num_fstores=5 → framestore = decoded mod 5 (each store
+  visited 2×/cycle); confirm the exact decode→slot mapping at integration by correlating decoded
+  fp with the slot holding fresh data.
+
+**Next:** add a Gray decoder to `pg_cadence` (and `pg_genlock`) frame_ptr intake; re-gate
+pg_cadence_tb feeding Gray-coded frame_ptr; then integrate.
