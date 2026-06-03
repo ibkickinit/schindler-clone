@@ -29,11 +29,11 @@ module fp_mon_detector #(
     input  wire        rstn,
     input  wire [5:0]  frame_ptr_async,    // s2mm_frame_ptr_out (async to clk)
     // 16-bit summary (diag GPIO's mm2s field):
-    //   [0]      decreased  — STICKY: 1 if frame_ptr ever moved to an older slot (robustly)
-    //   [3:1]    from_slot  — slot before the first decrease
-    //   [6:4]    to_slot    — slot after the first decrease
-    //   [9:7]    max_fwd    — largest forward step seen (1=linear, 2+=skip)
-    //   [15:10]  dec_count  — # of decreases (6-bit saturating)
+    //   [0]      decreased  — STICKY: forward-delta > N/2 seen (decrease OR wrap of a <N cycle)
+    //   [5:1]    visited    — bitmask of which slots 0..4 the pointer was EVER seen at
+    //   [8:6]    max_slot   — highest slot value seen  (resolves the real cycle depth / modulus)
+    //   [11:9]   max_fwd    — largest forward step <=N/2 (1=linear, 2+=skip)
+    //   [15:12]  dec_count  — # of >N/2 events (4-bit saturating)
     output wire [15:0] mon
 );
     // ---- 2-FF sync ----
@@ -55,29 +55,32 @@ module fp_mon_detector #(
         else fp<=cand;                                           // settled; fp tracks accepted value
     end
 
-    // ---- decrease detector on the robustly-accepted `fp` ----
+    // ---- decrease detector + range characterization on the robustly-accepted `fp` ----
     reg [5:0]  fp_seen;
     reg        seen2, decreased;
-    reg [2:0]  from_slot, to_slot, max_fwd;
-    reg [5:0]  dec_count;
+    reg [2:0]  max_fwd, max_slot;
+    reg [4:0]  visited;            // bitmask: which of slots 0..4 the pointer was ever at
+    reg [3:0]  dec_count;
     wire [5:0] d = (fp + NUM_FRAMES[5:0] - fp_seen) % NUM_FRAMES[5:0];   // forward delta [0..N-1]
     always @(posedge clk) begin
         if (!rstn) begin
-            fp_seen<=0; seen2<=0; decreased<=0; from_slot<=0; to_slot<=0; max_fwd<=0; dec_count<=0;
+            fp_seen<=0; seen2<=0; decreased<=0; max_fwd<=0; max_slot<=0; visited<=0; dec_count<=0;
         end else if (seen) begin
+            // characterize range on every accepted value
+            if (fp[2:0] <= 3'd4) visited <= visited | (5'd1 << fp[2:0]);
+            if (fp[2:0] > max_slot) max_slot <= fp[2:0];
             if (!seen2) begin seen2<=1'b1; fp_seen<=fp; end
             else if (fp != fp_seen) begin
-                if (d > (NUM_FRAMES[5:0]>>1)) begin                       // > N/2 ⇒ a decrease
-                    if (!decreased) begin from_slot<=fp_seen[2:0]; to_slot<=fp[2:0]; end
+                if (d > (NUM_FRAMES[5:0]>>1)) begin                       // > N/2 ⇒ decrease OR wrap-of-<N-cycle
                     decreased <= 1'b1;
-                    if (dec_count != 6'h3F) dec_count <= dec_count + 6'd1;
+                    if (dec_count != 4'hF) dec_count <= dec_count + 4'd1;
                 end else if (d[2:0] > max_fwd) max_fwd <= d[2:0];         // largest forward skip
                 fp_seen <= fp;
             end
         end
     end
 
-    assign mon = {dec_count, max_fwd, to_slot, from_slot, decreased};
+    assign mon = {dec_count, max_fwd, max_slot, visited, decreased};
 endmodule
 
 `default_nettype wire

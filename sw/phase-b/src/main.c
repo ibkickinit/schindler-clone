@@ -1495,12 +1495,12 @@ static void telemetry_loop(UINTPTR vdma_base)
                  * pointer is forward-monotonic). decreased MUST stay 0 across genlock drift +
                  * resolution change + hot-plug, run for minutes/hours. max_fwd_delta shows the
                  * real pointer motion (1=normal, 2+=skip); changes confirms the detector is live. */
-                xil_printf("FPMON: decreased=%u (STICKY — must stay 0)  count=%u  last %u->%u  max_fwd=%u\r\n",
-                           (unsigned)(v_out_tlast & 0x1u),          /* [0]    decreased */
-                           (unsigned)((v_out_tlast >> 10) & 0x3Fu), /* [15:10] dec_count */
-                           (unsigned)((v_out_tlast >> 1) & 0x7u),   /* [3:1]  from_slot */
-                           (unsigned)((v_out_tlast >> 4) & 0x7u),   /* [6:4]  to_slot */
-                           (unsigned)((v_out_tlast >> 7) & 0x7u));  /* [9:7]  max_fwd */
+                xil_printf("FPMON: decreased=%u  visited=0x%02x  max_slot=%u  max_fwd=%u  count=%u\r\n",
+                           (unsigned)(v_out_tlast & 0x1u),           /* [0]     >N/2 event seen */
+                           (unsigned)((v_out_tlast >> 1) & 0x1Fu),   /* [5:1]   visited bitmask (slots 0..4) */
+                           (unsigned)((v_out_tlast >> 6) & 0x7u),    /* [8:6]   max_slot */
+                           (unsigned)((v_out_tlast >> 9) & 0x7u),    /* [11:9]  max_fwd */
+                           (unsigned)((v_out_tlast >> 12) & 0xFu));  /* [15:12] count */
                 /* Phase tracking dump — recent per-output-frame source-frame
                  * deltas. Start from oldest entry (right after the last write
                  * position) so the sequence reads left-to-right in time. */
