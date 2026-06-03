@@ -603,3 +603,16 @@ image) — on motion it would mis-track. This must be fixed before motion FRC / 
 
 **Next:** add a Gray decoder to `pg_cadence` (and `pg_genlock`) frame_ptr intake; re-gate
 pg_cadence_tb feeding Gray-coded frame_ptr; then integrate.
+
+### §19 follow-up — Gray decode IMPLEMENTED + verified (2026-06-03)
+- `pg_cadence.v` + `pg_genlock.v`: `fp_use = gray2bin(fp_stable) % NUM_FRAMES` (commit 800d6d1).
+- TBs feed Gray-coded `frame_ptr` (`bin2gray` of the writer value): `pg_cadence_tb` PASS
+  (clean N=6/7/8 min_lap=4, forward-chaos PASS, backward FAIL); `pg_genlock_tb` Total errors=0
+  (commit aa58b89); capstone `pg_read_engine_top_tb` Total errors=0 (slot-independent pattern).
+- fp_mon_detector should Gray-decode internally if kept as a permanent health bit (currently
+  reports raw Gray history — correct to read as Gray).
+- **Remaining (the big phase): integrate `pg_cadence` → replace `pg_genlock` in
+  `pg_read_engine_top` + wire blend outputs (read2/alpha/blend_en) to the Mackin path + a
+  firmware `blend_mode` GPIO; build/program; then Q7 round-3 on the integrated controller
+  (real VDMA Gray `frame_ptr`, VTC `out_vsync`, blend_mode CDC, slot-switch frame-atomic +
+  pre-primed vs the SOF-realign layer).**
