@@ -50,14 +50,14 @@ module pg_cadence_tb #(
     wire [2:0]  d_read_slot, d_read2_slot, d_write_slot;
     wire [31:0] d_read_base, d_read2_base;
     wire [7:0]  d_alpha; wire d_blend_en;
-    wire [15:0] d_inc; wire [7:0] d_occ; wire [3:0] d_nadv; wire [7:0] d_maxlag;
-    pg_cadence #(.NUM_FRAMES(N), .MARGIN(MARGIN), .O_MARG(O_MARG), .SETPOINT(2)) dut (
+    wire [15:0] d_inc; wire [7:0] d_dnew; wire [3:0] d_lag;
+    pg_cadence #(.NUM_FRAMES(N), .MARGIN(MARGIN), .O_MARG(O_MARG)) dut (
         .clk(clk), .rstn(rstn), .frame_ptr(dut_fp), .out_vsync(dut_ov),
         .blend_mode(BLEND[0]),
         .read_slot(d_read_slot), .read_base_addr(d_read_base), .write_slot(d_write_slot),
         .read2_slot(d_read2_slot), .read2_base_addr(d_read2_base),
         .alpha(d_alpha), .blend_en(d_blend_en),
-        .dbg_inc(d_inc), .dbg_occ(d_occ), .dbg_nadv(d_nadv), .dbg_maxlag(d_maxlag)
+        .dbg_inc(d_inc), .dbg_dnew(d_dnew), .dbg_lag(d_lag)
     );
 
     // ---- read transfers (slot, remaining bytes) ----
@@ -133,7 +133,9 @@ module pg_cadence_tb #(
                 collisions=collisions+1;
                 $error("COLLISION @%0t: writer slot %0d == read slot %0d", $time, wid%N, rt_slot[kk]);
             end
-            if (started) for (kk=0;kk<MAXT;kk=kk+1) if (rt_valid[kk]) begin
+            // lap margin only meaningful while the writer is actively writing a slot
+            // (when idle, read_slot==last-written-slot is harmless, not a hazard).
+            if (started && w_active) for (kk=0;kk<MAXT;kk=kk+1) if (rt_valid[kk]) begin
                 dist = (rt_slot[kk] - (wid%N) + N) % N;     // writes until writer overwrites this slot
                 if (dist < min_lap) min_lap = dist;
             end
@@ -172,7 +174,7 @@ module pg_cadence_tb #(
         $display("==== pg_cadence_tb  N=%0d MARGIN=%0d O=%0d BLEND=%0d BW=%0d/100 A=%0d ====",
                  N,MARGIN,O_MARG,BLEND,BWx100,A_BYTES);
         $display("  collisions=%0d  min_lap=%0d  writer_overflow=%0d  blend=%0d/%0d  (dut inc=%0d occ=%0d maxlag=%0d)",
-                 collisions, (min_lap==99999)?-1:min_lap, w_overflow, m_blend, m_tot, d_inc, d_occ, d_maxlag);
+                 collisions, (min_lap==99999)?-1:min_lap, w_overflow, m_blend, m_tot, d_inc, d_dnew, d_lag);
         pass = (collisions==0) && (min_lap>=MARGIN) && (w_overflow==0);
         if (pass) $display("PG_CADENCE_TB: PASS (RTL meets the gate)");
         else      $display("PG_CADENCE_TB: FAIL (collisions=%0d min_lap=%0d overflow=%0d)", collisions, min_lap, w_overflow);
