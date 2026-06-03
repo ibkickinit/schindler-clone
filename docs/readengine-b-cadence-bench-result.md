@@ -55,9 +55,16 @@ assert `tready` to drain non-SOF head beats during blanking; once the FIFO head 
 hold (deassert) so SOF waits at the head and becomes the first pixel at active column 0. Then gate
 to active-video as today. Makes pixel-0 placement deterministic at column 0 → kills the wrap.
 
-**Confirm before fixing (ILA/diag):** count beats drained before the SOF emit per frame (= δ),
-and/or output-FIFO occupancy at the vsync rising edge (should be ~0 if no residue). A nonzero,
-roughly-constant drain count confirms the mechanism.
+**CONFIRMED (build #22, 2026-06-03):** `axis_to_vid_io.predrain_snap` routed to diag GPIO ch1,
+firmware `DRAIN:` line. Measured every frame, perfectly constant:
+
+    DRAIN: delta_px=6 (stale=6 starve=0)
+
+δ = **6 px constant**, **100% stale, 0 starve**. So pixel 0 lands at output column 6 because six
+residual beats from the prior frame's tail are discarded inside active video; the producer is
+never late (starve=0 ⇒ not a `pg_compose` priming issue). This selects the **blanking-flush** fix
+unambiguously. NOTE: `axis_to_vid_io` is **shared** by the scaler/VDMA path and the read-engine
+path, so the fix affects both (expected — the wrap is common to all builds, "as before").
 
 **Lower-likelihood alternates:** producer leaves a deterministic FIFO residue at frame end
 (fixable producer-side instead); rgb2dvi DE-vs-sync skew (but that wouldn't wrap content).
