@@ -21,7 +21,8 @@ module pg_cadence_tb #(
     parameter integer JIT      = 8,
     parameter integer BWx100   = 1600,
     parameter integer W_BYTES  = 6200,
-    parameter integer A_BYTES  = 4100
+    parameter integer A_BYTES  = 4100,
+    parameter integer FP_CHAOS = 0         // 1 = non-monotonic writer pointer (skip/back/repeat)
 );
     localparam integer MAXT = 4;
     real BW; initial BW = BWx100/100.0;
@@ -40,7 +41,26 @@ module pg_cadence_tb #(
     // ---- writer (DDR-contention) ----
     integer wid, w_active, w_slot; real w_rem;
     integer w_completes_this_outframe, w_overflow;
-    wire [5:0] frame_ptr = wid % N;        // TRUE writer position (used by the checks)
+    // eslot = the writer's EXPOSED current slot. Normally (eslot+1)%N each write, but with
+    // FP_CHAOS it goes non-monotonic (skip +2 / backward -1 / repeat +0) — the exact behavior
+    // pg_genlock-v1 was bench-disproven on. Both the DUT (via dut_fp) and the collision/lap
+    // checks use eslot, so the gate sees whatever the real pointer might do.
+    integer eslot, cseed;
+    // FORWARD-ONLY non-monotonicity (skip / bigger-skip / repeat). A backward writer move
+    // is excluded ON PURPOSE: it is physically impossible for a forward-writing ring (the
+    // writer always writes a NEWER frame), and it would corrupt ANY reader incl. pg_genlock
+    // v2 — no read-side logic can stop the writer from writing the slot it writes. The v1
+    // bench finding was non-LINEAR (skip/reorder), still forward; that is what we must survive.
+    // FP_CHAOS=2 additionally injects a backward move to confirm it's a hard hazard (expected
+    // FAIL), gating the assumption that real s2mm_frame_ptr_out never decreases.
+    function integer chaos_step; input integer d; integer r; begin
+        cseed = (cseed*1103515245 + 12345) & 32'h7fff_ffff; r = cseed % 16;
+        if      (r==0) chaos_step = 2;                    // skip a framestore
+        else if (r==1) chaos_step = 3;                    // bigger skip
+        else if (r==2) chaos_step = 0;                    // repeat (no advance)
+        else if (r==3 && FP_CHAOS==2) chaos_step = N-1;   // backward (only in FP_CHAOS=2)
+        else           chaos_step = 1;                    // normal +1
+    end endfunction
 
     // ---- DUT inputs: registered (nonblocking) so the real RTL sees clean signals,
     //      not a posedge race against the model's blocking-assigned regs ----
@@ -96,7 +116,7 @@ module pg_cadence_tb #(
     initial begin
         src_period=1001; src_target=1001; src_cnt=0; out_period=1000; out_cnt=0; jseed=32'h1234_5678;
         wid=0; w_active=0; w_slot=0; w_rem=0.0; w_completes_this_outframe=0; w_overflow=0;
-        dut_ov=0; dut_fp=0; collisions=0; started=0; min_lap=99999; m_blend=0; m_tot=0; outstanding=0;
+        dut_ov=0; dut_fp=0; eslot=0; cseed=32'h00C0FFEE; collisions=0; started=0; min_lap=99999; m_blend=0; m_tot=0; outstanding=0;
         for (k=0;k<MAXT;k=k+1) begin rt_valid[k]=0; rt_slot[k]=0; rt_rem[k]=0.0; end
     end
 
@@ -109,11 +129,15 @@ module pg_cadence_tb #(
             // src + out events
             if (src_cnt >= src_target-1) begin
                 src_cnt=0; src_target=src_period+jit_next(0);
-                if (w_active) w_overflow=w_overflow+1; else begin w_slot=wid%N; w_rem=W_BYTES*1.0; w_active=1; end
+                if (w_active) w_overflow=w_overflow+1;
+                else begin
+                    eslot = (eslot + (FP_CHAOS ? chaos_step(0) : 1)) % N;  // advance writer slot
+                    w_rem=W_BYTES*1.0; w_active=1;
+                end
             end else src_cnt=src_cnt+1;
             if (out_cnt >= out_period-1) out_cnt=0; else out_cnt=out_cnt+1;
             dut_ov <= (out_cnt < 4);       // registered DUT inputs (nonblocking, no race)
-            dut_fp <= wid % N;
+            dut_fp <= eslot[5:0];
 
             // DDR drain
             n_act = count_active(0);
@@ -129,14 +153,14 @@ module pg_cadence_tb #(
             end
 
             // collision + lap (slot-based) against the writer's in-progress slot
-            if (started && w_active) for (kk=0;kk<MAXT;kk=kk+1) if (rt_valid[kk] && rt_slot[kk]==(wid%N)) begin
+            if (started && w_active) for (kk=0;kk<MAXT;kk=kk+1) if (rt_valid[kk] && rt_slot[kk]==eslot) begin
                 collisions=collisions+1;
-                $error("COLLISION @%0t: writer slot %0d == read slot %0d", $time, wid%N, rt_slot[kk]);
+                $error("COLLISION @%0t: writer slot %0d == read slot %0d", $time, eslot, rt_slot[kk]);
             end
             // lap margin only meaningful while the writer is actively writing a slot
             // (when idle, read_slot==last-written-slot is harmless, not a hazard).
             if (started && w_active) for (kk=0;kk<MAXT;kk=kk+1) if (rt_valid[kk]) begin
-                dist = (rt_slot[kk] - (wid%N) + N) % N;     // writes until writer overwrites this slot
+                dist = (rt_slot[kk] - eslot + N) % N;        // writes until writer overwrites this slot
                 if (dist < min_lap) min_lap = dist;
             end
 
