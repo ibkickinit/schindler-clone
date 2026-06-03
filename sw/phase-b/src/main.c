@@ -1506,21 +1506,19 @@ static void telemetry_loop(UINTPTR vdma_base)
                            (unsigned)((fpseq >> 18) & 0x3Fu),  /* h3 oldest */
                            (unsigned)((fpseq >> 24) & 0x3Fu),  /* or_mask */
                            (unsigned)((fpseq >> 30) & 0x1u));  /* chg_seen */
-                /* DRAIN (2026-06-03): δ-measurement from axis_to_vid_io_0/predrain_snap,
-                 * routed onto the (dead-in-route-B) scaler ch1 of the diag GPIO.
-                 *   delta  = active pixels elapsed before SOF emits = the column
-                 *            pixel 0 lands at = the per-line horizontal wrap offset.
-                 *   stale  = of those, beats DISCARDED (residual prior-frame tail
-                 *            burned in active video) → SOF-realign/active-gated-tready.
-                 *   starve = delta - stale = active slots with no data (producer late).
-                 * A roughly-constant nonzero delta confirms the wrap diagnosis; the
-                 * stale-vs-starve split says which fix (blanking-flush vs producer). */
+                /* DRAIN (2026-06-03): from axis_to_vid_io_0/predrain_snap, routed onto
+                 * the (dead-in-route-B) scaler ch1 of the diag GPIO.
+                 *   delta  = active pixels elapsed before SOF emits = the column pixel
+                 *            0 lands at = the per-line wrap offset. With the bounded
+                 *            blanking-flush fix working, delta → 0.
+                 *   bflush = beats flushed in blanking this frame (the fix); expected
+                 *            ≈ residue depth (~6), capped at MAX_DRAIN. delta large +
+                 *            bflush pinned at MAX_DRAIN = a missing SOF (bounded fall-
+                 *            back, not a cascade). */
                 u32 drainw = Xil_In32(DIAG_GPIO_BASEADDR + 0x00);
-                unsigned d_delta = (unsigned)(drainw & 0xFFFFu);
-                unsigned d_stale = (unsigned)((drainw >> 16) & 0xFFFFu);
-                xil_printf("DRAIN: delta_px=%u (stale=%u starve=%u)\r\n",
-                           d_delta, d_stale,
-                           (d_delta >= d_stale) ? (d_delta - d_stale) : 0u);
+                unsigned d_delta  = (unsigned)(drainw & 0xFFFFu);
+                unsigned d_bflush = (unsigned)((drainw >> 16) & 0xFFFFu);
+                xil_printf("DRAIN: delta_px=%u bflush=%u\r\n", d_delta, d_bflush);
                 /* Phase tracking dump — recent per-output-frame source-frame
                  * deltas. Start from oldest entry (right after the last write
                  * position) so the sequence reads left-to-right in time. */

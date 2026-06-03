@@ -17,10 +17,21 @@
 //   frame 5 clean   — full check (re-anchor after late)
 //   frame 6 starve  — 1-cycle mid-frame bubble (shift confined to this frame)
 //   frame 7 clean   — full check (re-anchor after starve)
+//   frame 8 nosof   — NO beat tagged SOF (the failure the drain-cap protects):
+//                     the bounded blanking-flush must drain at most MAX_DRAIN and
+//                     NOT cascade — frame 9 must re-anchor cleanly.
+//   frame 9 clean   — full check (re-anchor after the missing-SOF frame)
 //
 // Checks (per frame): the FIRST non-black emitted pixel == {frame,0,0} (SOF
 // anchor — never a junk/stale beat). For clean frames, EVERY active slot is
-// bit-exact. Any violation -> $error + FAIL.
+// bit-exact. Plus the δ/blanking-flush diag (predrain_snap) — see the scoreboard:
+//   • residue/clean frames with SOF present → δ==0 (the blanking-flush fix: the
+//     prior-frame residue is drained in VBLANK, so pixel 0 lands at column 0).
+//     This is the assertion that would FAIL on the pre-fix active-gated drain
+//     (frame 2 measured δ=3 there). frame-2 here models the color-stack residue.
+//   • missing-SOF frame → blanking-flush count is CAPPED at MAX_DRAIN (bounded),
+//     proving a dropped SOF can't eat the whole vblank / cascade.
+// Any violation -> $error + FAIL.
 
 `default_nettype none
 `timescale 1ns / 1ps
@@ -32,6 +43,11 @@ module axis_sof_tb;
     localparam integer AH = 4;   // active height
     localparam integer VB = 2;   // v blank
     localparam integer VT = AH+VB;
+    // Small drain cap so the bound is exercised within this tiny raster's ~12-cycle
+    // post-vsync vblank (production axis_to_vid_io uses MAX_DRAIN=16). A missing-SOF
+    // frame would, uncapped, drain every available vblank beat; with the cap it
+    // stops at MAX_DRAIN_TB — that's the assertion below.
+    localparam integer MAX_DRAIN_TB = 5;
 
     reg clk = 1'b0;
     always #5 clk = ~clk;
@@ -63,9 +79,9 @@ module axis_sof_tb;
     wire vsync_rising = vsync && !vsync_q;
 
     // ---- per-frame defect program ----
-    // dmode: 0 none, 1 junk, 2 late, 3 starve
+    // dmode: 0 none, 1 junk, 2 late, 3 starve, 4 missing-SOF
     reg [7:0] frame_id;
-    reg [1:0] dmode;
+    reg [2:0] dmode;
     reg [7:0] djunk_n, dlate_k, dstarve_at;
 
     task set_defect(input [7:0] id);
@@ -77,6 +93,7 @@ module axis_sof_tb;
                 8'd4: begin dmode<=2; djunk_n<=0; dlate_k<=2; dstarve_at<=0; end
                 8'd5: begin dmode<=0; djunk_n<=0; dlate_k<=0; dstarve_at<=0; end
                 8'd6: begin dmode<=3; djunk_n<=0; dlate_k<=0; dstarve_at<=8'd13; end
+                8'd8: begin dmode<=4; djunk_n<=0; dlate_k<=0; dstarve_at<=0; end  // missing SOF
                 default: begin dmode<=0; djunk_n<=0; dlate_k<=0; dstarve_at<=0; end
             endcase
         end
@@ -108,7 +125,7 @@ module axis_sof_tb;
             end else begin
                 sv_tvalid = 1'b1;
                 sv_tdata  = {frame_id, prow, pcol};
-                sv_tuser  = (pbeat == 0);
+                sv_tuser  = (pbeat == 0) && (dmode != 3'd4);  // dmode 4 = no SOF ever
                 sv_tlast  = (pidx[2:0] == 3'd7);
             end
         end
@@ -143,7 +160,8 @@ module axis_sof_tb;
     wire [23:0] vid_data;
     wire        vid_active, vid_hs, vid_vs, fsync_pulse;
     wire [15:0] tlast_snap;
-    axis_to_vid_io dut (
+    wire [31:0] predrain;          // [15:0]=δ, [31:16]=blanking-flush count
+    axis_to_vid_io #(.MAX_DRAIN(MAX_DRAIN_TB)) dut (
         .clk(clk), .enable(enable),
         .s_axis_tdata(sv_tdata), .s_axis_tvalid(sv_tvalid), .s_axis_tready(dut_tready),
         .s_axis_tlast(sv_tlast), .s_axis_tuser(sv_tuser),
@@ -151,7 +169,8 @@ module axis_sof_tb;
         .vtg_hblank(hcnt>=AW), .vtg_vblank(vblank),
         .vid_data(vid_data), .vid_active_video(vid_active),
         .vid_hsync(vid_hs), .vid_vsync(vid_vs),
-        .mm2s_fsync_pulse(fsync_pulse), .mm2s_tlast_snap(tlast_snap)
+        .mm2s_fsync_pulse(fsync_pulse), .mm2s_tlast_snap(tlast_snap),
+        .predrain_snap(predrain)
     );
 
     // ---- scoreboard ----
@@ -195,16 +214,55 @@ module axis_sof_tb;
         end
     end
 
+    // ---- δ / blanking-flush scoreboard (separate counters → no multi-driver race) ----
+    // predrain_snap latches at the DUT's vsync_rising (= the frame that just ended);
+    // the TB also increments frame_id there, so one cycle later the ended frame is
+    // (frame_id-1). Sample on that delayed strobe.
+    integer errors2 = 0;
+    integer checks2 = 0;
+    reg vsr_q;
+    always @(posedge clk) begin
+        vsr_q <= vsync_rising;
+        if (rstn && enable && vsr_q) begin
+            // SOF-present frames (residue/clean) must show δ==0 — the blanking-flush
+            // drains the prior-frame residue in VBLANK so pixel 0 lands at col 0.
+            // This is the assertion that FAILS on the pre-fix active-gated drain
+            // (frame 2 models the color-stack residue; δ was 3 there). Skip frame 1
+            // (warmup), 4 (late) & 6 (starve) — genuine producer lateness the fix
+            // correctly does NOT mask — and 8 (missing SOF, checked below).
+            if ((frame_id-1==2)||(frame_id-1==3)||(frame_id-1==5)||
+                (frame_id-1==7)||(frame_id-1==9)) begin
+                checks2 = checks2 + 1;
+                if (predrain[15:0] !== 16'd0) begin
+                    errors2 = errors2 + 1;
+                    $error("[f%0d] delta=%0d expected 0 (blanking-flush should land pixel0 at col0)",
+                           frame_id-1, predrain[15:0]);
+                end
+            end
+            // missing-SOF frame: blanking-flush must be CAPPED at MAX_DRAIN_TB
+            // (bounded). Uncapped, an absent SOF drains the whole vblank → cascade.
+            if (frame_id-1==8) begin
+                checks2 = checks2 + 1;
+                if (predrain[31:16] !== MAX_DRAIN_TB[15:0]) begin
+                    errors2 = errors2 + 1;
+                    $error("[f8 nosof] blanking-flush=%0d expected CAP %0d (drain not bounded!)",
+                           predrain[31:16], MAX_DRAIN_TB);
+                end
+            end
+        end
+    end
+
     initial begin
         repeat (4) @(posedge clk);
         rstn = 1'b1;
         @(posedge clk);
         enable = 1'b1;
-        // run through ~8 frames
-        repeat (8*HT*VT + 40) @(posedge clk);
-        $display("==== axis_sof_tb: %0d checks, %0d errors ====", checks, errors);
-        if (errors == 0) $display("AXIS_SOF_TB: PASS");
-        else             $display("AXIS_SOF_TB: FAIL (%0d errors)", errors);
+        // run through ~10 frames (need frame 9's re-anchor check after missing-SOF f8)
+        repeat (11*HT*VT + 40) @(posedge clk);
+        $display("==== axis_sof_tb: %0d checks, %0d errors (anchor/clean) + %0d checks, %0d errors (delta/cap) ====",
+                 checks, errors, checks2, errors2);
+        if (errors + errors2 == 0) $display("AXIS_SOF_TB: PASS");
+        else                       $display("AXIS_SOF_TB: FAIL (%0d errors)", errors + errors2);
         $finish;
     end
 

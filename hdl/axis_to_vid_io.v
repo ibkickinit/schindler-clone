@@ -25,7 +25,14 @@
 `default_nettype none
 `timescale 1ns / 1ps
 
-module axis_to_vid_io (
+module axis_to_vid_io #(
+    // Upper bound on beats flushed during blanking while waiting for the SOF beat
+    // (the blanking-flush fix below). Sized a few× the measured residue (δ=6, the
+    // shared color-stack pipeline depth) so a MISSING/late SOF can drain at most
+    // MAX_DRAIN beats and then falls back to the old bounded 1-frame-black-flash
+    // behaviour instead of eating the whole ~49.5k-cycle vblank and cascading.
+    parameter integer MAX_DRAIN = 16
+) (
     input  wire        clk,
     input  wire        enable,          // active-high; tie to dvi2rgb pLocked
 
@@ -62,17 +69,14 @@ module axis_to_vid_io (
      * for firmware read via AXI GPIO 2. */
     output reg  [15:0] mm2s_tlast_snap,
 
-    /* δ-measurement (2026-06-03): per-frame count of active-video pixel slots
-     * that elapse BEFORE the SOF beat emits as pixel 0 — i.e. the output column
-     * where pixel 0 lands, which is exactly the per-line horizontal wrap offset
-     * we see at the bench. Decomposed:
-     *   [15:0]  = total pre-SOF active cycles  (= δ, the wrap offset in pixels)
-     *   [31:16] = of those, STALE beats discarded (consume && !SOF) — "drain"
-     * The remainder (δ - drain) are STARVES (active slot with no data, waiting on
-     * the SOF beat). drain>0 ⇒ residual beats from the prior frame's tail were
-     * burned in active video (the SOF-realign/active-gated-tready hypothesis);
-     * starve>0 ⇒ the producer was simply late delivering pixel 0. Snapshotted at
-     * vtg_vsync rising (reports the just-completed frame). */
+    /* δ + blanking-flush diag (2026-06-03), snapshotted at vtg_vsync rising:
+     *   [15:0]  = δ = active-video pixel slots elapsed BEFORE the SOF beat emits as
+     *            pixel 0 (= the output column pixel 0 lands at = the per-line wrap
+     *            offset). With the blanking-flush below working, δ → 0.
+     *   [31:16] = beats flushed during blanking this frame (the new fix). Expected
+     *            ≈ residue depth (~6), capped at MAX_DRAIN. A missing SOF shows up
+     *            as this field pinned at MAX_DRAIN AND δ large (the bounded fall-
+     *            back, not a cascade). */
     output reg  [31:0] predrain_snap
 );
 
@@ -94,9 +98,29 @@ module axis_to_vid_io (
     always @(posedge clk) vtg_vsync_q <= vtg_vsync;
     wire vsync_rising = vtg_vsync && !vtg_vsync_q && enable;
 
-    // Consume during active video; backpressure during blanking so the producer's
-    // next-frame SOF waits at the head for the next active region.
-    assign s_axis_tready = vtg_active_video && enable;
+    // ---- bounded pre-SOF blanking flush (2026-06-03 fix) ----
+    // Root cause of the +6px per-line wrap: the shared color stack (saturation→
+    // correct→matrix, downstream of the mux) holds the prior frame's last ~6 pixels
+    // in its pipeline at the frame boundary; they emerge AHEAD of the new frame's
+    // SOF-tagged pixel 0. With tready gated to active-video only, those residual
+    // beats were drained by burning the first 6 ACTIVE pixels → pixel 0 landed at
+    // column 6 → every line shifted, tail wrapping to the next line. (Measured:
+    // DRAIN delta_px=6, 100% stale, 0 starve.)
+    //
+    // Fix: drain the residue during VBLANK instead. While not yet started, accept
+    // non-SOF head beats during vblank (emitted as black, not shown) so that when
+    // active video begins the SOF beat is at the head and becomes pixel 0 at column
+    // 0. The drain STOPS the instant the SOF beat reaches the head (!s_axis_tuser,
+    // combinational) and is BOUNDED to MAX_DRAIN beats/frame: a missing/late SOF
+    // therefore drains at most MAX_DRAIN and then reverts to the old active-gated
+    // behaviour (bounded 1-frame black flash) rather than eating the whole vblank
+    // and desyncing into following frames. vblank-scoped (not !active_video) so the
+    // drain window is exactly the frame boundary.
+    reg [15:0] bflush_cnt;   // beats flushed in blanking this frame (0..MAX_DRAIN)
+    wire drain_presof = enable && !started && vtg_vblank && s_axis_tvalid
+                        && !s_axis_tuser && (bflush_cnt < MAX_DRAIN[15:0]);
+    // Consume during active video, plus the bounded blanking flush.
+    assign s_axis_tready = enable && (vtg_active_video || drain_presof);
 
     // Register all outputs so data and sync transition on the same clock
     // edge. Avoids combinational glitches on sync edges that would otherwise
@@ -168,23 +192,25 @@ module axis_to_vid_io (
         end
     end
 
-    /* ---- δ (pre-SOF) measurement ----
+    /* ---- δ + blanking-flush measurement ----
      * presof: an active-video cycle that elapses before pixel 0 emits. The SOF
      * cycle itself (consume && s_axis_tuser) emits pixel 0, so it is EXCLUDED —
-     * presof_cnt is therefore the column index at which pixel 0 lands. */
-    wire presof       = vtg_active_video && enable && !started
-                        && !(consume && s_axis_tuser);
-    wire presof_drain = presof && consume && !s_axis_tuser;   // stale beat discarded
-    reg [15:0] presof_cnt, drain_cnt;
+     * presof_cnt is the column index at which pixel 0 lands (= δ). With the
+     * blanking flush working, the SOF beat is already at the head when active
+     * begins, so δ → 0. bflush_cnt (declared above, used by drain_presof's cap)
+     * counts the beats flushed in blanking — expected ≈ residue depth, ≤ MAX_DRAIN. */
+    wire presof = vtg_active_video && enable && !started
+                  && !(consume && s_axis_tuser);
+    reg [15:0] presof_cnt;
     always @(posedge clk) begin
         if (!enable) begin
-            presof_cnt <= 16'd0; drain_cnt <= 16'd0; predrain_snap <= 32'd0;
+            presof_cnt <= 16'd0; bflush_cnt <= 16'd0; predrain_snap <= 32'd0;
         end else if (vsync_rising) begin
-            predrain_snap <= {drain_cnt, presof_cnt};   // {[31:16]=drain, [15:0]=δ}
-            presof_cnt <= 16'd0; drain_cnt <= 16'd0;
+            predrain_snap <= {bflush_cnt, presof_cnt};  // {[31:16]=bflush, [15:0]=δ}
+            presof_cnt <= 16'd0; bflush_cnt <= 16'd0;
         end else begin
             if (presof)       presof_cnt <= presof_cnt + 16'd1;
-            if (presof_drain) drain_cnt  <= drain_cnt  + 16'd1;
+            if (drain_presof) bflush_cnt <= bflush_cnt + 16'd1;  // bounded by the cap
         end
     end
 
