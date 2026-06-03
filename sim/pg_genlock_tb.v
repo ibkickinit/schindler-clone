@@ -32,13 +32,17 @@ module pg_genlock_tb;
 
     integer errors;
 
+    // frame_ptr is GRAY-coded on real HW; present bin2gray(value) and keep expectations
+    // in the decoded (binary) value, so the DUT's gray2bin path is exercised.
+    function [5:0] bin2gray; input [5:0] b; begin bin2gray = b ^ (b >> 1); end endfunction
+
     task pulse_vsync; begin
         out_vsync <= 1'b1; repeat(2) @(posedge clk); out_vsync <= 1'b0; repeat(2) @(posedge clk);
     end endtask
 
     task set_and_check; input [5:0] fp; integer exp_read;
         begin
-            frame_ptr <= fp;
+            frame_ptr <= bin2gray(fp);     // present Gray-coded pointer
             repeat(8) @(posedge clk);   // settle CDC (3-FF) + debounce
             pulse_vsync;
             exp_read = (fp >= READ_DELAY) ? (fp - READ_DELAY) : (fp + NUM_FRAMES - READ_DELAY);
@@ -64,7 +68,7 @@ module pg_genlock_tb;
         // glitch/debounce guard: toggle frame_ptr every cycle while pulsing
         // vsync — read_slot/read_base must NEVER point at an invalid slot.
         for (i=0; i<200; i=i+1) begin
-            frame_ptr <= i[5:0] % NUM_FRAMES;
+            frame_ptr <= bin2gray(i[5:0] % NUM_FRAMES);
             @(posedge clk);
             if ((i % 7) == 0) out_vsync <= 1'b1; else out_vsync <= 1'b0;
             if (read_slot >= NUM_FRAMES[2:0]) begin
