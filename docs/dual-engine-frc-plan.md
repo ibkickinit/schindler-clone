@@ -481,6 +481,34 @@ Net: the RTL is well-built and the feedforward departure is sound + absorbed, bu
 v2's raw-pointer-follow for an absolute reconstruction that reintroduces the v1 assumption, and
 the gate can't see it because both TBs feed an idealized pointer. **Close this before bench.**
 
+## 16. Robust redesign + signed-clamp fix + chaos-validated (session 2, 2026-06-03) ✅
+
+Resolves the §15 blocker. `pg_cadence.v` (commits 06ec7e4, c14fe5a) rewritten to follow the
+raw pointer in mod-N space — **no absolute write-index reconstruction** (the v1 assumption is
+gone): `read_slot = (frame_ptr − lag) mod N`, `lag = clamp(N − eff − J − O − MARGIN, LAG_MIN,
+N−2)`, `eff = max(⌈inc⌉, dnew)`. The rate IIR `inc` only sizes lag + weights blend α (non-safety).
+
+- **Signed-clamp bug found by review + fixed:** the lag clamp used an unsigned bit-select
+  (`ml_s < LAG_MIN[13:0]`), so a negative `ml_s` escaped the clamp and latched garbage (lag 62/63
+  → read ahead of the writer). All-signed now. Gate went green N=4–8.
+- **min-N re-pinned (the "N=8 knee" was the bug):** safety floor **N=4** (min_lap 3–5); full
+  Mackin blend **N=7** (lag≥2 achievable); blend-disable any N. 1080p-720pBW FAILs on
+  `writer_overflow` (correct); 1080p-scaledBW PASS.
+- **Robustness EXERCISED (not asserted) — chaos `frame_ptr` injection (`FP_CHAOS`):**
+  - forward skip +2/+3 + repeat (the physically-real "non-linear" behavior that broke v1):
+    **N=6/7/8 PASS**, min_lap=2 (=MARGIN held under skips) → `dnew` is demonstrably live (lag
+    adapts to the skip). The mod-N rewrite's headline property is now proven, not hypothesized.
+  - +backward move (`FP_CHAOS=2`): **FAIL** (collisions) — EXPECTED + documented: a backward
+    writer move writes onto the read slot, a physical hazard no read-side logic can prevent (it
+    breaks `pg_genlock` v2 too). So the design sits at **v2's robustness level**: relies on the
+    forward-writing-ring property (`frame_ptr` never decreases).
+
+**Status:** the cadence RTL is robust to the realistic non-linear pointer and gated across
+clean + forward-chaos + 1080p corners. Remaining before integration: (1) a cheap bench/ILA
+confirm that real `s2mm_frame_ptr_out` is forward-monotonic (never decreases — same assumption
+v2 already ships on); (2) integrate into `pg_read_engine_top` (replace `pg_genlock`) + BD +
+firmware `blend_mode` GPIO; (3) Q7 round-3 on the integrated controller; (4) Vivado build + bench.
+
 ### Repo pointers for the reviewer
 - Read engine: `hdl/pg_read_engine_top.v`, `hdl/pg_compose.v`, `hdl/pg_genlock.v`,
   `hdl/pg_addrgen.v`, `hdl/pg_linefetch.v`
