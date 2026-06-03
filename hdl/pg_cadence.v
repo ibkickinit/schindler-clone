@@ -48,7 +48,8 @@ module pg_cadence #(
     parameter integer LAG_MIN        = 1,     // never read the in-progress slot (lag>=1)
     parameter integer FILT_SH        = 4,     // rate IIR: inc += (R_meas - inc) >> FILT_SH
     parameter integer DCAP           = 4,     // cap on dnew fed to the IIR (glitch immunity)
-    parameter integer BLEND_EPS      = 4096   // alpha deadband in Q20
+    parameter integer BLEND_EPS      = 4096,  // alpha deadband in Q20
+    parameter integer STABLE_CYC     = 8      // frame_ptr debounce — MUST match fp_mon_detector
 ) (
     input  wire        clk,
     input  wire        rstn,
@@ -73,14 +74,24 @@ module pg_cadence #(
     localparam integer QF  = 20;
     localparam [31:0]  ONE = (32'd1 << QF);
 
-    // ---------- CDC + debounce for frame_ptr ----------
+    // ---------- CDC + ROBUST debounce for frame_ptr (HARMONIZED with fp_mon_detector) ----------
+    // 2-FF sync + accept a value only after it is STABLE for STABLE_CYC consecutive samples.
+    // This MUST match the monitor's debounce exactly: the monitor validates the pointer it sees,
+    // and the cadence ships the pointer IT sees — if the cadence used a weaker (e.g. 2-sample)
+    // debounce, a clean monitor verdict would clear a cleaner pointer than the cadence consumes,
+    // and a 1-2-cycle CDC transition glitch on this multi-bit binary pointer could still latch a
+    // mixed value → spurious dnew → a one-frame wrong slot. The pointer holds ~ms between frames,
+    // so real values pass trivially; transition glitches (1-2 cycles) never reach STABLE_CYC.
     (* ASYNC_REG = "TRUE" *) reg [5:0] fp_q1, fp_q2;
-    reg [5:0] fp_q3, fp_stable;
+    reg [5:0] fp_cand, fp_stable;
+    reg [3:0] fp_stbl_cnt;
     always @(posedge clk) begin
-        if (!rstn) begin fp_q1<=0; fp_q2<=0; fp_q3<=0; fp_stable<=0; end
+        if (!rstn) begin fp_q1<=0; fp_q2<=0; fp_cand<=0; fp_stable<=0; fp_stbl_cnt<=0; end
         else begin
-            fp_q1 <= frame_ptr; fp_q2 <= fp_q1; fp_q3 <= fp_q2;
-            if (fp_q2 == fp_q3) fp_stable <= fp_q2;
+            fp_q1 <= frame_ptr; fp_q2 <= fp_q1;
+            if (fp_q2 != fp_cand)                begin fp_cand <= fp_q2; fp_stbl_cnt <= 4'd0; end
+            else if (fp_stbl_cnt < STABLE_CYC[3:0]) fp_stbl_cnt <= fp_stbl_cnt + 4'd1;
+            else                                    fp_stable <= fp_cand;
         end
     end
     wire [5:0] fp_use = (fp_stable >= NUM_FRAMES[5:0]) ? 6'd0 : fp_stable;
