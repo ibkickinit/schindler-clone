@@ -104,12 +104,23 @@ module pg_read_engine_top #(
     wire [11:0] s_vsf   = g_q2[95:84];
     wire [23:0] s_matte = g_q2[119:96];
 
-    // ---- frame-follow: which completed slot to read ----
+    // ---- FRC cadence controller (replaces pg_genlock's fixed frame_ptr-2 follower) ----
+    // Gen-lock mode for now (blend_mode=0 → drop/repeat, single fetch) — this is the
+    // wrap-killer: it phase-tracks the source instead of a fixed offset that drifts/laps.
+    // The blend outputs (read2/alpha/blend_en) are broken out for the Mackin dual-fetch
+    // path wired in the next step. frame_ptr is Gray-decoded inside pg_cadence.
     wire [31:0] frame_base;
-    pg_genlock #(.FRAME_BUF_BASE(FRAME_BUF_BASE), .NUM_FRAMES(NUM_FRAMES),
-                 .SLOT_STRIDE(SLOT_STRIDE), .READ_DELAY(READ_DELAY)) u_genlock (
+    wire [2:0]  cad_read2_slot;  wire [31:0] cad_read2_base;
+    wire [7:0]  cad_alpha;       wire        cad_blend_en;
+    wire [15:0] cad_dbg_inc;     wire [7:0]  cad_dbg_dnew;  wire [3:0] cad_dbg_lag;
+    pg_cadence #(.FRAME_BUF_BASE(FRAME_BUF_BASE), .NUM_FRAMES(NUM_FRAMES),
+                 .SLOT_STRIDE(SLOT_STRIDE)) u_cadence (
         .clk(clk), .rstn(rstn), .frame_ptr(frame_ptr), .out_vsync(out_vsync),
-        .read_slot(dbg_read_slot), .read_base_addr(frame_base), .write_slot(dbg_write_slot)
+        .blend_mode(1'b0),
+        .read_slot(dbg_read_slot), .read_base_addr(frame_base), .write_slot(dbg_write_slot),
+        .read2_slot(cad_read2_slot), .read2_base_addr(cad_read2_base),
+        .alpha(cad_alpha), .blend_en(cad_blend_en),
+        .dbg_inc(cad_dbg_inc), .dbg_dnew(cad_dbg_dnew), .dbg_lag(cad_dbg_lag)
     );
 
     // ---- compositor (owns pg_addrgen + pg_linefetch); packed-beat fill ----
