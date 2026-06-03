@@ -105,3 +105,53 @@ lifetimes.** Specifically:
 
 If it survives this, the plan is: integrate `pg_cadence` into `pg_read_engine_top` (replace
 `pg_genlock`) + BD + firmware `blend_mode` GPIO, then Vivado build + bench.
+
+---
+
+## ROUND 3 — integrated gen-lock cadence + the Gray-code discovery (2026-06-03)
+
+Since round 2, the bench monotonicity check (autonomous builds #17–#20 with a sticky
+fp_mon_detector) produced a **surprise that changes the picture**, and pg_cadence is now
+integrated into the read engine. Please probe the new seams.
+
+**What we found (the big one): `s2mm_frame_ptr_out` is GRAY-CODED.** Raw capture showed it
+taking values {2,4,5,6,7,10,12,13,14,15}; every consecutive value differs by exactly 1 bit;
+Gray→binary decode = a clean monotonic +1 counter (steps {+1:79, wrap:8, other:0}). So:
+- The pointer **never decreases** — the monotonicity assumption HOLDS on silicon. (The
+  detector's repeated `decreased=1` was it reading Gray as binary; same bug I had in my model.)
+- **Latent bug fixed:** `pg_cadence` AND `pg_genlock` had been treating `frame_ptr` as binary
+  (clamp/`-READ_DELAY`/`mod`). Now both do `fp_use = gray2bin(fp_stable) % NUM_FRAMES`. All three
+  TBs green (pg_cadence_tb PASS, pg_genlock_tb + capstone golden Total errors=0). Commits
+  800d6d1 / aa58b89 / d44f132.
+- `pg_genlock` v2 only *looked* clean before because the bench source is a STATIC grid (every
+  framestore holds the same image) — so a mis-decoded slot showed the identical picture. This
+  invalidates "read-engine clean ⟹ pointer fine" for anything tested on static content.
+
+**Integration (commit 8a4849d):** `pg_read_engine_top` now instantiates `pg_cadence` in gen-lock
+mode (`blend_mode=0`, drop/repeat, single fetch) in place of `pg_genlock`. Capstone golden green
+(slot-independent pattern, so it confirms the swap doesn't break the pixel path but does NOT
+exercise cadence/decode timing). Building + programming now; bench wrap-kill is a visual check.
+
+**Please attack these — the new seams:**
+1. **Decode→slot mapping (the #1 open risk).** We proved the pointer is monotonic Gray, but we
+   have NOT confirmed `framestore = gray2bin(fp) % NUM_FRAMES` points at the slot actually holding
+   the freshest frame. The decoded cycle is **10 states (binary 3..12) for c_num_fstores=5** — odd
+   (2× the store count; offset 3). On a static grid we can't tell if the offset/period is right
+   (all slots identical). A wrong decode→slot offset would read a valid-but-wrong-timed frame →
+   invisible on static, a temporal offset on MOTION. How would you pin the exact mapping —
+   correlate decoded fp against which slot S2MM just wrote (needs a per-slot marker / motion)?
+2. **The 10-state period.** Why 10 for 5 framestores? Genlock frame-counter vs store-index? Does
+   `mod 5` correctly fold it, or is the true store = decoded `mod` something else?
+3. **Slot-switch atomicity vs SOF-realign (your round-2 Q8).** The cadence picks read_slot at
+   `out_vsync`; the read engine must have the first line of the new slot primed before active
+   video, composing with the SOF-realign layer (build #16). Is the per-frame slot-switch
+   frame-atomic + pre-primed here, or can a cadence slot-change throw a one-frame alignment glitch?
+4. **Gray CDC.** Gray coding means 1 bit changes per step → the 8-cycle-stable debounce is now
+   belt-and-suspenders. But skips (multi-bit Gray) and the genlock's actual transitions — any CDC
+   hazard on the decoded value at a skip?
+5. **gen-lock-mode sufficiency.** blend_mode=0 = drop/repeat (no blend). Does that kill the wrap
+   cleanly on its own (the goal), or is there residual judder that only the Mackin blend (step 3,
+   dual-fetch) resolves?
+
+We'll bring the bench result (does the wrap die? motion behaviour?) to this. fp_mon_detector
+stays as a permanent Gray-aware health bit.
