@@ -495,13 +495,32 @@ N−2)`, `eff = max(⌈inc⌉, dnew)`. The rate IIR `inc` only sizes lag + weigh
   Mackin blend **N=7** (lag≥2 achievable); blend-disable any N. 1080p-720pBW FAILs on
   `writer_overflow` (correct); 1080p-scaledBW PASS.
 - **Robustness EXERCISED (not asserted) — chaos `frame_ptr` injection (`FP_CHAOS`):**
-  - forward skip +2/+3 + repeat (the physically-real "non-linear" behavior that broke v1):
-    **N=6/7/8 PASS**, min_lap=2 (=MARGIN held under skips) → `dnew` is demonstrably live (lag
-    adapts to the skip). The mod-N rewrite's headline property is now proven, not hypothesized.
-  - +backward move (`FP_CHAOS=2`): **FAIL** (collisions) — EXPECTED + documented: a backward
-    writer move writes onto the read slot, a physical hazard no read-side logic can prevent (it
-    breaks `pg_genlock` v2 too). So the design sits at **v2's robustness level**: relies on the
-    forward-writing-ring property (`frame_ptr` never decreases).
+  - forward skip +2/+3 + repeat (strictly NON-DECREASING — the generator injects **0 pointer
+    decreases**, asserted by a TAXONOMY-ERROR guard; this is the physically-real "non-linear but
+    forward-writing" behavior that broke v1): **N=6/7/8 PASS**, min_lap=2 (=MARGIN held under
+    skips) → `dnew` is demonstrably live (lag adapts to the skip). Headline property proven.
+  - +pointer DECREASE (`FP_CHAOS=2`, 44 decreases injected): **FAIL** (collisions) — EXPECTED +
+    documented: a writer moving to an older slot writes onto the read slot, a physical hazard no
+    read-side logic can prevent (it breaks `pg_genlock` v2 too). **The TESTED dividing line is
+    exactly "any pointer decrease"** — not a sampling artifact. So the design sits at **v2's
+    robustness level**: relies on the forward-writing-ring property (`frame_ptr` never decreases).
+
+## 17. Pre-integration checklist (review pts #1–#3, 2026-06-03)
+
+1. **`frame_ptr`-monotonicity capture is THE gate, not a "cheap confirm."** The entire safety
+   argument now rests on one physical assumption — `s2mm_frame_ptr_out` never decreases. It's the
+   load-bearing validation. **The existing sub-frame ILA captures CANNOT confirm it** (~27 µs ≪ a
+   16 ms frame → `frame_ptr` is constant across them); need a **multi-frame trigger sampling the
+   pointer over hundreds of frames**, captured **under the conditions that would provoke a
+   non-monotonic move if one exists**: genlock drift at a near-1:1 mismatch (the wrap) AND a
+   resolution-change / hot-plug — not steady state.
+2. **Chaos dividing line is explicit + tested** — "decrease = the one unhandled hazard" (§16),
+   `pointer_decreases_injected` reported; forward chaos = 0 decreases → PASS.
+3. **Re-pin min-N on the corrected gate before BD numbers bake in.** Post-fix: safety floor N=4,
+   full-blend enable N=7. The framestore count that goes into the **BD/firmware must be the
+   coverage-driven number (≥7, re-measured with the bracketing pair at the worst deployment
+   ratio)** — NOT the buggy run's apparent N=8, nor the legacy 5-slot ring. Decide the exact ring
+   depth from re-measured blend coverage at integration time.
 
 **Status:** the cadence RTL is robust to the realistic non-linear pointer and gated across
 clean + forward-chaos + 1080p corners. Remaining before integration: (1) a cheap bench/ILA
