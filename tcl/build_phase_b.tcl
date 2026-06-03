@@ -73,6 +73,7 @@ add_files -norecurse [file join $project_root hdl scaler_coeffs_h.v]
 add_files -norecurse [file join $project_root hdl scaler_coeffs_v.v]
 # Phase D iter-3 — firmware-side VTC alignment via AXI GPIO + 2-FF input sync
 add_files -norecurse [file join $project_root hdl axi_sync_inputs.v]
+add_files -norecurse [file join $project_root hdl fp_mon_detector.v]   ;# sticky frame_ptr-decrease monitor
 add_files -norecurse [file join $project_root hdl vsync_cdc_pulse.v]   ;# iter6: s2mm_fsync pulse gen
 # Coefficient hex files for $readmemh — Vivado adds them to source list so
 # they're visible from the OOC synth working directory.
@@ -895,7 +896,18 @@ create_bd_cell -type ip -vlnv xilinx.com:ip:xlconcat gpio2_ch2_concat
 set_property -dict [list CONFIG.NUM_PORTS {2} CONFIG.IN0_WIDTH {16} CONFIG.IN1_WIDTH {16}] \
     [get_bd_cells gpio2_ch2_concat]
 connect_bd_net [get_bd_pins slice_diag_v_emit/Dout]  [get_bd_pins gpio2_ch2_concat/In0]
-connect_bd_net [get_bd_pins slice_diag_mm2s/Dout]    [get_bd_pins gpio2_ch2_concat/In1]
+# --- fp_mon_detector: sticky "did s2mm_frame_ptr_out ever DECREASE?" monitor ---
+# The pg_cadence safety argument rests on the VDMA write pointer being forward-monotonic.
+# This latches any decrease in fabric (FCLK_CLK0, with its own CDC of the async pointer) and
+# exposes a 16-bit summary {changes[15:8], max_delta[7:4], decreased[0]} via the diag GPIO's
+# previously-unused mm2s field — poll over UART for minutes/hours across genlock corners.
+# (Replaces slice_diag_mm2s/Dout, which read 0 — MM2S doesn't assert per-line TLAST.)
+create_bd_cell -type module -reference fp_mon_detector fp_mon
+set_property -dict [list CONFIG.NUM_FRAMES {5}] [get_bd_cells fp_mon]
+connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]             [get_bd_pins fp_mon/clk]
+connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]    [get_bd_pins fp_mon/rstn]
+connect_bd_net [get_bd_pins axi_vdma_0/s2mm_frame_ptr_out] [get_bd_pins fp_mon/frame_ptr_async]
+connect_bd_net [get_bd_pins fp_mon/mon]                     [get_bd_pins gpio2_ch2_concat/In1]
 connect_bd_net [get_bd_pins gpio2_ch2_concat/dout]   [get_bd_pins axi_gpio_2/gpio2_io_i]
 
 # AXI-Lite — needs axi_ic_lite NUM_MI expanded 5 -> 6 (handled in earlier edit)

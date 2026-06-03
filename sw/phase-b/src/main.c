@@ -1489,6 +1489,16 @@ static void telemetry_loop(UINTPTR vdma_base)
                            (mm2s_sr & 0x8000) ? "EOLLate " : "",
                            (unsigned)mm2s_frmcnt,
                            rdstore, wrstore, src_count, out_count);
+                /* FPMON: the diag mm2s field now carries fp_mon_detector — the sticky
+                 * "did s2mm_frame_ptr_out ever DECREASE?" monitor. This is the load-bearing
+                 * validation for pg_cadence (the FRC cadence controller assumes the VDMA write
+                 * pointer is forward-monotonic). decreased MUST stay 0 across genlock drift +
+                 * resolution change + hot-plug, run for minutes/hours. max_fwd_delta shows the
+                 * real pointer motion (1=normal, 2+=skip); changes confirms the detector is live. */
+                xil_printf("FPMON: fp_decreased=%u (STICKY — must stay 0)  max_fwd_delta=%u  changes=%u\r\n",
+                           (unsigned)(v_out_tlast & 0x1u),
+                           (unsigned)((v_out_tlast >> 4) & 0xFu),
+                           (unsigned)((v_out_tlast >> 8) & 0xFFu));
                 /* Phase tracking dump — recent per-output-frame source-frame
                  * deltas. Start from oldest entry (right after the last write
                  * position) so the sequence reads left-to-right in time. */
