@@ -121,9 +121,13 @@ module pg_cadence #(
         ceil_inc = inc[31:QF] + (|inc[QF-1:0] ? 12'd1 : 12'd0);
         // eff = conservative rate = max(filtered estimate, this-frame measured advance)
         eff     = (ceil_inc[5:0] > dnew) ? ceil_inc[5:0] : dnew;
-        // max safe lag = N - eff - 1 - J - O - MARGIN, clamped to [LAG_MIN, N-2]
-        ml_s    = NUM_FRAMES[13:0] - {8'd0,eff} - J_MARG[13:0] - O_MARG[13:0] - MARGIN[13:0] - 14'd1;
-        if      (ml_s < LAG_MIN[13:0])      lag = LAG_MIN[5:0];
+        // max safe lag = N - eff - 1 - J - O - MARGIN, clamped to [LAG_MIN, N-2].
+        // ALL-SIGNED: ml_s goes negative when the ring is too shallow to hold MARGIN at a high
+        // ratio, and must then saturate to LAG_MIN. A prior bug used unsigned bit-selects in the
+        // compares (LAG_MIN[13:0]), so a negative ml_s read as a huge unsigned value, escaped the
+        // clamp, and latched garbage into lag → read landed AHEAD of the writer. Keep it signed.
+        ml_s    = NUM_FRAMES - $signed({1'b0,eff}) - J_MARG - O_MARG - MARGIN - 1;
+        if      (ml_s < LAG_MIN)            lag = LAG_MIN[5:0];
         else if (ml_s > (NUM_FRAMES-2))     lag = (NUM_FRAMES-2);
         else                                lag = ml_s[5:0];
 
