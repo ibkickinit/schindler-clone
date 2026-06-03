@@ -18,14 +18,20 @@ module axis_mux2 (
     input  wire [23:0] s0_tdata,
     input  wire        s0_tvalid,
     output wire        s0_tready,
+    input  wire        s0_tuser,         // SOF passthrough (VDMA MM2S asserts via fsync)
+    input  wire        s0_tlast,         // EOL passthrough (VDMA: tied 0 — unused downstream)
 
     input  wire [23:0] s1_tdata,
     input  wire        s1_tvalid,
     output wire        s1_tready,
+    input  wire        s1_tuser,         // SOF passthrough (read-engine pg_compose)
+    input  wire        s1_tlast,         // EOL passthrough (read-engine pg_compose)
 
     output wire [23:0] m_tdata,
     output wire        m_tvalid,
-    input  wire        m_tready
+    input  wire        m_tready,
+    output wire        m_tuser,
+    output wire        m_tlast
 );
     // sel arrives from a slow GPIO in the FCLK_CLK0 domain; synchronize into the
     // pixel-clock domain before it fans out to the 24-bit data mux (else it is a
@@ -37,6 +43,8 @@ module axis_mux2 (
 
     assign m_tdata   = sel_q2 ? s1_tdata  : s0_tdata;
     assign m_tvalid  = sel_q2 ? s1_tvalid : s0_tvalid;
+    assign m_tuser   = sel_q2 ? s1_tuser  : s0_tuser;   // carry SOF so axis_to_vid_io can re-anchor
+    assign m_tlast   = sel_q2 ? s1_tlast  : s0_tlast;
     // DRAIN BOTH inputs (do NOT back-pressure the unselected one). If the idle
     // input is back-pressured, the VDMA MM2S slave parks → S2MM (Dynamic Master)
     // skips the parked slots → only ~2 ring slots rotate, the rest freeze, and

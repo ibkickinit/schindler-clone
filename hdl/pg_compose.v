@@ -50,6 +50,8 @@ module pg_compose #(
     output wire [23:0] m_tdata,
     output wire        m_tvalid,
     input  wire        m_tready,
+    output wire        m_tuser,          // SOF: asserted on the frame's first pixel
+    output wire        m_tlast,          // EOL: asserted on each output row's last pixel
 
     output wire        fetch_req,
     output wire [31:0] fetch_addr,
@@ -93,8 +95,12 @@ module pg_compose #(
     end
 
     // ---------- output FIFO ----------
+    // Each slot carries the pixel plus its frame-framing side-band:
+    //   [25] = EOL (tlast, last pixel of an output row)
+    //   [24] = SOF (tuser, first pixel of the frame)
+    //   [23:0] = pixel data
     localparam integer AW = $clog2(FIFO_DEPTH);
-    reg  [23:0] ofifo [0:FIFO_DEPTH-1];
+    reg  [25:0] ofifo [0:FIFO_DEPTH-1];
     reg  [AW:0] ocount;
     reg  [AW-1:0] owr, ord;
     wire ofull  = (ocount == FIFO_DEPTH[AW:0]);
@@ -198,13 +204,30 @@ module pg_compose #(
     end
 
     // ---------- output FIFO read/write ----------
+    // Frame-framing side-band, computed at push time (1 push == 1 output pixel,
+    // strictly in raster order). SOF = first pushed pixel after sof; EOL = last
+    // pixel of each OUT_W run. push_col/first_done track raster position on the
+    // exact condition that writes the FIFO (push_en && !ofull).
+    reg  [11:0] push_col;
+    reg         first_done;
+    wire        wr_en       = push_en && !ofull;
+    wire        push_sof    = !first_done;                 // first pixel of frame
+    wire        push_eol    = (push_col == OUT_W-1);       // last pixel of row
+    always @(posedge clk) begin
+        if (!rstn || sof) begin push_col <= 12'd0; first_done <= 1'b0; end
+        else if (wr_en) begin
+            first_done <= 1'b1;
+            push_col   <= push_eol ? 12'd0 : (push_col + 12'd1);
+        end
+    end
+
     wire pop_out = m_tvalid && m_tready;
     always @(posedge clk) begin
         if (!rstn || sof) begin owr <= 0; ord <= 0; ocount <= 0; end
         else begin
-            if (push_en && !ofull) begin ofifo[owr] <= push_data; owr <= owr + 1'b1; end
+            if (wr_en) begin ofifo[owr] <= {push_eol, push_sof, push_data}; owr <= owr + 1'b1; end
             if (pop_out)                 ord <= ord + 1'b1;
-            case ({push_en && !ofull, pop_out})
+            case ({wr_en, pop_out})
                 2'b10: ocount <= ocount + 1'b1;
                 2'b01: ocount <= ocount - 1'b1;
                 default: ocount <= ocount;
@@ -212,7 +235,9 @@ module pg_compose #(
         end
     end
     assign m_tvalid = !oempty;
-    assign m_tdata  = ofifo[ord];
+    assign m_tdata  = ofifo[ord][23:0];
+    assign m_tuser  = ofifo[ord][24];
+    assign m_tlast  = ofifo[ord][25];
 
     // ---------- prefetch scheduler ----------
     reg [11:0] served_count, pf_next_k, pf_src, pf_frac;

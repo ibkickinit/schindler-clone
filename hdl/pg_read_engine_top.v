@@ -51,6 +51,8 @@ module pg_read_engine_top #(
     output wire [23:0] m_axis_tdata,
     output wire        m_axis_tvalid,
     input  wire        m_axis_tready,
+    output wire        m_axis_tuser,     // SOF (frame's first pixel) — for SOF-realign
+    output wire        m_axis_tlast,     // EOL (row's last pixel)
 
     // AXI DataMover MM2S command stream (→ datamover S_AXIS_MM2S_CMD)
     output wire [71:0] m_axis_cmd_tdata,
@@ -134,6 +136,7 @@ module pg_read_engine_top #(
         .h_step_int(s_hsi), .h_step_frac(s_hsf),
         .v_step_int(s_vsi), .v_step_frac(s_vsf), .matte_rgb(s_matte),
         .m_tdata(m_axis_tdata), .m_tvalid(m_axis_tvalid), .m_tready(m_axis_tready),
+        .m_tuser(m_axis_tuser), .m_tlast(m_axis_tlast),
         .fetch_req(fetch_req), .fetch_addr(fetch_addr), .fetch_len(fetch_len),
         .beat_data(s_axis_dm_tdata), .beat_valid(s_axis_dm_tvalid),
         .beat_ready(s_axis_dm_tready), .beat_last(s_axis_dm_tlast),

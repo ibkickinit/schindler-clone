@@ -850,3 +850,52 @@ Resolve before the fix via engine on/off toggle on a flat color + `ila_re_dbg` o
 aliased. **Status: ⚠️ root cause of the GRID artifact known (aliasing); the FLAT-COLOR pattern is
 unresolved. Do NOT mark ✅ until Q1 closes + the fix lands + 3-boot verify.** Capture tooling:
 `tcl/capture_re_ila.tcl`, `/tmp/decode_dbg.py`. Verify on monitor (MS2109 masks this class).
+
+## 2026-06-02 (cont.) — Build #16: SOF-gated frame realign (option 1) ✅ built, sim-proven, ⚠️ bench-pending
+
+Branch `readengine-b-integration`, on the packed-beat substrate (prior commit `911b16d` =
+build #15, full-master read-engine + packed-beat line fill). This build adds **AXIS frame
+framing (TUSER=SOF / TLAST=EOL)** end-to-end so the output adapter anchors each frame to its
+SOF beat instead of free-running — making frame-start alignment **independent of producer
+latency** (engine engage, geometry change, genlock-slot change) and ensuring a stale/partial
+beat can never be latched as pixel 0.
+
+| Module | Change |
+|---|---|
+| `hdl/pg_compose.v` | emit `m_tuser`(SOF on pixel 0) + `m_tlast`(EOL each row); ofifo widened to carry sof/eol bits via `push_col`/`first_done` |
+| `hdl/pg_read_engine_top.v` | expose `m_axis_tuser`/`m_axis_tlast` |
+| `hdl/axis_mux2.v` | carry `tuser`/`tlast` on s0/s1/m (this mux was **silently dropping SOF** before the color stack — the reason the adapter couldn't use it) |
+| `hdl/axis_to_vid_io.v` | SOF-gated realign: drain pre-SOF beats (emit black), lock pixel 0 to the SOF beat, free-run; re-arm each frame at vtg_vsync. **Does NOT require TLAST** (VDMA MM2S asserts SOF via fsync but not per-line TLAST) → safe for the proven VDMA passthrough |
+
+**Why the mux was the gap:** the color stack (`color_saturation/correct/matrix`) already
+forwarded TUSER/TLAST, and VDMA MM2S asserts SOF via `c_use_mm2s_fsync` — but `axis_mux2` had
+no TUSER/TLAST ports, so SOF died at the mux. Widening the mux lets Vivado re-infer the s0/s1/m
+AXIS interfaces with TUSER/TLAST; existing `connect_bd_intf_net`s carry them automatically (no
+BD edit needed — confirmed in build log: re_mux s0/s1/m inferred, generation complete, no
+interface mismatch).
+
+**Sims (gate, all green before build):**
+- `sim/axis_sof_tb.v` (NEW): **PASS, 164 checks, 0 errors** — clean frames bit-exact (no
+  regression), pre-SOF junk drained, late-SOF latency-independent, mid-frame starve re-anchors
+  next frame. (frame 1 = warmup, excluded; `enable` rises mid-raster.)
+- `pg_read_engine_top_tb` (capstone golden): **Total errors = 0** (producer TUSER/TLAST additions bit-exact).
+- `pg_latency_tb`: **starv=0, full delivery** (packed-beat intact).
+- (`pg_compose_tb` does not compile — pre-existing stale TB referencing the removed `fetch_last`
+  port from before packed-beat; NOT a regression of this change.)
+
+**Build:** `write_bitstream completed successfully`, DRC 0 errors, exit 0.
+**Timing MET: WNS = +0.139 ns, WHS = +0.0066 ns** (vs #15's WNS +0.205 — SOF logic cost a little
+slack, still positive setup + hold). Bitstream:
+`build/phase-b-vdma-passthrough/phase-b-vdma-passthrough.runs/impl_1/phase_b_bd_wrapper.bit`.
+**No firmware change** (pure AXIS side-band, no register-map change → existing ELF applies).
+Build env (mandatory): `BOARD_PARTS_REPO_PATHS`, `DIGILENT_IP_REPO_PATH` (see "How to recreate").
+Reproduce: `READENGINE_B=1 OUTPUT_MODE=720p make build`.
+
+**Scope note:** SOF realign is frame-*alignment* robustness, BELOW the FRC layer. It does **NOT**
+fix the "wrap" (source 59.94 vs output 60.00 rate drift) — that is genuine FRC and needs the
+per-engine **cadence controller** (next step; see `docs/dual-engine-frc-plan.md`). Expect the
+wrap to still be present after this build.
+
+**Pass/fail:** ✅ built + timing-met + sim-proven. ⚠️ **bench-pending** — verify VDMA passthrough
+AND read-engine both clean on **monitor** (no regression), ≥3 cold boots (no-coin-flip rule).
+Do NOT mark fully ✅ until bench + 3-boot verify.
