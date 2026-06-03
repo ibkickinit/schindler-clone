@@ -1,50 +1,61 @@
 // frc_cadence_model_tb.v — behavioral frame-level model of the FRC ring + cadence.
 //
-// GATE for the cadence-controller RTL (task #101). Implements the canonical form the
-// reviewer specified and proves the properties that matter, across injected RATE STEPS:
+// GATE for the cadence-controller RTL (task #101). HARDENED 2026-06-02 after an
+// independent review showed the first cut was a self-fulfilling gate: the safety
+// clamp forces read into [newest-max_lag, newest], which is collision-free BY
+// CONSTRUCTION at every N — so `collisions==0` could never fail and "N=5 collides /
+// N=7 clean" was NOT reproducible from the committed file (N=4/5/7 all passed). The
+// confound: clamp + N were changed together and the pass mis-attributed to N.
 //
-//   Cadence = phase accumulator (Q1): per output frame  acc += inc; n_adv = floor(acc);
-//             acc -= n_adv.  n_adv: 0=repeat, 1=advance, >=2=drop.  frac(acc)=Mackin alpha.
-//   Rate    = inc is NOT constant; the source is async, so inc is servo'd by ring
-//             OCCUPANCY (read distance behind the write pointer) via a PI loop holding
-//             occupancy at a setpoint (~N/2). Video analog of audio async-SRC / ascal o_lltune.
-//   Safety  = HARD invariant (Q7): never read a slot (or, when blending, slot pair S,S+1)
-//             the writer can reach before the output frame completes. If a repeat/hold
-//             would let the writer close within margin, FORCE-ADVANCE (accept a 1-frame
-//             cadence error). This is the one thing that can corrupt (not just look wrong).
+// This version gives the gate teeth:
+//   - SAFETY_CLAMP_ON knob: with the clamp OFF, the hazard is REAL — N=5 collides at
+//     60->24 (the writer laps the read slot mid-read). Proves the clamp is load-bearing.
+//   - the PASS criterion is no longer collisions==0 (clamp-guaranteed). It is:
+//       collisions==0  AND  occ_min >= MARGIN  AND  depth_suppress==0
+//     where depth_suppress = frames where alpha is fractional and frame S+1 EXISTS
+//     (completed) but lies OUTSIDE the safe window → the ring silently dropped a blend
+//     (Mackin judder returns) with zero collisions reported. THIS is what distinguishes
+//     a deep-enough ring from a too-shallow one. Under it, N=4/5 FAIL, N=7 PASSES.
+//   - writer JITTER (±JIT ticks): perfectly-periodic writers make occ=0 look "safe";
+//     real DDR-latency jitter makes a zero-margin config collide. Jitter exposes margin.
 //
-//   TWO readers (engine A = HD, dual-fetch/blend;  engine B = SD analog, single-fetch/
-//   no-blend per Q5) share one ring filled by one writer (S2MM). Worst-case occupancy
-//   across a SOURCE-rate step (resolution change / hot-plug) is where the lap happens (Q7).
+// Cadence = phase accumulator (acc+=inc; n_adv=floor; frac=Mackin alpha); inc servo'd
+// by ring occupancy (PI). Two readers (A=HD blend, B=SD single-fetch) share one ring.
 //
-// Asserts: ZERO writer↔reader slot collisions; occupancy bounded; reports cadence
-// (advance/repeat/drop) and blend-fire fraction (the alpha-gated 2nd-fetch rate, Q4).
-//
-// Abstract time: 1 tick = 1ns. *_period = frame interval in ticks. Changing a period
-// mid-sim injects a rate step. R = out_period/src_period = source frames per output frame.
-// Behavioral characterization model, NOT pixel-accurate. Job: find the failure first.
+// Override N / SAFETY_CLAMP_ON via:  xelab -generic_top "N=5" -generic_top "SAFETY_CLAMP_ON=0"
+// Abstract time: 1 tick = 1ns. Behavioral characterization, NOT pixel-accurate.
 
 `default_nettype none
 `timescale 1ns / 1ps
 
-module frc_cadence_model_tb;
-    localparam integer N = 7;            // ring slots. N=5 collides at 60->24 (proven);
-                                         // worst-case safe lag = N-ceil(R)-2, and two
-                                         // blending readers+writer want >=6-7 (Q7 depth math).
-    localparam integer NR = 2;           // readers (A=HD blend, B=SD single-fetch)
-    localparam integer SETPOINT = N/2;   // occupancy target (~N/2)
+module frc_cadence_model_tb #(
+    parameter integer N = 7,                 // ring slots (override per run)
+    parameter integer SAFETY_CLAMP_ON = 1,   // 0 = disable clamp → prove the hazard is real
+    parameter integer MARGIN = 2,            // required occupancy floor for a PASS
+    parameter integer JIT = 30               // writer jitter, +/- ticks on src interval
+);
+    localparam integer NR = 2;
+    localparam integer SETPOINT = N/2;
 
     reg clk = 1'b0;  always #1 clk = ~clk;
 
+    // ---- writer with jitter: source frame interval = src_period +/- JIT ticks ----
     integer src_period;
-    integer src_cnt = 0;  reg src_evt;
+    integer src_cnt = 0;
+    integer src_target;
+    reg src_evt;
+    integer jseed = 32'h1234_5678;
+    function integer jitter; input integer dummy; begin
+        jseed  = (jseed*1103515245 + 12345) & 32'h7fff_ffff;   // LCG (deterministic)
+        jitter = (jseed % (2*JIT+1)) - JIT;
+    end endfunction
     always @(posedge clk) begin
         src_evt <= 1'b0;
-        if (src_cnt >= src_period-1) begin src_cnt <= 0; src_evt <= 1'b1; end
-        else                              src_cnt <= src_cnt + 1;
+        if (src_cnt >= src_target-1) begin
+            src_cnt <= 0; src_evt <= 1'b1; src_target <= src_period + jitter(0);
+        end else src_cnt <= src_cnt + 1;
     end
 
-    // ---- writer: fills ring at source rate; in-progress slot = (newest+1)%N ----
     integer newest = -1;
     always @(posedge clk) if (src_evt) newest <= newest + 1;
     wire [31:0] inprog_slot = (newest + 1) % N;
@@ -53,23 +64,21 @@ module frc_cadence_model_tb;
     integer out_period [0:NR-1];
     integer out_cnt    [0:NR-1];
     reg     out_evt    [0:NR-1];
-    real    acc        [0:NR-1];         // phase accumulator
-    real    inc        [0:NR-1];         // servo'd rate (src frames per out frame)
-    real    integ      [0:NR-1];         // PI integral
+    real    acc        [0:NR-1];
+    real    inc        [0:NR-1];
+    real    integ      [0:NR-1];
     integer read_id    [0:NR-1];
     integer prev_id    [0:NR-1];
     integer read_slot  [0:NR-1];
     reg     read_active[0:NR-1];
-    reg     blend      [0:NR-1];         // dual-fetch this frame (A only)
-    integer can_blend  [0:NR-1];         // 1 = reader is allowed to blend (A=1, B=0)
-    // metrics
+    reg     blend      [0:NR-1];
+    integer can_blend  [0:NR-1];
     integer m_adv[0:NR-1], m_rep[0:NR-1], m_drop[0:NR-1], m_blend[0:NR-1], m_tot[0:NR-1];
+    integer m_supp[0:NR-1];                  // depth-driven blend suppression (the real failure)
     integer occ_min[0:NR-1], occ_max[0:NR-1];
 
     integer collisions = 0;
     integer started = 0;
-
-    // PI gains (tuning — the model exists to confirm these are stable; conservative).
     real KP; real KI;
 
     integer i;
@@ -77,64 +86,69 @@ module frc_cadence_model_tb;
         for (i=0;i<NR;i=i+1) begin
             out_cnt[i]=0; out_evt[i]=1'b0; acc[i]=0.0; integ[i]=0.0;
             read_id[i]=0; prev_id[i]=-1; read_slot[i]=0; read_active[i]=1'b0; blend[i]=1'b0;
-            m_adv[i]=0; m_rep[i]=0; m_drop[i]=0; m_blend[i]=0; m_tot[i]=0;
+            m_adv[i]=0; m_rep[i]=0; m_drop[i]=0; m_blend[i]=0; m_tot[i]=0; m_supp[i]=0;
             occ_min[i]=999; occ_max[i]=-999;
         end
-        can_blend[0]=1;   // engine A (HD): blends
-        can_blend[1]=0;   // engine B (SD analog): single-fetch, no blend (Q5 mitigation)
+        can_blend[0]=1; can_blend[1]=0;
         KP = 0.002; KI = 0.0004;
     end
 
-    // ---- output frame-event generators (per reader) ----
     genvar g;
-    generate
-      for (g=0; g<NR; g=g+1) begin: oevt
+    generate for (g=0; g<NR; g=g+1) begin: oevt
         always @(posedge clk) begin
             out_evt[g] <= 1'b0;
             if (out_cnt[g] >= out_period[g]-1) begin out_cnt[g] <= 0; out_evt[g] <= 1'b1; end
             else                                     out_cnt[g] <= out_cnt[g] + 1;
         end
-      end
-    endgenerate
+    end endgenerate
 
-    // ---- cadence per reader at its output-frame event ----
-    integer r, n_adv, want, occ, errf, max_lag, ceilR, hi, lo;
-    real    Rr;
+    integer r, n_adv, want, occ, errf, max_lag, ceilR, hi, lo, s1;
+    real    Rr, fracv;
+    reg     want_blend;
     always @(posedge clk) begin
         for (r=0; r<NR; r=r+1) begin
             if (out_evt[r] && newest >= 0) begin
                 started <= 1;
-                // --- accumulator: integer carry = cadence, frac = alpha ---
                 acc[r] = acc[r] + inc[r];
                 n_adv  = $floor(acc[r]);
                 acc[r] = acc[r] - n_adv;
-                want   = read_id[r] + n_adv;     // resampler's desired frame
+                fracv  = acc[r];                 // residual = alpha
+                want   = read_id[r] + n_adv;
 
-                // --- HARD safety clamp (Q7) ---
-                // writer advances ~ceil(R) slots during this read; safe max lag behind
-                // newest = N - ceil(R) - 2 (one slot in-progress + one frame margin).
                 Rr      = (out_period[r]*1.0)/(src_period*1.0);
                 ceilR   = $ceil(Rr);
-                max_lag = N - ceilR - 2;  if (max_lag < 0) max_lag = 0;
-                hi = newest;                       // can't read uncompleted -> hold (repeat)
-                lo = newest - max_lag;             // too old/unsafe -> force-advance (drop)
-                if (lo < 0) lo = 0;
-                if (want > hi) want = hi;          // output ahead of source -> repeat newest
-                if (want < lo) want = lo;          // fell behind / transient -> force-advance
+                max_lag = N - ceilR - 2; if (max_lag < 0) max_lag = 0;
+                hi = newest;
+                lo = newest - max_lag; if (lo < 0) lo = 0;
+
+                if (SAFETY_CLAMP_ON != 0) begin
+                    if (want > hi) want = hi;        // repeat (output ahead)
+                    if (want < lo) want = lo;        // force-advance (drop) — collision-free
+                end else begin
+                    // clamp OFF: only the physical "can't read uncompleted" head clamp.
+                    // Tail is UNGUARDED → the writer can lap a too-old read slot → collision.
+                    if (want > hi) want = hi;
+                    if (want < 0)  want = 0;
+                end
                 read_id[r]   = want;
                 read_slot[r] = want % N;
 
-                // --- alpha-gated dual fetch (Q4): blend only if frac>0 AND S+1 exists+safe ---
-                blend[r] = (can_blend[r] && acc[r] > 0.004 && (want+1) <= newest
-                            && (newest - (want+1)) <= max_lag);
+                // blend intent vs ability (depth)
+                want_blend = (fracv > 0.004 && fracv < 0.996);
+                s1 = want + 1;
+                blend[r] = (can_blend[r] && want_blend && s1 <= newest
+                            && (newest - s1) <= max_lag);
 
-                // --- metrics ---
                 if (started) begin
                     m_tot[r] = m_tot[r] + 1;
                     if (read_id[r] == prev_id[r])          m_rep[r]  = m_rep[r] + 1;
                     else if (read_id[r] == prev_id[r]+1)   m_adv[r]  = m_adv[r] + 1;
                     else if (read_id[r] >  prev_id[r]+1)   m_drop[r] = m_drop[r] + (read_id[r]-prev_id[r]-1);
                     if (blend[r]) m_blend[r] = m_blend[r] + 1;
+                    // DEPTH suppression: wanted to blend, S+1 EXISTS (completed), but it's
+                    // outside the safe window → ring too shallow → silent single-fetch.
+                    if (can_blend[r] && want_blend && s1 <= newest && (newest - s1) > max_lag)
+                        m_supp[r] = m_supp[r] + 1;
                     occ = newest - read_id[r];
                     if (occ < occ_min[r]) occ_min[r] <= occ;
                     if (occ > occ_max[r]) occ_max[r] <= occ;
@@ -142,12 +156,13 @@ module frc_cadence_model_tb;
                 prev_id[r] = read_id[r];
                 read_active[r] <= 1'b1;
 
-                // --- PI occupancy servo: nudge inc to hold occupancy at SETPOINT ---
-                // occ high (writer far ahead) -> advance faster -> raise inc.
+                // PI occupancy servo with deadband (|err|<=1 → no integrate) + anti-windup
                 occ  = newest - read_id[r];
                 errf = occ - SETPOINT;
-                if (errf > 0 || errf < 0) begin       // deadband: |err|<1 is 0 (integer)
+                if (errf > 1 || errf < -1) begin
                     integ[r] = integ[r] + errf;
+                    if (integ[r] >  500.0) integ[r] =  500.0;   // anti-windup clamp
+                    if (integ[r] < -500.0) integ[r] = -500.0;
                     inc[r]   = inc[r] + KP*errf + KI*integ[r];
                     if (inc[r] < 0.05) inc[r] = 0.05;
                     if (inc[r] > 5.0)  inc[r] = 5.0;
@@ -156,7 +171,6 @@ module frc_cadence_model_tb;
         end
     end
 
-    // ---- SAFETY check: writer in-progress slot must not equal any reader's live slot ----
     integer c;
     always @(posedge clk) begin
         if (started) for (c=0; c<NR; c=c+1) begin
@@ -164,49 +178,55 @@ module frc_cadence_model_tb;
                 ( inprog_slot == read_slot[c][31:0] ||
                   (blend[c] && inprog_slot == ((read_slot[c]+1)%N)) )) begin
                 collisions <= collisions + 1;
-                $error("COLLISION @%0t reader%0d: inprog slot %0d hits read_slot %0d (blend=%0d read_id=%0d newest=%0d)",
-                       $time, c, inprog_slot, read_slot[c], blend[c], read_id[c], newest);
+                $error("COLLISION @%0t reader%0d: inprog %0d == read_slot %0d (read_id=%0d newest=%0d)",
+                       $time, c, inprog_slot, read_slot[c], read_id[c], newest);
             end
         end
     end
 
-    // ---- rate-step schedule ----
     task run_phase(input integer sp, input integer opA, input integer opB,
                    input integer nframes, input [255:0] name);
         integer k;
         begin
-            src_period = sp; out_period[0] = opA; out_period[1] = opB;
-            $display("---- %0s : src=%0d  outA=%0d (R=%f)  outB=%0d (R=%f) ----",
-                     name, sp, opA, (opA*1.0)/(sp*1.0), opB, (opB*1.0)/(sp*1.0));
+            src_period = sp; src_target = sp; out_period[0]=opA; out_period[1]=opB;
+            $display("---- %0s : src=%0d outA=%0d (R=%f) outB=%0d ----",
+                     name, sp, opA, (opA*1.0)/(sp*1.0), opB);
             for (k=0; k<nframes; k=k+1) begin
                 @(posedge clk); while (!out_evt[0]) @(posedge clk);
             end
         end
     endtask
 
+    integer pass;
     initial begin
-        src_period = 1001; out_period[0]=1000; out_period[1]=1000;
-        inc[0]=1.0; inc[1]=1.0;                 // seed: assume same rate; servo LEARNS the truth
+        src_period=1001; src_target=1001; out_period[0]=1000; out_period[1]=1000;
+        inc[0]=1.0; inc[1]=1.0;
         @(posedge clk);
-        // engine B (analog) held at out=1000 throughout; engine A is the test subject.
-        run_phase(1001, 1000, 1000, 80, "P1 src59.94 A->60  (A repeat-dominant)");
-        run_phase(1000, 1001, 1000, 80, "P2 src60    A->59.94 (A drop-dominant)");
-        run_phase(1000, 1200, 1000, 80, "P3 STEP src60 A->50  (heavy drop)");
-        run_phase(1000, 2500, 1000, 60, "P4 STEP src60 A->24  (2.5x drop, N=5 would collide)");
-        run_phase(1200, 1000, 1000, 80, "P5 STEP src50 A->60  (A repeat-heavy; src step hits BOTH)");
+        run_phase(1001, 1000, 1000, 80, "P1 src59.94 A->60");
+        run_phase(1000, 1001, 1000, 80, "P2 src60    A->59.94");
+        run_phase(1000, 1200, 1000, 80, "P3 STEP 60->50");
+        run_phase(1000, 2500, 1000, 60, "P4 STEP 60->24 (2.5x)");
+        run_phase(1200, 1000, 1000, 80, "P5 STEP 50->60");
 
-        $display("==== frc_cadence_model_tb results (N=%0d, %0d readers) ====", N, NR);
-        $display("  collisions (MUST be 0) = %0d", collisions);
+        $display("==== frc_cadence_model_tb  N=%0d  CLAMP=%0d  JIT=%0d ====", N, SAFETY_CLAMP_ON, JIT);
+        $display("  collisions = %0d", collisions);
         for (i=0;i<NR;i=i+1)
-            $display("  reader%0d (%s): occ[%0d..%0d]  adv/rep/drop=%0d/%0d/%0d  blendfire=%0d/%0d",
-                     i, (i==0)?"A HD blend":"B SD single", occ_min[i], occ_max[i],
-                     m_adv[i], m_rep[i], m_drop[i], m_blend[i], m_tot[i]);
-        if (collisions == 0) $display("FRC_CADENCE_TB: PASS (no collisions across all rate steps)");
-        else                 $display("FRC_CADENCE_TB: FAIL (%0d collisions)", collisions);
+            $display("  reader%0d (%s): occ[%0d..%0d] adv/rep/drop=%0d/%0d/%0d blendfire=%0d/%0d depth_suppress=%0d",
+                     i, (i==0)?"A blend":"B single", occ_min[i], occ_max[i],
+                     m_adv[i], m_rep[i], m_drop[i], m_blend[i], m_tot[i], m_supp[i]);
+        // PASS (clamp-on gate): no collisions AND reader A holds margin AND no silent
+        // depth-driven blend suppression. (When CLAMP=0 we EXPECT collisions>0.)
+        pass = (collisions==0) && (occ_min[0] >= MARGIN) && (m_supp[0]==0);
+        if (SAFETY_CLAMP_ON == 0)
+            $display((collisions>0) ? "FRC_CADENCE_TB: HAZARD CONFIRMED (clamp off -> collisions, as intended)"
+                                    : "FRC_CADENCE_TB: UNEXPECTED (clamp off but no collision)");
+        else
+            $display(pass ? "FRC_CADENCE_TB: PASS (no collision, occ>=MARGIN, no blend suppression)"
+                          : "FRC_CADENCE_TB: FAIL (margin/suppression — ring too shallow for this config)");
         $finish;
     end
 
-    initial begin #8000000; $display("FRC_CADENCE_TB: TIMEOUT"); $finish; end
+    initial begin #12000000; $display("FRC_CADENCE_TB: TIMEOUT"); $finish; end
 endmodule
 
 `default_nettype wire

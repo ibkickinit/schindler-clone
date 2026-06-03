@@ -242,13 +242,22 @@ confirmed it. **Locked design:**
   *peak* (59.94→60 hits it rarely), not a floor. α is known per-frame before the frame.
 - **Q7 = hard safety invariant + ring depth.** Never pick a slot (or pair S,S+1 when blending)
   the write pointer can reach before the output frame completes; if a repeat would let the
-  writer close within margin, force-advance and eat a 1-frame cadence error. Depth: two readers
-  at different phases × 2 slots (blend) + writer = up to 5 occupied on a 5-slot ring → zero
-  headroom. **Model proof:** N=5 *collides* at 60→24 (writer laps mid-read during the long
-  output frame); **N=7 with A=dual-fetch/blend + B=single-fetch/no-blend → 0 collisions across
-  all rate steps.** → **bump framestores to 6–7**, and constrain engine B (SD analog) to
-  single-fetch/no-blend. Danger is the rate-step *transient* (resolution change/hot-plug), not
-  steady ppm drift — size the ring for the worst transient (Q2).
+  writer close within margin, force-advance and eat a 1-frame cadence error. Depth math: two
+  readers at different phases × 2 slots (blend) + writer = up to 5 occupied on a 5-slot ring →
+  zero headroom → **provisionally bump framestores to 7** and constrain engine B (SD analog) to
+  single-fetch/no-blend. Danger is the rate-step *transient* (res change/hot-plug), not steady
+  ppm (Q2).
+  **⚠️ RETRACTION (2026-06-02 eve):** an earlier note here claimed the model *proved* "N=5
+  collides / N=7 clean." That was **confounded** — the safety clamp + N were changed in one
+  edit, so `collisions==0` was true *by construction of the clamp at any N* (an independent run
+  reproduced N=4/5/7 all passing). The hardened gate (`sim/frc_cadence_model_tb.v`: writer
+  jitter + clamp-on/off knob + a real PASS criterion of occ_min≥MARGIN and no depth-driven
+  blend suppression) now has teeth, but its current results are **not yet trustworthy** (a
+  `read_active`/stale-`read_slot` lifetime modeling issue produces collisions even at N=7 that
+  may be artifacts). **The true minimum N and the exact clamp safety-margin (it must account
+  for in-frame writer advance + jitter, so max_lag is likely TIGHTER than N−ceil(R)−2) are
+  OPEN, to be pinned by the hardened gate next session before the RTL is gated.** The depth
+  *direction* (≥6–7, B single-fetch) stands on the prose depth-math; it is not yet sim-proven.
 - **Q5 interlace:** true 60-field (cadence-on-fields) for engine B — but raw alternate-line
   decimation twitters on HD verticals; **add a vertical lowpass / interlace filter before field
   decimation** in the B path.
