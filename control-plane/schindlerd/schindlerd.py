@@ -597,13 +597,16 @@ class Dispatcher:
         return applied
 
     async def _m_blend_set(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        """Mackin blend toggle (read-engine). Raw 'M 0|1' firmware command:
-        1 = blended FRC (dual-fetch), 0 = drop/repeat. Not a catalog control."""
-        en = 1 if params.get("enabled") else 0
-        self.uart.send_raw(f"M {en}")
-        self.bus.publish({"jsonrpc": "2.0", "method": "blend.changed",
-                          "params": {"enabled": bool(en)}})
-        return {"enabled": bool(en)}
+        """Mackin blend mode (read-engine). Raw 'M 0|1|2': 0=off (drop/repeat),
+        1=intelligent (blend mid-phase), 2=force (blend every interframe). Accepts
+        {"mode":0|1|2} or legacy {"enabled":bool}. Not a catalog control."""
+        if "mode" in params:
+            m = int(params["mode"]); m = 0 if m < 0 else 2 if m > 2 else m
+        else:
+            m = 1 if params.get("enabled") else 0
+        self.uart.send_raw(f"M {m}")
+        self.bus.publish({"jsonrpc": "2.0", "method": "blend.changed", "params": {"mode": m}})
+        return {"mode": m}
 
     async def _m_profile_list(self, params: Dict[str, Any]) -> List[str]:
         return self.profiles.list()

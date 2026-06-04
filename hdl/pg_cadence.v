@@ -56,7 +56,7 @@ module pg_cadence #(
 
     input  wire [5:0]  frame_ptr,   // S2MM in-progress framestore (FCLK_CLK1, async)
     input  wire        out_vsync,   // output VTC vsync (this clock domain)
-    input  wire        blend_mode,  // 1 = Mackin blend (dual-fetch), 0 = alpha-snap (single)
+    input  wire [1:0]  blend_mode,  // 0=off(alpha-snap,single), 1=intelligent(blend mid-phase), 2=force(blend every interframe)
 
     output reg  [2:0]  read_slot,
     output reg  [31:0] read_base_addr,
@@ -110,7 +110,7 @@ module pg_cadence #(
     wire [5:0] fp_use = fp_bin % NUM_FRAMES[5:0];
 
     // ---------- blend_mode CDC ----------
-    (* ASYNC_REG = "TRUE" *) reg bm_q1, bm_q2;
+    (* ASYNC_REG = "TRUE" *) reg [1:0] bm_q1, bm_q2;
     always @(posedge clk) begin bm_q1 <= blend_mode; bm_q2 <= bm_q1; end
 
     // ---------- output-vsync rising edge ----------
@@ -162,9 +162,13 @@ module pg_cadence #(
         // blend pair (pointer-relative): S = fp_use-lag, S+1 = fp_use-lag+1 (newer)
         s_slot  = (fp_use + 6'd2*NUM_FRAMES[5:0] - lag) % NUM_FRAMES[5:0];
         s2_slot = (fp_use + 6'd2*NUM_FRAMES[5:0] - lag + 6'd1) % NUM_FRAMES[5:0];
-        do_blend = bm_q2 && (lag >= 6'd2) && (frac > BLEND_EPS[19:0]) && (frac < (ONE[19:0]-BLEND_EPS[19:0]));
-        // alpha-snap (single-fetch): round to the nearer completed frame (only if lag>=2)
-        snap_up  = (!bm_q2) && (lag >= 6'd2) && frac[QF-1];
+        // blend modes: 0=off, 1=intelligent (blend only mid-phase, deadband near 0/1),
+        // 2=force (blend EVERY interframe at the computed alpha — never a clean drop/double).
+        do_blend = (bm_q2 != 2'd0) && (lag >= 6'd2) &&
+                   ( (bm_q2 == 2'd2) ? 1'b1
+                                     : ((frac > BLEND_EPS[19:0]) && (frac < (ONE[19:0]-BLEND_EPS[19:0]))) );
+        // alpha-snap (single-fetch, mode 0 only): round to the nearer completed frame (if lag>=2)
+        snap_up  = (bm_q2 == 2'd0) && (lag >= 6'd2) && frac[QF-1];
         prim_slot = snap_up ? s2_slot : s_slot;
     end
 

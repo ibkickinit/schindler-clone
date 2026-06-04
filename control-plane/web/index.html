@@ -111,11 +111,11 @@
         <span style="opacity:.6">(unchecked = scale around center)</span>
       </label>
       <div style="display:flex;gap:8px;align-items:center;margin:3px 0"><span style="width:64px">Scale X</span>
-        <input type="range" id="geo-sx-r" min="64" max="1280" value="1280" style="flex:1">
-        <input type="number" id="geo-sx-n" min="1" max="1920" value="1280" style="width:72px"></div>
+        <input type="range" id="geo-sx-r" min="64" max="2560" value="1280" style="flex:1">
+        <input type="number" id="geo-sx-n" min="1" max="2560" value="1280" style="width:72px"><span style="opacity:.5">1280=100%</span></div>
       <div style="display:flex;gap:8px;align-items:center;margin:3px 0"><span style="width:64px">Scale Y</span>
-        <input type="range" id="geo-sy-r" min="64" max="720" value="720" style="flex:1">
-        <input type="number" id="geo-sy-n" min="1" max="1080" value="720" style="width:72px"></div>
+        <input type="range" id="geo-sy-r" min="64" max="1440" value="720" style="flex:1">
+        <input type="number" id="geo-sy-n" min="1" max="1440" value="720" style="width:72px"><span style="opacity:.5">720=100%</span></div>
       <div style="display:flex;gap:8px;align-items:center;margin:3px 0"><span style="width:64px">Shift X</span>
         <input type="range" id="geo-px-r" min="0" max="1280" value="640" style="flex:1">
         <input type="number" id="geo-px-n" min="0" max="1920" value="640" style="width:72px"></div>
@@ -123,9 +123,12 @@
         <input type="range" id="geo-py-r" min="0" max="720" value="360" style="flex:1">
         <input type="number" id="geo-py-n" min="0" max="1080" value="360" style="width:72px"></div>
       <div id="geo-applied" style="font-family:monospace;margin-top:6px;opacity:.7">G 1280 720 0 0</div>
-      <label style="display:block;margin-top:8px">
-        <input type="checkbox" id="blend-en"> Mackin blend (smooth FRC)&nbsp;
-        <span style="opacity:.6">(unchecked = drop/repeat)</span>
+      <label style="display:block;margin-top:8px">Mackin blend:&nbsp;
+        <select id="blend-mode">
+          <option value="0">Off — drop/repeat</option>
+          <option value="1">Intelligent — blend mid-phase</option>
+          <option value="2">Force — blend every frame</option>
+        </select>
       </label>
     </div>
     <div id="metrics" hidden></div>
@@ -596,9 +599,10 @@
     }
     geoSend();
   });
-  document.getElementById("blend-en").addEventListener("change", async (e) => {
-    try { await call("blend.set", { enabled: e.target.checked });
-          log(`Mackin blend ${e.target.checked ? "ON" : "off"}`, "ok"); }
+  document.getElementById("blend-mode").addEventListener("change", async (e) => {
+    const m = +e.target.value;
+    try { await call("blend.set", { mode: m });
+          log(`Mackin blend mode = ${["off","intelligent","force"][m]}`, "ok"); }
     catch (err) { log(`blend.set: ${err.message}`, "err"); }
   });
 

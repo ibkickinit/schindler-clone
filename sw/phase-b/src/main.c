@@ -854,10 +854,12 @@ static unsigned g_re_matte = 0, g_re_engine = 0, g_re_blend = 0;
 static void re_write_geometry(void)
 {
     unsigned w = g_re_w, h = g_re_h, x = g_re_x, y = g_re_y;
-    if (w < 1) w = 1; if (w > FRAME_W) w = FRAME_W;
-    if (h < 1) h = 1; if (h > FRAME_H) h = FRAME_H;
-    if (x > FRAME_W - w) x = FRAME_W - w;
-    if (y > FRAME_H - h) y = FRAME_H - h;
+    /* scale up to 200% of the output raster (w>FRAME_W => master upscaled = zoom in;
+     * only the part within the output is shown). Centering/pan of a zoomed view is #28. */
+    if (w < 1) w = 1; if (w > 2u*OUT_RASTER_W) w = 2u*OUT_RASTER_W;
+    if (h < 1) h = 1; if (h > 2u*OUT_RASTER_H) h = 2u*OUT_RASTER_H;
+    if (w <= FRAME_W && x > FRAME_W - w) x = FRAME_W - w;   /* guard unsigned underflow when w>FRAME_W */
+    if (h <= FRAME_H && y > FRAME_H - h) y = FRAME_H - h;
     unsigned hsi = FRAME_W / w, hsf = FRAME_W % w;   /* floor(IN_W/out_w), IN_W%out_w */
     unsigned vsi = FRAME_H / h, vsf = FRAME_H % h;
     Xil_Out32(GEO_A_BASE + 0x00, ((h & 0xFFF) << 16) | (w & 0xFFF));
@@ -865,8 +867,8 @@ static void re_write_geometry(void)
     Xil_Out32(GEO_B_BASE + 0x00, ((hsf & 0xFFF) << 16) | (hsi & 0xFFF));
     Xil_Out32(GEO_B_BASE + 0x08, ((vsf & 0xFFF) << 16) | (vsi & 0xFFF));
     Xil_Out32(GEO_C_BASE + 0x00, g_re_matte & 0xFFFFFF);
-    /* ch2: bit0 = mux sel (engine vs passthrough), bit1 = Mackin blend_mode */
-    Xil_Out32(GEO_C_BASE + 0x08, (g_re_blend ? 2u : 0u) | (g_re_engine ? 1u : 0u));
+    /* ch2: bit0 = mux sel (engine vs passthrough), bits[2:1] = blend_mode (0/1/2) */
+    Xil_Out32(GEO_C_BASE + 0x08, ((g_re_blend & 3u) << 1) | (g_re_engine ? 1u : 0u));
     xil_printf("GEO: %ux%u @ (%u,%u) hstep=%u+%u/%u vstep=%u+%u/%u matte=%06x engine=%u blend=%u\r\n",
                w, h, x, y, hsi, hsf, w, vsi, vsf, h, g_re_matte, g_re_engine, g_re_blend);
 }
@@ -967,8 +969,8 @@ static void uart_dispatch(const char *line)
         /* Mackin blend toggle (read-engine):  M 1 = blend, M 0 = drop/repeat, M = query */
 #ifdef GEO_A_BASE
         unsigned bv;
-        if (parse_uint(&p, &bv)) { g_re_blend = bv ? 1u : 0u; re_write_geometry(); }
-        else xil_printf("UART: usage 'M 0|1' (Mackin blend off/on); current blend=%u\r\n", g_re_blend);
+        if (parse_uint(&p, &bv)) { g_re_blend = (bv > 2u) ? 2u : bv; re_write_geometry(); }
+        else xil_printf("UART: usage 'M 0|1|2' (0=off 1=intelligent 2=force); current blend=%u\r\n", g_re_blend);
 #else
         xil_printf("UART: read-engine not present in this build\r\n");
 #endif
@@ -1505,17 +1507,12 @@ static void telemetry_loop(UINTPTR vdma_base)
                  * pointer is forward-monotonic). decreased MUST stay 0 across genlock drift +
                  * resolution change + hot-plug, run for minutes/hours. max_fwd_delta shows the
                  * real pointer motion (1=normal, 2+=skip); changes confirms the detector is live. */
-                /* FPMON v4: full 32-bit diag ch2 = raw-value history of s2mm_frame_ptr_out.
-                 * Prints the recent accepted values (newest first) + OR-mask of all bits ever
-                 * seen, so we can read what the pointer actually does (range, monotonicity). */
-                u32 fpseq = Xil_In32(DIAG_GPIO_BASEADDR + 0x08);
-                xil_printf("FPSEQ: recent(new->old) %u %u %u %u  ormask=0x%02x  chg=%u\r\n",
-                           (unsigned)(fpseq & 0x3Fu),          /* h0 newest */
-                           (unsigned)((fpseq >> 6) & 0x3Fu),   /* h1 */
-                           (unsigned)((fpseq >> 12) & 0x3Fu),  /* h2 */
-                           (unsigned)((fpseq >> 18) & 0x3Fu),  /* h3 oldest */
-                           (unsigned)((fpseq >> 24) & 0x3Fu),  /* or_mask */
-                           (unsigned)((fpseq >> 30) & 0x1u));  /* chg_seen */
+                /* BLEND telemetry (#27): diag ch2 = pg_re_0/dbg_blend_snap — the number of
+                 * output frames in the last ~1s (60-vsync) window that actually Mackin-blended
+                 * (dual-fetch + lerp). 0 = pure drop/repeat (blend off, or degenerated at a clean
+                 * ratio); ~60 = blending every frame (force mode). Answers "is it blending?". */
+                u32 blendw = Xil_In32(DIAG_GPIO_BASEADDR + 0x08);
+                xil_printf("BLEND: %u/60 frames blended\r\n", (unsigned)(blendw & 0xFFFFu));
                 /* DRAIN (2026-06-03): from axis_to_vid_io_0/predrain_snap, routed onto
                  * the (dead-in-route-B) scaler ch1 of the diag GPIO.
                  *   delta  = active pixels elapsed before SOF emits = the column pixel

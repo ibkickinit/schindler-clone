@@ -134,4 +134,4 @@ set_false_path -quiet -to [get_pins -hier -filter {NAME =~ */sel_q1_reg/D}]
 # pg_cadence blend_mode 2-FF sync (Mackin dual-fetch enable; task #103). Was the
 # only route-B async CDC left unconstrained → build #25 WNS -3.428 on exactly this
 # pin (axi_gpio_10 -> u_cadence/bm_q1_reg/D). ASYNC_REG handles metastability.
-set_false_path -quiet -to [get_pins -hier -filter {NAME =~ */bm_q1_reg/D}]
+set_false_path -quiet -to [get_pins -hier -filter {NAME =~ */bm_q1_reg[*]/D}]

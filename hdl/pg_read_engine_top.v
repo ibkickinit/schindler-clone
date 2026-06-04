@@ -46,7 +46,7 @@ module pg_read_engine_top #(
     input  wire [11:0] out_w_win, out_h_win, pos_x, pos_y,
     input  wire [11:0] h_step_int, h_step_frac, v_step_int, v_step_frac,
     input  wire [23:0] matte_rgb,
-    input  wire        blend_mode,       // 1 = Mackin blend (dual-fetch); 0 = drop/repeat (FCLK_CLK0, async — pg_cadence CDCs it)
+    input  wire [1:0]  blend_mode,       // 0=off, 1=intelligent, 2=force (FCLK_CLK0, async — pg_cadence CDCs it)
 
     // output AXIS → color stack (axis_to_vid_io path)
     output wire [23:0] m_axis_tdata,
@@ -76,7 +76,8 @@ module pg_read_engine_top #(
     // debug
     output wire [2:0]  dbg_read_slot,
     output wire [2:0]  dbg_write_slot,
-    output wire [191:0] dbg_probe       // ILA tap; bit layout in body
+    output wire [191:0] dbg_probe,      // ILA tap; bit layout in body
+    output reg  [15:0] dbg_blend_snap   // blended output frames per ~1s window (firmware telemetry)
 );
     // status stream is informational (per-line completion) — always drain it
     // so the DataMover's status FIFO never fills and stalls command intake.
@@ -123,6 +124,27 @@ module pg_read_engine_top #(
         .alpha(cad_alpha), .blend_en(cad_blend_en),
         .dbg_inc(cad_dbg_inc), .dbg_dnew(cad_dbg_dnew), .dbg_lag(cad_dbg_lag)
     );
+
+    // ---- blend telemetry: # of output frames that actually blended, per ~1s
+    // (60 output-vsync) window. Firmware reads dbg_blend_snap and prints BLEND:n/60.
+    // Answers "is/how-much is Mackin engaging" at any rate (0 = pure drop/repeat). ----
+    reg ov_q2;
+    always @(posedge clk) ov_q2 <= (!rstn) ? 1'b0 : out_vsync;
+    wire ov_rise2 = out_vsync & ~ov_q2;
+    reg [7:0]  tel_vsync;
+    reg [15:0] tel_blend;
+    always @(posedge clk) begin
+        if (!rstn) begin tel_vsync<=8'd0; tel_blend<=16'd0; dbg_blend_snap<=16'd0; end
+        else if (ov_rise2) begin
+            if (tel_vsync == 8'd59) begin
+                dbg_blend_snap <= tel_blend + (cad_blend_en ? 16'd1 : 16'd0);
+                tel_blend <= 16'd0; tel_vsync <= 8'd0;
+            end else begin
+                tel_blend <= tel_blend + (cad_blend_en ? 16'd1 : 16'd0);
+                tel_vsync <= tel_vsync + 8'd1;
+            end
+        end
+    end
 
     // ---- compositor (owns pg_addrgen + pg_linefetch); packed-beat fill ----
     // DataMover M_AXIS (64-bit beats) feeds pg_compose -> pg_linefetch directly;

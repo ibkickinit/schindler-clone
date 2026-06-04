@@ -88,7 +88,7 @@ re_slice sl_vsi    axi_gpio_9 gpio2_io_o 11 0
 re_slice sl_vsf    axi_gpio_9 gpio2_io_o 27 16
 re_slice sl_matte  axi_gpio_10 gpio_io_o  23 0
 re_slice sl_sel    axi_gpio_10 gpio2_io_o 0  0
-re_slice sl_blend  axi_gpio_10 gpio2_io_o 1  1   ;# Mackin blend_mode (ch2 bit1)
+re_slice sl_blend  axi_gpio_10 gpio2_io_o 2  1   ;# Mackin blend_mode (ch2 bits[2:1], 2-bit: 0/1/2)
 
 # ---------------------------------------------------------------------------
 # Read-engine compositor cell
@@ -206,3 +206,16 @@ puts "READENGINE-B: integration block complete (+ILA: ila_re_dbg 192-bit prefetc
 delete_bd_objs [get_bd_nets -of_objects [get_bd_pins axi_gpio_2/gpio_io_i]]
 connect_bd_net [get_bd_pins axis_to_vid_io_0/predrain_snap] [get_bd_pins axi_gpio_2/gpio_io_i]
 puts "READENGINE-B: predrain_snap (δ) -> axi_gpio_2 ch1 (scaler diag repurposed)"
+
+# Blend telemetry (#27): route pg_re_0/dbg_blend_snap (16b, blended frames/sec) onto
+# axi_gpio_2 ch2 (gpio2_io_i), replacing fp_mon — its Gray-monotonicity job is done.
+# Zero-extend 16->32 via xlconcat. Firmware reads ch2[15:0] = BLEND frames/sec.
+delete_bd_objs [get_bd_nets -of_objects [get_bd_pins axi_gpio_2/gpio2_io_i]]
+create_bd_cell -type ip -vlnv xilinx.com:ip:xlconcat blend_tel_concat
+set_property -dict [list CONFIG.NUM_PORTS {2} CONFIG.IN0_WIDTH {16} CONFIG.IN1_WIDTH {16}] [get_bd_cells blend_tel_concat]
+create_bd_cell -type ip -vlnv xilinx.com:ip:xlconstant blend_tel_zero
+set_property -dict [list CONFIG.CONST_WIDTH {16} CONFIG.CONST_VAL {0}] [get_bd_cells blend_tel_zero]
+connect_bd_net [get_bd_pins pg_re_0/dbg_blend_snap] [get_bd_pins blend_tel_concat/In0]
+connect_bd_net [get_bd_pins blend_tel_zero/dout]    [get_bd_pins blend_tel_concat/In1]
+connect_bd_net [get_bd_pins blend_tel_concat/dout]  [get_bd_pins axi_gpio_2/gpio2_io_i]
+puts "READENGINE-B: dbg_blend_snap -> axi_gpio_2 ch2 (fp_mon repurposed for blend telemetry)"
