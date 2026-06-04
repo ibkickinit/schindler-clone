@@ -255,3 +255,65 @@ drain would turn a dropped SOF into a multi-frame desync). Incorporated: `MAX_DR
 **Silicon-confirmed:** `DRAIN: delta_px=0` across static / 2× zoom / full / passthrough; wrap gone,
 motion clean, position perfect. Sim PASS 230+6. See `docs/readengine-b-cadence-bench-result.md` and
 `docs/build-manifest.md` (2026-06-03 section). ⚠️ 3-cold-boot verify owed before ✅ CLEAN promotion.
+
+---
+
+## Round 5 — Mackin blend on silicon: framestore-depth blocker + latency proposal (2026-06-04)
+
+**State.** Builds #24→#27 wired the Mackin blend end-to-end. #27 on board (timing MET, WNS +0.248):
+3-way `blend_mode` (0=off, 1=intelligent, 2=force), per-frame blend telemetry (`BLEND: n/60`),
+200% scale, web UI (blend select + scale/shift sliders). Blend **datapath** sim-proven
+(`pg_blend_tb`: dual-fetch fed `starv=0`, lerp bit-exact). Conditional dual-fetch (2nd line only
+when `blend_en`), 3-stage pipelined lerp, `bm_q1[*]` CDC false-pathed.
+
+**Bench finding — blend NEVER engages (the blocker).** With Osee feeding 1080p24 → 720p60, the
+telemetry reads `BLEND: 0/60` in **all three modes incl. Force**. Root cause is **framestore depth**,
+not wiring:
+```
+lag = clamp( NUM_FRAMES − eff − J_MARG(1) − O_MARG(0) − MARGIN(2) − 1 , LAG_MIN(1) , NUM_FRAMES−2 )
+```
+At `NUM_FRAMES=5` (VDMA c_num_fstores=5) and `eff=1` (output-faster cases, 24/30/50/59.94→60):
+`lag = clamp(5−1−1−0−2−1, 1, 3) = clamp(0,1,3) = 1`. But `do_blend` requires **lag ≥ 2** (S+1 must
+be a *completed* frame to interpolate toward). So at N=5 the read sits 1 behind the writer, has no
+completed "next" frame, and blend can never fire — confirmed by `BLEND=0` even in force. The blend
+is correct; it has nothing to blend *with* at 5 stores.
+
+**Proposal (#28).**
+1. **VDMA ring 5→7** (`c_num_fstores 7`, `NUM_FRAMES=7`, +DDR alloc). At N=7, eff=1:
+   `lag = clamp(7−1−1−0−2−1,1,5) = 2` → blend engages. (Gate §13/§14 validated N≥6–7 for blend.)
+2. **Mode-dependent lag** — keep `lag=1` when blend is off (minimum latency), bump to ≥2 only when
+   actually blending → the +1 frame of latency is **opt-in** (Intelligent/Force only); drop/repeat
+   stays minimum-latency even on the N=7 ring.
+3. (separate track) signed-position pan / 200% zoom-pan in `pg_addrgen`.
+
+**Latency analysis (Justin's concern).** `lag` *is* the input→output latency in frames:
+`delay ≈ lag × input_frame_period + ~1 frame fixed pipeline`.
+- N=5, lag=1 → ~1 input-frame buffering (+~1 fixed) ≈ ~2 frames end-to-end.
+- N=7, lag=2 (blend) → **+1 input-frame** (60Hz +16.7ms, 30Hz +33ms, 24Hz +42ms) ≈ ~3 frames.
+The +1 frame is **inherent to temporal interpolation** (must buffer S+1 to blend toward it — every
+motion-interpolating display does this). **The extra framestores add ZERO latency** — latency = lag,
+not N; the 2 added slots are headroom/jitter margin sitting in DRAM. So N=7 ≠ "7 frames of delay";
+it's lag(2) of delay + 5 slots of headroom.
+
+**Questions for you:**
+1. **N=7 vs N=8.** Is 7 the right floor, or do we want 8 (the §14 "knee" for full blend coverage)?
+   Tradeoff: N=8 = more DDR (8×6.2 MB ≈ 50 MB) and possibly lag=3 (more latency) unless the
+   mode-dependent lag caps it at 2. Does coverage at N=7 leave gaps across 24/30/50/59.94→60?
+2. **Mode-dependent lag safety.** Switching `lag` per-frame (1↔2 as blend toggles, or as the cadence
+   enters/leaves blend) shifts the read slot by one → at the transition frame the read pointer jumps
+   back/forward a slot, which could re-show or skip a frame (1-frame hitch). Is that acceptable, or
+   should lag only change at a safe boundary / ramp? Any collision risk vs the writer at the change?
+3. **DDR bandwidth at N=7 + dual-fetch.** `pg_blend_tb` proved 2× line-fetch fits the per-row budget
+   in isolation (~0.87 fill/budget). On real shared DDR (S2MM write @ source + the dual read), does
+   7-store blending hold, or do we risk underrun when blend engages? (Conditional fetch limits it to
+   blending frames.)
+4. **eff at the high end.** At 24→60 eff=1 (lag=2 at N=7) so blend should engage — but confirm: are
+   there input rates in scope where eff>1 pushes lag<2 even at N=7, leaving blend off?
+5. **Output-format runtime.** The box does multi-rate INPUT → fixed 720p60 OUTPUT (build-time MMCM
+   clock + VTC). Runtime *output* rate/res = MMCM dynamic reconfig (clk_wiz DRP) + VTC reprogram +
+   rgb2dvi relock, **or** the external Si5351 per-output clock (the dual-engine architecture). For v1,
+   is the Si5351 the right path, or is on-chip MMCM-DRP worth doing first? (1080p60 out stays blocked
+   on Zybo -1 regardless; 720p60 + 1080p30 are the in-spec on-chip modes.)
+
+Artifacts: `#27` commit `22d5759` (branch `readengine-b-integration`); `docs/mackin-blend-integration.md`;
+`docs/build-manifest.md`. Bench: `BLEND:`/`DRAIN:` over UART; web UI at :8080.
