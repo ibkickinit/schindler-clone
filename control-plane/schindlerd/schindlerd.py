@@ -587,10 +587,12 @@ class Dispatcher:
         def clampi(v: Any, lo: int, hi: int) -> int:
             iv = int(round(float(v)))
             return lo if iv < lo else hi if iv > hi else iv
-        w = clampi(params.get("w", 1280), 1, 1920)
-        h = clampi(params.get("h", 720), 1, 1080)
-        x = clampi(params.get("x", 0), 0, 1920)
-        y = clampi(params.get("y", 0), 0, 1080)
+        # scale up to 200% of the 720p output raster (2560x1440); firmware clamps too.
+        # (was 1920/1080 — the master dims — which capped zoom at 1.5x, not 2x.)
+        w = clampi(params.get("w", 1280), 1, 2560)
+        h = clampi(params.get("h", 720), 1, 1440)
+        x = clampi(params.get("x", 0), 0, 2560)
+        y = clampi(params.get("y", 0), 0, 1440)
         self.uart.send_raw(f"G {w} {h} {x} {y}")
         applied = {"w": w, "h": h, "x": x, "y": y}
         self.bus.publish({"jsonrpc": "2.0", "method": "geom.changed", "params": applied})
