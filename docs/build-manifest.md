@@ -899,3 +899,61 @@ wrap to still be present after this build.
 **Pass/fail:** ✅ built + timing-met + sim-proven. ⚠️ **bench-pending** — verify VDMA passthrough
 AND read-engine both clean on **monitor** (no regression), ≥3 cold boots (no-coin-flip rule).
 Do NOT mark fully ✅ until bench + 3-boot verify.
+
+---
+
+## 2026-06-03 — Read-engine-B: pg_cadence integration + per-line wrap fixed (builds #21b/#22/#23) ✅ silicon-confirmed
+
+Branch `readengine-b-integration`. Three builds this session; net result = the route-B read engine
+runs the FRC **cadence controller** in gen-lock mode AND the long-standing per-line horizontal
+**wrap** (the "few-pixel offset") is fixed and confirmed on silicon.
+
+**Build #21b — `pg_cadence` gen-lock integration** (commit `8a4849d`/`5223565`). Replaces
+`pg_genlock` with `pg_cadence` (`blend_mode=0` = drop/repeat, single fetch). WNS +0.235.
+- Central discovery: `s2mm_frame_ptr_out` is **Gray-coded**; both `pg_cadence` and `pg_genlock`
+  now `gray2bin()` decode before use (was a latent binary-decode bug that only looked clean on a
+  static grid). All 3 TBs green.
+- **Bench: motion CLEAN** (Osee input 2 motion + input 3 1080p60 laptop) — no judder/roll/tear/
+  hitch. This is what validated the cadence, the Gray decode, AND the decode→slot mapping on live
+  motion (the static grid could not disambiguate). `in=1920x1080 src=60 out=60`.
+
+**Build #22 — δ-measurement diag** (commit `62a09a3`). Added `axis_to_vid_io.predrain_snap` →
+diag GPIO ch1 (the dead-in-route-B scaler field), firmware `DRAIN:` line. WNS +0.153.
+- Measured the residual per-line wrap: **`DRAIN: delta_px=6 (stale=6 starve=0)`**, constant every
+  frame. Root cause (agent-confirmed): the **shared color stack** (sat→correct→matrix) holds the
+  prior frame's last ~6 pixels in its pipeline at the frame boundary; with `tready` gated to
+  active-video only, those residual beats were drained by burning the first 6 ACTIVE pixels →
+  pixel 0 landed at column 6 → per-line wrap. NOT a VTC porch issue (a porch shift can't wrap
+  end-of-line content); NOT the resample/addr math (output(0,0)→source(0,0) verified clean).
+
+**Build #23 — bounded blanking-flush fix** (commit `78ce592`). WNS +0.190, WHS +0.015. **Current
+substrate.**
+- Fix in `hdl/axis_to_vid_io.v`: drain pre-SOF residue during VBLANK (emitted black, not shown) so
+  the SOF beat is at the FIFO head when active begins → pixel 0 at column 0. **Bounded to
+  `MAX_DRAIN=16`** beats/frame so a missing/late SOF reverts to the old 1-frame-black-flash instead
+  of eating the whole ~49.5k-cycle vblank and cascading (failure mode flagged in agent review).
+  `vtg_vblank`-scoped. `axis_to_vid_io` is **shared** by read-engine + VDMA passthrough → fix
+  applies to both (the wrap was common to all builds).
+- **Sim** `sim/axis_sof_tb.v`: **PASS 230+6 checks, 0 errors** — existing anchor/clean checks intact
+  (no regression on the shared module) + new δ==0 assertion on the residue frame (was δ=3 pre-fix)
+  + missing-SOF frame proving the drain is capped and does not cascade (frame 9 re-anchors).
+- **Bench (silicon-confirmed):** `DRAIN: delta_px=0` across **static, 2× zoom (`G 960 540 480 270`),
+  full (`G 1920 1080 0 0`), and passthrough (`G 0`, sel=0)** — δ holds at 0 through geometry
+  transitions and on the VDMA path (the shared-adapter change did not regress passthrough). Monitor:
+  position perfect, wrap gone, motion clean. (`bflush=1` not ~6 because the pre-fix δ=6 was the
+  color pipeline's traversal latency, which the chain now advances through during blanking; only 1
+  valid residue beat needs flushing — δ=0 is the thing that matters.)
+- **Color aside:** a separate "too warm" report was chased to ground — MS2109 digital capture of the
+  output measured whites = `(255,255,255)`, all channels reach 255, global B/R=1.00 (neutral). The
+  box's color is accurate; the warmth was **f.lux** running on the test machine. Channel-isolation
+  probe also confirmed correct R/G/B mapping (no R-B-G swap). Not an FPGA issue.
+
+**Reproduce:** `READENGINE_B=1 OUTPUT_MODE=720p make build` then `READENGINE_FULLMASTER=1
+OUTPUT_MODE=720p make build-app && make program`. Build env: `BOARD_PARTS_REPO_PATHS`,
+`DIGILENT_IP_REPO_PATH`.
+
+**Pass/fail:** ✅ built + timing-met + sim-proven + silicon-confirmed (δ=0 across static/zoom/
+passthrough, motion clean). Full-master boots sel=1 (engine); sel=0 passthrough is a non-viable
+fallback in this build (can't downscale 1080→720). ⚠️ **3-cold-boot verify still owed** before
+promoting to the no-coin-flip ✅ CLEAN standard (per `schindler-build-provenance-rule`).
+Reviewed by external agent (diagnosis + fix + cap + verification plan all endorsed).

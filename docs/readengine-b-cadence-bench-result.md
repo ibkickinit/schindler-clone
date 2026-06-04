@@ -68,3 +68,28 @@ path, so the fix affects both (expected — the wrap is common to all builds, "a
 
 **Lower-likelihood alternates:** producer leaves a deterministic FIFO residue at frame end
 (fixable producer-side instead); rgb2dvi DE-vs-sync skew (but that wouldn't wrap content).
+
+## RESOLVED (build #23, 2026-06-03) — bounded blanking-flush
+
+Root cause (agent-confirmed): the shared color stack (sat→correct→matrix) holds the prior frame's
+last ~6 pixels in its pipeline at the frame boundary; they emerge ahead of the new frame's SOF
+pixel 0. Fix in `hdl/axis_to_vid_io.v`: drain pre-SOF residue during **VBLANK** (black, not shown)
+so the SOF beat is at the head when active begins → pixel 0 at column 0. **Bounded to
+`MAX_DRAIN=16`** beats/frame so a missing/late SOF reverts to the old 1-frame-black-flash instead
+of cascading (the failure the cap introduces, raised in review). `vtg_vblank`-scoped.
+
+- **Sim** (`sim/axis_sof_tb.v`): PASS 230+6 checks, 0 errors — anchor/clean intact (no regression on
+  the shared module), δ==0 on the residue frame (was δ=3 pre-fix), missing-SOF frame capped + clean
+  re-anchor.
+- **Silicon:** `DRAIN: delta_px=0` across static, 2× zoom (`G 960 540 480 270`), full
+  (`G 1920 1080 0 0`), and passthrough (`G 0`). δ holds at 0 through geometry transitions and on the
+  VDMA path. Monitor: position perfect, wrap gone, motion clean.
+- Commit `78ce592` on `readengine-b-integration`. Reviewed + endorsed by external agent.
+- ⚠️ 3-cold-boot verify still owed before the no-coin-flip ✅ CLEAN promotion.
+
+## Color note (separate, closed)
+
+A "too warm" report was chased to ground: MS2109 digital capture of the output measured whites =
+`(255,255,255)`, all channels reach 255, global B/R = 1.00. Channel-isolation probe confirmed
+correct R/G/B mapping (no R-B-G swap). The box's color is accurate — the warmth was **f.lux** on
+the test machine. Not an FPGA issue.

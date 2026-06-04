@@ -245,3 +245,13 @@ residue and asserts pixel 0 lands at column 0 (and `predrain_snap`→0); then bu
    (c) `vtg_vsync` re-arm vs the start of blanking — timing hazard?
 4. Is `in_blank = !vtg_active_video` the right blanking signal, or should it be
    `vtg_hblank || vtg_vblank` (the dedicated VTC blank outputs we already bring in)?
+
+### Round 4 — OUTCOME (2026-06-03)
+
+Agent endorsed the diagnosis + fix and added the **drain-cap** requirement (unbounded blanking-
+drain would turn a dropped SOF into a multi-frame desync). Incorporated: `MAX_DRAIN=16`,
+`vtg_vblank`-scoped, plus a missing-SOF sim case proving the bound. Root cause refined to the
+**shared color-stack pipeline depth** (not `pg_compose`). Shipped as commit `78ce592` (build #23).
+**Silicon-confirmed:** `DRAIN: delta_px=0` across static / 2× zoom / full / passthrough; wrap gone,
+motion clean, position perfect. Sim PASS 230+6. See `docs/readengine-b-cadence-bench-result.md` and
+`docs/build-manifest.md` (2026-06-03 section). ⚠️ 3-cold-boot verify owed before ✅ CLEAN promotion.
