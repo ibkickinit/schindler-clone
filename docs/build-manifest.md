@@ -1046,3 +1046,22 @@ coin-flip surface). All 3 came up clean on the monitor (no roll/tear) with `delt
 err-flags did not recur (boot 2/3 = 0) → confirmed transient, not a build defect. **Status: ✅
 CLEAN (verified 2026-06-03, 3 boots).** This is the production read-engine substrate (gen-lock
 cadence + wrap fixed). Base for Mackin blend (`blend_mode=1`) next.
+
+### 2026-06-04 — build #28: Mackin blend ENGAGES (7 framestores + mode-dependent lag) ✅ silicon
+
+`readengine-b-integration` build #28 (timing MET, WNS +0.145). Unblocks the Mackin blend that
+#24–#27 built but couldn't engage at 5 framestores (cadence lag pinned at 1; blend needs lag≥2 for
+a completed S+1 partner). Agent-reviewed/green-lit (Round-5 packet).
+- **Coordinated 5→7** (kept equal): VDMA `c_num_fstores`, `pg_re_0 NUM_FRAMES`, `pg_read_engine_top`
+  default, firmware `#define NUM_FRAMES`, `fp_mon`. SLOT_STRIDE/FRAME_BUF_BASE unchanged (7×6.2 MB
+  = 43.6 MB @ 0x10000000, within 1 GB DDR).
+- **Mode-dependent lag** (pg_cadence): lag bound to LATCHED user mode — off→1 (min latency),
+  intelligent/force→2 (blend partner), capped. NOT per-frame α (would self-judder at near-1:1).
+  +1-frame interpolation latency is opt-in per mode.
+- **Bench (silicon), Osee 1080p24→720p60:** `BLEND: 0/60` (off) → **`60/60` (intelligent & force)**;
+  `DRAIN δ=0`; **errflags=0** (no EOLLate/EOLEarly/SOFEarly → shared DDR holds at 7 stores +
+  dual-fetch — the agent's open bandwidth concern, resolved on HW). Justin monitor: blend visibly
+  smooths motion, clean (no tear). **Mackin FRC works on silicon.**
+- Also: daemon `geom.set` scale clamp 1920→2560 (200% zoom was capped at 1.5×; daemon-only fix,
+  commit `a4b8aa8`).
+Gate `pg_cadence_tb`: N=5 blend=0, N=7 blend=130/437, collisions=0, min_lap=4. ⚠️ 3-boot verify owed.
