@@ -850,7 +850,7 @@ static void cp_dispatch_jsonrpc(const char *json)
 
 #ifdef GEO_A_BASE
 static unsigned g_re_w = FRAME_W, g_re_h = FRAME_H, g_re_x = 0, g_re_y = 0;
-static unsigned g_re_matte = 0, g_re_engine = 0;
+static unsigned g_re_matte = 0, g_re_engine = 0, g_re_blend = 0;
 static void re_write_geometry(void)
 {
     unsigned w = g_re_w, h = g_re_h, x = g_re_x, y = g_re_y;
@@ -865,9 +865,10 @@ static void re_write_geometry(void)
     Xil_Out32(GEO_B_BASE + 0x00, ((hsf & 0xFFF) << 16) | (hsi & 0xFFF));
     Xil_Out32(GEO_B_BASE + 0x08, ((vsf & 0xFFF) << 16) | (vsi & 0xFFF));
     Xil_Out32(GEO_C_BASE + 0x00, g_re_matte & 0xFFFFFF);
-    Xil_Out32(GEO_C_BASE + 0x08, g_re_engine ? 1u : 0u);
-    xil_printf("GEO: %ux%u @ (%u,%u) hstep=%u+%u/%u vstep=%u+%u/%u matte=%06x engine=%u\r\n",
-               w, h, x, y, hsi, hsf, w, vsi, vsf, h, g_re_matte, g_re_engine);
+    /* ch2: bit0 = mux sel (engine vs passthrough), bit1 = Mackin blend_mode */
+    Xil_Out32(GEO_C_BASE + 0x08, (g_re_blend ? 2u : 0u) | (g_re_engine ? 1u : 0u));
+    xil_printf("GEO: %ux%u @ (%u,%u) hstep=%u+%u/%u vstep=%u+%u/%u matte=%06x engine=%u blend=%u\r\n",
+               w, h, x, y, hsi, hsf, w, vsi, vsf, h, g_re_matte, g_re_engine, g_re_blend);
 }
 #endif
 
@@ -961,6 +962,15 @@ static void uart_dispatch(const char *line)
         }
 #else
         xil_printf("UART: read-engine geometry not present in this build\r\n");
+#endif
+    } else if (op == 'M') {
+        /* Mackin blend toggle (read-engine):  M 1 = blend, M 0 = drop/repeat, M = query */
+#ifdef GEO_A_BASE
+        unsigned bv;
+        if (parse_uint(&p, &bv)) { g_re_blend = bv ? 1u : 0u; re_write_geometry(); }
+        else xil_printf("UART: usage 'M 0|1' (Mackin blend off/on); current blend=%u\r\n", g_re_blend);
+#else
+        xil_printf("UART: read-engine not present in this build\r\n");
 #endif
     } else {
         xil_printf("UART: unknown cmd '%s' — type ? for help\r\n", line);

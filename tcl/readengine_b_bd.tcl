@@ -88,6 +88,7 @@ re_slice sl_vsi    axi_gpio_9 gpio2_io_o 11 0
 re_slice sl_vsf    axi_gpio_9 gpio2_io_o 27 16
 re_slice sl_matte  axi_gpio_10 gpio_io_o  23 0
 re_slice sl_sel    axi_gpio_10 gpio2_io_o 0  0
+re_slice sl_blend  axi_gpio_10 gpio2_io_o 1  1   ;# Mackin blend_mode (ch2 bit1)
 
 # ---------------------------------------------------------------------------
 # Read-engine compositor cell
@@ -117,6 +118,7 @@ connect_bd_net [get_bd_pins sl_hsf/Dout]    [get_bd_pins pg_re_0/h_step_frac]
 connect_bd_net [get_bd_pins sl_vsi/Dout]    [get_bd_pins pg_re_0/v_step_int]
 connect_bd_net [get_bd_pins sl_vsf/Dout]    [get_bd_pins pg_re_0/v_step_frac]
 connect_bd_net [get_bd_pins sl_matte/Dout]  [get_bd_pins pg_re_0/matte_rgb]
+connect_bd_net [get_bd_pins sl_blend/Dout]  [get_bd_pins pg_re_0/blend_mode]
 # DataMover command + data + status streams
 connect_bd_intf_net [get_bd_intf_pins pg_re_0/m_axis_cmd] [get_bd_intf_pins re_datamover/S_AXIS_MM2S_CMD]
 connect_bd_intf_net [get_bd_intf_pins re_datamover/M_AXIS_MM2S] [get_bd_intf_pins pg_re_0/s_axis_dm]
