@@ -957,3 +957,23 @@ passthrough, motion clean). Full-master boots sel=1 (engine); sel=0 passthrough 
 fallback in this build (can't downscale 1080→720). ⚠️ **3-cold-boot verify still owed** before
 promoting to the no-coin-flip ✅ CLEAN standard (per `schindler-build-provenance-rule`).
 Reviewed by external agent (diagnosis + fix + cap + verification plan all endorsed).
+
+### 2026-06-03 (cont.) — FRC validated at 30→60 on build #23 ✅ (monitor-confirmed)
+
+Fed the read engine a **1080p30** source (Osee GoStream `outFormat` index 4; index 7 = 1080p59.94)
+→ output stays 720p**60** → the cadence does a clean **1:2 repeat**:
+- `PHASE` delta ring = `{1,0,1,0,1,0,…}` (each source frame shown for exactly 2 output frames).
+- `DRAIN: delta_px=0` holds (wrap fix robust at 30→60).
+- **Monitor: image looks great** — smooth, no tear/corruption. This is the drop/repeat cadence
+  doing real frame-rate conversion, visibly validated at a clean integer ratio (the near-1:1
+  59.94→60 wrap is correct too but its single repeat per ~16 s is too rare to see).
+
+**Benign-at-30Hz note:** at 30 Hz input the **capture** VDMA flags `S2MM_SR = SOFEarly | EOLEarly`
+(`0x11990`; MM2S/output side stays clean `FrmCnt` only). The S2MM is tuned for 60 Hz and the 30 Hz
+frame boundary lands off its genlock/size expectation — but the captured image is **clean on the
+monitor**, so these are cosmetic status bits at off-nominal input, NOT corruption. Decoupled from
+the read-engine/cadence. (Would matter to revisit if a build needs guaranteed 30 Hz *input*
+capture; not a blocker for FRC, where 60 Hz input is nominal.)
+
+Osee output-format map (Zybo-measured): index **4 = 1080p30**, index **7 = 1080p59.94**.
+`setOutFormat`: `{"id":"outFormat","type":"set","value":[N]}` (same frame as `osee_switch.py`).
