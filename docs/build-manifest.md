@@ -1001,3 +1001,31 @@ the 2.002 (=60/29.97) ratio. `delta_px=0` across all 74 samples; no drift, no te
 fractional-ratio handling working — distinct from the pure-integer 30→60 (which is perfectly
 periodic). Completes the FRC validation span: 60→60 (gen-lock), 59.94→60 (near-1:1), 30→60 (2:1),
 29.97→60 (2.002, fractional). All clean, δ=0.
+
+### 2026-06-03 (cont.) — FULL FRC cadence matrix validated on build #23 ✅
+
+All driven by changing the **Osee GoStream output rate** (re-clocks every input to its output
+format) into the read engine, output fixed at 720p**60**, `pg_cadence` in gen-lock mode. Every
+ratio held `delta_px=0` (wrap fix robust) with the expected drop/repeat pattern in the per-output-
+frame `PHASE` delta ring. Bench-measured on the Zybo UART telemetry; monitor-clean where noted.
+
+| src → 60 out | ratio (out:src) | cadence | PHASE signature | result |
+|---|---|---|---|---|
+| 60.00    | 1:1   | gen-lock (no repeat) | `{1,1,1,1,…}` | clean (motion-confirmed) |
+| 59.94    | ~1000:1001 | near-1:1, rare repeat | all-1s + a `0` every ~16 s | clean, δ=0 (soak) |
+| 50.00    | 6:5   | 1 repeat per 5 src | `{1,1,1,1,1,0}` periodic | clean, δ=0 |
+| 30.00    | 2:1   | pure 2× repeat | `{1,0,1,0,…}` | clean, **monitor-confirmed** |
+| 29.97    | ~2.002 | 2× + slip | `{1,0,1,0,…}` + caught `…,0,0` slip @ t≈64 s | clean, δ=0 |
+| 24.00    | 5:2   | **3:2 pulldown** | `(1,0,0)(1,0)` = 3×,2×,3×,2× | clean, δ=0 |
+
+The cadence produces correct drop/repeat (incl. textbook 3:2 pulldown at 24→60) across every
+common rate with **no per-ratio special-casing** — it falls out of the runtime Δnewest phase
+tracking. This validates the cadence's core purpose on silicon. (Output stayed 720p60 throughout;
+true 60→30/24 *output* conversion would need an output-mode build — separate task.)
+
+**Osee `outFormat` index map** (list ordering, fractional-then-integer pairs; Zybo can't resolve
+the .x97/.98 fractionals vs their integers, ~0.4% measure accuracy): 0=23.98, 1=24, 2=25,
+3=29.97, 4=30, 5=50, 6=59.94, 7=60. Set via `{"id":"outFormat","type":"set","value":[N]}` (same
+frame as `osee_switch.py`). **GoStream accepts ONE control client at a time and is slow to recycle
+the socket** → one command per TCP connection, pause between (back-to-back connects → "No route to
+host" until the prior closes). Osee left on **index 7 = 60 (nominal)** after this session.
