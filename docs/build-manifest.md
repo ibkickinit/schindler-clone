@@ -977,3 +977,27 @@ capture; not a blocker for FRC, where 60 Hz input is nominal.)
 
 Osee output-format map (Zybo-measured): index **4 = 1080p30**, index **7 = 1080p59.94**.
 `setOutFormat`: `{"id":"outFormat","type":"set","value":[N]}` (same frame as `osee_switch.py`).
+
+### 2026-06-03 (cont.) — fractional cadence confirmed at 29.97→60; Osee format map corrected
+
+**Osee `outFormat` index → rate (per Justin's confirmation + bench):**
+| index | rate |
+|---|---|
+| 3 | 1080p29.97 |
+| 4 | 1080p30 (Justin-confirmed) |
+| 5 | 1080p50 |
+| 6 | 1080p59.94 |
+| 7 | 1080p60 |
+
+Note: the Zybo rate measurement (~0.1–0.4% accuracy) CANNOT distinguish 29.97 from 30 (index 3
+boot-measured 30.118 Hz); the map above comes from the GoStream's known list ordering, not the
+instrument. The `DIAG src=` field is a per-second vsync edge count (coarse); precise rate only
+printed once at boot (`TELEMETRY: src=NN.NNN Hz`).
+
+**29.97→60 fractional cadence (Osee index 3), 75 s soak on build #23:** base **2× repeat** PHASE
+ring `{1,0,1,0,…}`, with a caught **slip** at t≈64 s: `{0,1,0,1,0,1,0,1,0,1,0,0}` — the trailing
+`0,0` is the cadence inserting an EXTRA repeat (a source frame held for 3 output frames) to absorb
+the 2.002 (=60/29.97) ratio. `delta_px=0` across all 74 samples; no drift, no tear. This is the
+fractional-ratio handling working — distinct from the pure-integer 30→60 (which is perfectly
+periodic). Completes the FRC validation span: 60→60 (gen-lock), 59.94→60 (near-1:1), 30→60 (2:1),
+29.97→60 (2.002, fractional). All clean, δ=0.
