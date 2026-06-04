@@ -241,6 +241,18 @@ class UartBridge:
                 self._pending.pop(rid, None)
             raise
 
+    def send_raw(self, line: str) -> None:
+        """Send a RAW (non-JSON-RPC) firmware command line, fire-and-forget.
+        For commands outside the catalog/JSON-RPC path — e.g. the read-engine
+        geometry 'G w h x y'. The firmware echoes a non-JSON 'GEO:' line which the
+        reader logs; there is no response correlation (so this returns nothing)."""
+        if self.ser is None:
+            raise RuntimeError("uart not open")
+        try:
+            self.ser.write((line.rstrip() + "\r\n").encode("ascii"))
+        except Exception as e:
+            raise RuntimeError(f"uart raw write failed: {e}") from e
+
 
 # ---------------------------------------------------------------------------
 # Profile store — JSON files in ~/.schindler/profiles/
@@ -477,6 +489,7 @@ class Dispatcher:
             "status.snapshot":      self._m_status_snapshot,
             "system.metrics":       self._m_system_metrics,
             "debug.dump":           self._m_debug_dump,
+            "geom.set":             self._m_geom_set,
         }
         self.telemetry: Optional[TelemetryParser] = None  # set by daemon main
 
@@ -564,6 +577,23 @@ class Dispatcher:
             "params": {"id": cid, "value": out_val},
         })
         return {"id": cid, "value": out_val}
+
+    async def _m_geom_set(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Read-engine geometry: absolute window w×h at (x,y) in the output raster.
+        Sent as the raw 'G w h x y' firmware command (not a catalog control). The UI
+        computes x,y from its scale + shift + anchor mode; the daemon just clamps and
+        forwards, then broadcasts geom.changed for multi-client sync."""
+        def clampi(v: Any, lo: int, hi: int) -> int:
+            iv = int(round(float(v)))
+            return lo if iv < lo else hi if iv > hi else iv
+        w = clampi(params.get("w", 1280), 1, 1920)
+        h = clampi(params.get("h", 720), 1, 1080)
+        x = clampi(params.get("x", 0), 0, 1920)
+        y = clampi(params.get("y", 0), 0, 1080)
+        self.uart.send_raw(f"G {w} {h} {x} {y}")
+        applied = {"w": w, "h": h, "x": x, "y": y}
+        self.bus.publish({"jsonrpc": "2.0", "method": "geom.changed", "params": applied})
+        return applied
 
     async def _m_profile_list(self, params: Dict[str, Any]) -> List[str]:
         return self.profiles.list()
