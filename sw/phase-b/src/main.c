@@ -90,7 +90,7 @@
  * to not lap MM2S during its 41.7 ms read window at 24p output. 5 × 16.7
  * = 83 ms cycle time vs. MM2S 41.7 ms read = 2× headroom. Addresses the
  * FRC tear-line-that-drifts symptom. BD c_num_fstores must match. */
-#define NUM_FRAMES        5
+#define NUM_FRAMES        7   /* #28: 5->7 (MUST == VDMA c_num_fstores) so cadence lag reaches 2 for Mackin blend. 7*SLOT_STRIDE=43.6MB from FRAME_BUF_BASE. */
 #define FRAME_BUF_BASE    0x10000000U
 
 static XAxiVdma vdma;

@@ -30,7 +30,7 @@ module pg_read_engine_top #(
     parameter integer IN_H  = 720,
     parameter integer STRIDE = 3840,                 // master line stride (bytes)
     parameter [31:0]  FRAME_BUF_BASE = 32'h1000_0000,
-    parameter integer NUM_FRAMES = 5,
+    parameter integer NUM_FRAMES = 7,                // #28: 5->7 so cadence lag can reach 2 (Mackin blend needs a completed S+1). MUST == VDMA c_num_fstores.
     parameter integer SLOT_STRIDE = 2768640,         // FRAME_BYTES + STRIDE guard
     parameter integer READ_DELAY = 2,
     parameter integer NBUF = 5                        // line-buffer ring depth: 1 read + 2 prefetch + 1 fill + 1 guard

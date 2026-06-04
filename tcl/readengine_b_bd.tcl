@@ -101,7 +101,11 @@ create_bd_cell -type module -reference pg_read_engine_top pg_re_0
 #   STRIDE      = 1920*3 = 5760 bytes/master-line
 #   SLOT_STRIDE = FRAME_BYTES(5760*1080) + STRIDE guard = 6226560
 set_property -dict [list CONFIG.IN_W {1920} CONFIG.IN_H {1080} \
-    CONFIG.STRIDE {5760} CONFIG.SLOT_STRIDE {6226560}] [get_bd_cells pg_re_0]
+    CONFIG.STRIDE {5760} CONFIG.SLOT_STRIDE {6226560} \
+    CONFIG.NUM_FRAMES {7}] [get_bd_cells pg_re_0]
+# #28: NUM_FRAMES 5->7 (MUST equal axi_vdma_0 c_num_fstores) so the cadence lag can
+# reach 2 -> Mackin blend has a completed S+1 partner. 7x6226560 = 43.6MB from
+# FRAME_BUF_BASE (0x10000000), well within the 1GB DDR.
 connect_bd_net $pclk  [get_bd_pins pg_re_0/clk]
 connect_bd_net $prstn [get_bd_pins pg_re_0/rstn]
 # Tap S2MM's real framestore pointer (exposed even with internal genlock ON,

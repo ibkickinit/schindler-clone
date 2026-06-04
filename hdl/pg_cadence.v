@@ -129,7 +129,7 @@ module pg_cadence #(
     reg  [5:0]  dnew, eff;
     reg  [11:0] ceil_inc;
     reg  signed [13:0] ml_s;
-    reg  [5:0]  lag;
+    reg  [5:0]  lag, lag_safe;
     reg  [31:0] acc_sum;
     reg  [19:0] frac;
     reg  [5:0]  s_lag, s_slot, s2_slot, prim_slot;
@@ -151,9 +151,17 @@ module pg_cadence #(
         // compares (LAG_MIN[13:0]), so a negative ml_s read as a huge unsigned value, escaped the
         // clamp, and latched garbage into lag → read landed AHEAD of the writer. Keep it signed.
         ml_s    = NUM_FRAMES - $signed({1'b0,eff}) - J_MARG - O_MARG - MARGIN - 1;
-        if      (ml_s < LAG_MIN)            lag = LAG_MIN[5:0];
-        else if (ml_s > (NUM_FRAMES-2))     lag = (NUM_FRAMES-2);
-        else                                lag = ml_s[5:0];
+        if      (ml_s < LAG_MIN)            lag_safe = LAG_MIN[5:0];
+        else if (ml_s > (NUM_FRAMES-2))     lag_safe = (NUM_FRAMES-2);
+        else                                lag_safe = ml_s[5:0];
+        // ---- mode-dependent lag (bound to the LATCHED user mode bm_q2, NOT per-frame
+        // alpha — else it would toggle 1<->2 every few frames at near-1:1 and itself
+        // create judder). off=0 -> minimum latency (read newest completed frame, LAG_MIN);
+        // intelligent/force -> lag=2 (min that gives a completed S+1 blend partner),
+        // capped by lag_safe. Constant within a mode; a user mode-switch is a single SOF
+        // transient. lag=1->2 reads further behind (safer); 2->1 nearer head but >= LAG_MIN.
+        lag = (bm_q2 == 2'd0) ? LAG_MIN[5:0]
+                              : ((lag_safe >= 6'd2) ? 6'd2 : lag_safe);
 
         // alpha phase accumulator (non-safety)
         acc_sum = acc + inc;

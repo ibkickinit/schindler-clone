@@ -293,7 +293,7 @@ create_bd_cell -type ip -vlnv xilinx.com:ip:axi_vdma axi_vdma_0
 set_property -dict [list \
     CONFIG.c_include_s2mm {1} \
     CONFIG.c_include_mm2s {1} \
-    CONFIG.c_num_fstores {5} \
+    CONFIG.c_num_fstores {7} \
     CONFIG.c_m_axi_s2mm_data_width {64} \
     CONFIG.c_m_axi_mm2s_data_width {64} \
     CONFIG.c_s_axis_s2mm_tdata_width {24} \
@@ -904,7 +904,7 @@ connect_bd_net [get_bd_pins slice_diag_v_emit/Dout]  [get_bd_pins gpio2_ch2_conc
 # previously-unused mm2s field — poll over UART for minutes/hours across genlock corners.
 # (Replaces slice_diag_mm2s/Dout, which read 0 — MM2S doesn't assert per-line TLAST.)
 create_bd_cell -type module -reference fp_mon_detector fp_mon
-set_property -dict [list CONFIG.NUM_FRAMES {5}] [get_bd_cells fp_mon]
+set_property -dict [list CONFIG.NUM_FRAMES {7}] [get_bd_cells fp_mon]
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]             [get_bd_pins fp_mon/clk]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]    [get_bd_pins fp_mon/rstn]
 connect_bd_net [get_bd_pins axi_vdma_0/s2mm_frame_ptr_out] [get_bd_pins fp_mon/frame_ptr_async]
