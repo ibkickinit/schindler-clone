@@ -1029,3 +1029,20 @@ the .x97/.98 fractionals vs their integers, ~0.4% measure accuracy): 0=23.98, 1=
 frame as `osee_switch.py`). **GoStream accepts ONE control client at a time and is slow to recycle
 the socket** → one command per TCP connection, pause between (back-to-back connects → "No route to
 host" until the prior closes). Osee left on **index 7 = 60 (nominal)** after this session.
+
+### 2026-06-03 (cont.) — build #23 PROMOTED to ✅ CLEAN (3-cold-boot verified)
+
+`readengine-b-integration` build #23 (commit `78ce592`: bounded blanking-flush wrap fix +
+`pg_cadence` gen-lock) **passes the no-coin-flip 3-boot rule**:
+
+| boot | rate/regime | delta_px | S2MM err-flags | monitor |
+|---|---|---|---|---|
+| 1 | 60p 1:1 | 0/6  | 3/6 → **transient** (Osee settling post-flip) | clean (Justin) |
+| 2 | 60p 1:1 | 0/18 | 0/19 | clean (Justin) |
+| 3 | 60p 1:1 | 0/17 | 0/17 | clean (Justin) |
+
+Each boot = fresh JTAG reprogram (PL re-init → MMCM/TX-VTC restart → re-rolls vsync phase, the
+coin-flip surface). All 3 came up clean on the monitor (no roll/tear) with `delta_px=0`; the boot-1
+err-flags did not recur (boot 2/3 = 0) → confirmed transient, not a build defect. **Status: ✅
+CLEAN (verified 2026-06-03, 3 boots).** This is the production read-engine substrate (gen-lock
+cadence + wrap fixed). Base for Mackin blend (`blend_mode=1`) next.
