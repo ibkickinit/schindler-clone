@@ -50,6 +50,7 @@ module pg_compose #(
     input  wire        blend_en,         // 1 = Mackin blend this frame
 
     input  wire [11:0] out_w_win, out_h_win, pos_x, pos_y,
+    input  wire [11:0] src_col0, src_row0,   // #29 source-crop offset (pan)
     input  wire [11:0] h_step_int, h_step_frac, v_step_int, v_step_frac,
     input  wire [23:0] matte_rgb,
 
@@ -144,6 +145,7 @@ module pg_compose #(
     pg_addrgen #(.OUT_W(OUT_W), .OUT_H(OUT_H), .IN_W(IN_W), .IN_H(IN_H)) u_addr (
         .clk(clk), .rstn(rstn), .sof(sof), .px_valid(gen_en),
         .out_w_win(out_w_win), .out_h_win(out_h_win), .pos_x(pos_x), .pos_y(pos_y),
+        .src_col0(src_col0), .src_row0(src_row0),
         .h_step_int(h_step_int), .h_step_frac(h_step_frac),
         .v_step_int(v_step_int), .v_step_frac(v_step_frac),
         .o_valid(a_valid), .o_in_window(a_inwin),
@@ -312,7 +314,8 @@ module pg_compose #(
 
     always @(posedge clk) begin
         if (!rstn || sof) begin
-            served_count <= 12'd0; pf_next_k <= 12'd0; pf_src <= 12'd0; pf_frac <= 12'd0;
+            served_count <= 12'd0; pf_next_k <= 12'd0; pf_frac <= 12'd0;
+            pf_src <= (!rstn) ? 12'd0 : src_row0;   // #29 prefetch starts at the panned row
             pf_req_r <= 1'b0; pf_row_r <= 12'd0; issued_q <= 1'b0;
         end else begin
             pf_req_r <= 1'b0;

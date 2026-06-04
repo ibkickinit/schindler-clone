@@ -53,10 +53,13 @@ module pg_read_engine_top_tb;
 
     integer errors;
     integer c_ow,c_oh,c_px,c_py; reg [23:0] c_matte;
+    // #29: window fixed at output origin (size c_ow x c_oh); c_px/c_py are now the
+    // SOURCE-CROP offset (pan), added to the DDA — pg_read_engine_top forces the window
+    // pos to 0 and routes the GPIO pos into the addrgen src_col0/src_row0.
     function integer ginwin; input integer ox,oy;
-        ginwin=((ox>=c_px)&&(ox<c_px+c_ow)&&(oy>=c_py)&&(oy<c_py+c_oh))?1:0; endfunction
+        ginwin=((ox<c_ow)&&(oy<c_oh))?1:0; endfunction
     function [23:0] golden; input integer ox,oy; integer sc,sr; begin
-        if (ginwin(ox,oy)) begin sc=((ox-c_px)*IN_W)/c_ow; sr=((oy-c_py)*IN_H)/c_oh; golden=gpix(sr,sc); end
+        if (ginwin(ox,oy)) begin sc=c_px+(ox*IN_W)/c_ow; sr=c_py+(oy*IN_H)/c_oh; golden=gpix(sr,sc); end
         else golden=c_matte; end
     endfunction
 
@@ -146,9 +149,12 @@ module pg_read_engine_top_tb;
         // advance the ring a few frames so read_slot is well-defined
         repeat(20) @(posedge clk);   // let things settle after reset
 
-        run_case(64,48, 0, 0, 2);
-        run_case(32,24,16,12, 2);
-        run_case(40,30,12, 9, 1);
+        // #29 semantics: (ow,oh) = scale (zoom), (ppx,ppy) = SOURCE-CROP offset (pan).
+        // Pan must stay within the source (firmware clamps to IN_W - visible span); the
+        // cases below keep src_col/src_row < IN_W/IN_H. ow>OUT_W => zoom-in (pan room).
+        run_case(64,48,  0, 0, 2);   // full, no pan (regression)
+        run_case(128,96, 0, 0, 1);   // 2x zoom, no pan
+        run_case(128,96,16,12, 1);   // 2x zoom + valid pan (src spans 16..47 / 12..35, in-bounds)
 
         $display("================================="); $display("Total errors = %0d", errors);
         $display("================================="); $finish;

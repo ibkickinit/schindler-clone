@@ -48,6 +48,8 @@ module pg_addrgen #(
     input  wire [11:0] out_h_win,  // window height (1..OUT_H)
     input  wire [11:0] pos_x,      // window left   (0..OUT_W-out_w_win)
     input  wire [11:0] pos_y,      // window top    (0..OUT_H-out_h_win)
+    input  wire [11:0] src_col0,   // #29 source-crop offset: src_col starts here, not 0 (PAN)
+    input  wire [11:0] src_row0,   // #29 source-crop offset: src_row starts here, not 0 (PAN)
     input  wire [11:0] h_step_int, // IN_W / out_w_win
     input  wire [11:0] h_step_frac,// IN_W % out_w_win
     input  wire [11:0] v_step_int, // IN_H / out_h_win
@@ -63,6 +65,7 @@ module pg_addrgen #(
     // ---- latched (frame-atomic) geometry ----
     reg [11:0] win_w, win_h, px0, py0;
     reg [11:0] hsi, hsf, vsi, vsf;
+    reg [11:0] sc0, sr0;           // #29 latched source-crop offset (pan); DDA starts here not 0
 
     // ---- output-raster position ----
     reg [11:0] ox, oy;
@@ -112,9 +115,10 @@ module pg_addrgen #(
                 win_w <= out_w_win; win_h <= out_h_win; px0 <= pos_x; py0 <= pos_y;
                 hsi <= h_step_int; hsf <= h_step_frac;
                 vsi <= v_step_int; vsf <= v_step_frac;
+                sc0 <= src_col0; sr0 <= src_row0;          // #29 latch pan offset
                 ox <= 12'd0; oy <= 12'd0;
-                h_src <= 12'd0; h_frac <= 12'd0;
-                v_src <= 12'd0; v_frac <= 12'd0;
+                h_src <= src_col0; h_frac <= 12'd0;        // DDA starts at the crop offset
+                v_src <= src_row0; v_frac <= 12'd0;
             end else if (px_valid) begin
                 // ---- register this pixel's result ----
                 o_valid     <= 1'b1;
@@ -138,11 +142,11 @@ module pg_addrgen #(
                 if (eol) begin
                     ox <= 12'd0;
                     oy <= next_oy;
-                    // reset H DDA for the new row (overrides the advance above)
-                    h_src <= 12'd0; h_frac <= 12'd0;
+                    // reset H DDA for the new row (overrides the advance above) — to the pan offset
+                    h_src <= sc0; h_frac <= 12'd0;
                     // advance V DDA for the new row
                     if (next_oy_top) begin
-                        v_src <= 12'd0; v_frac <= 12'd0;
+                        v_src <= sr0; v_frac <= 12'd0;
                     end else if (next_oy_in) begin
                         if (v_carry) begin
                             v_src  <= v_src + vsi + 12'd1;

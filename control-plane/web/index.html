@@ -117,11 +117,11 @@
         <input type="range" id="geo-sy-r" min="64" max="1440" value="720" style="flex:1">
         <input type="number" id="geo-sy-n" min="1" max="1440" value="720" style="width:72px"><span style="opacity:.5">720=100%</span></div>
       <div style="display:flex;gap:8px;align-items:center;margin:3px 0"><span style="width:64px">Shift X</span>
-        <input type="range" id="geo-px-r" min="0" max="1280" value="640" style="flex:1">
-        <input type="number" id="geo-px-n" min="0" max="1920" value="640" style="width:72px"></div>
+        <input type="range" id="geo-px-r" min="0" max="960" value="0" style="flex:1">
+        <input type="number" id="geo-px-n" min="0" max="960" value="0" style="width:72px"><span style="opacity:.5">pan</span></div>
       <div style="display:flex;gap:8px;align-items:center;margin:3px 0"><span style="width:64px">Shift Y</span>
-        <input type="range" id="geo-py-r" min="0" max="720" value="360" style="flex:1">
-        <input type="number" id="geo-py-n" min="0" max="1080" value="360" style="width:72px"></div>
+        <input type="range" id="geo-py-r" min="0" max="540" value="0" style="flex:1">
+        <input type="number" id="geo-py-n" min="0" max="540" value="0" style="width:72px"><span style="opacity:.5">pan</span></div>
       <div id="geo-applied" style="font-family:monospace;margin-top:6px;opacity:.7">G 1280 720 0 0</div>
       <label style="display:block;margin-top:8px">Mackin blend:&nbsp;
         <select id="blend-mode">
@@ -558,13 +558,13 @@
   // scale + shift + anchor mode. anchor=false → scale around CENTER (shift is the
   // center). anchor=true → pin TOP-LEFT (shift is the top-left corner).
   // -------------------------------------------------------------------------
-  const geo = { sx: 1280, sy: 720, px: 640, py: 360, anchor: false };
+  // #29: Shift X/Y are now the SOURCE-CROP offset (pan) — which part of the (scaled)
+  // source is shown. All-positive; firmware clamps to the in-bounds pan range for the
+  // current zoom. (The old center/top-left anchor math was for window-position, which
+  // the read engine no longer uses — window is fixed at the output origin.)
+  const geo = { sx: 1280, sy: 720, px: 0, py: 0, anchor: false };
   function geoCompute() {
-    const w = geo.sx, h = geo.sy;
-    let x, y;
-    if (geo.anchor) { x = geo.px; y = geo.py; }                       // top-left pinned
-    else { x = Math.round(geo.px - w / 2); y = Math.round(geo.py - h / 2); } // center
-    return { w, h, x: Math.max(0, x), y: Math.max(0, y) };
+    return { w: geo.sx, h: geo.sy, x: Math.max(0, geo.px), y: Math.max(0, geo.py) };
   }
   let geoInflight = false, geoPending = false;
   async function geoSend() {
@@ -589,16 +589,8 @@
   }
   geoPair("sx", "geo-sx-r", "geo-sx-n"); geoPair("sy", "geo-sy-r", "geo-sy-n");
   geoPair("px", "geo-px-r", "geo-px-n"); geoPair("py", "geo-py-r", "geo-py-n");
-  document.getElementById("geo-anchor").addEventListener("change", (e) => {
-    const was = geo.anchor; geo.anchor = e.target.checked;
-    // Convert shift between center<->top-left so the visible window doesn't jump.
-    if (geo.anchor && !was) { geo.px = Math.max(0, Math.round(geo.px - geo.sx / 2)); geo.py = Math.max(0, Math.round(geo.py - geo.sy / 2)); }
-    else if (!geo.anchor && was) { geo.px = Math.round(geo.px + geo.sx / 2); geo.py = Math.round(geo.py + geo.sy / 2); }
-    for (const [k, r, n] of [["px","geo-px-r","geo-px-n"],["py","geo-py-r","geo-py-n"]]) {
-      document.getElementById(r).value = geo[k]; document.getElementById(n).value = geo[k];
-    }
-    geoSend();
-  });
+  // #29: Shift = absolute source-crop pan now; the old center/top-left anchor toggle
+  // is inert (kept in the DOM, no-op) — pan is a direct offset, no anchor needed.
   document.getElementById("blend-mode").addEventListener("change", async (e) => {
     const m = +e.target.value;
     try { await call("blend.set", { mode: m });

@@ -167,7 +167,11 @@ module pg_read_engine_top #(
                  .STRIDE(STRIDE), .FIFO_DEPTH(64), .NBUF(NBUF)) u_compose (
         .clk(clk), .rstn(rstn), .vtg_vsync(out_vsync), .frame_base_addr(frame_base),
         .frame_base_addr2(cad_read2_base), .blend_alpha(cad_alpha), .blend_en(cad_blend_en),
-        .out_w_win(s_out_w), .out_h_win(s_out_h), .pos_x(s_pos_x), .pos_y(s_pos_y),
+        // #29: the GPIO "shift" (s_pos_x/s_pos_y) now drives the SOURCE-CROP offset (pan) —
+        // works in all directions incl. for a zoomed image. Window is fixed at the output
+        // origin (pos=0) so it fills the output; pan moves which part of the source shows.
+        .out_w_win(s_out_w), .out_h_win(s_out_h), .pos_x(12'd0), .pos_y(12'd0),
+        .src_col0(s_pos_x), .src_row0(s_pos_y),
         .h_step_int(s_hsi), .h_step_frac(s_hsf),
         .v_step_int(s_vsi), .v_step_frac(s_vsf), .matte_rgb(s_matte),
         .m_tdata(m_axis_tdata), .m_tvalid(m_axis_tvalid), .m_tready(m_axis_tready),

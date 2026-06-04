@@ -858,8 +858,15 @@ static void re_write_geometry(void)
      * only the part within the output is shown). Centering/pan of a zoomed view is #28. */
     if (w < 1) w = 1; if (w > 2u*OUT_RASTER_W) w = 2u*OUT_RASTER_W;
     if (h < 1) h = 1; if (h > 2u*OUT_RASTER_H) h = 2u*OUT_RASTER_H;
-    if (w <= FRAME_W && x > FRAME_W - w) x = FRAME_W - w;   /* guard unsigned underflow when w>FRAME_W */
-    if (h <= FRAME_H && y > FRAME_H - h) y = FRAME_H - h;
+    /* #29: x,y are now the SOURCE-CROP offset (pan), not window position. Valid range
+     * 0..(IN_W - visible_source_width), where visible_source_width = OUT_RASTER * IN_W / w.
+     * At w=full (1280) the whole source shows -> max pan 0; zoomed in -> room to pan. */
+    unsigned vis_w = (OUT_RASTER_W * FRAME_W) / w;   /* source cols spanned across the output */
+    unsigned vis_h = (OUT_RASTER_H * FRAME_H) / h;
+    unsigned xmax = (FRAME_W > vis_w) ? (FRAME_W - vis_w) : 0u;
+    unsigned ymax = (FRAME_H > vis_h) ? (FRAME_H - vis_h) : 0u;
+    if (x > xmax) x = xmax;
+    if (y > ymax) y = ymax;
     unsigned hsi = FRAME_W / w, hsf = FRAME_W % w;   /* floor(IN_W/out_w), IN_W%out_w */
     unsigned vsi = FRAME_H / h, vsf = FRAME_H % h;
     Xil_Out32(GEO_A_BASE + 0x00, ((h & 0xFFF) << 16) | (w & 0xFFF));
