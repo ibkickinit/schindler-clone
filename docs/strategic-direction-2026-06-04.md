@@ -11,6 +11,14 @@ The two highest-leverage follow-ups (main-agent read): **(1) merge `readengine-b
 trunk**, **(2) add a read-side anti-alias box filter** (zoom aliases without it — relevant the
 moment #29 pan/zoom ships).
 
+> **Correction (2026-06-04, post-git-check):** the memo below repeatedly calls the branch merge a
+> "deliberate operation" with "two production stories to reconcile." Git says otherwise: merge-base
+> `a7e3671`, branch is **67 commits ahead**, trunk is **0 commits ahead** (hasn't moved since fork),
+> **zero files changed on both sides**. It's a **fast-forward** (`git merge --ff-only`), not a two-way
+> reconcile. The real cost is verification discipline (gate the FF behind #28 3-boot + #29), not the
+> merge. Retiring VDMA-MM2S (§18A / risk #1) is a *separate optional* cleanup, not part of the merge.
+> See task #106.
+
 ---
 
 ## Memo (verbatim)
