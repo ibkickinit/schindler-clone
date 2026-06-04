@@ -490,6 +490,7 @@ class Dispatcher:
             "system.metrics":       self._m_system_metrics,
             "debug.dump":           self._m_debug_dump,
             "geom.set":             self._m_geom_set,
+            "blend.set":            self._m_blend_set,
         }
         self.telemetry: Optional[TelemetryParser] = None  # set by daemon main
 
@@ -594,6 +595,15 @@ class Dispatcher:
         applied = {"w": w, "h": h, "x": x, "y": y}
         self.bus.publish({"jsonrpc": "2.0", "method": "geom.changed", "params": applied})
         return applied
+
+    async def _m_blend_set(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Mackin blend toggle (read-engine). Raw 'M 0|1' firmware command:
+        1 = blended FRC (dual-fetch), 0 = drop/repeat. Not a catalog control."""
+        en = 1 if params.get("enabled") else 0
+        self.uart.send_raw(f"M {en}")
+        self.bus.publish({"jsonrpc": "2.0", "method": "blend.changed",
+                          "params": {"enabled": bool(en)}})
+        return {"enabled": bool(en)}
 
     async def _m_profile_list(self, params: Dict[str, Any]) -> List[str]:
         return self.profiles.list()

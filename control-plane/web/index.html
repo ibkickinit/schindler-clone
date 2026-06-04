@@ -123,6 +123,10 @@
         <input type="range" id="geo-py-r" min="0" max="720" value="360" style="flex:1">
         <input type="number" id="geo-py-n" min="0" max="1080" value="360" style="width:72px"></div>
       <div id="geo-applied" style="font-family:monospace;margin-top:6px;opacity:.7">G 1280 720 0 0</div>
+      <label style="display:block;margin-top:8px">
+        <input type="checkbox" id="blend-en"> Mackin blend (smooth FRC)&nbsp;
+        <span style="opacity:.6">(unchecked = drop/repeat)</span>
+      </label>
     </div>
     <div id="metrics" hidden></div>
     <div id="framedump" hidden>
@@ -591,6 +595,11 @@
       document.getElementById(r).value = geo[k]; document.getElementById(n).value = geo[k];
     }
     geoSend();
+  });
+  document.getElementById("blend-en").addEventListener("change", async (e) => {
+    try { await call("blend.set", { enabled: e.target.checked });
+          log(`Mackin blend ${e.target.checked ? "ON" : "off"}`, "ok"); }
+    catch (err) { log(`blend.set: ${err.message}`, "err"); }
   });
 
   connect();
