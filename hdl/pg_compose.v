@@ -105,23 +105,10 @@ module pg_compose #(
     end
     // alpha 8-bit -> Q1.15 (0..~0x7FFF ≈ 1.0): {alpha,alpha[6:0]} = alpha<<7 | alpha[6:0]
     wire [15:0] alpha_q15 = {1'b0, alpha_l, alpha_l[6:0]};
-
-    // ---- Mackin per-channel temporal lerp (from mackin_blender.v) ----
-    //   out_c = clamp( prev_c + ((a*(curr_c-prev_c) + 0x4000) >> 15), 0, 255 )
-    //   prev = frame A (rd_data, slot S), curr = frame B (rd_data2, slot S+1)
-    function [7:0] lerp8; input [7:0] pv; input [7:0] cv; input [15:0] a;
-        reg signed [10:0] diff; reg signed [27:0] prod; reg signed [17:0] res;
-        begin
-            diff = $signed({3'b0,cv}) - $signed({3'b0,pv});       // -255..255
-            prod = $signed({1'b0,a}) * diff;                       // a unsigned 0..0x8000
-            res  = $signed({10'b0,pv}) + ((prod + 28'sd16384) >>> 15);
-            lerp8 = (res < 0) ? 8'd0 : (res > 18'sd255) ? 8'd255 : res[7:0];
-        end
-    endfunction
-    function [23:0] lerp24; input [23:0] pv; input [23:0] cv; input [15:0] a;
-        lerp24 = { lerp8(pv[23:16],cv[23:16],a),    // R
-                   lerp8(pv[15:8], cv[15:8], a),    // B  (R-B-G layout; channel-independent)
-                   lerp8(pv[7:0],  cv[7:0],  a) };  // G
+    wire signed [16:0] aq = $signed({1'b0, alpha_q15});   // positive
+    // final clamp for the Mackin lerp (see 3-stage pipeline in the consumer)
+    function [7:0] clamp8; input signed [27:0] v;
+        clamp8 = (v < 0) ? 8'd0 : (v > 28'sd255) ? 8'd255 : v[7:0];
     endfunction
 
     // ---------- output FIFO ----------
@@ -135,7 +122,7 @@ module pg_compose #(
     reg  [AW-1:0] owr, ord;
     wire ofull  = (ocount == FIFO_DEPTH[AW:0]);
     wire oempty = (ocount == 0);
-    wire ospace = (ocount < (FIFO_DEPTH-3));   // reserve 3: C1 + C2(blend) stages in flight
+    wire ospace = (ocount < (FIFO_DEPTH-5));   // reserve 5: C1 + 3-stage blend pipeline in flight
 
     // ---------- skid FIFO at addrgen output (absorbs addrgen's 1-cyc latency) ----------
     localparam integer SK = 8, SKW = 3;
@@ -220,23 +207,41 @@ module pg_compose #(
             end
         end
     end
-    // C2: Mackin blend register. blend_l=1 → lerp(A,B,alpha); else pass A (drop/repeat,
-    // exact build #23 pixel). matte for out-of-window. One stage → push lands +1 cyc later
-    // (order-preserving, so SOF/EOL bookkeeping below is unaffected; ospace reserves +1).
-    reg        c2_valid;
-    reg [23:0] c2_data;
-    wire [23:0] c2_pixel = c1_inwin
-        ? (blend_l ? lerp24(m3_rd_data, m3_rd_data2, alpha_q15) : m3_rd_data)
-        : c1_matte;
+    // ---- 3-stage Mackin blend pipeline ----
+    // Single-cycle lerp failed timing (WNS -3.5 @ 74.25 MHz on the -1 part: the
+    // multiply+shift+clamp chain into one register). Split like mackin_blender:
+    //   S1: diff = B - A per channel (signed). carry A, matte, inwin, valid.
+    //   S2: prod = alpha * diff per channel (the DSP). carry A, matte, inwin, valid.
+    //   S3: res = A + ((prod+0x4000)>>>15), clamp; select blend / A(drop-repeat) / matte.
+    // alpha_q15 + blend_l are frame-constant (used directly, not pipelined). Functionally
+    // identical to the gate-validated lerp; just pipelined. push lands 3 cyc after C1
+    // (order-preserving → SOF/EOL bookkeeping below unaffected; ospace reserves the depth).
+    reg               s1_v, s1_in, s2_v, s2_in, s3_v;
+    reg [23:0]        s1_matte, s1_A, s2_matte, s2_A, s3_data;
+    reg signed [10:0] s1_dR, s1_dB, s1_dG;
+    reg signed [27:0] s2_pR, s2_pB, s2_pG;
     always @(posedge clk) begin
-        if (!rstn || sof) c2_valid <= 1'b0;
+        if (!rstn || sof) begin s1_v<=1'b0; s2_v<=1'b0; s3_v<=1'b0; end
         else begin
-            c2_valid <= c1_valid;
-            c2_data  <= c2_pixel;
+            // S1: per-channel diff (B - A). pixels valid in the c1_valid cycle.
+            s1_v <= c1_valid; s1_in <= c1_inwin; s1_matte <= c1_matte; s1_A <= m3_rd_data;
+            s1_dR <= $signed({3'b0,m3_rd_data2[23:16]}) - $signed({3'b0,m3_rd_data[23:16]});
+            s1_dB <= $signed({3'b0,m3_rd_data2[15:8]})  - $signed({3'b0,m3_rd_data[15:8]});
+            s1_dG <= $signed({3'b0,m3_rd_data2[7:0]})   - $signed({3'b0,m3_rd_data[7:0]});
+            // S2: alpha * diff (DSP)
+            s2_v <= s1_v; s2_in <= s1_in; s2_matte <= s1_matte; s2_A <= s1_A;
+            s2_pR <= aq * s1_dR; s2_pB <= aq * s1_dB; s2_pG <= aq * s1_dG;
+            // S3: A + rounded shift, clamp; mux blend / drop-repeat / matte
+            s3_v <= s2_v;
+            s3_data <= s2_in ? (blend_l ?
+                { clamp8($signed({20'd0,s2_A[23:16]}) + ((s2_pR + 28'sd16384) >>> 15)),
+                  clamp8($signed({20'd0,s2_A[15:8]})  + ((s2_pB + 28'sd16384) >>> 15)),
+                  clamp8($signed({20'd0,s2_A[7:0]})   + ((s2_pG + 28'sd16384) >>> 15)) }
+                : s2_A) : s2_matte;
         end
     end
-    wire [23:0] push_data = c2_data;
-    wire        push_en   = c2_valid;
+    wire [23:0] push_data = s3_data;
+    wire        push_en   = s3_v;
 
     // ---------- skid count bookkeeping ----------
     wire sk_push = a_valid && !sfull;
