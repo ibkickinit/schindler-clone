@@ -46,6 +46,7 @@ module pg_read_engine_top #(
     input  wire [11:0] out_w_win, out_h_win, pos_x, pos_y,
     input  wire [11:0] h_step_int, h_step_frac, v_step_int, v_step_frac,
     input  wire [23:0] matte_rgb,
+    input  wire        blend_mode,       // 1 = Mackin blend (dual-fetch); 0 = drop/repeat (FCLK_CLK0, async — pg_cadence CDCs it)
 
     // output AXIS → color stack (axis_to_vid_io path)
     output wire [23:0] m_axis_tdata,
@@ -116,7 +117,7 @@ module pg_read_engine_top #(
     pg_cadence #(.FRAME_BUF_BASE(FRAME_BUF_BASE), .NUM_FRAMES(NUM_FRAMES),
                  .SLOT_STRIDE(SLOT_STRIDE)) u_cadence (
         .clk(clk), .rstn(rstn), .frame_ptr(frame_ptr), .out_vsync(out_vsync),
-        .blend_mode(1'b0),
+        .blend_mode(blend_mode),
         .read_slot(dbg_read_slot), .read_base_addr(frame_base), .write_slot(dbg_write_slot),
         .read2_slot(cad_read2_slot), .read2_base_addr(cad_read2_base),
         .alpha(cad_alpha), .blend_en(cad_blend_en),
@@ -143,6 +144,7 @@ module pg_read_engine_top #(
     pg_compose #(.OUT_W(OUT_W), .OUT_H(OUT_H), .IN_W(IN_W), .IN_H(IN_H),
                  .STRIDE(STRIDE), .FIFO_DEPTH(64), .NBUF(NBUF)) u_compose (
         .clk(clk), .rstn(rstn), .vtg_vsync(out_vsync), .frame_base_addr(frame_base),
+        .frame_base_addr2(cad_read2_base), .blend_alpha(cad_alpha), .blend_en(cad_blend_en),
         .out_w_win(s_out_w), .out_h_win(s_out_h), .pos_x(s_pos_x), .pos_y(s_pos_y),
         .h_step_int(s_hsi), .h_step_frac(s_hsf),
         .v_step_int(s_vsi), .v_step_frac(s_vsf), .matte_rgb(s_matte),

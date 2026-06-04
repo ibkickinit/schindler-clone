@@ -41,7 +41,13 @@ module pg_compose #(
     input  wire        rstn,
 
     input  wire        vtg_vsync,        // output frame sync (level; rising = SOF)
-    input  wire [31:0] frame_base_addr,  // from pg_genlock
+    input  wire [31:0] frame_base_addr,  // from pg_cadence: slot S (frame A, older)
+
+    // Mackin blend (task #103): blend partner + weight from pg_cadence. Latched at
+    // SOF (frame-atomic). blend_en=0 → single-fetch, exact build #23 behaviour.
+    input  wire [31:0] frame_base_addr2, // slot S+1 (frame B, newer)
+    input  wire [7:0]  blend_alpha,      // cadence alpha (8-bit, 0..255)
+    input  wire        blend_en,         // 1 = Mackin blend this frame
 
     input  wire [11:0] out_w_win, out_h_win, pos_x, pos_y,
     input  wire [11:0] h_step_int, h_step_frac, v_step_int, v_step_frac,
@@ -90,9 +96,33 @@ module pg_compose #(
 
     reg [11:0] win_h_l, vsi_l, vsf_l;
     reg [23:0] matte_l;
+    reg [31:0] base2_l;     // frame B base (frame-atomic)
+    reg [7:0]  alpha_l;     // cadence alpha (frame-atomic)
+    reg        blend_l;     // blend enable (frame-atomic)
     always @(posedge clk) if (sof) begin
         win_h_l <= out_h_win; vsi_l <= v_step_int; vsf_l <= v_step_frac; matte_l <= matte_rgb;
+        base2_l <= frame_base_addr2; alpha_l <= blend_alpha; blend_l <= blend_en;
     end
+    // alpha 8-bit -> Q1.15 (0..~0x7FFF ≈ 1.0): {alpha,alpha[6:0]} = alpha<<7 | alpha[6:0]
+    wire [15:0] alpha_q15 = {1'b0, alpha_l, alpha_l[6:0]};
+
+    // ---- Mackin per-channel temporal lerp (from mackin_blender.v) ----
+    //   out_c = clamp( prev_c + ((a*(curr_c-prev_c) + 0x4000) >> 15), 0, 255 )
+    //   prev = frame A (rd_data, slot S), curr = frame B (rd_data2, slot S+1)
+    function [7:0] lerp8; input [7:0] pv; input [7:0] cv; input [15:0] a;
+        reg signed [10:0] diff; reg signed [27:0] prod; reg signed [17:0] res;
+        begin
+            diff = $signed({3'b0,cv}) - $signed({3'b0,pv});       // -255..255
+            prod = $signed({1'b0,a}) * diff;                       // a unsigned 0..0x8000
+            res  = $signed({10'b0,pv}) + ((prod + 28'sd16384) >>> 15);
+            lerp8 = (res < 0) ? 8'd0 : (res > 18'sd255) ? 8'd255 : res[7:0];
+        end
+    endfunction
+    function [23:0] lerp24; input [23:0] pv; input [23:0] cv; input [15:0] a;
+        lerp24 = { lerp8(pv[23:16],cv[23:16],a),    // R
+                   lerp8(pv[15:8], cv[15:8], a),    // B  (R-B-G layout; channel-independent)
+                   lerp8(pv[7:0],  cv[7:0],  a) };  // G
+    endfunction
 
     // ---------- output FIFO ----------
     // Each slot carries the pixel plus its frame-framing side-band:
@@ -105,7 +135,7 @@ module pg_compose #(
     reg  [AW-1:0] owr, ord;
     wire ofull  = (ocount == FIFO_DEPTH[AW:0]);
     wire oempty = (ocount == 0);
-    wire ospace = (ocount < (FIFO_DEPTH-2));
+    wire ospace = (ocount < (FIFO_DEPTH-3));   // reserve 3: C1 + C2(blend) stages in flight
 
     // ---------- skid FIFO at addrgen output (absorbs addrgen's 1-cyc latency) ----------
     localparam integer SK = 8, SKW = 3;
@@ -149,7 +179,7 @@ module pg_compose #(
     // ---------- M3: line fetch + double buffer ----------
     reg         pf_req_r;
     reg  [11:0] pf_row_r;
-    wire [23:0] m3_rd_data;
+    wire [23:0] m3_rd_data, m3_rd_data2;
     wire        m3_resident, m3_busy;
 
     // skid head descriptor
@@ -159,10 +189,11 @@ module pg_compose #(
     wire [11:0] h_scol  = skid[srd][11:0];
 
     pg_linefetch #(.LINE_W(IN_W), .STRIDE(STRIDE), .NBUF(NBUF)) u_fetch (
-        .clk(clk), .rstn(rstn), .frame_base_addr(frame_base_addr),
+        .clk(clk), .rstn(rstn),
+        .frame_base_addr(frame_base_addr), .frame_base_addr2(base2_l), .blend_en(blend_l),
         .pf_req(pf_req_r), .pf_row(pf_row_r),
         .rd_row(h_srow), .rd_col(h_scol),       // read keyed on skid head
-        .rd_data(m3_rd_data), .rd_resident(m3_resident),
+        .rd_data(m3_rd_data), .rd_data2(m3_rd_data2), .rd_resident(m3_resident),
         .dbg_fill_sel(dbg_fill_sel), .dbg_rd_sel(dbg_rd_sel), .dbg_have_row(dbg_have_row),
         .fetch_req(fetch_req), .fetch_addr(fetch_addr), .fetch_len(fetch_len),
         .beat_data(beat_data), .beat_valid(beat_valid), .beat_ready(beat_ready), .beat_last(beat_last),
@@ -174,6 +205,7 @@ module pg_compose #(
     //           present rd (already wired), pop skid, launch into C1.
     // Stage C1: m3_rd_data is now valid for that pixel → push to output FIFO.
     wire head_servable = !sempty && ospace && (!h_inwin || m3_resident);
+    // C1: pop skid head. rd_data (A) + rd_data2 (B) are valid the cycle c1_valid is high.
     reg        c1_valid, c1_inwin;
     reg [23:0] c1_matte;
     always @(posedge clk) begin
@@ -188,8 +220,23 @@ module pg_compose #(
             end
         end
     end
-    wire [23:0] push_data = c1_inwin ? m3_rd_data : c1_matte;
-    wire        push_en   = c1_valid;
+    // C2: Mackin blend register. blend_l=1 → lerp(A,B,alpha); else pass A (drop/repeat,
+    // exact build #23 pixel). matte for out-of-window. One stage → push lands +1 cyc later
+    // (order-preserving, so SOF/EOL bookkeeping below is unaffected; ospace reserves +1).
+    reg        c2_valid;
+    reg [23:0] c2_data;
+    wire [23:0] c2_pixel = c1_inwin
+        ? (blend_l ? lerp24(m3_rd_data, m3_rd_data2, alpha_q15) : m3_rd_data)
+        : c1_matte;
+    always @(posedge clk) begin
+        if (!rstn || sof) c2_valid <= 1'b0;
+        else begin
+            c2_valid <= c1_valid;
+            c2_data  <= c2_pixel;
+        end
+    end
+    wire [23:0] push_data = c2_data;
+    wire        push_en   = c2_valid;
 
     // ---------- skid count bookkeeping ----------
     wire sk_push = a_valid && !sfull;
