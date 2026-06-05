@@ -76,12 +76,28 @@ Under the v1 scope policy, the in-scope HDMI cells form a 6×6 grid (6 inputs ×
 
 | Input ↓ / Output → | 1080p24 | 1080p30 | 1080p60 | 720p24 | 720p30 | 720p60 |
 |---|---|---|---|---|---|---|
-| **1080p24** | ⚠️ pass | ⚠️ 5:4 | 🅰 | ⚠️ 1:1 | ⚠️ 5:4 | ⚠️ 5:2 |
-| **1080p30** | ⚠️ 4:5 | ⚠️ pass | 🅰 | ⚠️ 4:5 | ⚠️ 1:1 | ⚠️ 2:1 |
+| **1080p24** | ⚠️ pass | ⚠️ 5:4 | 🅰 | ⚠️ 1:1 | ⚠️ 5:4 | ✅ 5:2 |
+| **1080p30** | ⚠️ 4:5 | ⚠️ pass | 🅰 | ⚠️ 4:5 | ⚠️ 1:1 | ✅ 2:1 |
 | **1080p60** | ⚠️ 5:2 | ⚠️ 2:1 | 🅰 | ⚠️ 5:2 | ⚠️ 2:1 | ✅ Row 2 |
 | **720p24** | ❌ policy | ❌ policy | ❌ policy | ⚠️ pass | ⚠️ 5:4 | ⚠️ 5:2 |
 | **720p30** | ❌ policy | ❌ policy | ❌ policy | ⚠️ 4:5 | ⚠️ pass | ⚠️ 2:1 |
 | **720p60** | ❌ policy | ❌ policy | ❌ policy | ⚠️ 5:2 | ⚠️ 2:1 | ⚠️ pass (Row 16) |
+
+**Verification log — 2026-06-05 (720p60-OUT column, 1080-input rates), build #34, gamma OFF.**
+Swept the full Osee output-format range into the production substrate; every rate locked with the
+correct cadence and `DRAIN delta_px=0` (zero drift):
+- **1080p24→720p60 (5:2)** → ✅ **3-boot verified** (monitor clean + identical vertical lock ×3).
+- **1080p30→720p60 (2:1)** → ✅ single-boot (substrate boot-stability already proven by the 5:2 3-boot).
+- **1080p60→720p60 (1:1)** → ✅ re-confirmed (Row 2 anchor; PHASE deltas all-1, no drop/repeat).
+- NTSC fractional (real-world, not formal matrix cells): **59.94→60 (near-1:1)** + **29.97→60
+  (near-2:1)** both lock clean; the slow 1000/1001 beat (~16 s / ~33 s) is the documented Method-D
+  limit, not a defect (Mackin/MMCM-tracking target).
+- PAL (out of v1 scope, lock-check only): **50→60 (5:6)** + **25→60 (5:12)** both lock, cadence correct.
+- **GOTCHA recorded:** JTAG re-flash with the control daemon attached to the UART leaves the HDMI
+  input frozen (S2MM doesn't re-lock) — stop the daemon (free the UART) before re-programming, or
+  power-cycle. Field-update implication.
+- Still ⚠️: 720p-**input** rows of this column need a native 720 source (Osee outputs 1080). Other
+  output columns need their own OUTPUT_MODE bitstreams; 1080p60-OUT stays 🅰 (Zybo -1 silicon).
 
 **Net v1 HDMI scope:**
 - 24 cells in-scope (15 HDMI 1080-OUT + 9 HDMI 720-OUT)
