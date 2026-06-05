@@ -168,6 +168,32 @@ foreach {slot gname} {11 axi_gpio_8 12 axi_gpio_9 13 axi_gpio_10} {
 }
 
 # ---------------------------------------------------------------------------
+# Phase-3 gamma/tone LUT load GPIO (axi_gpio_11 @ M14; NUM_MI 14 -> 15).
+# Packs the gamma_lut load + bypass into one 32-bit output GPIO:
+#   bit0=bypass(default 1=transparent), bit1=tog, [3:2]=ch, [11:4]=addr, [19:12]=data
+# ---------------------------------------------------------------------------
+set_property -dict [list CONFIG.NUM_MI {15}] [get_bd_cells axi_ic_lite]
+create_bd_cell -type ip -vlnv xilinx.com:ip:axi_gpio axi_gpio_11
+set_property -dict [list CONFIG.C_GPIO_WIDTH {32} CONFIG.C_ALL_OUTPUTS {1} \
+    CONFIG.C_IS_DUAL {0} CONFIG.C_INTERRUPT_PRESENT {0} CONFIG.C_DOUT_DEFAULT {0x00000001}] \
+    [get_bd_cells axi_gpio_11]
+connect_bd_intf_net [get_bd_intf_pins axi_ic_lite/M14_AXI] [get_bd_intf_pins axi_gpio_11/S_AXI]
+connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]          [get_bd_pins axi_ic_lite/M14_ACLK]
+connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn] [get_bd_pins axi_ic_lite/M14_ARESETN]
+connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]          [get_bd_pins axi_gpio_11/s_axi_aclk]
+connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn] [get_bd_pins axi_gpio_11/s_axi_aresetn]
+re_slice sl_g_byp  axi_gpio_11 gpio_io_o 0  0
+re_slice sl_g_tog  axi_gpio_11 gpio_io_o 1  1
+re_slice sl_g_ch   axi_gpio_11 gpio_io_o 3  2
+re_slice sl_g_addr axi_gpio_11 gpio_io_o 11 4
+re_slice sl_g_data axi_gpio_11 gpio_io_o 19 12
+connect_bd_net [get_bd_pins sl_g_byp/Dout]  [get_bd_pins gamma_lut_0/bypass]
+connect_bd_net [get_bd_pins sl_g_tog/Dout]  [get_bd_pins gamma_lut_0/lut_tog]
+connect_bd_net [get_bd_pins sl_g_ch/Dout]   [get_bd_pins gamma_lut_0/lut_ch]
+connect_bd_net [get_bd_pins sl_g_addr/Dout] [get_bd_pins gamma_lut_0/lut_addr]
+connect_bd_net [get_bd_pins sl_g_data/Dout] [get_bd_pins gamma_lut_0/lut_data]
+
+# ---------------------------------------------------------------------------
 # ILA instrumentation (2026-06-02) — pin the read-engine ghost: addressing vs
 # beat-corruption vs aliasing. Both on the pixel clock ($pclk).
 #   ila_re_dbg   : NATIVE 96-bit dbg_probe from pg_re_0 — src_col/src_row,

@@ -58,6 +58,7 @@ add_files -norecurse [file join $project_root hdl scaler_bypass_1080p.v] ;# iter
 add_files -norecurse [file join $project_root hdl color_correct.v]      ;# white-balance / color-temp
 add_files -norecurse [file join $project_root hdl color_saturation.v]   ;# Rec.601 luma-mix saturation
 add_files -norecurse [file join $project_root hdl color_matrix.v]       ;# general 3x3 color matrix
+add_files -norecurse [file join $project_root hdl gamma_lut.v]          ;# per-channel gamma / tone LUT (Phase 3)
 # Route-B present-geometry read-engine (additive; mux-selected, default = MM2S passthrough)
 add_files -norecurse [file join $project_root hdl pg_addrgen.v]
 add_files -norecurse [file join $project_root hdl pg_genlock.v]
@@ -459,13 +460,19 @@ if {$COLOR_PIPELINE eq "bypass"} {
     # desired). Future: retire color_saturation_0 + color_correct_0 once matrix
     # preset coverage is verified.
     create_bd_cell -type module -reference color_matrix     color_matrix_0
+    # gamma_lut_0: per-channel 256-entry tone LUT (Phase 3), final color stage —
+    # DOWNSTREAM of color_matrix, upstream of axis_to_vid_io. Identity+bypass at boot
+    # (transparent). Load GPIO (axi_gpio_11 @ M14) wired in readengine_b_bd.tcl.
+    create_bd_cell -type module -reference gamma_lut        gamma_lut_0
     connect_bd_intf_net [get_bd_intf_pins axi_vdma_0/M_AXIS_MM2S]    [get_bd_intf_pins color_saturation_0/s_axis]
     connect_bd_intf_net [get_bd_intf_pins color_saturation_0/m_axis] [get_bd_intf_pins color_correct_0/s_axis]
     connect_bd_intf_net [get_bd_intf_pins color_correct_0/m_axis]    [get_bd_intf_pins color_matrix_0/s_axis]
-    connect_bd_intf_net [get_bd_intf_pins color_matrix_0/m_axis]     [get_bd_intf_pins axis_to_vid_io_0/s_axis]
+    connect_bd_intf_net [get_bd_intf_pins color_matrix_0/m_axis]     [get_bd_intf_pins gamma_lut_0/s_axis]
+    connect_bd_intf_net [get_bd_intf_pins gamma_lut_0/m_axis]        [get_bd_intf_pins axis_to_vid_io_0/s_axis]
     connect_bd_net [get_bd_pins clk_wiz_pixclk_out/clk_out1]         [get_bd_pins color_matrix_0/aclk]
     connect_bd_net [get_bd_pins clk_wiz_pixclk_out/clk_out1]         [get_bd_pins color_saturation_0/aclk]
     connect_bd_net [get_bd_pins clk_wiz_pixclk_out/clk_out1]         [get_bd_pins color_correct_0/aclk]
+    connect_bd_net [get_bd_pins clk_wiz_pixclk_out/clk_out1]         [get_bd_pins gamma_lut_0/clk]
 }
 # fsync: VTC's frame-start pulse → VDMA MM2S so MM2S SOF aligns with VTC frame.
 # VTC is free-running on output clock — output frame rate is exactly
@@ -654,6 +661,7 @@ if {$COLOR_PIPELINE ne "bypass"} {
     connect_bd_net [get_bd_pins rst_pixclk_out/peripheral_aresetn] [get_bd_pins color_correct_0/aresetn]
     connect_bd_net [get_bd_pins rst_pixclk_out/peripheral_aresetn] [get_bd_pins color_saturation_0/aresetn]
     connect_bd_net [get_bd_pins rst_pixclk_out/peripheral_aresetn] [get_bd_pins color_matrix_0/aresetn]
+    connect_bd_net [get_bd_pins rst_pixclk_out/peripheral_aresetn] [get_bd_pins gamma_lut_0/rstn]
 }
 # VTC_rx detector also on pclk_in — reset comes from axi (input-side IP)
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]        [get_bd_pins v_tc_rx/resetn]

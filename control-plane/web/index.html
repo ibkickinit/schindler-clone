@@ -155,6 +155,12 @@
         <button data-temp="8000">8000K</button>
         <button data-temp="10000">10000K</button>
       </div>
+      <div style="margin-bottom:6px"><span style="opacity:.6">Gamma:</span>
+        <button data-gamma="0">Off</button>
+        <button data-gamma="18">1.8</button>
+        <button data-gamma="22">2.2</button>
+        <button data-gamma="24">2.4</button>
+      </div>
       <div><span style="opacity:.6">Fade:</span>
         <button id="op-fade-out">→ Black</button>
         <button id="op-fade-in">→ Up</button>
@@ -673,6 +679,12 @@
   document.querySelectorAll("button[data-temp]").forEach((b) =>
     b.addEventListener("click", async () => {
       try { await call("operator.set", { temp: +b.dataset.temp }); log(`color temp ${b.dataset.temp || "neutral"}`, "ok"); }
+      catch (e) { log(`operator.set: ${e.message}`, "err"); }
+    }));
+  document.querySelectorAll("button[data-gamma]").forEach((b) =>
+    b.addEventListener("click", async () => {
+      try { await call("operator.set", { gamma: +b.dataset.gamma });
+            log(`gamma ${b.dataset.gamma === "0" ? "off" : (+b.dataset.gamma/10).toFixed(1)}`, "ok"); }
       catch (e) { log(`operator.set: ${e.message}`, "err"); }
     }));
   document.getElementById("op-fade-out").addEventListener("click", async () => {

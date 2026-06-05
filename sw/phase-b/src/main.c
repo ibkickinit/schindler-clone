@@ -404,6 +404,7 @@ static unsigned g_fade_level = 255;   /* white-point scale 0..255 (0 = black) */
 static int      g_fade_to    = 255;   /* fade ramp target */
 static unsigned g_fade_step  = 0;     /* per-output-frame ramp magnitude (0 = idle) */
 static unsigned g_colortemp  = 0;     /* 0 = neutral; else Kelvin preset */
+static unsigned g_gamma      = 0;     /* gamma preset: 0=off/linear, else 18/22/24 */
 static unsigned g_freeze     = 0;     /* freeze: halt S2MM writer -> frame_ptr holds -> static read */
 static u32      g_s2mm_vsize = 0;     /* saved S2MM VSIZE (@0x80) to re-arm the transfer on un-freeze */
 
@@ -911,6 +912,99 @@ static void cp_dispatch_jsonrpc(const char *json)
 #  define GEO_C_BASE XPAR_PHASE_B_BD_AXI_GPIO_10_BASEADDR
 #endif
 
+/* Phase-3 gamma/tone LUT load GPIO (axi_gpio_11): bit0=bypass, bit1=tog,
+ * [3:2]=ch, [11:4]=addr, [19:12]=data. See gamma_lut.v / readengine_b_bd.tcl. */
+#if defined(XPAR_AXI_GPIO_11_BASEADDR)
+#  define GAMMA_GPIO_BASE XPAR_AXI_GPIO_11_BASEADDR
+#elif defined(XPAR_PHASE_B_BD_AXI_GPIO_11_BASEADDR)
+#  define GAMMA_GPIO_BASE XPAR_PHASE_B_BD_AXI_GPIO_11_BASEADDR
+#endif
+
+/* ---- Phase-3 gamma / tone LUT (parity): preset curves loaded into gamma_lut ----
+ * out[i] = round(255*(i/255)^(1/gamma)). Linear (gamma 1.0) = identity = bypass. */
+#ifdef GAMMA_GPIO_BASE
+static const u8 GAMMA_G18[256] = {  /* gamma 1.8 */
+      0, 12, 17, 22, 25, 29, 32, 35, 37, 40, 42, 44, 47, 49, 51, 53,
+     55, 57, 58, 60, 62, 64, 65, 67, 69, 70, 72, 73, 75, 76, 78, 79,
+     80, 82, 83, 85, 86, 87, 89, 90, 91, 92, 94, 95, 96, 97, 98,100,
+    101,102,103,104,105,107,108,109,110,111,112,113,114,115,116,117,
+    118,119,120,121,122,123,124,125,126,127,128,129,130,131,132,133,
+    134,135,136,137,138,139,139,140,141,142,143,144,145,146,146,147,
+    148,149,150,151,152,152,153,154,155,156,157,157,158,159,160,161,
+    161,162,163,164,165,165,166,167,168,169,169,170,171,172,172,173,
+    174,175,175,176,177,178,178,179,180,181,181,182,183,183,184,185,
+    186,186,187,188,188,189,190,191,191,192,193,193,194,195,195,196,
+    197,198,198,199,200,200,201,202,202,203,204,204,205,206,206,207,
+    208,208,209,209,210,211,211,212,213,213,214,215,215,216,217,217,
+    218,218,219,220,220,221,222,222,223,223,224,225,225,226,226,227,
+    228,228,229,230,230,231,231,232,233,233,234,234,235,236,236,237,
+    237,238,238,239,240,240,241,241,242,243,243,244,244,245,245,246,
+    247,247,248,248,249,249,250,251,251,252,252,253,253,254,254,255,
+};
+static const u8 GAMMA_G22[256] = {  /* gamma 2.2 */
+      0, 21, 28, 34, 39, 43, 46, 50, 53, 56, 59, 61, 64, 66, 68, 70,
+     72, 74, 76, 78, 80, 82, 84, 85, 87, 89, 90, 92, 93, 95, 96, 98,
+     99,101,102,103,105,106,107,109,110,111,112,114,115,116,117,118,
+    119,120,122,123,124,125,126,127,128,129,130,131,132,133,134,135,
+    136,137,138,139,140,141,142,143,144,144,145,146,147,148,149,150,
+    151,151,152,153,154,155,156,156,157,158,159,160,160,161,162,163,
+    164,164,165,166,167,167,168,169,170,170,171,172,173,173,174,175,
+    175,176,177,178,178,179,180,180,181,182,182,183,184,184,185,186,
+    186,187,188,188,189,190,190,191,192,192,193,194,194,195,195,196,
+    197,197,198,199,199,200,200,201,202,202,203,203,204,205,205,206,
+    206,207,207,208,209,209,210,210,211,212,212,213,213,214,214,215,
+    215,216,217,217,218,218,219,219,220,220,221,221,222,223,223,224,
+    224,225,225,226,226,227,227,228,228,229,229,230,230,231,231,232,
+    232,233,233,234,234,235,235,236,236,237,237,238,238,239,239,240,
+    240,241,241,242,242,243,243,244,244,245,245,246,246,247,247,248,
+    248,249,249,249,250,250,251,251,252,252,253,253,254,254,255,255,
+};
+static const u8 GAMMA_G24[256] = {  /* gamma 2.4 */
+      0, 25, 34, 40, 45, 50, 53, 57, 60, 63, 66, 69, 71, 74, 76, 78,
+     80, 83, 84, 86, 88, 90, 92, 94, 95, 97, 98,100,102,103,105,106,
+    107,109,110,111,113,114,115,117,118,119,120,121,123,124,125,126,
+    127,128,129,130,131,133,134,135,136,137,138,139,140,141,141,142,
+    143,144,145,146,147,148,149,150,151,151,152,153,154,155,156,156,
+    157,158,159,160,161,161,162,163,164,164,165,166,167,168,168,169,
+    170,170,171,172,173,173,174,175,175,176,177,178,178,179,180,180,
+    181,182,182,183,184,184,185,186,186,187,188,188,189,189,190,191,
+    191,192,193,193,194,194,195,196,196,197,197,198,199,199,200,200,
+    201,202,202,203,203,204,204,205,206,206,207,207,208,208,209,209,
+    210,211,211,212,212,213,213,214,214,215,215,216,216,217,217,218,
+    218,219,220,220,221,221,222,222,223,223,224,224,225,225,226,226,
+    227,227,228,228,229,229,229,230,230,231,231,232,232,233,233,234,
+    234,235,235,236,236,237,237,238,238,238,239,239,240,240,241,241,
+    242,242,242,243,243,244,244,245,245,246,246,246,247,247,248,248,
+    249,249,250,250,250,251,251,252,252,252,253,253,254,254,255,255,
+};
+static unsigned g_gamma_tog = 0;
+
+static void gamma_write_entry(unsigned ch, unsigned addr, unsigned data, unsigned bypass)
+{
+    g_gamma_tog ^= 1u;
+    u32 w = (bypass ? 1u : 0u) | (g_gamma_tog << 1) | ((ch & 3u) << 2)
+          | ((addr & 0xFFu) << 4) | ((data & 0xFFu) << 12);
+    Xil_Out32(GAMMA_GPIO_BASE, w);
+}
+static void gamma_load(unsigned preset)
+{
+    const u8 *t = (preset==18) ? GAMMA_G18 : (preset==22) ? GAMMA_G22 : (preset==24) ? GAMMA_G24 : 0;
+    g_gamma = t ? preset : 0u;
+    if (t) {
+        unsigned i;
+        for (i = 0; i < 256; i++) {            /* load with bypass=1 (transparent during load) */
+            gamma_write_entry(0, i, t[i], 1);
+            gamma_write_entry(1, i, t[i], 1);
+            gamma_write_entry(2, i, t[i], 1);
+        }
+        gamma_write_entry(0, 0, t[0], 0);      /* enable (bypass=0) */
+    } else {
+        gamma_write_entry(0, 0, 0, 1);         /* bypass / linear */
+    }
+    xil_printf("GAMMA: %s\r\n", t ? (preset==18?"1.8":preset==22?"2.2":"2.4") : "off");
+}
+#endif
+
 #ifdef GEO_A_BASE
 static unsigned g_re_w = FRAME_W, g_re_h = FRAME_H;
 static int      g_re_x = 0, g_re_y = 0;     /* SIGNED shift in output px: +right/down, -left/up */
@@ -1136,8 +1230,15 @@ static void uart_dispatch(const char *line)
             }
             xil_printf("FREEZE: %u (vsize=%u)\r\n", g_freeze, (unsigned)g_s2mm_vsize);
         }
-        else { xil_printf("UART: usage 'O m|y|k|z <0|1> | O t <K> | O f <0-255> [step]'\r\n"); }
-        xil_printf("OP: mono=%u bypass=%u fade=%u->%u temp=%u\r\n", g_mono, g_bypass, g_fade_level, g_fade_to, g_colortemp);
+        else if (sub == 'g' && parse_uint(&p, &v)) {
+#ifdef GAMMA_GPIO_BASE
+            gamma_load(v);   /* 0/100=off(linear), 18=1.8, 22=2.2, 24=2.4 */
+#else
+            xil_printf("UART: gamma LUT not present in this build\r\n");
+#endif
+        }
+        else { xil_printf("UART: usage 'O m|y|k|z <0|1> | O t <K> | O g <0|18|22|24> | O f <0-255> [step]'\r\n"); }
+        xil_printf("OP: mono=%u bypass=%u fade=%u->%u temp=%u gamma=%u\r\n", g_mono, g_bypass, g_fade_level, g_fade_to, g_colortemp, g_gamma);
     } else {
         xil_printf("UART: unknown cmd '%s' — type ? for help\r\n", line);
     }

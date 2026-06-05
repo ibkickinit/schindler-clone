@@ -639,6 +639,8 @@ class Dispatcher:
             k = 1 if params["black"] else 0; self.uart.send_raw(f"O k {k}"); out["black"] = k
         if "freeze" in params:
             z = 1 if params["freeze"] else 0; self.uart.send_raw(f"O z {z}"); out["freeze"] = z
+        if "gamma" in params:
+            g = int(params["gamma"]); self.uart.send_raw(f"O g {g}"); out["gamma"] = g  # 0=off,18,22,24
         if "temp" in params:
             t = int(params["temp"]); self.uart.send_raw(f"O t {t}"); out["temp"] = t
         if "fade" in params:
