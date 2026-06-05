@@ -601,7 +601,12 @@ class Dispatcher:
         filt = 1 if params.get("filt", 0) else 0   # read-side 2-tap H anti-alias
         hflip = 1 if params.get("hflip", 0) else 0
         vflip = 1 if params.get("vflip", 0) else 0  # 180° = both
-        self.uart.send_raw(f"P {hflip} {vflip}")
+        # Only emit the flip command when it actually changes — otherwise every size/shift
+        # drag would do a redundant 2nd full geometry write (P then G), doubling the
+        # multi-register GPIO churn and the chance a frame-latch samples a half-written update.
+        if getattr(self, "_last_flip", None) != (hflip, vflip):
+            self.uart.send_raw(f"P {hflip} {vflip}")
+            self._last_flip = (hflip, vflip)
         self.uart.send_raw(f"G {w} {h} {x} {y} {anchor} {filt}")
         applied = {"w": w, "h": h, "x": x, "y": y, "anchor": anchor, "filt": filt,
                    "hflip": hflip, "vflip": vflip}
