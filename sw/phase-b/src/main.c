@@ -394,6 +394,45 @@ static inline void color_apply_state(void)
               g_white_r, g_white_g, g_white_b);
 }
 
+/* ---- Operator quick-actions (parity Phase 1): override layer on the color pipeline ----
+ * MONO (grayscale), proc-amp BYPASS (force identity), color-TEMP presets (white-point gain),
+ * BLACK / FADE (white-point scaled by g_fade_level, ramped at output-vsync rate). These ride
+ * entirely on the already-built color_matrix + color_correct silicon — no new datapath. */
+static unsigned g_mono       = 0;     /* grayscale */
+static unsigned g_bypass     = 0;     /* proc-amp bypass: force full identity */
+static unsigned g_fade_level = 255;   /* white-point scale 0..255 (0 = black) */
+static int      g_fade_to    = 255;   /* fade ramp target */
+static unsigned g_fade_step  = 0;     /* per-output-frame ramp magnitude (0 = idle) */
+static unsigned g_colortemp  = 0;     /* 0 = neutral; else Kelvin preset */
+
+static void colortemp_preset(unsigned k)
+{
+    g_colortemp = k;
+    /* white-balance via white-point gain: warmer = cut blue, cooler = cut red */
+    switch (k) {
+        case 3200: g_white_r = 255; g_white_g = 230; g_white_b = 180; break; /* warm  */
+        case 4800: g_white_r = 255; g_white_g = 245; g_white_b = 220; break; /* warm-ish */
+        case 6500: g_white_r = 225; g_white_g = 240; g_white_b = 255; break; /* cool  */
+        default:   g_white_r = 255; g_white_g = 255; g_white_b = 255; g_colortemp = 0; break; /* neutral (~5600) */
+    }
+}
+
+static void operator_apply(void)
+{
+    if (g_bypass) {                                  /* proc-amp bypass = full identity */
+        color_set(0x8000, 0,0,0, 255,255,255);
+        color_matrix_identity();
+        return;
+    }
+    if (g_mono) color_matrix_saturation(0);          /* grayscale */
+    else        color_matrix_saturation(color_sat_from_percent(g_matrix_sat_pct));
+    /* color_correct white-point scaled by the fade level (255 = full, 0 = black) */
+    u8 wr = (u8)(((unsigned)g_white_r * g_fade_level) / 255u);
+    u8 wg = (u8)(((unsigned)g_white_g * g_fade_level) / 255u);
+    u8 wb = (u8)(((unsigned)g_white_b * g_fade_level) / 255u);
+    color_set(g_sat_q15, g_black_r, g_black_g, g_black_b, wr, wg, wb);
+}
+
 static int parse_uint(const char **pp, unsigned *out)
 {
     const char *p = *pp;
@@ -948,6 +987,8 @@ static void uart_dispatch(const char *line)
         g_black_r = g_black_g = g_black_b = 0;
         g_white_r = g_white_g = g_white_b = 255;
         g_matrix_sat_pct = 100; g_matrix_preset = 0;
+        /* also clear operator overrides (parity Phase 1) */
+        g_mono = 0; g_bypass = 0; g_fade_level = 255; g_fade_to = 255; g_fade_step = 0; g_colortemp = 0;
         color_apply_state();
         color_matrix_identity();
     } else if (op == 's' && parse_uint(&p, &a)) {
@@ -1055,6 +1096,23 @@ static void uart_dispatch(const char *line)
 #else
         xil_printf("UART: read-engine not present in this build\r\n");
 #endif
+    } else if (op == 'O') {
+        /* Operator quick-actions (parity Phase 1):
+         *   O m <0|1>          mono / grayscale
+         *   O y <0|1>          proc-amp bypass (force identity)
+         *   O k <0|1>          blackout (instant: 1=black, 0=restore)
+         *   O t <K>            color-temp preset (3200/4800/5600/6500; 0/5600=neutral)
+         *   O f <0-255> [step] fade white-point to target at <step>/frame (default 6) */
+        unsigned v, st; char sub;
+        while (*p == ' ' || *p == '\t') p++;
+        sub = *p ? *p++ : 0;
+        if      (sub == 'm' && parse_uint(&p, &v)) { g_mono   = v ? 1u : 0u; operator_apply(); }
+        else if (sub == 'y' && parse_uint(&p, &v)) { g_bypass = v ? 1u : 0u; operator_apply(); }
+        else if (sub == 'k' && parse_uint(&p, &v)) { g_fade_step = 0; g_fade_level = v ? 0u : 255u; g_fade_to = (int)g_fade_level; operator_apply(); }
+        else if (sub == 't' && parse_uint(&p, &v)) { colortemp_preset(v); operator_apply(); }
+        else if (sub == 'f' && parse_uint(&p, &v)) { g_fade_to = (v > 255u) ? 255 : (int)v; g_fade_step = parse_uint(&p, &st) ? (st ? st : 6u) : 6u; }
+        else { xil_printf("UART: usage 'O m|y|k <0|1> | O t <K> | O f <0-255> [step]'\r\n"); }
+        xil_printf("OP: mono=%u bypass=%u fade=%u->%u temp=%u\r\n", g_mono, g_bypass, g_fade_level, g_fade_to, g_colortemp);
     } else {
         xil_printf("UART: unknown cmd '%s' — type ? for help\r\n", line);
     }
@@ -1519,6 +1577,15 @@ static void telemetry_loop(UINTPTR vdma_base)
         if (src_cur && !src_prev) src_count++;
         if (out_cur && !out_prev) {
             out_count++;
+            /* operator fade ramp: step the white-point scale toward its target (parity Phase 1) */
+            if (g_fade_step) {
+                int lvl = (int)g_fade_level;
+                if (lvl < g_fade_to) { lvl += (int)g_fade_step; if (lvl >= g_fade_to) { lvl = g_fade_to; g_fade_step = 0; } }
+                else if (lvl > g_fade_to) { lvl -= (int)g_fade_step; if (lvl <= g_fade_to) { lvl = g_fade_to; g_fade_step = 0; } }
+                else g_fade_step = 0;
+                g_fade_level = (unsigned)lvl;
+                operator_apply();
+            }
             /* Phase tracking: capture source-frame delta since last output vsync. */
             int delta = src_count - phase_last_src;
             phase_last_src = src_count;

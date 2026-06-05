@@ -132,6 +132,24 @@
         </select>
       </label>
     </div>
+    <div class="controls" style="margin-top:10px">
+      <h2 style="margin:0 0 6px">Operator</h2>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">
+        <button id="op-mono">Mono</button>
+        <button id="op-black">Black</button>
+        <button id="op-bypass">Bypass</button>
+      </div>
+      <div style="margin-bottom:6px"><span style="opacity:.6">Color temp:</span>
+        <button data-temp="3200">3200K</button>
+        <button data-temp="4800">4800K</button>
+        <button data-temp="0">Neutral</button>
+        <button data-temp="6500">6500K</button>
+      </div>
+      <div><span style="opacity:.6">Fade:</span>
+        <button id="op-fade-out">→ Black</button>
+        <button id="op-fade-in">→ Up</button>
+      </div>
+    </div>
     <div id="metrics" hidden></div>
     <div id="framedump" hidden>
       <h3>DDR framebuffer (slot 0 thumbnail)</h3>
@@ -600,6 +618,30 @@
   // flips (180° = both)
   document.getElementById("geo-hflip").addEventListener("change", (e) => { geo.hflip = e.target.checked; geoSend(); });
   document.getElementById("geo-vflip").addEventListener("change", (e) => { geo.vflip = e.target.checked; geoSend(); });
+  // Operator quick-actions (parity Phase 1) — ride on the color pipeline silicon.
+  const op = { mono: false, black: false, bypass: false };
+  function opToggle(id, key) {
+    const b = document.getElementById(id);
+    b.addEventListener("click", async () => {
+      op[key] = !op[key];
+      b.style.background = op[key] ? "#2a6" : "";
+      try { await call("operator.set", { [key]: op[key] ? 1 : 0 }); log(`${key} ${op[key] ? "on" : "off"}`, "ok"); }
+      catch (e) { log(`operator.set: ${e.message}`, "err"); }
+    });
+  }
+  opToggle("op-mono", "mono"); opToggle("op-black", "black"); opToggle("op-bypass", "bypass");
+  document.querySelectorAll("button[data-temp]").forEach((b) =>
+    b.addEventListener("click", async () => {
+      try { await call("operator.set", { temp: +b.dataset.temp }); log(`color temp ${b.dataset.temp || "neutral"}`, "ok"); }
+      catch (e) { log(`operator.set: ${e.message}`, "err"); }
+    }));
+  document.getElementById("op-fade-out").addEventListener("click", async () => {
+    try { await call("operator.set", { fade: 0, step: 6 }); log("fade → black", "ok"); } catch (e) { log(e.message, "err"); }
+  });
+  document.getElementById("op-fade-in").addEventListener("click", async () => {
+    try { await call("operator.set", { fade: 255, step: 6 }); log("fade → up", "ok"); } catch (e) { log(e.message, "err"); }
+  });
+
   document.getElementById("blend-mode").addEventListener("change", async (e) => {
     const m = +e.target.value;
     try { await call("blend.set", { mode: m });

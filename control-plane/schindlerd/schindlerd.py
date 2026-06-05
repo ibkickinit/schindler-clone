@@ -491,6 +491,7 @@ class Dispatcher:
             "debug.dump":           self._m_debug_dump,
             "geom.set":             self._m_geom_set,
             "blend.set":            self._m_blend_set,
+            "operator.set":         self._m_operator_set,
         }
         self.telemetry: Optional[TelemetryParser] = None  # set by daemon main
 
@@ -624,6 +625,25 @@ class Dispatcher:
         self.uart.send_raw(f"M {m}")
         self.bus.publish({"jsonrpc": "2.0", "method": "blend.changed", "params": {"mode": m}})
         return {"mode": m}
+
+    async def _m_operator_set(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Operator quick-actions (parity Phase 1) — raw 'O ...' firmware commands. Any of:
+        {"mono":0|1} {"bypass":0|1} {"black":0|1} {"temp":<K>} {"fade":<0-255>,"step":<n>}."""
+        out: Dict[str, Any] = {}
+        if "mono" in params:
+            m = 1 if params["mono"] else 0; self.uart.send_raw(f"O m {m}"); out["mono"] = m
+        if "bypass" in params:
+            y = 1 if params["bypass"] else 0; self.uart.send_raw(f"O y {y}"); out["bypass"] = y
+        if "black" in params:
+            k = 1 if params["black"] else 0; self.uart.send_raw(f"O k {k}"); out["black"] = k
+        if "temp" in params:
+            t = int(params["temp"]); self.uart.send_raw(f"O t {t}"); out["temp"] = t
+        if "fade" in params:
+            tgt = int(params["fade"]); tgt = 0 if tgt < 0 else 255 if tgt > 255 else tgt
+            step = int(params.get("step", 6)); step = 1 if step < 1 else step
+            self.uart.send_raw(f"O f {tgt} {step}"); out["fade"] = tgt
+        self.bus.publish({"jsonrpc": "2.0", "method": "operator.changed", "params": out})
+        return out
 
     async def _m_profile_list(self, params: Dict[str, Any]) -> List[str]:
         return self.profiles.list()
