@@ -599,8 +599,12 @@ class Dispatcher:
         y = clampi(params.get("y", 0), -1440, 1440)
         anchor = 1 if params.get("anchor", 0) else 0
         filt = 1 if params.get("filt", 0) else 0   # read-side 2-tap H anti-alias
+        hflip = 1 if params.get("hflip", 0) else 0
+        vflip = 1 if params.get("vflip", 0) else 0  # 180° = both
+        self.uart.send_raw(f"P {hflip} {vflip}")
         self.uart.send_raw(f"G {w} {h} {x} {y} {anchor} {filt}")
-        applied = {"w": w, "h": h, "x": x, "y": y, "anchor": anchor, "filt": filt}
+        applied = {"w": w, "h": h, "x": x, "y": y, "anchor": anchor, "filt": filt,
+                   "hflip": hflip, "vflip": vflip}
         self.bus.publish({"jsonrpc": "2.0", "method": "geom.changed", "params": applied})
         return applied
 

@@ -93,6 +93,8 @@ re_slice sl_blend  axi_gpio_10 gpio2_io_o 2  1   ;# Mackin blend_mode (ch2 bits[
 re_slice sl_src_c  axi_gpio_10 gpio2_io_o 14 3   ;# DDA src_col0 seed (ch2 bits[14:3], 12-bit)
 re_slice sl_src_r  axi_gpio_10 gpio2_io_o 26 15  ;# DDA src_row0 seed (ch2 bits[26:15], 12-bit)
 re_slice sl_filt_h axi_gpio_10 gpio2_io_o 27 27  ;# read-side 2-tap H anti-alias enable (ch2 bit27)
+re_slice sl_hdir   axi_gpio_10 gpio2_io_o 28 28  ;# horizontal flip (ch2 bit28)
+re_slice sl_vdir   axi_gpio_10 gpio2_io_o 29 29  ;# vertical flip   (ch2 bit29)
 
 # ---------------------------------------------------------------------------
 # Read-engine compositor cell
@@ -124,6 +126,8 @@ connect_bd_net [get_bd_pins sl_pos_y/Dout]  [get_bd_pins pg_re_0/pos_y]
 connect_bd_net [get_bd_pins sl_src_c/Dout]  [get_bd_pins pg_re_0/src_col0]
 connect_bd_net [get_bd_pins sl_src_r/Dout]  [get_bd_pins pg_re_0/src_row0]
 connect_bd_net [get_bd_pins sl_filt_h/Dout] [get_bd_pins pg_re_0/filt_h]
+connect_bd_net [get_bd_pins sl_hdir/Dout]   [get_bd_pins pg_re_0/h_dir]
+connect_bd_net [get_bd_pins sl_vdir/Dout]   [get_bd_pins pg_re_0/v_dir]
 connect_bd_net [get_bd_pins sl_hsi/Dout]    [get_bd_pins pg_re_0/h_step_int]
 connect_bd_net [get_bd_pins sl_hsf/Dout]    [get_bd_pins pg_re_0/h_step_frac]
 connect_bd_net [get_bd_pins sl_vsi/Dout]    [get_bd_pins pg_re_0/v_step_int]

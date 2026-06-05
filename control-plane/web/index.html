@@ -121,6 +121,8 @@
         <input type="number" id="geo-py-n" min="-720" max="720" value="0" style="width:72px"><span style="opacity:.5">±px</span></div>
       <label style="display:block;margin:6px 0"><input type="checkbox" id="geo-anchor"> Anchor scale to top-left corner&nbsp;<span style="opacity:.5">(unchecked = scale about center)</span></label>
       <label style="display:block;margin:6px 0"><input type="checkbox" id="geo-filt"> Anti-alias (2-tap H)&nbsp;<span style="opacity:.5">(softens zoom/scale; horizontal pass)</span></label>
+      <label style="display:inline-block;margin:6px 12px 6px 0"><input type="checkbox" id="geo-hflip"> Flip H</label>
+      <label style="display:inline-block;margin:6px 0"><input type="checkbox" id="geo-vflip"> Flip V&nbsp;<span style="opacity:.5">(both = 180°)</span></label>
       <div id="geo-applied" style="font-family:monospace;margin-top:6px;opacity:.7">G 1280 720 0 0 0</div>
       <label style="display:block;margin-top:8px">Mackin blend:&nbsp;
         <select id="blend-mode">
@@ -559,9 +561,10 @@
   //   Shift  : signed output px. Negative pushes the image off the left/top edge — those
   //            pixels leave the frame and matte fills the opposite edge. Works at 100%.
   //   anchor : false = scale about image CENTER (default); true = anchor TOP-LEFT corner.
-  const geo = { sx: 1280, sy: 720, px: 0, py: 0, anchor: false, filt: false };
+  const geo = { sx: 1280, sy: 720, px: 0, py: 0, anchor: false, filt: false, hflip: false, vflip: false };
   function geoCompute() {
-    return { w: geo.sx, h: geo.sy, x: geo.px, y: geo.py, anchor: geo.anchor ? 1 : 0, filt: geo.filt ? 1 : 0 };
+    return { w: geo.sx, h: geo.sy, x: geo.px, y: geo.py, anchor: geo.anchor ? 1 : 0, filt: geo.filt ? 1 : 0,
+             hflip: geo.hflip ? 1 : 0, vflip: geo.vflip ? 1 : 0 };
   }
   let geoInflight = false, geoPending = false;
   async function geoSend() {
@@ -594,6 +597,9 @@
   document.getElementById("geo-filt").addEventListener("change", (e) => {
     geo.filt = e.target.checked; geoSend();
   });
+  // flips (180° = both)
+  document.getElementById("geo-hflip").addEventListener("change", (e) => { geo.hflip = e.target.checked; geoSend(); });
+  document.getElementById("geo-vflip").addEventListener("change", (e) => { geo.vflip = e.target.checked; geoSend(); });
   document.getElementById("blend-mode").addEventListener("change", async (e) => {
     const m = +e.target.value;
     try { await call("blend.set", { mode: m });

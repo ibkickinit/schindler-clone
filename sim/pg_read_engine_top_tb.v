@@ -28,6 +28,7 @@ module pg_read_engine_top_tb;
     reg  [11:0] out_w_win,out_h_win,pos_x,pos_y,src_col0,src_row0,hsi,hsf,vsi,vsf;
     reg  [23:0] matte;
     reg         filt_h;       // read-side 2-tap H anti-alias enable
+    reg         h_dir, v_dir; // flip direction (backward DDA)
 
     wire [23:0] m_tdata; wire m_tvalid;
     wire [71:0] cmd_tdata; wire cmd_tvalid; reg cmd_tready;
@@ -40,7 +41,8 @@ module pg_read_engine_top_tb;
         .clk(clk),.rstn(rstn),.frame_ptr(frame_ptr),.out_vsync(out_vsync),
         .out_w_win(out_w_win),.out_h_win(out_h_win),.pos_x(pos_x),.pos_y(pos_y),
         .src_col0(src_col0),.src_row0(src_row0),
-        .h_step_int(hsi),.h_step_frac(hsf),.v_step_int(vsi),.v_step_frac(vsf),.matte_rgb(matte),.filt_h(filt_h),.blend_mode(2'b00),
+        .h_step_int(hsi),.h_step_frac(hsf),.v_step_int(vsi),.v_step_frac(vsf),.matte_rgb(matte),.filt_h(filt_h),
+        .h_dir(h_dir),.v_dir(v_dir),.blend_mode(2'b00),
         .m_axis_tdata(m_tdata),.m_axis_tvalid(m_tvalid),.m_axis_tready(m_tready),
         .m_axis_cmd_tdata(cmd_tdata),.m_axis_cmd_tvalid(cmd_tvalid),.m_axis_cmd_tready(cmd_tready),
         .s_axis_dm_tdata(dm_tdata),.s_axis_dm_tvalid(dm_tvalid),.s_axis_dm_tready(dm_tready),
@@ -69,7 +71,9 @@ module pg_read_engine_top_tb;
         if (ginwin(ox,oy)) begin
             fox=(c_px<0)?0:c_px; foy=(c_py<0)?0:c_py;
             kx=ox-fox; ky=oy-foy;
-            sc=c_sc+(kx*IN_W)/c_ow; sr=c_sr+(ky*IN_H)/c_oh;
+            // flip = DDA runs backward from the far-end seed (c_sc/c_sr already seeded far when flipped)
+            sc = h_dir ? (c_sc-(kx*IN_W)/c_ow) : (c_sc+(kx*IN_W)/c_ow);
+            sr = v_dir ? (c_sr-(ky*IN_H)/c_oh) : (c_sr+(ky*IN_H)/c_oh);
             if (filt_h) begin
                 scn=(sc>=IN_W-1)?sc:sc+1;            // 2-tap H neighbour (lastcol guard)
                 golden=avg2t(gpix(sr,sc),gpix(sr,scn));
@@ -143,11 +147,16 @@ module pg_read_engine_top_tb;
         if (starv!=0) begin $display("  ERR starvation %0d",starv); errors=errors+1; end
     end endtask
 
-    task set_geom; input integer ow,oh,ppx,ppy; integer offx,offy; begin
+    task set_geom; input integer ow,oh,ppx,ppy; integer offx,offy,fox,rox,foy,roy,visw,vish; begin
         c_ow=ow;c_oh=oh;c_px=ppx;c_py=ppy;c_matte=24'h101010;
         // firmware-mirror seed: source col/row at the first on-screen pixel
         offx=(ppx<0)?-ppx:0; offy=(ppy<0)?-ppy:0;
         c_sc=(offx*IN_W)/ow; c_sr=(offy*IN_H)/oh;
+        // flip: re-seed at the far end of the visible span (mirror firmware)
+        fox=(ppx<0)?0:ppx; rox=ppx+ow; if(rox>OUT_W) rox=OUT_W; visw=(rox>fox)?(rox-fox):1;
+        foy=(ppy<0)?0:ppy; roy=ppy+oh; if(roy>OUT_H) roy=OUT_H; vish=(roy>foy)?(roy-foy):1;
+        if (h_dir) c_sc = c_sc + ((visw-1)*IN_W)/ow;
+        if (v_dir) c_sr = c_sr + ((vish-1)*IN_H)/oh;
         out_w_win=ow[11:0];out_h_win=oh[11:0];
         pos_x=ppx[11:0];pos_y=ppy[11:0];          // 12-bit two's complement (signed pos)
         src_col0=c_sc[11:0];src_row0=c_sr[11:0];
@@ -165,7 +174,7 @@ module pg_read_engine_top_tb;
 
     initial begin
         errors=0; rstn=0; frame_ptr=0; out_vsync=0; m_tready=0; checking=0; in_active=0;
-        out_w_win=OUT_W;out_h_win=OUT_H;pos_x=0;pos_y=0;src_col0=0;src_row0=0;hsi=1;hsf=0;vsi=1;vsf=0;matte=0;filt_h=0;
+        out_w_win=OUT_W;out_h_win=OUT_H;pos_x=0;pos_y=0;src_col0=0;src_row0=0;hsi=1;hsf=0;vsi=1;vsf=0;matte=0;filt_h=0;h_dir=0;v_dir=0;
         repeat(6)@(posedge clk); rstn=1; repeat(3)@(posedge clk);
         // advance the ring a few frames so read_slot is well-defined
         repeat(20) @(posedge clk);   // let things settle after reset
@@ -184,6 +193,14 @@ module pg_read_engine_top_tb;
         run_case(64,48,   0,  0, 1);  // filter @100%: every pixel = avg(src col, col+1)
         run_case(128,96,-32,-24, 1);  // filter + 2x zoom centered
         filt_h = 0;
+
+        // ---- Tier-1a flips (backward DDA, far-end seed) ----
+        h_dir = 1; v_dir = 0; run_case(64,48, 0,0, 1);     // H-flip full frame
+        h_dir = 0; v_dir = 1; run_case(64,48, 0,0, 1);     // V-flip full frame
+        h_dir = 1; v_dir = 1; run_case(64,48, 0,0, 1);     // 180° (both)
+        h_dir = 1; v_dir = 0; run_case(128,96,-32,-24, 1); // H-flip + 2x zoom centered
+        h_dir = 1; v_dir = 1; run_case(64,48, 8,-6, 1);    // 180° + shift (compose w/ signed pos)
+        h_dir = 0; v_dir = 0;
 
         $display("================================="); $display("Total errors = %0d", errors);
         $display("================================="); $finish;

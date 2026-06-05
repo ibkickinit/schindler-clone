@@ -870,6 +870,7 @@ static unsigned g_re_w = FRAME_W, g_re_h = FRAME_H;
 static int      g_re_x = 0, g_re_y = 0;     /* SIGNED shift in output px: +right/down, -left/up */
 static unsigned g_re_anchor = 0;            /* scale anchor: 0 = image center (default), 1 = top-left corner */
 static unsigned g_re_filt_h = 0;            /* 1 = read-side 2-tap H anti-alias box filter */
+static unsigned g_re_hflip = 0, g_re_vflip = 0;  /* horizontal / vertical flip (180 = both) */
 static unsigned g_re_matte = 0, g_re_engine = 0, g_re_blend = 0;
 static void re_write_geometry(void)
 {
@@ -899,6 +900,18 @@ static void re_write_geometry(void)
     unsigned offy = (py < 0) ? (unsigned)(-py) : 0u;
     unsigned sc0 = (offx * FRAME_W) / w;
     unsigned sr0 = (offy * FRAME_H) / h;
+
+    /* FLIP: the DDA runs BACKWARD from a far-end seed. The visible on-screen span is
+     * [fox..rox); seed at its LAST source col/row so col 0 shows what the last col would
+     * show un-flipped, then the addrgen decrements. Composes with zoom + off-screen shift. */
+    {
+        int fox = (px < 0) ? 0 : px;  int rox = px + (int)w;  if (rox > (int)OUT_RASTER_W) rox = OUT_RASTER_W;
+        int foy = (py < 0) ? 0 : py;  int roy = py + (int)h;  if (roy > (int)OUT_RASTER_H) roy = OUT_RASTER_H;
+        unsigned vis_w = (rox > fox) ? (unsigned)(rox - fox) : 1u;
+        unsigned vis_h = (roy > foy) ? (unsigned)(roy - foy) : 1u;
+        if (g_re_hflip) sc0 += ((vis_w - 1u) * FRAME_W) / w;
+        if (g_re_vflip) sr0 += ((vis_h - 1u) * FRAME_H) / h;
+    }
     if (sc0 > 0xFFFu) sc0 = 0xFFFu;
     if (sr0 > 0xFFFu) sr0 = 0xFFFu;
 
@@ -909,13 +922,14 @@ static void re_write_geometry(void)
     Xil_Out32(GEO_B_BASE + 0x00, ((hsf & 0xFFF) << 16) | (hsi & 0xFFF));
     Xil_Out32(GEO_B_BASE + 0x08, ((vsf & 0xFFF) << 16) | (vsi & 0xFFF));
     Xil_Out32(GEO_C_BASE + 0x00, g_re_matte & 0xFFFFFF);
-    /* ch2: bit0=mux sel, [2:1]=blend_mode, [14:3]=src_col0 seed, [26:15]=src_row0 seed, bit27=filt_h */
+    /* ch2: bit0=sel, [2:1]=blend, [14:3]=src_col0, [26:15]=src_row0, 27=filt_h, 28=hflip, 29=vflip */
     Xil_Out32(GEO_C_BASE + 0x08,
+              ((g_re_vflip ? 1u : 0u) << 29) | ((g_re_hflip ? 1u : 0u) << 28) |
               ((g_re_filt_h ? 1u : 0u) << 27) |
               ((sr0 & 0xFFFu) << 15) | ((sc0 & 0xFFFu) << 3) |
               ((g_re_blend & 3u) << 1) | (g_re_engine ? 1u : 0u));
-    xil_printf("GEO: %ux%u shift(%d,%d) %s -> pos(%d,%d) seed(%u,%u) hstep=%u+%u/%u vstep=%u+%u/%u engine=%u blend=%u aa=%u\r\n",
-               w, h, sx, sy, g_re_anchor ? "TL" : "center", px, py, sc0, sr0,
+    xil_printf("GEO: %ux%u shift(%d,%d) %s flip(%u,%u) -> pos(%d,%d) seed(%u,%u) hstep=%u+%u/%u vstep=%u+%u/%u engine=%u blend=%u aa=%u\r\n",
+               w, h, sx, sy, g_re_anchor ? "TL" : "center", g_re_hflip, g_re_vflip, px, py, sc0, sr0,
                hsi, hsf, w, vsi, vsf, h, g_re_engine, g_re_blend, g_re_filt_h);
 }
 #endif
@@ -1032,6 +1046,16 @@ static void uart_dispatch(const char *line)
         unsigned fv;
         if (parse_uint(&p, &fv)) { g_re_filt_h = (fv ? 1u : 0u); re_write_geometry(); }
         else xil_printf("UART: usage 'F 0|1' (read-side 2-tap H anti-alias); current aa=%u\r\n", g_re_filt_h);
+#else
+        xil_printf("UART: read-engine not present in this build\r\n");
+#endif
+    } else if (op == 'P') {
+        /* fliP:  P h v   (h,v = 0/1) — horizontal / vertical flip (180 = P 1 1); P = query */
+#ifdef GEO_A_BASE
+        unsigned hf, vf;
+        if (parse_uint(&p, &hf) && parse_uint(&p, &vf)) {
+            g_re_hflip = (hf ? 1u : 0u); g_re_vflip = (vf ? 1u : 0u); re_write_geometry();
+        } else xil_printf("UART: usage 'P h v' (flip); current hflip=%u vflip=%u\r\n", g_re_hflip, g_re_vflip);
 #else
         xil_printf("UART: read-engine not present in this build\r\n");
 #endif

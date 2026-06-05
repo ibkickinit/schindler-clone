@@ -38,6 +38,7 @@ module pg_linefetch #(
     // prefetch request (compositor -> engine): ensure src row pf_row is resident
     input  wire        pf_req,
     input  wire [11:0] pf_row,
+    input  wire        flush,          // 1-cyc: invalidate the ring (fetch-order change, e.g. V-flip toggle)
 
     // pixel read (compositor -> engine)
     input  wire [11:0] rd_row,
@@ -215,6 +216,14 @@ module pg_linefetch #(
                         end
                     end
             endcase
+            // Ring flush (fetch-order change, e.g. V-flip toggle): invalidate all slots so the
+            // first re-ordered frame re-fetches fresh and the round-robin recycle stays in sync
+            // with the read order. Pulsed at SOF (no fetch in flight) — takes priority over the case.
+            if (flush) begin
+                val <= {NBUF{1'b0}}; hadB <= {NBUF{1'b0}};
+                state <= S_IDLE; fetch_req <= 1'b0;
+                fill_sel <= {SELW{1'b0}};
+            end
         end
     end
 

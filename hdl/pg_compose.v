@@ -54,6 +54,8 @@ module pg_compose #(
     input  wire [11:0] h_step_int, h_step_frac, v_step_int, v_step_frac,
     input  wire [23:0] matte_rgb,
     input  wire        filt_h,        // 1 = read-side 2-tap horizontal box filter (anti-alias)
+    input  wire        h_dir,         // 1 = horizontal flip (addrgen runs H DDA backward)
+    input  wire        v_dir,         // 1 = vertical flip (addrgen + prefetch run V DDA backward)
 
     output wire [23:0] m_tdata,
     output wire        m_tvalid,
@@ -96,14 +98,22 @@ module pg_compose #(
     always @(posedge clk) vs_q <= (!rstn) ? 1'b0 : vtg_vsync;
     wire sof = vtg_vsync & ~vs_q;
 
+    // Ring flush on a vertical-flip toggle: v_dir changes the row FETCH ORDER, which
+    // desyncs the line-ring's cross-frame have_row skip vs the round-robin recycle.
+    // Pulse a flush at the first SOF after v_dir changes so the ring re-fetches fresh.
+    reg vd_prev = 1'b0;
+    wire ring_flush = sof && (v_dir != vd_prev);
+    always @(posedge clk) if (sof) vd_prev <= v_dir;
+
     reg [11:0] win_h_l, vsi_l, vsf_l;
     reg [23:0] matte_l;
     reg [31:0] base2_l;     // frame B base (frame-atomic)
     reg [7:0]  alpha_l;     // cadence alpha (frame-atomic)
     reg        blend_l;     // blend enable (frame-atomic)
+    reg        vd_l;        // vertical-flip dir (frame-atomic) — prefetch V DDA runs backward
     always @(posedge clk) if (sof) begin
         win_h_l <= out_h_win; vsi_l <= v_step_int; vsf_l <= v_step_frac; matte_l <= matte_rgb;
-        base2_l <= frame_base_addr2; alpha_l <= blend_alpha; blend_l <= blend_en;
+        base2_l <= frame_base_addr2; alpha_l <= blend_alpha; blend_l <= blend_en; vd_l <= v_dir;
     end
     // alpha 8-bit -> Q1.15 (0..~0x7FFF ≈ 1.0): {alpha,alpha[6:0]} = alpha<<7 | alpha[6:0]
     wire [15:0] alpha_q15 = {1'b0, alpha_l, alpha_l[6:0]};
@@ -146,7 +156,7 @@ module pg_compose #(
     pg_addrgen #(.OUT_W(OUT_W), .OUT_H(OUT_H), .IN_W(IN_W), .IN_H(IN_H)) u_addr (
         .clk(clk), .rstn(rstn), .sof(sof), .px_valid(gen_en),
         .out_w_win(out_w_win), .out_h_win(out_h_win), .pos_x(pos_x), .pos_y(pos_y),
-        .src_col0(src_col0), .src_row0(src_row0),
+        .src_col0(src_col0), .src_row0(src_row0), .h_dir(h_dir), .v_dir(v_dir),
         .h_step_int(h_step_int), .h_step_frac(h_step_frac),
         .v_step_int(v_step_int), .v_step_frac(v_step_frac),
         .o_valid(a_valid), .o_in_window(a_inwin),
@@ -190,7 +200,7 @@ module pg_compose #(
     pg_linefetch #(.LINE_W(IN_W), .STRIDE(STRIDE), .NBUF(NBUF)) u_fetch (
         .clk(clk), .rstn(rstn),
         .frame_base_addr(frame_base_addr), .frame_base_addr2(base2_l), .blend_en(blend_l),
-        .pf_req(pf_req_r), .pf_row(pf_row_r),
+        .pf_req(pf_req_r), .pf_row(pf_row_r), .flush(ring_flush),
         .rd_row(h_srow), .rd_col(h_scol),       // read keyed on skid head
         .rd_data(m3_rd_data), .rd_data2(m3_rd_data2),
         .rd_data_h1(m3_rd_data_h1), .rd_data2_h1(m3_rd_data2_h1), .rd_resident(m3_resident),
@@ -335,8 +345,8 @@ module pg_compose #(
             if (do_pf) begin
                 pf_req_r <= 1'b1;
                 pf_row_r <= pf_src;
-                if (pf_carry) begin pf_src <= pf_src + vsi_l + 12'd1; pf_frac <= pf_frac_sum[11:0] - win_h_l; end
-                else          begin pf_src <= pf_src + vsi_l;          pf_frac <= pf_frac_sum[11:0]; end
+                if (pf_carry) begin pf_src <= vd_l ? (pf_src - vsi_l - 12'd1) : (pf_src + vsi_l + 12'd1); pf_frac <= pf_frac_sum[11:0] - win_h_l; end
+                else          begin pf_src <= vd_l ? (pf_src - vsi_l) : (pf_src + vsi_l);                 pf_frac <= pf_frac_sum[11:0]; end
                 pf_next_k <= pf_next_k + 12'd1;
             end
         end

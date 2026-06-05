@@ -51,7 +51,7 @@ module pg_blend_tb;
         .blend_alpha(alpha),.blend_en(blend_en),
         .out_w_win(out_w_win),.out_h_win(out_h_win),.pos_x(pos_x),.pos_y(pos_y),
         .src_col0(12'd0),.src_row0(12'd0),
-        .h_step_int(hsi),.h_step_frac(hsf),.v_step_int(vsi),.v_step_frac(vsf),.matte_rgb(matte),.filt_h(1'b0),
+        .h_step_int(hsi),.h_step_frac(hsf),.v_step_int(vsi),.v_step_frac(vsf),.matte_rgb(matte),.filt_h(1'b0),.h_dir(1'b0),.v_dir(1'b0),
         .m_tdata(m_tdata),.m_tvalid(m_tvalid),.m_tready(m_tready),.m_tuser(m_tuser),.m_tlast(m_tlast),
         .fetch_req(fetch_req),.fetch_addr(fetch_addr),.fetch_len(fetch_len),
         .beat_data(dm_tdata),.beat_valid(dm_tvalid),.beat_ready(dm_tready),.beat_last(dm_tlast),
