@@ -493,6 +493,7 @@ class Dispatcher:
             "blend.set":            self._m_blend_set,
             "operator.set":         self._m_operator_set,
             "arc.set":              self._m_arc_set,
+            "gamma.set":            self._m_gamma_set,
         }
         self.telemetry: Optional[TelemetryParser] = None  # set by daemon main
 
@@ -672,6 +673,21 @@ class Dispatcher:
                                       "hflip": lf[0], "vflip": lf[1]})
         self.bus.publish({"jsonrpc": "2.0", "method": "arc.changed", "params": {"mode": mode}})
         return {"mode": mode, **res}
+
+    async def _m_gamma_set(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Continuous gamma: out[i]=round(255*(i/255)^(1/g)). Bulk-loads the 256-entry curve
+        to gamma_lut as 2×128-byte hex chunks ('O G <chunk> <hex>'). The HDL LUT is generic,
+        so any curve works — no firmware libm / no rebuild. g<=0 → linear."""
+        g = float(params.get("gamma", 1.0))
+        if g <= 0.0:
+            g = 1.0
+        inv = 1.0 / g
+        curve = [min(255, max(0, int(round(255.0 * ((i / 255.0) ** inv))))) for i in range(256)]
+        for chunk in range(2):
+            seg = curve[chunk * 128:(chunk + 1) * 128]
+            self.uart.send_raw(f"O G {chunk} " + "".join("%02x" % v for v in seg))
+        self.bus.publish({"jsonrpc": "2.0", "method": "gamma.changed", "params": {"gamma": g}})
+        return {"gamma": g}
 
     async def _m_profile_list(self, params: Dict[str, Any]) -> List[str]:
         return self.profiles.list()

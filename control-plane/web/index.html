@@ -161,6 +161,11 @@
         <button data-gamma="22">2.2</button>
         <button data-gamma="24">2.4</button>
       </div>
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
+        <span style="width:64px;opacity:.6">γ slider</span>
+        <input type="range" id="gamma-r" min="0.5" max="4.0" step="0.1" value="1.0" style="flex:1">
+        <span id="gamma-val" style="width:32px;font-family:monospace">1.0</span>
+      </div>
       <div><span style="opacity:.6">Fade:</span>
         <button id="op-fade-out">→ Black</button>
         <button id="op-fade-in">→ Up</button>
@@ -681,6 +686,17 @@
       try { await call("operator.set", { temp: +b.dataset.temp }); log(`color temp ${b.dataset.temp || "neutral"}`, "ok"); }
       catch (e) { log(`operator.set: ${e.message}`, "err"); }
     }));
+  // continuous gamma slider (0.1 steps) — debounced; daemon computes + bulk-loads the curve
+  let gammaTimer = null;
+  const gr = document.getElementById("gamma-r"), gv = document.getElementById("gamma-val");
+  if (gr) gr.addEventListener("input", () => {
+    const g = parseFloat(gr.value); gv.textContent = g.toFixed(1);
+    clearTimeout(gammaTimer);
+    gammaTimer = setTimeout(async () => {
+      try { await call("gamma.set", { gamma: g }); log(`gamma γ=${g.toFixed(1)}`, "ok"); }
+      catch (e) { log(`gamma.set: ${e.message}`, "err"); }
+    }, 180);
+  });
   document.querySelectorAll("button[data-gamma]").forEach((b) =>
     b.addEventListener("click", async () => {
       try { await call("operator.set", { gamma: +b.dataset.gamma });

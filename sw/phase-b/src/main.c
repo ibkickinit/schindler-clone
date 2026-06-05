@@ -470,6 +470,13 @@ static int parse_int(const char **pp, int *out)
     return 1;
 }
 
+static int hexnib(char c) {
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+    return -1;
+}
+
 static void cmd_help(void)
 {
     xil_printf("\r\nUART commands:\r\n"
@@ -1233,6 +1240,33 @@ static void uart_dispatch(const char *line)
         else if (sub == 'g' && parse_uint(&p, &v)) {
 #ifdef GAMMA_GPIO_BASE
             gamma_load(v);   /* 0/100=off(linear), 18=1.8, 22=2.2, 24=2.4 */
+#else
+            xil_printf("UART: gamma LUT not present in this build\r\n");
+#endif
+        }
+        else if (sub == 'G' && parse_uint(&p, &v)) {
+#ifdef GAMMA_GPIO_BASE
+            /* bulk custom curve load: 'O G <chunk 0|1> <256 hex chars = 128 bytes>'.
+             * Daemon computes the curve (continuous gamma); chunk 1 commits all 3 channels. */
+            static u8 gcurve[256];
+            unsigned base = (v & 1u) * 128u, n = 0;
+            while (*p == ' ' || *p == '\t') p++;
+            while (n < 128u) {
+                int hi = hexnib(p[0]); if (hi < 0) break;
+                int lo = hexnib(p[1]); if (lo < 0) break;
+                gcurve[base + n] = (u8)((hi << 4) | lo); p += 2; n++;
+            }
+            if (v == 1u) {
+                unsigned i;
+                for (i = 0; i < 256; i++) {
+                    gamma_write_entry(0, i, gcurve[i], 1);
+                    gamma_write_entry(1, i, gcurve[i], 1);
+                    gamma_write_entry(2, i, gcurve[i], 1);
+                }
+                gamma_write_entry(0, 0, gcurve[0], 0);   /* enable */
+                g_gamma = 999;                            /* 999 = custom curve */
+                xil_printf("GAMMA: custom curve loaded\r\n");
+            }
 #else
             xil_printf("UART: gamma LUT not present in this build\r\n");
 #endif
