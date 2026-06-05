@@ -408,16 +408,17 @@ static unsigned g_colortemp  = 0;     /* 0 = neutral; else Kelvin preset */
 static void colortemp_preset(unsigned k)
 {
     g_colortemp = k;
-    /* White-balance tint via white-point gain, relative to the 5600K daylight neutral.
-     * Warmer (< 5600) cuts blue; cooler (> 5600) cuts red. Approximate (not chromaticity-
-     * calibrated) — an operator "look", good enough until the YCbCr/matrix stage (Phase 3). */
+    /* White-balance tint via white-point gain, relative to D65 (6500K) — the VIDEO/display
+     * neutral (sRGB/Rec.709 white, and what a standard HDMI source is already encoded at, so
+     * no-tint = D65). Warmer (< 6500) cuts blue; cooler (> 6500) cuts red. Approximate (not
+     * chromaticity-calibrated) — an operator "look", until the YCbCr/matrix stage (Phase 3). */
     switch (k) {
-        case 3200:  g_white_r = 255; g_white_g = 225; g_white_b = 170; break; /* tungsten, strong warm */
-        case 4800:  g_white_r = 255; g_white_g = 243; g_white_b = 210; break; /* mild warm */
-        case 6500:  g_white_r = 240; g_white_g = 248; g_white_b = 255; break; /* D65, mild cool */
-        case 8000:  g_white_r = 215; g_white_g = 235; g_white_b = 255; break; /* cool */
-        case 10000: g_white_r = 195; g_white_g = 225; g_white_b = 255; break; /* strong cool / blue */
-        default:    g_white_r = 255; g_white_g = 255; g_white_b = 255; g_colortemp = 5600; break; /* 5600 neutral */
+        case 3200:  g_white_r = 255; g_white_g = 220; g_white_b = 160; break; /* tungsten, strong warm */
+        case 4800:  g_white_r = 255; g_white_g = 235; g_white_b = 195; break; /* warm */
+        case 5600:  g_white_r = 255; g_white_g = 246; g_white_b = 225; break; /* daylight, mild warm */
+        case 8000:  g_white_r = 230; g_white_g = 242; g_white_b = 255; break; /* cool */
+        case 10000: g_white_r = 205; g_white_g = 228; g_white_b = 255; break; /* strong cool / blue */
+        default:    g_white_r = 255; g_white_g = 255; g_white_b = 255; g_colortemp = 6500; break; /* D65 neutral */
     }
 }
 
