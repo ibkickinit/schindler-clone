@@ -492,6 +492,7 @@ class Dispatcher:
             "geom.set":             self._m_geom_set,
             "blend.set":            self._m_blend_set,
             "operator.set":         self._m_operator_set,
+            "arc.set":              self._m_arc_set,
         }
         self.telemetry: Optional[TelemetryParser] = None  # set by daemon main
 
@@ -644,6 +645,29 @@ class Dispatcher:
             self.uart.send_raw(f"O f {tgt} {step}"); out["fade"] = tgt
         self.bus.publish({"jsonrpc": "2.0", "method": "operator.changed", "params": out})
         return out
+
+    # ARC (aspect) modes — preset window sizes on the signed-window geometry engine; the
+    # engine centers (anchor=0) and mattes the rest. Pure geometry preset, no firmware/HDL.
+    # NOTE: scales the full source into the window, so the cross-aspect modes (4:3/letterbox)
+    # change the picture's aspect (anamorphic) for a 16:9 source — the operator framing tool.
+    _ARC_TABLE = {
+        "fill":      (1280, 720),   # 16:9 fill (default)
+        "zoom":      (1408, 792),   # ~110% overscan, undistorted (crops edges)
+        "4:3":       (960,  720),   # pillarbox (bars L/R)
+        "14:9":      (1120, 720),   # 14:9 compromise
+        "letterbox": (1280, 545),   # 2.35:1 letterbox (bars T/B)
+    }
+
+    async def _m_arc_set(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Aspect-ratio preset: fill / zoom / 4:3 / 14:9 / letterbox. Sets a centered window
+        of the preset size on the geometry engine (preserves the current flip state)."""
+        mode = str(params.get("mode", "fill"))
+        w, h = self._ARC_TABLE.get(mode, self._ARC_TABLE["fill"])
+        lf = getattr(self, "_last_flip", (0, 0))
+        res = await self._m_geom_set({"w": w, "h": h, "x": 0, "y": 0, "anchor": 0,
+                                      "hflip": lf[0], "vflip": lf[1]})
+        self.bus.publish({"jsonrpc": "2.0", "method": "arc.changed", "params": {"mode": mode}})
+        return {"mode": mode, **res}
 
     async def _m_profile_list(self, params: Dict[str, Any]) -> List[str]:
         return self.profiles.list()

@@ -123,6 +123,13 @@
       <label style="display:block;margin:6px 0"><input type="checkbox" id="geo-filt"> Anti-alias (2-tap H)&nbsp;<span style="opacity:.5">(softens zoom/scale; horizontal pass)</span></label>
       <label style="display:inline-block;margin:6px 12px 6px 0"><input type="checkbox" id="geo-hflip"> Flip H</label>
       <label style="display:inline-block;margin:6px 0"><input type="checkbox" id="geo-vflip"> Flip V&nbsp;<span style="opacity:.5">(both = 180°)</span></label>
+      <div style="margin-top:6px"><span style="opacity:.6">ARC:</span>
+        <button data-arc="fill">Fill</button>
+        <button data-arc="zoom">Zoom</button>
+        <button data-arc="4:3">4:3</button>
+        <button data-arc="14:9">14:9</button>
+        <button data-arc="letterbox">Letterbox</button>
+      </div>
       <div id="geo-applied" style="font-family:monospace;margin-top:6px;opacity:.7">G 1280 720 0 0 0</div>
       <label style="display:block;margin-top:8px">Mackin blend:&nbsp;
         <select id="blend-mode">
@@ -620,6 +627,22 @@
   // flips (180° = both)
   document.getElementById("geo-hflip").addEventListener("change", (e) => { geo.hflip = e.target.checked; geoSend(); });
   document.getElementById("geo-vflip").addEventListener("change", (e) => { geo.vflip = e.target.checked; geoSend(); });
+  // ARC (aspect) presets — set a centered window of the preset size on the geometry engine.
+  const ARC_WH = { fill:[1280,720], zoom:[1408,792], "4:3":[960,720], "14:9":[1120,720], letterbox:[1280,545] };
+  document.querySelectorAll("button[data-arc]").forEach((b) =>
+    b.addEventListener("click", async () => {
+      const m = b.dataset.arc, wh = ARC_WH[m];
+      try {
+        await call("arc.set", { mode: m });
+        // sync local geo state + sliders so the panel reflects the ARC
+        geo.sx = wh[0]; geo.sy = wh[1]; geo.px = 0; geo.py = 0;
+        const set = (id,v)=>{const e=document.getElementById(id); if(e) e.value=v;};
+        set("geo-sx-r",wh[0]); set("geo-sx-n",wh[0]); set("geo-sy-r",wh[1]); set("geo-sy-n",wh[1]);
+        set("geo-px-r",0); set("geo-px-n",0); set("geo-py-r",0); set("geo-py-n",0);
+        log(`ARC ${m}`, "ok");
+      } catch (e) { log(`arc.set: ${e.message}`, "err"); }
+    }));
+
   // Operator quick-actions (parity Phase 1) — ride on the color pipeline silicon.
   const op = { mono: false, black: false, bypass: false };
   function opToggle(id, key) {
