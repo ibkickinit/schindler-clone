@@ -1094,3 +1094,35 @@ Gate `pg_cadence_tb`: N=5 blend=0, N=7 blend=130/437, collisions=0, min_lap=4. �
   anti-alias) is now 3-boot-verified on one substrate → **gate for #106 FF-merge to trunk is clear.**
 - Deferred (own task): vertical 2-tap (needs 2nd line-read port), bilinear-by-DDA-fraction,
   NUM_FRAMES single-source, blend-metric denominator.
+
+## Build #32 — Tier-1a effects: H/V flip + 180° rotate (2026-06-04) ✅ bench-approved
+- Branch `readengine-b-integration`, commits `c3654c1` (HDL) + `7c1fc92` (flip-seed direction) +
+  `a7e519a` (daemon: send 'P' only on flip change). Reversible DDA in `pg_addrgen` (h_dir/v_dir
+  count down from far-end seed) + **ring flush on v_dir change** (fixes cross-frame have_row
+  round-robin deadlock). Justin monitor: "h v looks great"; shift+flip seed corrected (mirrored
+  frame still translates the right way); drag-glitch killed (no redundant 2nd GPIO write per drag).
+- **ELF-only turns layered on this bitstream (no HDL/bitstream):** Parity Phase 1 operator harvest
+  (MONO / BLACK / bypass / color-temp ladder, **D65 6500K = neutral** / fade-to-black — #110),
+  ARC presets fill/zoom/4:3/14:9/letterbox (#111), Freeze attempt (#111 — VDMA-halt un-freeze
+  unreliable, **abandoned → Phase-4 still-buffer**), frame-grab PNG download (res UART-limited).
+
+## Build #33 — gamma_lut color stage (2026-06-05) ❌ FAILED TIMING — do not use
+- Commits `e9e0a28` (gamma_lut.v) + `e87441e` (BD splice + axi_gpio_11). WNS **−3.495**: the
+  gamma_lut load-field CDC `*_q1` regs had no `set_false_path` (the recurring −3.5 WNS trap, same
+  as color_matrix). Programmed but timing-violating. Superseded by #34.
+
+## Build #34 — gamma_lut + CDC false-paths (2026-06-05) ✅ CLEAN — PRODUCTION gamma substrate
+- Commit `0e7406d` (XDC false-paths on `gamma_lut_0/inst/{t,byp,ch,ad,da}_q1_reg`). WNS **+0.222**,
+  WHS **+0.016**. `gamma_lut.v` = per-channel 256-entry async-read distributed-RAM tone LUT,
+  AXIS-transparent, spliced `color_matrix_0 → gamma_lut_0 → axis_to_vid_io_0`. Load GPIO =
+  **axi_gpio_11 @ axi_ic_lite/M14** (NUM_MI 14→15), bits 0=bypass,1=tog,[3:2]=ch,[11:4]=addr,[19:12]=data.
+- **ELF-only turns on #34 (no bitstream):** continuous gamma via **on-device fixed-point** curve
+  compute (`92d9231`, Q16 isqrt+pow, ≤1 LSB vs float pow — replaced a bulk-UART LUT transport
+  `1f6f8d7` that corrupted under status-print bursts → RX-FIFO overflow); slider load-over-live
+  no-flash (`9687e66`); write-spacing `usleep` so the toggle-CDC catches every LUT write (`dfa863a`);
+  **Phase 3.5 input RANGE override** Full/Limited via color_correct preset (`ab01614`). Latest ELF `dfa863a`.
+- Bench (Justin monitor): gamma presets + 0.1 slider clean on normal content; Full/Limited range correct.
+- ⚠️ **OPEN #114 (non-blocking):** smooth gradients under gamma show periodic per-channel chroma
+  bands (~210 out-px) — a **pre-existing read-engine BASE-fetch byte-alignment defect** that gamma
+  merely amplifies. Proven NOT gamma (γ=1.0 dead clean) and NOT the 2-tap AA (toggle = no change).
+  Sim-driven fix queued. See memory [[schindler_gradient_chroma_readengine]] + [[schindler_phase3_gamma_done]].
