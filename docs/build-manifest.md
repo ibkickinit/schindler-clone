@@ -1065,3 +1065,17 @@ a completed S+1 partner). Agent-reviewed/green-lit (Round-5 packet).
 - Also: daemon `geom.set` scale clamp 1920→2560 (200% zoom was capped at 1.5×; daemon-only fix,
   commit `a4b8aa8`).
 Gate `pg_cadence_tb`: N=5 blend=0, N=7 blend=130/437, collisions=0, min_lap=4. ⚠️ 3-boot verify owed.
+
+## Build #30 — signed window translation + scale anchor (2026-06-04) ✅ CLEAN (1-boot, monitor)
+- Branch `readengine-b-integration`, commit `29d3aaa`. WNS **+0.225**, WHS **+0.009**.
+- Read-engine "shift" reworked from #29's source-crop (a wrong turn) to a SIGNED output-window
+  origin: shift pushes the image off the left/top edge, pixels leave the frame, matte fills the
+  opposite edge — at any scale incl. 100%. `pg_addrgen` membership is signed; `src_col0/src_row0`
+  are the firmware-computed DDA seed (source col/row at first on-screen pixel). One seed formula
+  yields BOTH center-anchor zoom (negative base pos) and off-screen shift.
+- Scale anchor restored: center (default) / top-left, UI checkbox → `G w h sx sy a`. Seed packed
+  into GEO_C ch2 free bits [26:3] (no new GPIO IP). Geometry CDC widened to GW=144.
+- Sims: capstone `pg_read_engine_top_tb` Total errors=0 (shift R/L/up, 2× zoom centered + shifted);
+  `pg_blend_tb` bit-exact, starv=0. Justin monitor: "perfect, best ever." Supersedes #29 (`7f044eb`).
+- See memory [[schindler_signed_window_geometry]].
+- ⚠️ Still owed across read-engine builds: #28 Mackin 3-cold-boot; read-side anti-alias (NN zoom).
