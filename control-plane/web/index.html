@@ -165,6 +165,8 @@
       <h3>DDR framebuffer (slot 0 thumbnail)</h3>
       <canvas id="fb-canvas" width="160" height="90"></canvas>
       <div id="fb-note"></div>
+      <button id="fb-download" style="margin-top:6px">Download PNG</button>
+      <span style="opacity:.5;font-size:11px">&nbsp;(captured frame; res is UART-transport-limited)</span>
     </div>
     <div id="log"></div>
   </main>
@@ -556,6 +558,18 @@
     if (fmt === "rbg") return [b0, b2, b1];
     return [b0, b1, b2]; // rgb / unknown
   }
+  document.getElementById("fb-download").addEventListener("click", () => {
+    const cv = document.getElementById("fb-canvas");
+    cv.toBlob((blob) => {
+      if (!blob) { log("download: dump a frame first", "err"); return; }
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `schindler-frame-${cv.width}x${cv.height}-${Date.now()}.png`;
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(a.href);
+      log(`frame downloaded (${cv.width}×${cv.height})`, "ok");
+    });
+  });
   document.getElementById("dump-frame").addEventListener("click", async () => {
     const panel = document.getElementById("framedump");
     panel.hidden = false;
