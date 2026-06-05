@@ -901,17 +901,13 @@ static void re_write_geometry(void)
     unsigned sc0 = (offx * FRAME_W) / w;
     unsigned sr0 = (offy * FRAME_H) / h;
 
-    /* FLIP: the DDA runs BACKWARD from a far-end seed. The visible on-screen span is
-     * [fox..rox); seed at its LAST source col/row so col 0 shows what the last col would
-     * show un-flipped, then the addrgen decrements. Composes with zoom + off-screen shift. */
-    {
-        int fox = (px < 0) ? 0 : px;  int rox = px + (int)w;  if (rox > (int)OUT_RASTER_W) rox = OUT_RASTER_W;
-        int foy = (py < 0) ? 0 : py;  int roy = py + (int)h;  if (roy > (int)OUT_RASTER_H) roy = OUT_RASTER_H;
-        unsigned vis_w = (rox > fox) ? (unsigned)(rox - fox) : 1u;
-        unsigned vis_h = (roy > foy) ? (unsigned)(roy - foy) : 1u;
-        if (g_re_hflip) sc0 += ((vis_w - 1u) * FRAME_W) / w;
-        if (g_re_vflip) sr0 += ((vis_h - 1u) * FRAME_H) / h;
-    }
+    /* FLIP: backward DDA from the far-end seed. The seed is the source col/row the MIRROR
+     * shows at the first ON-SCREEN pixel = floor((w-1-offx)*FRAME_W/w), where offx is the
+     * off-screen-left amount (window-relative col of the first on-screen pixel). This makes
+     * the mirrored content translate the SAME direction as un-flipped under shift — flip
+     * mirrors the picture, the window still moves normally. Composes with zoom + shift. */
+    if (g_re_hflip) { unsigned fj = (offx < w) ? (w - 1u - offx) : 0u; sc0 = (fj * FRAME_W) / w; }
+    if (g_re_vflip) { unsigned fj = (offy < h) ? (h - 1u - offy) : 0u; sr0 = (fj * FRAME_H) / h; }
     if (sc0 > 0xFFFu) sc0 = 0xFFFu;
     if (sr0 > 0xFFFu) sr0 = 0xFFFu;
 

@@ -152,11 +152,9 @@ module pg_read_engine_top_tb;
         // firmware-mirror seed: source col/row at the first on-screen pixel
         offx=(ppx<0)?-ppx:0; offy=(ppy<0)?-ppy:0;
         c_sc=(offx*IN_W)/ow; c_sr=(offy*IN_H)/oh;
-        // flip: re-seed at the far end of the visible span (mirror firmware)
-        fox=(ppx<0)?0:ppx; rox=ppx+ow; if(rox>OUT_W) rox=OUT_W; visw=(rox>fox)?(rox-fox):1;
-        foy=(ppy<0)?0:ppy; roy=ppy+oh; if(roy>OUT_H) roy=OUT_H; vish=(roy>foy)?(roy-foy):1;
-        if (h_dir) c_sc = c_sc + ((visw-1)*IN_W)/ow;
-        if (v_dir) c_sr = c_sr + ((vish-1)*IN_H)/oh;
+        // flip: seed = mirror's source at the first on-screen pixel = (w-1-offx)*IN/w (mirror firmware)
+        if (h_dir) c_sc = ((offx<ow)?(ow-1-offx):0)*IN_W/ow;
+        if (v_dir) c_sr = ((offy<oh)?(oh-1-offy):0)*IN_H/oh;
         out_w_win=ow[11:0];out_h_win=oh[11:0];
         pos_x=ppx[11:0];pos_y=ppy[11:0];          // 12-bit two's complement (signed pos)
         src_col0=c_sc[11:0];src_row0=c_sr[11:0];
