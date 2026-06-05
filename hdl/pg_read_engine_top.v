@@ -47,6 +47,7 @@ module pg_read_engine_top #(
     input  wire [11:0] src_col0, src_row0,   // DDA source seed (firmware: source col/row at first on-screen pixel)
     input  wire [11:0] h_step_int, h_step_frac, v_step_int, v_step_frac,
     input  wire [23:0] matte_rgb,
+    input  wire        filt_h,               // 1 = read-side 2-tap H anti-alias box (GEO_C ch2 bit27)
     input  wire [1:0]  blend_mode,       // 0=off, 1=intelligent, 2=force (FCLK_CLK0, async — pg_cadence CDCs it)
 
     // output AXIS → color stack (axis_to_vid_io path)
@@ -89,8 +90,8 @@ module pg_read_engine_top #(
     // Quasi-static (firmware writes between frames) + frame-atomic latch in
     // pg_compose/pg_addrgen at SOF, so per-bit 2-FF sync is sufficient. XDC
     // false-paths target g_q1_reg[*]/D.
-    localparam integer GW = 10*12 + 24;  // 10 step/pos/size/seed fields + matte
-    wire [GW-1:0] g_in = {src_row0, src_col0, matte_rgb,
+    localparam integer GW = 10*12 + 24 + 1;  // 10 fields + matte + filt_h
+    wire [GW-1:0] g_in = {filt_h, src_row0, src_col0, matte_rgb,
                           v_step_frac, v_step_int, h_step_frac, h_step_int,
                           pos_y, pos_x, out_h_win, out_w_win};
     (* ASYNC_REG = "TRUE" *) reg [GW-1:0] g_q1, g_q2;
@@ -109,6 +110,7 @@ module pg_read_engine_top #(
     wire [23:0] s_matte   = g_q2[119:96];
     wire [11:0] s_src_col = g_q2[131:120];
     wire [11:0] s_src_row = g_q2[143:132];
+    wire        s_filt_h  = g_q2[144];
 
     // ---- FRC cadence controller (replaces pg_genlock's fixed frame_ptr-2 follower) ----
     // Gen-lock mode for now (blend_mode=0 → drop/repeat, single fetch) — this is the
@@ -180,7 +182,7 @@ module pg_read_engine_top #(
         .out_w_win(s_out_w), .out_h_win(s_out_h), .pos_x(s_pos_x), .pos_y(s_pos_y),
         .src_col0(s_src_col), .src_row0(s_src_row),
         .h_step_int(s_hsi), .h_step_frac(s_hsf),
-        .v_step_int(s_vsi), .v_step_frac(s_vsf), .matte_rgb(s_matte),
+        .v_step_int(s_vsi), .v_step_frac(s_vsf), .matte_rgb(s_matte), .filt_h(s_filt_h),
         .m_tdata(m_axis_tdata), .m_tvalid(m_axis_tvalid), .m_tready(m_axis_tready),
         .m_tuser(m_axis_tuser), .m_tlast(m_axis_tlast),
         .fetch_req(fetch_req), .fetch_addr(fetch_addr), .fetch_len(fetch_len),

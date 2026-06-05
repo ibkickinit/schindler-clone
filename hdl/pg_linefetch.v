@@ -44,6 +44,8 @@ module pg_linefetch #(
     input  wire [11:0] rd_col,
     output reg  [23:0] rd_data,        // frame A pixel (registered, valid 1 cyc after rd_col)
     output reg  [23:0] rd_data2,       // frame B pixel (= rd_data when blend_en=0)
+    output reg  [23:0] rd_data_h1,     // frame A pixel at rd_col+1 (read-side 2-tap H filter; free, in-window)
+    output reg  [23:0] rd_data2_h1,    // frame B pixel at rd_col+1
     output reg         rd_resident,    // combinational: rd_row present & valid (both banks)
 
     // DDR fetch command (to pg_read_engine_top's DataMover command formatter)
@@ -143,6 +145,18 @@ module pg_linefetch #(
     // rd_data2 mirrors rd_data when this slot has no B line (single-fetch frame),
     // so a stale bank-B never leaks into a non-blend pixel.
     always @* rd_data2 = blendrd_q ? window2[ {sub_q,3'b000} +: 24 ] : rd_data;
+
+    // ---- read-side 2-tap horizontal neighbour (rd_col+1) for the anti-alias filter ----
+    // The col+1 pixel lives at byte offset sub+3, fully inside the same 128-bit window
+    // (sub<=7 -> bytes 10..12 < 16) — so it costs no extra DDR/BRAM read. At the last
+    // source column there is no real neighbour, so mirror the current pixel (no edge wrap).
+    reg        lastcol_q;
+    always @(posedge clk) lastcol_q <= (rd_col >= (LINE_W[11:0] - 12'd1));
+    wire [7:0]  base_h1 = {sub_q, 3'b000} + 8'd24;            // sub*8 + 24 = next pixel
+    wire [23:0] a_h1_raw = window [ base_h1 +: 24 ];
+    wire [23:0] b_h1_raw = window2[ base_h1 +: 24 ];
+    always @* rd_data_h1  = lastcol_q ? rd_data  : a_h1_raw;
+    always @* rd_data2_h1 = blendrd_q ? (lastcol_q ? rd_data2 : b_h1_raw) : rd_data_h1;
 
     // ---- fill FSM: A line, then (if blend) B line, on one DataMover port ----
     always @(posedge clk) begin

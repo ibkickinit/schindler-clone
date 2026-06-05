@@ -53,6 +53,7 @@ module pg_compose #(
     input  wire [11:0] src_col0, src_row0,   // DDA seed: source col/row at the first on-screen in-window pixel
     input  wire [11:0] h_step_int, h_step_frac, v_step_int, v_step_frac,
     input  wire [23:0] matte_rgb,
+    input  wire        filt_h,        // 1 = read-side 2-tap horizontal box filter (anti-alias)
 
     output wire [23:0] m_tdata,
     output wire        m_tvalid,
@@ -168,8 +169,17 @@ module pg_compose #(
     // ---------- M3: line fetch + double buffer ----------
     reg         pf_req_r;
     reg  [11:0] pf_row_r;
-    wire [23:0] m3_rd_data, m3_rd_data2;
+    wire [23:0] m3_rd_data, m3_rd_data2, m3_rd_data_h1, m3_rd_data2_h1;
     wire        m3_resident, m3_busy;
+
+    // 2-tap horizontal box: rounded average of a pixel and its rd_col+1 neighbour.
+    function [7:0] avg8; input [7:0] a,b; reg [8:0] s; begin s = a + b + 9'd1; avg8 = s[8:1]; end endfunction
+    function [23:0] avg2; input [23:0] a,b;
+        avg2 = { avg8(a[23:16],b[23:16]), avg8(a[15:8],b[15:8]), avg8(a[7:0],b[7:0]) };
+    endfunction
+    // filtered source samples fed to the blend pipeline (filt_h=0 → exact NN, zero regression)
+    wire [23:0] A_in = filt_h ? avg2(m3_rd_data,  m3_rd_data_h1)  : m3_rd_data;
+    wire [23:0] B_in = filt_h ? avg2(m3_rd_data2, m3_rd_data2_h1) : m3_rd_data2;
 
     // skid head descriptor
     wire        h_new   = skid[srd][25];
@@ -182,7 +192,8 @@ module pg_compose #(
         .frame_base_addr(frame_base_addr), .frame_base_addr2(base2_l), .blend_en(blend_l),
         .pf_req(pf_req_r), .pf_row(pf_row_r),
         .rd_row(h_srow), .rd_col(h_scol),       // read keyed on skid head
-        .rd_data(m3_rd_data), .rd_data2(m3_rd_data2), .rd_resident(m3_resident),
+        .rd_data(m3_rd_data), .rd_data2(m3_rd_data2),
+        .rd_data_h1(m3_rd_data_h1), .rd_data2_h1(m3_rd_data2_h1), .rd_resident(m3_resident),
         .dbg_fill_sel(dbg_fill_sel), .dbg_rd_sel(dbg_rd_sel), .dbg_have_row(dbg_have_row),
         .fetch_req(fetch_req), .fetch_addr(fetch_addr), .fetch_len(fetch_len),
         .beat_data(beat_data), .beat_valid(beat_valid), .beat_ready(beat_ready), .beat_last(beat_last),
@@ -225,11 +236,11 @@ module pg_compose #(
     always @(posedge clk) begin
         if (!rstn || sof) begin s1_v<=1'b0; s2_v<=1'b0; s3_v<=1'b0; end
         else begin
-            // S1: per-channel diff (B - A). pixels valid in the c1_valid cycle.
-            s1_v <= c1_valid; s1_in <= c1_inwin; s1_matte <= c1_matte; s1_A <= m3_rd_data;
-            s1_dR <= $signed({3'b0,m3_rd_data2[23:16]}) - $signed({3'b0,m3_rd_data[23:16]});
-            s1_dB <= $signed({3'b0,m3_rd_data2[15:8]})  - $signed({3'b0,m3_rd_data[15:8]});
-            s1_dG <= $signed({3'b0,m3_rd_data2[7:0]})   - $signed({3'b0,m3_rd_data[7:0]});
+            // S1: per-channel diff (B - A), on the H-filtered samples. valid in c1_valid cycle.
+            s1_v <= c1_valid; s1_in <= c1_inwin; s1_matte <= c1_matte; s1_A <= A_in;
+            s1_dR <= $signed({3'b0,B_in[23:16]}) - $signed({3'b0,A_in[23:16]});
+            s1_dB <= $signed({3'b0,B_in[15:8]})  - $signed({3'b0,A_in[15:8]});
+            s1_dG <= $signed({3'b0,B_in[7:0]})   - $signed({3'b0,A_in[7:0]});
             // S2: alpha * diff (DSP)
             s2_v <= s1_v; s2_in <= s1_in; s2_matte <= s1_matte; s2_A <= s1_A;
             s2_pR <= aq * s1_dR; s2_pB <= aq * s1_dB; s2_pG <= aq * s1_dG;

@@ -869,6 +869,7 @@ static void cp_dispatch_jsonrpc(const char *json)
 static unsigned g_re_w = FRAME_W, g_re_h = FRAME_H;
 static int      g_re_x = 0, g_re_y = 0;     /* SIGNED shift in output px: +right/down, -left/up */
 static unsigned g_re_anchor = 0;            /* scale anchor: 0 = image center (default), 1 = top-left corner */
+static unsigned g_re_filt_h = 0;            /* 1 = read-side 2-tap H anti-alias box filter */
 static unsigned g_re_matte = 0, g_re_engine = 0, g_re_blend = 0;
 static void re_write_geometry(void)
 {
@@ -908,13 +909,14 @@ static void re_write_geometry(void)
     Xil_Out32(GEO_B_BASE + 0x00, ((hsf & 0xFFF) << 16) | (hsi & 0xFFF));
     Xil_Out32(GEO_B_BASE + 0x08, ((vsf & 0xFFF) << 16) | (vsi & 0xFFF));
     Xil_Out32(GEO_C_BASE + 0x00, g_re_matte & 0xFFFFFF);
-    /* ch2: bit0=mux sel, [2:1]=blend_mode, [14:3]=src_col0 seed, [26:15]=src_row0 seed */
+    /* ch2: bit0=mux sel, [2:1]=blend_mode, [14:3]=src_col0 seed, [26:15]=src_row0 seed, bit27=filt_h */
     Xil_Out32(GEO_C_BASE + 0x08,
+              ((g_re_filt_h ? 1u : 0u) << 27) |
               ((sr0 & 0xFFFu) << 15) | ((sc0 & 0xFFFu) << 3) |
               ((g_re_blend & 3u) << 1) | (g_re_engine ? 1u : 0u));
-    xil_printf("GEO: %ux%u shift(%d,%d) %s -> pos(%d,%d) seed(%u,%u) hstep=%u+%u/%u vstep=%u+%u/%u engine=%u blend=%u\r\n",
+    xil_printf("GEO: %ux%u shift(%d,%d) %s -> pos(%d,%d) seed(%u,%u) hstep=%u+%u/%u vstep=%u+%u/%u engine=%u blend=%u aa=%u\r\n",
                w, h, sx, sy, g_re_anchor ? "TL" : "center", px, py, sc0, sr0,
-               hsi, hsf, w, vsi, vsf, h, g_re_engine, g_re_blend);
+               hsi, hsf, w, vsi, vsf, h, g_re_engine, g_re_blend, g_re_filt_h);
 }
 #endif
 
@@ -1001,10 +1003,13 @@ static void uart_dispatch(const char *line)
                 g_re_engine = 0; re_write_geometry();
             } else if (parse_uint(&p, &h) && parse_int(&p, &x) && parse_int(&p, &y)) {
                 g_re_w = w; g_re_h = h; g_re_x = x; g_re_y = y; g_re_engine = 1;
-                if (parse_uint(&p, &a)) g_re_anchor = (a ? 1u : 0u);  /* optional anchor arg */
+                if (parse_uint(&p, &a)) {                       /* optional anchor arg */
+                    g_re_anchor = (a ? 1u : 0u);
+                    if (parse_uint(&p, &a)) g_re_filt_h = (a ? 1u : 0u); /* optional anti-alias arg */
+                }
                 re_write_geometry();
             } else {
-                xil_printf("UART: usage 'G w h sx sy [a]' (sx/sy signed) or 'G 0' (passthrough)\r\n");
+                xil_printf("UART: usage 'G w h sx sy [a [aa]]' (sx/sy signed) or 'G 0' (passthrough)\r\n");
             }
         } else {
             re_write_geometry();   /* query / re-emit */
@@ -1018,6 +1023,15 @@ static void uart_dispatch(const char *line)
         unsigned bv;
         if (parse_uint(&p, &bv)) { g_re_blend = (bv > 2u) ? 2u : bv; re_write_geometry(); }
         else xil_printf("UART: usage 'M 0|1|2' (0=off 1=intelligent 2=force); current blend=%u\r\n", g_re_blend);
+#else
+        xil_printf("UART: read-engine not present in this build\r\n");
+#endif
+    } else if (op == 'F') {
+        /* read-side 2-tap H anti-alias filter toggle:  F 1 = on, F 0 = off, F = query */
+#ifdef GEO_A_BASE
+        unsigned fv;
+        if (parse_uint(&p, &fv)) { g_re_filt_h = (fv ? 1u : 0u); re_write_geometry(); }
+        else xil_printf("UART: usage 'F 0|1' (read-side 2-tap H anti-alias); current aa=%u\r\n", g_re_filt_h);
 #else
         xil_printf("UART: read-engine not present in this build\r\n");
 #endif

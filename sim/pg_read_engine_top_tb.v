@@ -27,6 +27,7 @@ module pg_read_engine_top_tb;
     reg  [5:0]  frame_ptr;
     reg  [11:0] out_w_win,out_h_win,pos_x,pos_y,src_col0,src_row0,hsi,hsf,vsi,vsf;
     reg  [23:0] matte;
+    reg         filt_h;       // read-side 2-tap H anti-alias enable
 
     wire [23:0] m_tdata; wire m_tvalid;
     wire [71:0] cmd_tdata; wire cmd_tvalid; reg cmd_tready;
@@ -39,7 +40,7 @@ module pg_read_engine_top_tb;
         .clk(clk),.rstn(rstn),.frame_ptr(frame_ptr),.out_vsync(out_vsync),
         .out_w_win(out_w_win),.out_h_win(out_h_win),.pos_x(pos_x),.pos_y(pos_y),
         .src_col0(src_col0),.src_row0(src_row0),
-        .h_step_int(hsi),.h_step_frac(hsf),.v_step_int(vsi),.v_step_frac(vsf),.matte_rgb(matte),.blend_mode(2'b00),
+        .h_step_int(hsi),.h_step_frac(hsf),.v_step_int(vsi),.v_step_frac(vsf),.matte_rgb(matte),.filt_h(filt_h),.blend_mode(2'b00),
         .m_axis_tdata(m_tdata),.m_axis_tvalid(m_tvalid),.m_axis_tready(m_tready),
         .m_axis_cmd_tdata(cmd_tdata),.m_axis_cmd_tvalid(cmd_tvalid),.m_axis_cmd_tready(cmd_tready),
         .s_axis_dm_tdata(dm_tdata),.s_axis_dm_tvalid(dm_tvalid),.s_axis_dm_tready(dm_tready),
@@ -60,12 +61,19 @@ module pg_read_engine_top_tb;
     // exactly as the firmware does, so this golden validates the pos+seed HW contract.
     function integer ginwin; input integer ox,oy;
         ginwin=((ox>=c_px)&&(ox<c_px+c_ow)&&(oy>=c_py)&&(oy<c_py+c_oh))?1:0; endfunction
-    function [23:0] golden; input integer ox,oy; integer kx,ky,sc,sr,fox,foy; begin
+    // 2-tap H box (mirror pg_compose avg2): rounded per-channel average.
+    function [7:0] avg8t; input [7:0] a,b; reg [8:0] s; begin s=a+b+9'd1; avg8t=s[8:1]; end endfunction
+    function [23:0] avg2t; input [23:0] a,b;
+        avg2t={avg8t(a[23:16],b[23:16]),avg8t(a[15:8],b[15:8]),avg8t(a[7:0],b[7:0])}; endfunction
+    function [23:0] golden; input integer ox,oy; integer kx,ky,sc,sr,scn,fox,foy; begin
         if (ginwin(ox,oy)) begin
             fox=(c_px<0)?0:c_px; foy=(c_py<0)?0:c_py;
             kx=ox-fox; ky=oy-foy;
             sc=c_sc+(kx*IN_W)/c_ow; sr=c_sr+(ky*IN_H)/c_oh;
-            golden=gpix(sr,sc);
+            if (filt_h) begin
+                scn=(sc>=IN_W-1)?sc:sc+1;            // 2-tap H neighbour (lastcol guard)
+                golden=avg2t(gpix(sr,sc),gpix(sr,scn));
+            end else golden=gpix(sr,sc);
         end else golden=c_matte; end
     endfunction
 
@@ -157,7 +165,7 @@ module pg_read_engine_top_tb;
 
     initial begin
         errors=0; rstn=0; frame_ptr=0; out_vsync=0; m_tready=0; checking=0; in_active=0;
-        out_w_win=OUT_W;out_h_win=OUT_H;pos_x=0;pos_y=0;src_col0=0;src_row0=0;hsi=1;hsf=0;vsi=1;vsf=0;matte=0;
+        out_w_win=OUT_W;out_h_win=OUT_H;pos_x=0;pos_y=0;src_col0=0;src_row0=0;hsi=1;hsf=0;vsi=1;vsf=0;matte=0;filt_h=0;
         repeat(6)@(posedge clk); rstn=1; repeat(3)@(posedge clk);
         // advance the ring a few frames so read_slot is well-defined
         repeat(20) @(posedge clk);   // let things settle after reset
@@ -170,6 +178,12 @@ module pg_read_engine_top_tb;
         run_case(64,48,   0, -6, 1);  // shift UP 6 @100%: top 6 src rows leave frame, matte bottom
         run_case(128,96,-32,-24, 1);  // 2x zoom centered (base=(64-128)/2): shows source center
         run_case(128,96,-48,-24, 1);  // 2x zoom + shift left 16 past center
+
+        // ---- read-side 2-tap H anti-alias on (golden averages col, col+1) ----
+        filt_h = 1;
+        run_case(64,48,   0,  0, 1);  // filter @100%: every pixel = avg(src col, col+1)
+        run_case(128,96,-32,-24, 1);  // filter + 2x zoom centered
+        filt_h = 0;
 
         $display("================================="); $display("Total errors = %0d", errors);
         $display("================================="); $finish;

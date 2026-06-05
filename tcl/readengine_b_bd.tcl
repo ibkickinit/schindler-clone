@@ -55,7 +55,7 @@ connect_bd_net $pclk  [get_bd_pins axi_sc_mem2/aclk1]
 #   gpio_a ch1 = {4'b0, out_h[11:0], 4'b0, out_w[11:0]}   ch2 = {pos_y(s12), pos_x(s12)}  (SIGNED)
 #   gpio_b ch1 = {h_step_frac, h_step_int}                ch2 = {v_step_frac, v_step_int}
 #   gpio_c ch1 = {8'b0, matte_rgb[23:0]}
-#            ch2 = {5'b0, src_row0[11:0]@15, src_col0[11:0]@3, blend[1:0]@1, mux_sel@0}
+#            ch2 = {4'b0, filt_h@27, src_row0[11:0]@15, src_col0[11:0]@3, blend[1:0]@1, mux_sel@0}
 # ---------------------------------------------------------------------------
 foreach {gname dflt1 dflt2} {
     axi_gpio_8 0x02D00500 0x00000000
@@ -92,6 +92,7 @@ re_slice sl_sel    axi_gpio_10 gpio2_io_o 0  0
 re_slice sl_blend  axi_gpio_10 gpio2_io_o 2  1   ;# Mackin blend_mode (ch2 bits[2:1], 2-bit: 0/1/2)
 re_slice sl_src_c  axi_gpio_10 gpio2_io_o 14 3   ;# DDA src_col0 seed (ch2 bits[14:3], 12-bit)
 re_slice sl_src_r  axi_gpio_10 gpio2_io_o 26 15  ;# DDA src_row0 seed (ch2 bits[26:15], 12-bit)
+re_slice sl_filt_h axi_gpio_10 gpio2_io_o 27 27  ;# read-side 2-tap H anti-alias enable (ch2 bit27)
 
 # ---------------------------------------------------------------------------
 # Read-engine compositor cell
@@ -122,6 +123,7 @@ connect_bd_net [get_bd_pins sl_pos_x/Dout]  [get_bd_pins pg_re_0/pos_x]
 connect_bd_net [get_bd_pins sl_pos_y/Dout]  [get_bd_pins pg_re_0/pos_y]
 connect_bd_net [get_bd_pins sl_src_c/Dout]  [get_bd_pins pg_re_0/src_col0]
 connect_bd_net [get_bd_pins sl_src_r/Dout]  [get_bd_pins pg_re_0/src_row0]
+connect_bd_net [get_bd_pins sl_filt_h/Dout] [get_bd_pins pg_re_0/filt_h]
 connect_bd_net [get_bd_pins sl_hsi/Dout]    [get_bd_pins pg_re_0/h_step_int]
 connect_bd_net [get_bd_pins sl_hsf/Dout]    [get_bd_pins pg_re_0/h_step_frac]
 connect_bd_net [get_bd_pins sl_vsi/Dout]    [get_bd_pins pg_re_0/v_step_int]
