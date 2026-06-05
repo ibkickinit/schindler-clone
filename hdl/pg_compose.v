@@ -49,8 +49,8 @@ module pg_compose #(
     input  wire [7:0]  blend_alpha,      // cadence alpha (8-bit, 0..255)
     input  wire        blend_en,         // 1 = Mackin blend this frame
 
-    input  wire [11:0] out_w_win, out_h_win, pos_x, pos_y,
-    input  wire [11:0] src_col0, src_row0,   // #29 source-crop offset (pan)
+    input  wire [11:0] out_w_win, out_h_win, pos_x, pos_y,   // pos SIGNED (image may go off-screen)
+    input  wire [11:0] src_col0, src_row0,   // DDA seed: source col/row at the first on-screen in-window pixel
     input  wire [11:0] h_step_int, h_step_frac, v_step_int, v_step_frac,
     input  wire [23:0] matte_rgb,
 

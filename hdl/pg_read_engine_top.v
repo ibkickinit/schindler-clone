@@ -43,7 +43,8 @@ module pg_read_engine_top #(
     input  wire        out_vsync,        // v_tc_tx vsync_out (this domain)
 
     // runtime geometry (AXI GPIO, firmware-computed DDA steps)
-    input  wire [11:0] out_w_win, out_h_win, pos_x, pos_y,
+    input  wire [11:0] out_w_win, out_h_win, pos_x, pos_y,   // pos is SIGNED (image may go off-screen)
+    input  wire [11:0] src_col0, src_row0,   // DDA source seed (firmware: source col/row at first on-screen pixel)
     input  wire [11:0] h_step_int, h_step_frac, v_step_int, v_step_frac,
     input  wire [23:0] matte_rgb,
     input  wire [1:0]  blend_mode,       // 0=off, 1=intelligent, 2=force (FCLK_CLK0, async — pg_cadence CDCs it)
@@ -88,23 +89,26 @@ module pg_read_engine_top #(
     // Quasi-static (firmware writes between frames) + frame-atomic latch in
     // pg_compose/pg_addrgen at SOF, so per-bit 2-FF sync is sufficient. XDC
     // false-paths target g_q1_reg[*]/D.
-    localparam integer GW = 8*12 + 24;   // 8 step/pos/size fields + matte
-    wire [GW-1:0] g_in = {matte_rgb, v_step_frac, v_step_int, h_step_frac, h_step_int,
+    localparam integer GW = 10*12 + 24;  // 10 step/pos/size/seed fields + matte
+    wire [GW-1:0] g_in = {src_row0, src_col0, matte_rgb,
+                          v_step_frac, v_step_int, h_step_frac, h_step_int,
                           pos_y, pos_x, out_h_win, out_w_win};
     (* ASYNC_REG = "TRUE" *) reg [GW-1:0] g_q1, g_q2;
     always @(posedge clk) begin
         if (!rstn) begin g_q1 <= {GW{1'b0}}; g_q2 <= {GW{1'b0}}; end
         else       begin g_q1 <= g_in; g_q2 <= g_q1; end
     end
-    wire [11:0] s_out_w = g_q2[11:0];
-    wire [11:0] s_out_h = g_q2[23:12];
-    wire [11:0] s_pos_x = g_q2[35:24];
-    wire [11:0] s_pos_y = g_q2[47:36];
-    wire [11:0] s_hsi   = g_q2[59:48];
-    wire [11:0] s_hsf   = g_q2[71:60];
-    wire [11:0] s_vsi   = g_q2[83:72];
-    wire [11:0] s_vsf   = g_q2[95:84];
-    wire [23:0] s_matte = g_q2[119:96];
+    wire [11:0] s_out_w   = g_q2[11:0];
+    wire [11:0] s_out_h   = g_q2[23:12];
+    wire [11:0] s_pos_x   = g_q2[35:24];
+    wire [11:0] s_pos_y   = g_q2[47:36];
+    wire [11:0] s_hsi     = g_q2[59:48];
+    wire [11:0] s_hsf     = g_q2[71:60];
+    wire [11:0] s_vsi     = g_q2[83:72];
+    wire [11:0] s_vsf     = g_q2[95:84];
+    wire [23:0] s_matte   = g_q2[119:96];
+    wire [11:0] s_src_col = g_q2[131:120];
+    wire [11:0] s_src_row = g_q2[143:132];
 
     // ---- FRC cadence controller (replaces pg_genlock's fixed frame_ptr-2 follower) ----
     // Gen-lock mode for now (blend_mode=0 → drop/repeat, single fetch) — this is the
@@ -167,11 +171,14 @@ module pg_read_engine_top #(
                  .STRIDE(STRIDE), .FIFO_DEPTH(64), .NBUF(NBUF)) u_compose (
         .clk(clk), .rstn(rstn), .vtg_vsync(out_vsync), .frame_base_addr(frame_base),
         .frame_base_addr2(cad_read2_base), .blend_alpha(cad_alpha), .blend_en(cad_blend_en),
-        // #29: the GPIO "shift" (s_pos_x/s_pos_y) now drives the SOURCE-CROP offset (pan) —
-        // works in all directions incl. for a zoomed image. Window is fixed at the output
-        // origin (pos=0) so it fills the output; pan moves which part of the source shows.
-        .out_w_win(s_out_w), .out_h_win(s_out_h), .pos_x(12'd0), .pos_y(12'd0),
-        .src_col0(s_pos_x), .src_row0(s_pos_y),
+        // Signed window translation: pos_x/pos_y place the (scaled) image on the output
+        // and MAY be negative — the image then clips off the left/top edge and matte fills
+        // the opposite edge (pixels genuinely leave the frame). src_col0/src_row0 are the
+        // firmware-computed DDA seed = the source col/row shown at the first on-screen pixel
+        // (this is also how center-anchor zoom is expressed: centered base pos is negative,
+        //  and the seed maps that off-screen amount to the correct source crop).
+        .out_w_win(s_out_w), .out_h_win(s_out_h), .pos_x(s_pos_x), .pos_y(s_pos_y),
+        .src_col0(s_src_col), .src_row0(s_src_row),
         .h_step_int(s_hsi), .h_step_frac(s_hsf),
         .v_step_int(s_vsi), .v_step_frac(s_vsf), .matte_rgb(s_matte),
         .m_tdata(m_axis_tdata), .m_tvalid(m_axis_tvalid), .m_tready(m_axis_tready),

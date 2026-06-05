@@ -580,21 +580,26 @@ class Dispatcher:
         return {"id": cid, "value": out_val}
 
     async def _m_geom_set(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        """Read-engine geometry: absolute window w×h at (x,y) in the output raster.
-        Sent as the raw 'G w h x y' firmware command (not a catalog control). The UI
-        computes x,y from its scale + shift + anchor mode; the daemon just clamps and
-        forwards, then broadcasts geom.changed for multi-client sync."""
+        """Read-engine geometry: scale w×h, SIGNED shift (x,y), anchor mode.
+        Sent as the raw 'G w h x y a' firmware command (not a catalog control).
+          w,h    : scaled image size in output-raster px (1280/720 = 100%, up to 200%)
+          x,y    : SIGNED shift in output px (+right/down, -left/up); may push the image
+                   off the edge — pixels then leave the frame and matte fills the opposite side
+          anchor : 0 = scale about image center (default), 1 = top-left corner
+        Firmware derives the on-screen window position + source-crop seed; the daemon just
+        clamps and forwards, then broadcasts geom.changed for multi-client sync."""
         def clampi(v: Any, lo: int, hi: int) -> int:
             iv = int(round(float(v)))
             return lo if iv < lo else hi if iv > hi else iv
         # scale up to 200% of the 720p output raster (2560x1440); firmware clamps too.
-        # (was 1920/1080 — the master dims — which capped zoom at 1.5x, not 2x.)
         w = clampi(params.get("w", 1280), 1, 2560)
         h = clampi(params.get("h", 720), 1, 1440)
-        x = clampi(params.get("x", 0), 0, 2560)
-        y = clampi(params.get("y", 0), 0, 1440)
-        self.uart.send_raw(f"G {w} {h} {x} {y}")
-        applied = {"w": w, "h": h, "x": x, "y": y}
+        # signed shift; range lets the image be pushed fully off-screen at 100%.
+        x = clampi(params.get("x", 0), -2560, 2560)
+        y = clampi(params.get("y", 0), -1440, 1440)
+        anchor = 1 if params.get("anchor", 0) else 0
+        self.uart.send_raw(f"G {w} {h} {x} {y} {anchor}")
+        applied = {"w": w, "h": h, "x": x, "y": y, "anchor": anchor}
         self.bus.publish({"jsonrpc": "2.0", "method": "geom.changed", "params": applied})
         return applied
 

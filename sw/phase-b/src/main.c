@@ -406,6 +406,23 @@ static int parse_uint(const char **pp, unsigned *out)
     return 1;
 }
 
+/* signed variant: accepts an optional leading '-' (used for the shift offsets,
+ * which may be negative = move the image off the left/top edge). */
+static int parse_int(const char **pp, int *out)
+{
+    const char *p = *pp;
+    while (*p == ' ' || *p == '\t') p++;
+    int neg = 0;
+    if (*p == '-') { neg = 1; p++; }
+    else if (*p == '+') { p++; }
+    if (*p < '0' || *p > '9') return 0;
+    int v = 0;
+    while (*p >= '0' && *p <= '9') { v = v * 10 + (*p - '0'); p++; }
+    *out = neg ? -v : v;
+    *pp = p;
+    return 1;
+}
+
 static void cmd_help(void)
 {
     xil_printf("\r\nUART commands:\r\n"
@@ -849,35 +866,55 @@ static void cp_dispatch_jsonrpc(const char *json)
 #endif
 
 #ifdef GEO_A_BASE
-static unsigned g_re_w = FRAME_W, g_re_h = FRAME_H, g_re_x = 0, g_re_y = 0;
+static unsigned g_re_w = FRAME_W, g_re_h = FRAME_H;
+static int      g_re_x = 0, g_re_y = 0;     /* SIGNED shift in output px: +right/down, -left/up */
+static unsigned g_re_anchor = 0;            /* scale anchor: 0 = image center (default), 1 = top-left corner */
 static unsigned g_re_matte = 0, g_re_engine = 0, g_re_blend = 0;
 static void re_write_geometry(void)
 {
-    unsigned w = g_re_w, h = g_re_h, x = g_re_x, y = g_re_y;
-    /* scale up to 200% of the output raster (w>FRAME_W => master upscaled = zoom in;
-     * only the part within the output is shown). Centering/pan of a zoomed view is #28. */
+    unsigned w = g_re_w, h = g_re_h;
+    /* scale 1..200% of the output raster (w>OUT_RASTER => upscaled = zoom in). */
     if (w < 1) w = 1; if (w > 2u*OUT_RASTER_W) w = 2u*OUT_RASTER_W;
     if (h < 1) h = 1; if (h > 2u*OUT_RASTER_H) h = 2u*OUT_RASTER_H;
-    /* #29: x,y are now the SOURCE-CROP offset (pan), not window position. Valid range
-     * 0..(IN_W - visible_source_width), where visible_source_width = OUT_RASTER * IN_W / w.
-     * At w=full (1280) the whole source shows -> max pan 0; zoomed in -> room to pan. */
-    unsigned vis_w = (OUT_RASTER_W * FRAME_W) / w;   /* source cols spanned across the output */
-    unsigned vis_h = (OUT_RASTER_H * FRAME_H) / h;
-    unsigned xmax = (FRAME_W > vis_w) ? (FRAME_W - vis_w) : 0u;
-    unsigned ymax = (FRAME_H > vis_h) ? (FRAME_H - vis_h) : 0u;
-    if (x > xmax) x = xmax;
-    if (y > ymax) y = ymax;
+
+    /* SIGNED window translation. Place the (scaled w x h) image at output
+     *   (px,py) = anchor_base + user_shift.
+     * anchor_base centers the image when the checkbox is OFF (center): for a zoomed
+     * image this is negative. user_shift slides it — including clean off the edge, so
+     * pixels leave the frame and matte fills the OPPOSITE edge. */
+    int sx = g_re_x, sy = g_re_y;
+    int base_x = g_re_anchor ? 0 : ((int)OUT_RASTER_W - (int)w) / 2;
+    int base_y = g_re_anchor ? 0 : ((int)OUT_RASTER_H - (int)h) / 2;
+    int px = base_x + sx;
+    int py = base_y + sy;
+    if (px >  2047) px =  2047; if (px < -2048) px = -2048;   /* 12-bit signed GPIO range */
+    if (py >  2047) py =  2047; if (py < -2048) py = -2048;
+
+    /* DDA seed = source col/row shown at the first ON-SCREEN output pixel. The
+     * off-screen-left/top amount (output px) maps to source via IN/win. This one
+     * formula produces BOTH the center-anchor crop (px<0 when zoomed) AND the
+     * shift-induced crop (px<0 when shifted left). px>=0 => seed 0. */
+    unsigned offx = (px < 0) ? (unsigned)(-px) : 0u;
+    unsigned offy = (py < 0) ? (unsigned)(-py) : 0u;
+    unsigned sc0 = (offx * FRAME_W) / w;
+    unsigned sr0 = (offy * FRAME_H) / h;
+    if (sc0 > 0xFFFu) sc0 = 0xFFFu;
+    if (sr0 > 0xFFFu) sr0 = 0xFFFu;
+
     unsigned hsi = FRAME_W / w, hsf = FRAME_W % w;   /* floor(IN_W/out_w), IN_W%out_w */
     unsigned vsi = FRAME_H / h, vsf = FRAME_H % h;
     Xil_Out32(GEO_A_BASE + 0x00, ((h & 0xFFF) << 16) | (w & 0xFFF));
-    Xil_Out32(GEO_A_BASE + 0x08, ((y & 0xFFF) << 16) | (x & 0xFFF));
+    Xil_Out32(GEO_A_BASE + 0x08, (((unsigned)py & 0xFFFu) << 16) | ((unsigned)px & 0xFFFu)); /* signed 12b */
     Xil_Out32(GEO_B_BASE + 0x00, ((hsf & 0xFFF) << 16) | (hsi & 0xFFF));
     Xil_Out32(GEO_B_BASE + 0x08, ((vsf & 0xFFF) << 16) | (vsi & 0xFFF));
     Xil_Out32(GEO_C_BASE + 0x00, g_re_matte & 0xFFFFFF);
-    /* ch2: bit0 = mux sel (engine vs passthrough), bits[2:1] = blend_mode (0/1/2) */
-    Xil_Out32(GEO_C_BASE + 0x08, ((g_re_blend & 3u) << 1) | (g_re_engine ? 1u : 0u));
-    xil_printf("GEO: %ux%u @ (%u,%u) hstep=%u+%u/%u vstep=%u+%u/%u matte=%06x engine=%u blend=%u\r\n",
-               w, h, x, y, hsi, hsf, w, vsi, vsf, h, g_re_matte, g_re_engine, g_re_blend);
+    /* ch2: bit0=mux sel, [2:1]=blend_mode, [14:3]=src_col0 seed, [26:15]=src_row0 seed */
+    Xil_Out32(GEO_C_BASE + 0x08,
+              ((sr0 & 0xFFFu) << 15) | ((sc0 & 0xFFFu) << 3) |
+              ((g_re_blend & 3u) << 1) | (g_re_engine ? 1u : 0u));
+    xil_printf("GEO: %ux%u shift(%d,%d) %s -> pos(%d,%d) seed(%u,%u) hstep=%u+%u/%u vstep=%u+%u/%u engine=%u blend=%u\r\n",
+               w, h, sx, sy, g_re_anchor ? "TL" : "center", px, py, sc0, sr0,
+               hsi, hsf, w, vsi, vsf, h, g_re_engine, g_re_blend);
 }
 #endif
 
@@ -951,20 +988,23 @@ static void uart_dispatch(const char *line)
 #endif
     } else if (op == 'G') {
         /* Route-B read-engine geometry (additive+mux build):
-         *   G <w> <h> <x> <y>  — size window to w×h at (x,y), engage read-engine
-         *   G 0                — passthrough (mux→VDMA MM2S, the boot default)
-         *   G                  — re-emit / query current geometry
+         *   G <w> <h> <sx> <sy> [a] — scale to w×h, SIGNED shift (sx,sy), anchor a
+         *                             (a: 0=center [default], 1=top-left). sx<0/sy<0 push
+         *                             the image off the left/top edge (pixels leave frame).
+         *   G 0                     — passthrough (mux→VDMA MM2S, the boot default)
+         *   G                       — re-emit / query current geometry
          * NO VDMA reconfig — just GPIO writes (contrast the reverted reframe). */
 #ifdef GEO_A_BASE
-        unsigned w, h, x, y;
+        unsigned w, h, a; int x, y;
         if (parse_uint(&p, &w)) {
             if (w == 0) {
                 g_re_engine = 0; re_write_geometry();
-            } else if (parse_uint(&p, &h) && parse_uint(&p, &x) && parse_uint(&p, &y)) {
+            } else if (parse_uint(&p, &h) && parse_int(&p, &x) && parse_int(&p, &y)) {
                 g_re_w = w; g_re_h = h; g_re_x = x; g_re_y = y; g_re_engine = 1;
+                if (parse_uint(&p, &a)) g_re_anchor = (a ? 1u : 0u);  /* optional anchor arg */
                 re_write_geometry();
             } else {
-                xil_printf("UART: usage 'G w h x y' or 'G 0' (passthrough)\r\n");
+                xil_printf("UART: usage 'G w h sx sy [a]' (sx/sy signed) or 'G 0' (passthrough)\r\n");
             }
         } else {
             re_write_geometry();   /* query / re-emit */

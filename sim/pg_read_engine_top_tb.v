@@ -25,7 +25,7 @@ module pg_read_engine_top_tb;
 
     reg         out_vsync, m_tready;
     reg  [5:0]  frame_ptr;
-    reg  [11:0] out_w_win,out_h_win,pos_x,pos_y,hsi,hsf,vsi,vsf;
+    reg  [11:0] out_w_win,out_h_win,pos_x,pos_y,src_col0,src_row0,hsi,hsf,vsi,vsf;
     reg  [23:0] matte;
 
     wire [23:0] m_tdata; wire m_tvalid;
@@ -38,6 +38,7 @@ module pg_read_engine_top_tb;
         .SLOT_STRIDE(SLOT_STRIDE),.READ_DELAY(RDLY)) dut (
         .clk(clk),.rstn(rstn),.frame_ptr(frame_ptr),.out_vsync(out_vsync),
         .out_w_win(out_w_win),.out_h_win(out_h_win),.pos_x(pos_x),.pos_y(pos_y),
+        .src_col0(src_col0),.src_row0(src_row0),
         .h_step_int(hsi),.h_step_frac(hsf),.v_step_int(vsi),.v_step_frac(vsf),.matte_rgb(matte),.blend_mode(2'b00),
         .m_axis_tdata(m_tdata),.m_axis_tvalid(m_tvalid),.m_axis_tready(m_tready),
         .m_axis_cmd_tdata(cmd_tdata),.m_axis_cmd_tvalid(cmd_tvalid),.m_axis_cmd_tready(cmd_tready),
@@ -52,15 +53,20 @@ module pg_read_engine_top_tb;
     end endfunction
 
     integer errors;
-    integer c_ow,c_oh,c_px,c_py; reg [23:0] c_matte;
-    // #29: window fixed at output origin (size c_ow x c_oh); c_px/c_py are now the
-    // SOURCE-CROP offset (pan), added to the DDA — pg_read_engine_top forces the window
-    // pos to 0 and routes the GPIO pos into the addrgen src_col0/src_row0.
+    integer c_ow,c_oh,c_px,c_py,c_sc,c_sr; reg [23:0] c_matte;
+    // Signed window: size c_ow x c_oh placed at SIGNED (c_px,c_py). Off-screen edges
+    // (ox/oy outside [pos, pos+size)) show matte. c_sc/c_sr = DDA seed = source col/row
+    // shown at the first ON-SCREEN in-window pixel; computed from the off-screen amount
+    // exactly as the firmware does, so this golden validates the pos+seed HW contract.
     function integer ginwin; input integer ox,oy;
-        ginwin=((ox<c_ow)&&(oy<c_oh))?1:0; endfunction
-    function [23:0] golden; input integer ox,oy; integer sc,sr; begin
-        if (ginwin(ox,oy)) begin sc=c_px+(ox*IN_W)/c_ow; sr=c_py+(oy*IN_H)/c_oh; golden=gpix(sr,sc); end
-        else golden=c_matte; end
+        ginwin=((ox>=c_px)&&(ox<c_px+c_ow)&&(oy>=c_py)&&(oy<c_py+c_oh))?1:0; endfunction
+    function [23:0] golden; input integer ox,oy; integer kx,ky,sc,sr,fox,foy; begin
+        if (ginwin(ox,oy)) begin
+            fox=(c_px<0)?0:c_px; foy=(c_py<0)?0:c_py;
+            kx=ox-fox; ky=oy-foy;
+            sc=c_sc+(kx*IN_W)/c_ow; sr=c_sr+(ky*IN_H)/c_oh;
+            golden=gpix(sr,sc);
+        end else golden=c_matte; end
     endfunction
 
     // ---- behavioral AXI DataMover ----
@@ -129,32 +135,41 @@ module pg_read_engine_top_tb;
         if (starv!=0) begin $display("  ERR starvation %0d",starv); errors=errors+1; end
     end endtask
 
-    task set_geom; input [11:0] ow,oh,ppx,ppy; begin
+    task set_geom; input integer ow,oh,ppx,ppy; integer offx,offy; begin
         c_ow=ow;c_oh=oh;c_px=ppx;c_py=ppy;c_matte=24'h101010;
-        out_w_win=ow;out_h_win=oh;pos_x=ppx;pos_y=ppy;matte=24'h101010;
+        // firmware-mirror seed: source col/row at the first on-screen pixel
+        offx=(ppx<0)?-ppx:0; offy=(ppy<0)?-ppy:0;
+        c_sc=(offx*IN_W)/ow; c_sr=(offy*IN_H)/oh;
+        out_w_win=ow[11:0];out_h_win=oh[11:0];
+        pos_x=ppx[11:0];pos_y=ppy[11:0];          // 12-bit two's complement (signed pos)
+        src_col0=c_sc[11:0];src_row0=c_sr[11:0];
+        matte=24'h101010;
         hsi=IN_W/ow;hsf=IN_W%ow;vsi=IN_H/oh;vsf=IN_H%oh;
     end endtask
 
-    task run_case; input [11:0] ow,oh,ppx,ppy; input integer fr; integer f,e0; begin
+    task run_case; input integer ow,oh,ppx,ppy,fr; integer f,e0; begin
         e0=errors; set_geom(ow,oh,ppx,ppy);
         repeat(6) @(posedge clk);   // let the geometry CDC settle (firmware writes then waits)
         for (f=0;f<fr;f=f+1) run_frame;
-        $display("CASE %0dx%0d @ (%0d,%0d) x%0d : errors=%0d", ow,oh,ppx,ppy,fr,errors-e0);
+        $display("CASE %0dx%0d pos(%0d,%0d) seed(%0d,%0d) x%0d : errors=%0d",
+                 ow,oh,ppx,ppy,c_sc,c_sr,fr,errors-e0);
     end endtask
 
     initial begin
         errors=0; rstn=0; frame_ptr=0; out_vsync=0; m_tready=0; checking=0; in_active=0;
-        out_w_win=OUT_W;out_h_win=OUT_H;pos_x=0;pos_y=0;hsi=1;hsf=0;vsi=1;vsf=0;matte=0;
+        out_w_win=OUT_W;out_h_win=OUT_H;pos_x=0;pos_y=0;src_col0=0;src_row0=0;hsi=1;hsf=0;vsi=1;vsf=0;matte=0;
         repeat(6)@(posedge clk); rstn=1; repeat(3)@(posedge clk);
         // advance the ring a few frames so read_slot is well-defined
         repeat(20) @(posedge clk);   // let things settle after reset
 
-        // #29 semantics: (ow,oh) = scale (zoom), (ppx,ppy) = SOURCE-CROP offset (pan).
-        // Pan must stay within the source (firmware clamps to IN_W - visible span); the
-        // cases below keep src_col/src_row < IN_W/IN_H. ow>OUT_W => zoom-in (pan room).
-        run_case(64,48,  0, 0, 2);   // full, no pan (regression)
-        run_case(128,96, 0, 0, 1);   // 2x zoom, no pan
-        run_case(128,96,16,12, 1);   // 2x zoom + valid pan (src spans 16..47 / 12..35, in-bounds)
+        // Signed-window semantics: (ow,oh)=scale, (ppx,ppy)=SIGNED window pos (negative =
+        // image off the left/top edge, pixels leave the frame, matte fills the far edge).
+        run_case(64,48,   0,  0, 2);  // full, no shift (regression)
+        run_case(64,48,   8,  0, 1);  // shift RIGHT 8 @100%: matte left, src from col 0
+        run_case(64,48,  -8,  0, 1);  // shift LEFT 8 @100%: left 8 src cols leave frame, matte right
+        run_case(64,48,   0, -6, 1);  // shift UP 6 @100%: top 6 src rows leave frame, matte bottom
+        run_case(128,96,-32,-24, 1);  // 2x zoom centered (base=(64-128)/2): shows source center
+        run_case(128,96,-48,-24, 1);  // 2x zoom + shift left 16 past center
 
         $display("================================="); $display("Total errors = %0d", errors);
         $display("================================="); $finish;

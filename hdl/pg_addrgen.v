@@ -46,10 +46,10 @@ module pg_addrgen #(
     // Runtime geometry. Latched at sof so a mid-frame GPIO change is frame-atomic.
     input  wire [11:0] out_w_win,  // window width  (1..OUT_W)
     input  wire [11:0] out_h_win,  // window height (1..OUT_H)
-    input  wire [11:0] pos_x,      // window left   (0..OUT_W-out_w_win)
-    input  wire [11:0] pos_y,      // window top    (0..OUT_H-out_h_win)
-    input  wire [11:0] src_col0,   // #29 source-crop offset: src_col starts here, not 0 (PAN)
-    input  wire [11:0] src_row0,   // #29 source-crop offset: src_row starts here, not 0 (PAN)
+    input  wire [11:0] pos_x,      // window left  — SIGNED 12b (two's complement); may be <0 (image off the left edge)
+    input  wire [11:0] pos_y,      // window top   — SIGNED 12b; may be <0 (image off the top edge)
+    input  wire [11:0] src_col0,   // DDA seed: source COLUMN shown at the first on-screen in-window pixel
+    input  wire [11:0] src_row0,   // DDA seed: source ROW    shown at the first on-screen in-window pixel
     input  wire [11:0] h_step_int, // IN_W / out_w_win
     input  wire [11:0] h_step_frac,// IN_W % out_w_win
     input  wire [11:0] v_step_int, // IN_H / out_h_win
@@ -75,14 +75,26 @@ module pg_addrgen #(
     // ---- vertical DDA state (current row's src_row + fractional accum) ----
     reg [11:0] v_src, v_frac;
 
-    // window membership for the CURRENT (ox, oy)
-    wire ox_in = (ox >= px0) && (ox < px0 + win_w);
-    wire oy_in = (oy >= py0) && (oy < py0 + win_h);
+    // window membership for the CURRENT (ox, oy). pos is SIGNED: the window may
+    // start off the left/top edge (px0<0), so the visible region begins at output 0
+    // and the matte appears on the OPPOSITE edge. All membership compares are signed.
+    wire signed [15:0] ox_s   = $signed({4'b0, ox});       // 0..OUT_W-1 (always >=0)
+    wire signed [15:0] oy_s   = $signed({4'b0, oy});
+    wire signed [15:0] px0_s  = {{4{px0[11]}}, px0};       // sign-extend 12b two's complement
+    wire signed [15:0] py0_s  = {{4{py0[11]}}, py0};
+    wire signed [15:0] winw_s = $signed({4'b0, win_w});
+    wire signed [15:0] winh_s = $signed({4'b0, win_h});
+    wire ox_in  = (ox_s >= px0_s) && (ox_s < (px0_s + winw_s));
+    wire oy_in  = (oy_s >= py0_s) && (oy_s < (py0_s + winh_s));
     wire in_win = ox_in && oy_in;
+
+    // first ON-SCREEN in-window column/row (= 0 when the window starts off-screen)
+    wire signed [15:0] first_ox_s = (px0_s < 0) ? 16'sd0 : px0_s;
 
     // next output column / row
     wire        eol      = (ox == OUT_W[11:0] - 12'd1);
     wire [11:0] next_oy  = oy + 12'd1;
+    wire signed [15:0] next_oy_s = oy_s + 16'sd1;
 
     // horizontal advance (for the NEXT in-window column)
     wire [12:0] h_frac_sum = {1'b0, h_frac} + {1'b0, hsf};
@@ -91,11 +103,11 @@ module pg_addrgen #(
     // vertical advance (for the NEXT in-window row)
     wire [12:0] v_frac_sum = {1'b0, v_frac} + {1'b0, vsf};
     wire        v_carry    = (v_frac_sum >= {1'b0, win_h});
-    wire        next_oy_top = (next_oy == py0);
-    wire        next_oy_in  = (next_oy > py0) && (next_oy < py0 + win_h);
+    wire        next_oy_top = (next_oy_s == py0_s);
+    wire        next_oy_in  = (next_oy_s > py0_s) && (next_oy_s < (py0_s + winh_s));
 
-    // first in-window pixel of a row → prefetch hint
-    wire row_first_inwin = px_valid && in_win && (ox == px0);
+    // first in-window pixel of a row → prefetch hint (fires at output col 0 when off-screen-left)
+    wire row_first_inwin = px_valid && in_win && (ox_s == first_ox_s);
 
     always @(posedge clk) begin
         if (!rstn) begin
