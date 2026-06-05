@@ -405,6 +405,7 @@ static int      g_fade_to    = 255;   /* fade ramp target */
 static unsigned g_fade_step  = 0;     /* per-output-frame ramp magnitude (0 = idle) */
 static unsigned g_colortemp  = 0;     /* 0 = neutral; else Kelvin preset */
 static unsigned g_freeze     = 0;     /* freeze: halt S2MM writer -> frame_ptr holds -> static read */
+static u32      g_s2mm_vsize = 0;     /* saved S2MM VSIZE (@0x80) to re-arm the transfer on un-freeze */
 
 static void colortemp_preset(unsigned k)
 {
@@ -1118,13 +1119,22 @@ static void uart_dispatch(const char *line)
         else if (sub == 't' && parse_uint(&p, &v)) { colortemp_preset(v); operator_apply(); }
         else if (sub == 'f' && parse_uint(&p, &v)) { g_fade_to = (v > 255u) ? 255 : (int)v; g_fade_step = parse_uint(&p, &st) ? (st ? st : 6u) : 6u; }
         else if (sub == 'z' && parse_uint(&p, &v)) {
-            /* FREEZE: halt the S2MM writer (S2MM_DMACR RS bit @ VDMA+0x30). frame_ptr then
-             * holds, so the read engine keeps reading the last completed slot = static frame
-             * (and that slot can't be overwritten while the writer is paused). v=0 resumes. */
-            g_freeze = v ? 1u : 0u;
-            u32 cr = Xil_In32(XPAR_AXI_VDMA_0_BASEADDR + 0x30);
-            Xil_Out32(XPAR_AXI_VDMA_0_BASEADDR + 0x30, g_freeze ? (cr & ~1u) : (cr | 1u));
-            xil_printf("FREEZE: %u (S2MM RS=%u)\r\n", g_freeze, g_freeze ? 0u : 1u);
+            /* FREEZE: halt the S2MM writer (RS bit @ VDMA+0x30) -> frame_ptr holds -> read
+             * engine reads the last completed slot = static frame (writer can't lap it).
+             * UN-FREEZE: a halted VDMA channel does NOT restart on RS alone — the transfer
+             * is re-triggered by (re)writing VSIZE @0x80. So re-arm with the saved VSIZE. */
+            UINTPTR vb = XPAR_AXI_VDMA_0_BASEADDR;
+            u32 cr = Xil_In32(vb + 0x30);
+            if (v) {
+                g_s2mm_vsize = Xil_In32(vb + 0x80);   /* save configured line count */
+                Xil_Out32(vb + 0x30, cr & ~1u);       /* RS=0: halt */
+                g_freeze = 1u;
+            } else {
+                Xil_Out32(vb + 0x30, cr | 1u);        /* RS=1: run */
+                if (g_s2mm_vsize) Xil_Out32(vb + 0x80, g_s2mm_vsize); /* re-arm transfer */
+                g_freeze = 0u;
+            }
+            xil_printf("FREEZE: %u (vsize=%u)\r\n", g_freeze, (unsigned)g_s2mm_vsize);
         }
         else { xil_printf("UART: usage 'O m|y|k|z <0|1> | O t <K> | O f <0-255> [step]'\r\n"); }
         xil_printf("OP: mono=%u bypass=%u fade=%u->%u temp=%u\r\n", g_mono, g_bypass, g_fade_level, g_fade_to, g_colortemp);
