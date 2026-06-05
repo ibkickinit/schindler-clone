@@ -961,17 +961,21 @@ static void gamma_load(unsigned gx10)
         xil_printf("GAMMA: off (linear)\r\n");
         return;
     }
+    /* If gamma is already ON (e.g. sliding), load OVER the live LUT (bypass stays 0) so there's
+     * no transparent flash per step — adjacent 0.1-step curves differ <1 LSB so the in-progress
+     * transient is invisible. Only turning gamma ON from OFF uses the clean transparent-then-enable. */
+    unsigned lb = (g_gamma != 0u) ? 0u : 1u;
     u32 inv_q16 = 655360u / gx10;          /* (1/g) in Q16 */
     unsigned i;
     for (i = 0; i < 256; i++) {
         u32 x = (i == 255u) ? 65536u : ((u32)i * 65536u) / 255u;
         u32 v = powq16(x, inv_q16);
         u32 d = (v * 255u + 32768u) >> 16; if (d > 255u) d = 255u;
-        gamma_write_entry(0, i, (u8)d, 1);
-        gamma_write_entry(1, i, (u8)d, 1);
-        gamma_write_entry(2, i, (u8)d, 1);
+        gamma_write_entry(0, i, (u8)d, lb);
+        gamma_write_entry(1, i, (u8)d, lb);
+        gamma_write_entry(2, i, (u8)d, lb);
     }
-    gamma_write_entry(0, 0, 0, 0);          /* enable */
+    gamma_write_entry(0, 0, 0, 0);          /* ensure enabled */
     g_gamma = gx10;
     xil_printf("GAMMA: %u.%u\r\n", gx10 / 10u, gx10 % 10u);
 }
