@@ -408,12 +408,16 @@ static unsigned g_colortemp  = 0;     /* 0 = neutral; else Kelvin preset */
 static void colortemp_preset(unsigned k)
 {
     g_colortemp = k;
-    /* white-balance via white-point gain: warmer = cut blue, cooler = cut red */
+    /* White-balance tint via white-point gain, relative to the 5600K daylight neutral.
+     * Warmer (< 5600) cuts blue; cooler (> 5600) cuts red. Approximate (not chromaticity-
+     * calibrated) — an operator "look", good enough until the YCbCr/matrix stage (Phase 3). */
     switch (k) {
-        case 3200: g_white_r = 255; g_white_g = 230; g_white_b = 180; break; /* warm  */
-        case 4800: g_white_r = 255; g_white_g = 245; g_white_b = 220; break; /* warm-ish */
-        case 6500: g_white_r = 225; g_white_g = 240; g_white_b = 255; break; /* cool  */
-        default:   g_white_r = 255; g_white_g = 255; g_white_b = 255; g_colortemp = 0; break; /* neutral (~5600) */
+        case 3200:  g_white_r = 255; g_white_g = 225; g_white_b = 170; break; /* tungsten, strong warm */
+        case 4800:  g_white_r = 255; g_white_g = 243; g_white_b = 210; break; /* mild warm */
+        case 6500:  g_white_r = 240; g_white_g = 248; g_white_b = 255; break; /* D65, mild cool */
+        case 8000:  g_white_r = 215; g_white_g = 235; g_white_b = 255; break; /* cool */
+        case 10000: g_white_r = 195; g_white_g = 225; g_white_b = 255; break; /* strong cool / blue */
+        default:    g_white_r = 255; g_white_g = 255; g_white_b = 255; g_colortemp = 5600; break; /* 5600 neutral */
     }
 }
 
