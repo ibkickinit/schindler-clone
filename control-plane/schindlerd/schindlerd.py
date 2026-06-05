@@ -494,6 +494,7 @@ class Dispatcher:
             "operator.set":         self._m_operator_set,
             "arc.set":              self._m_arc_set,
             "gamma.set":            self._m_gamma_set,
+            "colorspace.set":       self._m_colorspace_set,
         }
         self.telemetry: Optional[TelemetryParser] = None  # set by daemon main
 
@@ -685,6 +686,18 @@ class Dispatcher:
         self.uart.send_raw(f"O g {gx10}")
         self.bus.publish({"jsonrpc": "2.0", "method": "gamma.changed", "params": {"gamma": g}})
         return {"gamma": g}
+
+    async def _m_colorspace_set(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Input colorspace override (parity 3.5). {range: 'full'|'limited'} via color_correct
+        black/white preset ('C r 0|1'). YCbCr→RGB matrix decode is deferred (needs a YCbCr
+        source to validate the TMDS lane order before shipping the coefficients)."""
+        out: Dict[str, Any] = {}
+        if "range" in params:
+            r = 1 if str(params["range"]).lower().startswith("lim") else 0
+            self.uart.send_raw(f"C r {r}")
+            out["range"] = "limited" if r else "full"
+        self.bus.publish({"jsonrpc": "2.0", "method": "colorspace.changed", "params": out})
+        return out
 
     async def _m_profile_list(self, params: Dict[str, Any]) -> List[str]:
         return self.profiles.list()

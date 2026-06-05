@@ -404,7 +404,8 @@ static unsigned g_fade_level = 255;   /* white-point scale 0..255 (0 = black) */
 static int      g_fade_to    = 255;   /* fade ramp target */
 static unsigned g_fade_step  = 0;     /* per-output-frame ramp magnitude (0 = idle) */
 static unsigned g_colortemp  = 0;     /* 0 = neutral; else Kelvin preset */
-static unsigned g_gamma      = 0;     /* gamma preset: 0=off/linear, else 18/22/24 */
+static unsigned g_gamma      = 0;     /* gamma: 0=off/linear, else gamma*10 */
+static unsigned g_range      = 0;     /* input range: 0=full (0-255), 1=limited (16-235 expand) */
 static unsigned g_freeze     = 0;     /* freeze: halt S2MM writer -> frame_ptr holds -> static read */
 static u32      g_s2mm_vsize = 0;     /* saved S2MM VSIZE (@0x80) to re-arm the transfer on un-freeze */
 
@@ -1215,6 +1216,21 @@ static void uart_dispatch(const char *line)
         }
         else { xil_printf("UART: usage 'O m|y|k|z <0|1> | O t <K> | O g <gamma*10> | O f <0-255> [step]'\r\n"); }
         xil_printf("OP: mono=%u bypass=%u fade=%u->%u temp=%u gamma=%u\r\n", g_mono, g_bypass, g_fade_level, g_fade_to, g_colortemp, g_gamma);
+    } else if (op == 'C') {
+        /* input colorspace (parity 3.5). 'C r <0|1>' = range: 0=full (0-255),
+         * 1=limited/studio (16-235 → expand to full via color_correct black/white).
+         * YCbCr→RGB matrix decode is deferred (needs a YCbCr source to validate lane order). */
+        char sub = 0; unsigned cv;
+        while (*p == ' ' || *p == '\t') p++;
+        sub = *p ? *p++ : 0;
+        if (sub == 'r' && parse_uint(&p, &cv)) {
+            if (cv) { g_black_r = g_black_g = g_black_b = 16; g_white_r = g_white_g = g_white_b = 235; g_range = 1; }
+            else    { g_black_r = g_black_g = g_black_b = 0;  g_white_r = g_white_g = g_white_b = 255; g_range = 0; }
+            operator_apply();
+            xil_printf("CS: range=%s\r\n", cv ? "limited(16-235)" : "full(0-255)");
+        } else {
+            xil_printf("UART: usage 'C r 0|1' (range full/limited)\r\n");
+        }
     } else {
         xil_printf("UART: unknown cmd '%s' — type ? for help\r\n", line);
     }

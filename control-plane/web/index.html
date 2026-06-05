@@ -166,6 +166,10 @@
         <input type="range" id="gamma-r" min="0.5" max="4.0" step="0.1" value="1.0" style="flex:1">
         <span id="gamma-val" style="width:32px;font-family:monospace">1.0</span>
       </div>
+      <div style="margin-bottom:6px"><span style="opacity:.6">Input range:</span>
+        <button data-range="full">Full (0–255)</button>
+        <button data-range="limited">Limited (16–235)</button>
+      </div>
       <div><span style="opacity:.6">Fade:</span>
         <button id="op-fade-out">→ Black</button>
         <button id="op-fade-in">→ Up</button>
@@ -702,6 +706,11 @@
       try { await call("operator.set", { gamma: +b.dataset.gamma });
             log(`gamma ${b.dataset.gamma === "0" ? "off" : (+b.dataset.gamma/10).toFixed(1)}`, "ok"); }
       catch (e) { log(`operator.set: ${e.message}`, "err"); }
+    }));
+  document.querySelectorAll("button[data-range]").forEach((b) =>
+    b.addEventListener("click", async () => {
+      try { await call("colorspace.set", { range: b.dataset.range }); log(`input range ${b.dataset.range}`, "ok"); }
+      catch (e) { log(`colorspace.set: ${e.message}`, "err"); }
     }));
   document.getElementById("op-fade-out").addEventListener("click", async () => {
     try { await call("operator.set", { fade: 0, step: 6 }); log("fade → black", "ok"); } catch (e) { log(e.message, "err"); }
