@@ -470,13 +470,6 @@ static int parse_int(const char **pp, int *out)
     return 1;
 }
 
-static int hexnib(char c) {
-    if (c >= '0' && c <= '9') return c - '0';
-    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
-    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
-    return -1;
-}
-
 static void cmd_help(void)
 {
     xil_printf("\r\nUART commands:\r\n"
@@ -927,63 +920,10 @@ static void cp_dispatch_jsonrpc(const char *json)
 #  define GAMMA_GPIO_BASE XPAR_PHASE_B_BD_AXI_GPIO_11_BASEADDR
 #endif
 
-/* ---- Phase-3 gamma / tone LUT (parity): preset curves loaded into gamma_lut ----
- * out[i] = round(255*(i/255)^(1/gamma)). Linear (gamma 1.0) = identity = bypass. */
+/* ---- Phase-3 gamma / tone LUT: on-device fixed-point curve compute (parity) ----
+ * Daemon sends gamma*10 only; firmware computes the 256-entry curve (no libm, no bulk
+ * transport over UART). out[i]=round(255*(i/255)^(1/g)); verified <=1 LSB vs float pow. */
 #ifdef GAMMA_GPIO_BASE
-static const u8 GAMMA_G18[256] = {  /* gamma 1.8 */
-      0, 12, 17, 22, 25, 29, 32, 35, 37, 40, 42, 44, 47, 49, 51, 53,
-     55, 57, 58, 60, 62, 64, 65, 67, 69, 70, 72, 73, 75, 76, 78, 79,
-     80, 82, 83, 85, 86, 87, 89, 90, 91, 92, 94, 95, 96, 97, 98,100,
-    101,102,103,104,105,107,108,109,110,111,112,113,114,115,116,117,
-    118,119,120,121,122,123,124,125,126,127,128,129,130,131,132,133,
-    134,135,136,137,138,139,139,140,141,142,143,144,145,146,146,147,
-    148,149,150,151,152,152,153,154,155,156,157,157,158,159,160,161,
-    161,162,163,164,165,165,166,167,168,169,169,170,171,172,172,173,
-    174,175,175,176,177,178,178,179,180,181,181,182,183,183,184,185,
-    186,186,187,188,188,189,190,191,191,192,193,193,194,195,195,196,
-    197,198,198,199,200,200,201,202,202,203,204,204,205,206,206,207,
-    208,208,209,209,210,211,211,212,213,213,214,215,215,216,217,217,
-    218,218,219,220,220,221,222,222,223,223,224,225,225,226,226,227,
-    228,228,229,230,230,231,231,232,233,233,234,234,235,236,236,237,
-    237,238,238,239,240,240,241,241,242,243,243,244,244,245,245,246,
-    247,247,248,248,249,249,250,251,251,252,252,253,253,254,254,255,
-};
-static const u8 GAMMA_G22[256] = {  /* gamma 2.2 */
-      0, 21, 28, 34, 39, 43, 46, 50, 53, 56, 59, 61, 64, 66, 68, 70,
-     72, 74, 76, 78, 80, 82, 84, 85, 87, 89, 90, 92, 93, 95, 96, 98,
-     99,101,102,103,105,106,107,109,110,111,112,114,115,116,117,118,
-    119,120,122,123,124,125,126,127,128,129,130,131,132,133,134,135,
-    136,137,138,139,140,141,142,143,144,144,145,146,147,148,149,150,
-    151,151,152,153,154,155,156,156,157,158,159,160,160,161,162,163,
-    164,164,165,166,167,167,168,169,170,170,171,172,173,173,174,175,
-    175,176,177,178,178,179,180,180,181,182,182,183,184,184,185,186,
-    186,187,188,188,189,190,190,191,192,192,193,194,194,195,195,196,
-    197,197,198,199,199,200,200,201,202,202,203,203,204,205,205,206,
-    206,207,207,208,209,209,210,210,211,212,212,213,213,214,214,215,
-    215,216,217,217,218,218,219,219,220,220,221,221,222,223,223,224,
-    224,225,225,226,226,227,227,228,228,229,229,230,230,231,231,232,
-    232,233,233,234,234,235,235,236,236,237,237,238,238,239,239,240,
-    240,241,241,242,242,243,243,244,244,245,245,246,246,247,247,248,
-    248,249,249,249,250,250,251,251,252,252,253,253,254,254,255,255,
-};
-static const u8 GAMMA_G24[256] = {  /* gamma 2.4 */
-      0, 25, 34, 40, 45, 50, 53, 57, 60, 63, 66, 69, 71, 74, 76, 78,
-     80, 83, 84, 86, 88, 90, 92, 94, 95, 97, 98,100,102,103,105,106,
-    107,109,110,111,113,114,115,117,118,119,120,121,123,124,125,126,
-    127,128,129,130,131,133,134,135,136,137,138,139,140,141,141,142,
-    143,144,145,146,147,148,149,150,151,151,152,153,154,155,156,156,
-    157,158,159,160,161,161,162,163,164,164,165,166,167,168,168,169,
-    170,170,171,172,173,173,174,175,175,176,177,178,178,179,180,180,
-    181,182,182,183,184,184,185,186,186,187,188,188,189,189,190,191,
-    191,192,193,193,194,194,195,196,196,197,197,198,199,199,200,200,
-    201,202,202,203,203,204,204,205,206,206,207,207,208,208,209,209,
-    210,211,211,212,212,213,213,214,214,215,215,216,216,217,217,218,
-    218,219,220,220,221,221,222,222,223,223,224,224,225,225,226,226,
-    227,227,228,228,229,229,229,230,230,231,231,232,232,233,233,234,
-    234,235,235,236,236,237,237,238,238,238,239,239,240,240,241,241,
-    242,242,242,243,243,244,244,245,245,246,246,246,247,247,248,248,
-    249,249,250,250,250,251,251,252,252,252,253,253,254,254,255,255,
-};
 static unsigned g_gamma_tog = 0;
 
 static void gamma_write_entry(unsigned ch, unsigned addr, unsigned data, unsigned bypass)
@@ -993,22 +933,47 @@ static void gamma_write_entry(unsigned ch, unsigned addr, unsigned data, unsigne
           | ((addr & 0xFFu) << 4) | ((data & 0xFFu) << 12);
     Xil_Out32(GAMMA_GPIO_BASE, w);
 }
-static void gamma_load(unsigned preset)
+
+/* Q16 fixed-point pow (65536=1.0): integer power + iterated-sqrt fractional. */
+static u32 isqrt64(u64 n)
 {
-    const u8 *t = (preset==18) ? GAMMA_G18 : (preset==22) ? GAMMA_G22 : (preset==24) ? GAMMA_G24 : 0;
-    g_gamma = t ? preset : 0u;
-    if (t) {
-        unsigned i;
-        for (i = 0; i < 256; i++) {            /* load with bypass=1 (transparent during load) */
-            gamma_write_entry(0, i, t[i], 1);
-            gamma_write_entry(1, i, t[i], 1);
-            gamma_write_entry(2, i, t[i], 1);
-        }
-        gamma_write_entry(0, 0, t[0], 0);      /* enable (bypass=0) */
-    } else {
-        gamma_write_entry(0, 0, 0, 1);         /* bypass / linear */
+    u64 x = 0, b = 1ull << 62;
+    while (b > n) b >>= 2;
+    while (b) { if (n >= x + b) { n -= x + b; x = (x >> 1) + b; } else x >>= 1; b >>= 2; }
+    return (u32)x;
+}
+static u32 powq16(u32 x, u32 p)
+{
+    if (x == 0) return 0;
+    u32 ip = p >> 16, fp = p & 0xFFFFu; int k;
+    u64 result = 65536, base = x; u32 e = ip;
+    while (e) { if (e & 1u) result = (result * base) >> 16; base = (base * base) >> 16; e >>= 1; }
+    u32 root = x;
+    for (k = 1; k <= 16; k++) { root = isqrt64(((u64)root) << 16); if (fp & (1u << (16 - k))) result = (result * root) >> 16; }
+    return (u32)result;
+}
+/* gx10 = gamma*10 (22 = 2.2). 0 or 10 = off/linear (bypass). Computes + loads all 3 ch. */
+static void gamma_load(unsigned gx10)
+{
+    if (gx10 == 0u || gx10 == 10u) {
+        gamma_write_entry(0, 0, 0, 1);
+        g_gamma = 0u;
+        xil_printf("GAMMA: off (linear)\r\n");
+        return;
     }
-    xil_printf("GAMMA: %s\r\n", t ? (preset==18?"1.8":preset==22?"2.2":"2.4") : "off");
+    u32 inv_q16 = 655360u / gx10;          /* (1/g) in Q16 */
+    unsigned i;
+    for (i = 0; i < 256; i++) {
+        u32 x = (i == 255u) ? 65536u : ((u32)i * 65536u) / 255u;
+        u32 v = powq16(x, inv_q16);
+        u32 d = (v * 255u + 32768u) >> 16; if (d > 255u) d = 255u;
+        gamma_write_entry(0, i, (u8)d, 1);
+        gamma_write_entry(1, i, (u8)d, 1);
+        gamma_write_entry(2, i, (u8)d, 1);
+    }
+    gamma_write_entry(0, 0, 0, 0);          /* enable */
+    g_gamma = gx10;
+    xil_printf("GAMMA: %u.%u\r\n", gx10 / 10u, gx10 % 10u);
 }
 #endif
 
@@ -1239,39 +1204,12 @@ static void uart_dispatch(const char *line)
         }
         else if (sub == 'g' && parse_uint(&p, &v)) {
 #ifdef GAMMA_GPIO_BASE
-            gamma_load(v);   /* 0/100=off(linear), 18=1.8, 22=2.2, 24=2.4 */
+            gamma_load(v);   /* v = gamma*10 (continuous): 0/10=off, 18=1.8, 22=2.2, 23=2.3, ... */
 #else
             xil_printf("UART: gamma LUT not present in this build\r\n");
 #endif
         }
-        else if (sub == 'G' && parse_uint(&p, &v)) {
-#ifdef GAMMA_GPIO_BASE
-            /* bulk custom curve load: 'O G <chunk 0|1> <256 hex chars = 128 bytes>'.
-             * Daemon computes the curve (continuous gamma); chunk 1 commits all 3 channels. */
-            static u8 gcurve[256];
-            unsigned base = (v & 1u) * 128u, n = 0;
-            while (*p == ' ' || *p == '\t') p++;
-            while (n < 128u) {
-                int hi = hexnib(p[0]); if (hi < 0) break;
-                int lo = hexnib(p[1]); if (lo < 0) break;
-                gcurve[base + n] = (u8)((hi << 4) | lo); p += 2; n++;
-            }
-            if (v == 1u) {
-                unsigned i;
-                for (i = 0; i < 256; i++) {
-                    gamma_write_entry(0, i, gcurve[i], 1);
-                    gamma_write_entry(1, i, gcurve[i], 1);
-                    gamma_write_entry(2, i, gcurve[i], 1);
-                }
-                gamma_write_entry(0, 0, gcurve[0], 0);   /* enable */
-                g_gamma = 999;                            /* 999 = custom curve */
-                xil_printf("GAMMA: custom curve loaded\r\n");
-            }
-#else
-            xil_printf("UART: gamma LUT not present in this build\r\n");
-#endif
-        }
-        else { xil_printf("UART: usage 'O m|y|k|z <0|1> | O t <K> | O g <0|18|22|24> | O f <0-255> [step]'\r\n"); }
+        else { xil_printf("UART: usage 'O m|y|k|z <0|1> | O t <K> | O g <gamma*10> | O f <0-255> [step]'\r\n"); }
         xil_printf("OP: mono=%u bypass=%u fade=%u->%u temp=%u gamma=%u\r\n", g_mono, g_bypass, g_fade_level, g_fade_to, g_colortemp, g_gamma);
     } else {
         xil_printf("UART: unknown cmd '%s' — type ? for help\r\n", line);

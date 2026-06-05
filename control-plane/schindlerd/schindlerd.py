@@ -675,17 +675,14 @@ class Dispatcher:
         return {"mode": mode, **res}
 
     async def _m_gamma_set(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        """Continuous gamma: out[i]=round(255*(i/255)^(1/g)). Bulk-loads the 256-entry curve
-        to gamma_lut as 2×128-byte hex chunks ('O G <chunk> <hex>'). The HDL LUT is generic,
-        so any curve works — no firmware libm / no rebuild. g<=0 → linear."""
+        """Continuous gamma (0.1 steps). The firmware computes the curve on-device from
+        gamma*10 (fixed-point, verified ≤1 LSB vs pow), so we send only the short value
+        'O g <gamma*10>' — no bulk LUT transport. g<=0 or 1.0 → off/linear."""
         g = float(params.get("gamma", 1.0))
-        if g <= 0.0:
-            g = 1.0
-        inv = 1.0 / g
-        curve = [min(255, max(0, int(round(255.0 * ((i / 255.0) ** inv))))) for i in range(256)]
-        for chunk in range(2):
-            seg = curve[chunk * 128:(chunk + 1) * 128]
-            self.uart.send_raw(f"O G {chunk} " + "".join("%02x" % v for v in seg))
+        gx10 = int(round(g * 10.0))
+        if gx10 < 0:
+            gx10 = 0
+        self.uart.send_raw(f"O g {gx10}")
         self.bus.publish({"jsonrpc": "2.0", "method": "gamma.changed", "params": {"gamma": g}})
         return {"gamma": g}
 
