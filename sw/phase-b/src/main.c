@@ -933,6 +933,11 @@ static void gamma_write_entry(unsigned ch, unsigned addr, unsigned data, unsigne
     u32 w = (bypass ? 1u : 0u) | (g_gamma_tog << 1) | ((ch & 3u) << 2)
           | ((addr & 0xFFu) << 4) | ((data & 0xFFu) << 12);
     Xil_Out32(GAMMA_GPIO_BASE, w);
+    /* Hold each toggle edge long enough for the pixel-clock CDC (t_q1..t_q3, ~3 clk @
+     * 74.25 MHz ≈ 40 ns) to catch it. Without this, back-to-back GPIO writes (~1 AXI
+     * clk apart) flip the toggle twice within one pixel clock and the write is LOST —
+     * leaving stale per-channel LUT entries (gray → cyan speckle). 1 µs = huge margin. */
+    usleep(1);
 }
 
 /* Q16 fixed-point pow (65536=1.0): integer power + iterated-sqrt fractional. */
