@@ -145,6 +145,7 @@
         <button id="op-mono">Mono</button>
         <button id="op-black">Black</button>
         <button id="op-bypass">Bypass</button>
+        <button id="op-freeze">Freeze</button>
       </div>
       <div style="margin-bottom:6px"><span style="opacity:.6">Color temp:</span>
         <button data-temp="3200">3200K</button>
@@ -644,7 +645,7 @@
     }));
 
   // Operator quick-actions (parity Phase 1) — ride on the color pipeline silicon.
-  const op = { mono: false, black: false, bypass: false };
+  const op = { mono: false, black: false, bypass: false, freeze: false };
   function opToggle(id, key) {
     const b = document.getElementById(id);
     b.addEventListener("click", async () => {
@@ -654,7 +655,7 @@
       catch (e) { log(`operator.set: ${e.message}`, "err"); }
     });
   }
-  opToggle("op-mono", "mono"); opToggle("op-black", "black"); opToggle("op-bypass", "bypass");
+  opToggle("op-mono", "mono"); opToggle("op-black", "black"); opToggle("op-bypass", "bypass"); opToggle("op-freeze", "freeze");
   document.querySelectorAll("button[data-temp]").forEach((b) =>
     b.addEventListener("click", async () => {
       try { await call("operator.set", { temp: +b.dataset.temp }); log(`color temp ${b.dataset.temp || "neutral"}`, "ok"); }

@@ -637,6 +637,8 @@ class Dispatcher:
             y = 1 if params["bypass"] else 0; self.uart.send_raw(f"O y {y}"); out["bypass"] = y
         if "black" in params:
             k = 1 if params["black"] else 0; self.uart.send_raw(f"O k {k}"); out["black"] = k
+        if "freeze" in params:
+            z = 1 if params["freeze"] else 0; self.uart.send_raw(f"O z {z}"); out["freeze"] = z
         if "temp" in params:
             t = int(params["temp"]); self.uart.send_raw(f"O t {t}"); out["temp"] = t
         if "fade" in params:

@@ -404,6 +404,7 @@ static unsigned g_fade_level = 255;   /* white-point scale 0..255 (0 = black) */
 static int      g_fade_to    = 255;   /* fade ramp target */
 static unsigned g_fade_step  = 0;     /* per-output-frame ramp magnitude (0 = idle) */
 static unsigned g_colortemp  = 0;     /* 0 = neutral; else Kelvin preset */
+static unsigned g_freeze     = 0;     /* freeze: halt S2MM writer -> frame_ptr holds -> static read */
 
 static void colortemp_preset(unsigned k)
 {
@@ -1116,7 +1117,16 @@ static void uart_dispatch(const char *line)
         else if (sub == 'k' && parse_uint(&p, &v)) { g_fade_step = 0; g_fade_level = v ? 0u : 255u; g_fade_to = (int)g_fade_level; operator_apply(); }
         else if (sub == 't' && parse_uint(&p, &v)) { colortemp_preset(v); operator_apply(); }
         else if (sub == 'f' && parse_uint(&p, &v)) { g_fade_to = (v > 255u) ? 255 : (int)v; g_fade_step = parse_uint(&p, &st) ? (st ? st : 6u) : 6u; }
-        else { xil_printf("UART: usage 'O m|y|k <0|1> | O t <K> | O f <0-255> [step]'\r\n"); }
+        else if (sub == 'z' && parse_uint(&p, &v)) {
+            /* FREEZE: halt the S2MM writer (S2MM_DMACR RS bit @ VDMA+0x30). frame_ptr then
+             * holds, so the read engine keeps reading the last completed slot = static frame
+             * (and that slot can't be overwritten while the writer is paused). v=0 resumes. */
+            g_freeze = v ? 1u : 0u;
+            u32 cr = Xil_In32(XPAR_AXI_VDMA_0_BASEADDR + 0x30);
+            Xil_Out32(XPAR_AXI_VDMA_0_BASEADDR + 0x30, g_freeze ? (cr & ~1u) : (cr | 1u));
+            xil_printf("FREEZE: %u (S2MM RS=%u)\r\n", g_freeze, g_freeze ? 0u : 1u);
+        }
+        else { xil_printf("UART: usage 'O m|y|k|z <0|1> | O t <K> | O f <0-255> [step]'\r\n"); }
         xil_printf("OP: mono=%u bypass=%u fade=%u->%u temp=%u\r\n", g_mono, g_bypass, g_fade_level, g_fade_to, g_colortemp);
     } else {
         xil_printf("UART: unknown cmd '%s' — type ? for help\r\n", line);
