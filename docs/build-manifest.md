@@ -1066,7 +1066,7 @@ a completed S+1 partner). Agent-reviewed/green-lit (Round-5 packet).
   commit `a4b8aa8`).
 Gate `pg_cadence_tb`: N=5 blend=0, N=7 blend=130/437, collisions=0, min_lap=4. ⚠️ 3-boot verify owed.
 
-## Build #30 — signed window translation + scale anchor (2026-06-04) ✅ CLEAN (1-boot, monitor)
+## Build #30 — signed window translation + scale anchor (2026-06-04) ✅ CLEAN (verified under #31)
 - Branch `readengine-b-integration`, commit `29d3aaa`. WNS **+0.225**, WHS **+0.009**.
 - Read-engine "shift" reworked from #29's source-crop (a wrong turn) to a SIGNED output-window
   origin: shift pushes the image off the left/top edge, pixels leave the frame, matte fills the
@@ -1078,4 +1078,19 @@ Gate `pg_cadence_tb`: N=5 blend=0, N=7 blend=130/437, collisions=0, min_lap=4. �
 - Sims: capstone `pg_read_engine_top_tb` Total errors=0 (shift R/L/up, 2× zoom centered + shifted);
   `pg_blend_tb` bit-exact, starv=0. Justin monitor: "perfect, best ever." Supersedes #29 (`7f044eb`).
 - See memory [[schindler_signed_window_geometry]].
-- ⚠️ Still owed across read-engine builds: #28 Mackin 3-cold-boot; read-side anti-alias (NN zoom).
+
+## Build #31 — read-side 2-tap H anti-alias filter (2026-06-04) ✅ CLEAN (3-boot verified)
+- Branch `readengine-b-integration`, commit `7dccf04`. WNS **+0.222**, WHS **+0.020**.
+- 2-tap horizontal box filter on the read-engine resample (NN was aliasing on zoom). col+1
+  neighbour is free (already in pg_linefetch's 128-bit window). Applied to both Mackin frames;
+  filt_h=0 → exact NN. Runtime toggle: UI "Anti-alias (2-tap H)" / UART `F 0|1` / GEO_C ch2 bit27.
+  Sims bit-exact (capstone + blend). Justin monitor A/B: softens zoom, "works well enough, pass."
+- **3-BOOT VERIFICATION (2026-06-04, JTAG-reprogram ×3, this build stacks #28 Mackin + #30 geometry
+  + #31 filter):** all 3 boots IDENTICAL — 1080p24→720p60, FRC locks at 5/12 cadence, `DRAIN
+  delta_px=0`, error bits benign (FrmCnt only, no EOLLate), **Mackin BLEND 60/60 every boot**,
+  geometry repeatable. Justin monitor: all three came up identical, stable, same vertical position,
+  no roll/tear. → **#31 ✅ CLEAN; closes the owed #28 Mackin 3-boot; #30 verified by inclusion.**
+- This means the whole read-engine stack (FRC cadence + Mackin blend + signed-window geometry +
+  anti-alias) is now 3-boot-verified on one substrate → **gate for #106 FF-merge to trunk is clear.**
+- Deferred (own task): vertical 2-tap (needs 2nd line-read port), bilinear-by-DDA-fraction,
+  NUM_FRAMES single-source, blend-metric denominator.
