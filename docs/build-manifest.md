@@ -1122,7 +1122,24 @@ Gate `pg_cadence_tb`: N=5 blend=0, N=7 blend=130/437, collisions=0, min_lap=4. �
   no-flash (`9687e66`); write-spacing `usleep` so the toggle-CDC catches every LUT write (`dfa863a`);
   **Phase 3.5 input RANGE override** Full/Limited via color_correct preset (`ab01614`). Latest ELF `dfa863a`.
 - Bench (Justin monitor): gamma presets + 0.1 slider clean on normal content; Full/Limited range correct.
-- ⚠️ **OPEN #114 (non-blocking):** smooth gradients under gamma show periodic per-channel chroma
-  bands (~210 out-px) — a **pre-existing read-engine BASE-fetch byte-alignment defect** that gamma
-  merely amplifies. Proven NOT gamma (γ=1.0 dead clean) and NOT the 2-tap AA (toggle = no change).
-  Sim-driven fix queued. See memory [[schindler_gradient_chroma_readengine]] + [[schindler_phase3_gamma_done]].
+- ⚠️ **OPEN #114 (non-blocking) — RE-ATTRIBUTED:** smooth gradients under gamma show periodic
+  per-channel chroma. NOT the read engine (sim agent proved `pg_linefetch` bit-exact gray-in→gray-out,
+  2 new gray TBs) and NOT the 2-tap AA (toggle = no change). It's the **gamma LUT load**: non-atomic
+  per-address R/B/G writes loaded OVER the live LUT, so a fast/large slider change displays a
+  half-updated (chromatic) LUT mid-load (load-speed dependent; γ=1.0 clean; small bump clears it).
+  Mitigated: slider commits on release (`aa55d42`). Real fix queued: double-buffer `gamma_lut`
+  (atomic vsync swap) + agent's `beat_valid && beat_ready` insurance. See [[schindler_gradient_chroma_readengine]].
+- **Artifacts archived:** `artifacts/34-720p60/` — re-flash in ~30 s via `scripts/program-archived.sh
+  34-720p60` (no rebuild). Per-build archiving (`scripts/archive-build.sh`) is now standard; closes the
+  "recreatable but not snapshotted" gap. **GOTCHA:** JTAG re-flash needs the control daemon stopped
+  (free /dev/ttyUSB1) or the HDMI input won't re-lock — power-cycle otherwise.
+
+## 1080p30-OUT attempt — UNVERIFIED (2026-06-05) ⚠️ revisit at bench (#115)
+- `OUTPUT_MODE=1080p30` build (WNS **+0.030**, timing closed). Only deltas vs 720p60: VTC raster
+  1280×720@1650×750 → 1920×1080@2200×1125 (same 74.25 MHz pclk) + firmware `OUTPUT_1080P=1`.
+  Read-engine HDL / gamma / color byte-identical.
+- Bench: monitor would not display; MS2109 showed wrap ~3× + top-⅓ fill. **INCONCLUSIVE** — the bench
+  monitor likely doesn't accept 1080p30 (oddball mode) and the MS2109 mangles a 1080p30 source. Telemetry
+  was healthy (VTC configured 1080p30, FRC running, `DRAIN delta_px=0`). Open Q (#115): does the read
+  engine emit a true 1920×1080 raster under OUTPUT_1080P, or 720-shaped data into a 1080 raster? Needs a
+  1080p30-capable display / scope. Do NOT trust the monitor/MS2109 verdict. 1080-OUT columns blocked on this.
