@@ -62,6 +62,8 @@ module pg_addrgen #(
     output reg         o_in_window,
     output reg  [11:0] o_src_col,
     output reg  [11:0] o_src_row,
+    output reg  [11:0] o_h_frac,   // #107: DDA H fraction numerator (denom = win_w) for bilinear
+    output reg  [11:0] o_v_frac,   // #107: DDA V fraction numerator (denom = win_h)
     output reg         o_new_row
 );
     // ---- latched (frame-atomic) geometry ----
@@ -142,6 +144,8 @@ module pg_addrgen #(
                 o_in_window <= in_win;
                 o_src_col   <= h_src;
                 o_src_row   <= v_src;
+                o_h_frac    <= h_frac;   // #107: fraction of THIS pixel (before the advance below)
+                o_v_frac    <= v_frac;
                 o_new_row   <= row_first_inwin;
 
                 // ---- advance horizontal DDA for the next column ----
