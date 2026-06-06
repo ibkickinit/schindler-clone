@@ -921,6 +921,14 @@ static void cp_dispatch_jsonrpc(const char *json)
 #  define GAMMA_GPIO_BASE XPAR_PHASE_B_BD_AXI_GPIO_11_BASEADDR
 #endif
 
+/* #107a bilinear reciprocal GPIO (axi_gpio_12): [15:0]=inv_w (Q0.16 1/out_w_win),
+ * [31:16]=inv_h (reserved for #107b V-bilinear). */
+#if defined(XPAR_AXI_GPIO_12_BASEADDR)
+#  define INVW_GPIO_BASE XPAR_AXI_GPIO_12_BASEADDR
+#elif defined(XPAR_PHASE_B_BD_AXI_GPIO_12_BASEADDR)
+#  define INVW_GPIO_BASE XPAR_PHASE_B_BD_AXI_GPIO_12_BASEADDR
+#endif
+
 /* ---- Phase-3 gamma / tone LUT: on-device fixed-point curve compute (parity) ----
  * Daemon sends gamma*10 only; firmware computes the 256-entry curve (no libm, no bulk
  * transport over UART). out[i]=round(255*(i/255)^(1/g)); verified <=1 LSB vs float pow. */
@@ -999,7 +1007,7 @@ static void gamma_load(unsigned gx10)
 static unsigned g_re_w = FRAME_W, g_re_h = FRAME_H;
 static int      g_re_x = 0, g_re_y = 0;     /* SIGNED shift in output px: +right/down, -left/up */
 static unsigned g_re_anchor = 0;            /* scale anchor: 0 = image center (default), 1 = top-left corner */
-static unsigned g_re_filt_h = 0;            /* 1 = read-side 2-tap H anti-alias box filter */
+static unsigned g_re_filt_mode = 0;         /* #107: 0=NN 1=2-tap box 2=H-bilinear 3=H+V-bilinear */
 static unsigned g_re_hflip = 0, g_re_vflip = 0;  /* horizontal / vertical flip (180 = both) */
 static unsigned g_re_matte = 0, g_re_engine = 0, g_re_blend = 0;
 static void re_write_geometry(void)
@@ -1043,20 +1051,26 @@ static void re_write_geometry(void)
 
     unsigned hsi = FRAME_W / w, hsf = FRAME_W % w;   /* floor(IN_W/out_w), IN_W%out_w */
     unsigned vsi = FRAME_H / h, vsf = FRAME_H % h;
+    /* #107a bilinear reciprocals: Q0.16 1/window, rounded; clamp 16-bit. */
+    unsigned inv_w = (w > 0u) ? ((65536u + w/2u) / w) : 0xFFFFu; if (inv_w > 0xFFFFu) inv_w = 0xFFFFu;
+    unsigned inv_h = (h > 0u) ? ((65536u + h/2u) / h) : 0xFFFFu; if (inv_h > 0xFFFFu) inv_h = 0xFFFFu;
     Xil_Out32(GEO_A_BASE + 0x00, ((h & 0xFFF) << 16) | (w & 0xFFF));
     Xil_Out32(GEO_A_BASE + 0x08, (((unsigned)py & 0xFFFu) << 16) | ((unsigned)px & 0xFFFu)); /* signed 12b */
     Xil_Out32(GEO_B_BASE + 0x00, ((hsf & 0xFFF) << 16) | (hsi & 0xFFF));
     Xil_Out32(GEO_B_BASE + 0x08, ((vsf & 0xFFF) << 16) | (vsi & 0xFFF));
     Xil_Out32(GEO_C_BASE + 0x00, g_re_matte & 0xFFFFFF);
-    /* ch2: bit0=sel, [2:1]=blend, [14:3]=src_col0, [26:15]=src_row0, 27=filt_h, 28=hflip, 29=vflip */
+    /* ch2: bit0=sel, [2:1]=blend, [14:3]=src_col0, [26:15]=src_row0, 28=hflip, 29=vflip, [31:30]=filt_mode (#107) */
     Xil_Out32(GEO_C_BASE + 0x08,
+              ((g_re_filt_mode & 3u) << 30) |
               ((g_re_vflip ? 1u : 0u) << 29) | ((g_re_hflip ? 1u : 0u) << 28) |
-              ((g_re_filt_h ? 1u : 0u) << 27) |
               ((sr0 & 0xFFFu) << 15) | ((sc0 & 0xFFFu) << 3) |
               ((g_re_blend & 3u) << 1) | (g_re_engine ? 1u : 0u));
-    xil_printf("GEO: %ux%u shift(%d,%d) %s flip(%u,%u) -> pos(%d,%d) seed(%u,%u) hstep=%u+%u/%u vstep=%u+%u/%u engine=%u blend=%u aa=%u\r\n",
+#ifdef INVW_GPIO_BASE
+    Xil_Out32(INVW_GPIO_BASE, (inv_h << 16) | (inv_w & 0xFFFFu));   /* #107a: bilinear weight reciprocals */
+#endif
+    xil_printf("GEO: %ux%u shift(%d,%d) %s flip(%u,%u) -> pos(%d,%d) seed(%u,%u) hstep=%u+%u/%u vstep=%u+%u/%u engine=%u blend=%u filt=%u invw=%u\r\n",
                w, h, sx, sy, g_re_anchor ? "TL" : "center", g_re_hflip, g_re_vflip, px, py, sc0, sr0,
-               hsi, hsf, w, vsi, vsf, h, g_re_engine, g_re_blend, g_re_filt_h);
+               hsi, hsf, w, vsi, vsf, h, g_re_engine, g_re_blend, g_re_filt_mode, inv_w);
 }
 #endif
 
@@ -1147,7 +1161,7 @@ static void uart_dispatch(const char *line)
                 g_re_w = w; g_re_h = h; g_re_x = x; g_re_y = y; g_re_engine = 1;
                 if (parse_uint(&p, &a)) {                       /* optional anchor arg */
                     g_re_anchor = (a ? 1u : 0u);
-                    if (parse_uint(&p, &a)) g_re_filt_h = (a ? 1u : 0u); /* optional anti-alias arg */
+                    if (parse_uint(&p, &a)) g_re_filt_mode = (a > 3u) ? 3u : a; /* optional filt-mode arg (#107) */
                 }
                 re_write_geometry();
             } else {
@@ -1169,11 +1183,11 @@ static void uart_dispatch(const char *line)
         xil_printf("UART: read-engine not present in this build\r\n");
 #endif
     } else if (op == 'F') {
-        /* read-side 2-tap H anti-alias filter toggle:  F 1 = on, F 0 = off, F = query */
+        /* read-side resample filter mode:  F 0=NN 1=2-tap box 2=H-bilinear 3=H+V-bilinear; F = query */
 #ifdef GEO_A_BASE
         unsigned fv;
-        if (parse_uint(&p, &fv)) { g_re_filt_h = (fv ? 1u : 0u); re_write_geometry(); }
-        else xil_printf("UART: usage 'F 0|1' (read-side 2-tap H anti-alias); current aa=%u\r\n", g_re_filt_h);
+        if (parse_uint(&p, &fv)) { g_re_filt_mode = (fv > 3u) ? 3u : fv; re_write_geometry(); }
+        else xil_printf("UART: usage 'F 0|1|2|3' (NN/box/H-bilin/H+V-bilin); current filt=%u\r\n", g_re_filt_mode);
 #else
         xil_printf("UART: read-engine not present in this build\r\n");
 #endif

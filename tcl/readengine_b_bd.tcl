@@ -92,7 +92,7 @@ re_slice sl_sel    axi_gpio_10 gpio2_io_o 0  0
 re_slice sl_blend  axi_gpio_10 gpio2_io_o 2  1   ;# Mackin blend_mode (ch2 bits[2:1], 2-bit: 0/1/2)
 re_slice sl_src_c  axi_gpio_10 gpio2_io_o 14 3   ;# DDA src_col0 seed (ch2 bits[14:3], 12-bit)
 re_slice sl_src_r  axi_gpio_10 gpio2_io_o 26 15  ;# DDA src_row0 seed (ch2 bits[26:15], 12-bit)
-re_slice sl_filt_h axi_gpio_10 gpio2_io_o 27 27  ;# read-side 2-tap H anti-alias enable (ch2 bit27)
+re_slice sl_filt_mode axi_gpio_10 gpio2_io_o 31 30  ;# #107: 0=NN 1=box 2=H-bilin 3=H+V-bilin (ch2 [31:30])
 re_slice sl_hdir   axi_gpio_10 gpio2_io_o 28 28  ;# horizontal flip (ch2 bit28)
 re_slice sl_vdir   axi_gpio_10 gpio2_io_o 29 29  ;# vertical flip   (ch2 bit29)
 
@@ -125,7 +125,7 @@ connect_bd_net [get_bd_pins sl_pos_x/Dout]  [get_bd_pins pg_re_0/pos_x]
 connect_bd_net [get_bd_pins sl_pos_y/Dout]  [get_bd_pins pg_re_0/pos_y]
 connect_bd_net [get_bd_pins sl_src_c/Dout]  [get_bd_pins pg_re_0/src_col0]
 connect_bd_net [get_bd_pins sl_src_r/Dout]  [get_bd_pins pg_re_0/src_row0]
-connect_bd_net [get_bd_pins sl_filt_h/Dout] [get_bd_pins pg_re_0/filt_h]
+connect_bd_net [get_bd_pins sl_filt_mode/Dout] [get_bd_pins pg_re_0/filt_mode]
 connect_bd_net [get_bd_pins sl_hdir/Dout]   [get_bd_pins pg_re_0/h_dir]
 connect_bd_net [get_bd_pins sl_vdir/Dout]   [get_bd_pins pg_re_0/v_dir]
 connect_bd_net [get_bd_pins sl_hsi/Dout]    [get_bd_pins pg_re_0/h_step_int]
@@ -194,6 +194,23 @@ connect_bd_net [get_bd_pins sl_g_ch/Dout]   [get_bd_pins gamma_lut_0/lut_ch]
 connect_bd_net [get_bd_pins sl_g_addr/Dout] [get_bd_pins gamma_lut_0/lut_addr]
 connect_bd_net [get_bd_pins sl_g_data/Dout] [get_bd_pins gamma_lut_0/lut_data]
 connect_bd_net [get_bd_pins sl_g_swap/Dout] [get_bd_pins gamma_lut_0/swap]
+
+# ---------------------------------------------------------------------------
+# #107a bilinear reciprocal GPIO (axi_gpio_12 @ M15; NUM_MI 15 -> 16):
+# inv_w[15:0] = firmware Q0.16 reciprocal of out_w_win (inv_h[31:16] reserved for #107b V-bilinear).
+# ---------------------------------------------------------------------------
+set_property -dict [list CONFIG.NUM_MI {16}] [get_bd_cells axi_ic_lite]
+create_bd_cell -type ip -vlnv xilinx.com:ip:axi_gpio axi_gpio_12
+set_property -dict [list CONFIG.C_GPIO_WIDTH {32} CONFIG.C_ALL_OUTPUTS {1} \
+    CONFIG.C_IS_DUAL {0} CONFIG.C_INTERRUPT_PRESENT {0} CONFIG.C_DOUT_DEFAULT {0x00010001}] \
+    [get_bd_cells axi_gpio_12]
+connect_bd_intf_net [get_bd_intf_pins axi_ic_lite/M15_AXI] [get_bd_intf_pins axi_gpio_12/S_AXI]
+connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]          [get_bd_pins axi_ic_lite/M15_ACLK]
+connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn] [get_bd_pins axi_ic_lite/M15_ARESETN]
+connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]          [get_bd_pins axi_gpio_12/s_axi_aclk]
+connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn] [get_bd_pins axi_gpio_12/s_axi_aresetn]
+re_slice sl_inv_w axi_gpio_12 gpio_io_o 15 0
+connect_bd_net [get_bd_pins sl_inv_w/Dout] [get_bd_pins pg_re_0/inv_w]
 
 # ---------------------------------------------------------------------------
 # ILA instrumentation (2026-06-02) — pin the read-engine ghost: addressing vs
