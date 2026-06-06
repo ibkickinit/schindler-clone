@@ -210,15 +210,19 @@ module pg_compose #(
     function [23:0] lerp24; input [23:0] a,b; input [7:0] fw;
         lerp24 = { lerp8(a[23:16],b[23:16],fw), lerp8(a[15:8],b[15:8],fw), lerp8(a[7:0],b[7:0],fw) };
     endfunction
-    // H weight (Q0.8) precomputed at skid-push, latched at pop → aligned with m3_rd_data here.
+    // H weight (Q0.8) precomputed at skid-push, latched at pop.
     reg  [7:0]  c1_fw;
-    // filtered source samples (filt_mode==0 → exact NN, zero regression)
-    wire [23:0] A_in = (filt_mode==2'd0) ? m3_rd_data
-                     : (filt_mode==2'd1) ? avg2  (m3_rd_data,  m3_rd_data_h1)
-                     :                     lerp24(m3_rd_data,  m3_rd_data_h1, c1_fw);
-    wire [23:0] B_in = (filt_mode==2'd0) ? m3_rd_data2
-                     : (filt_mode==2'd1) ? avg2  (m3_rd_data2, m3_rd_data2_h1)
-                     :                     lerp24(m3_rd_data2, m3_rd_data2_h1, c1_fw);
+    // Stage R0 registers (assigned after the c1 pop): raw taps + weight + carries. m3_rd_data
+    // carries linefetch-combinational depth, so register the taps HERE → the lerp (stage R)
+    // then starts from registers and fits one clock.
+    reg  [7:0]  t_fw; reg t_v, t_in; reg [23:0] t_matte, t_rd, t_rd_h1, t_rd2, t_rd2_h1;
+    // filtered source samples off the REGISTERED taps (filt_mode==0 → exact NN, zero regression)
+    wire [23:0] A_in = (filt_mode==2'd0) ? t_rd
+                     : (filt_mode==2'd1) ? avg2  (t_rd,  t_rd_h1)
+                     :                     lerp24(t_rd,  t_rd_h1, t_fw);
+    wire [23:0] B_in = (filt_mode==2'd0) ? t_rd2
+                     : (filt_mode==2'd1) ? avg2  (t_rd2, t_rd2_h1)
+                     :                     lerp24(t_rd2, t_rd2_h1, t_fw);
 
     // skid head descriptor
     wire        h_new   = skid[srd][25];
@@ -270,14 +274,23 @@ module pg_compose #(
     // alpha_q15 + blend_l are frame-constant (used directly, not pipelined). Functionally
     // identical to the gate-validated lerp; just pipelined. push lands 3 cyc after C1
     // (order-preserving → SOF/EOL bookkeeping below unaffected; ospace reserves the depth).
-    // ---- Stage R (#107): register the H-resampled A/B samples. Isolates the bilinear lerp
-    // multiply from the Mackin S1 diff so each fits one clock (the combined path blew WNS -7.8).
-    // Framing is push-time (latency-independent), so this extra stage only needs +1 ospace reserve.
+    // ---- Stage R0 (#107): register the raw taps + weight + carries (1 cyc after c1_valid),
+    // so the lerp (stage R) below starts from registers (m3_rd_data has linefetch combinational depth). ----
+    always @(posedge clk) begin
+        if (!rstn || sof) t_v <= 1'b0;
+        else begin
+            t_v <= c1_valid; t_in <= c1_inwin; t_matte <= c1_matte; t_fw <= c1_fw;
+            t_rd <= m3_rd_data; t_rd_h1 <= m3_rd_data_h1; t_rd2 <= m3_rd_data2; t_rd2_h1 <= m3_rd_data2_h1;
+        end
+    end
+    // ---- Stage R (#107): register the H-resampled A/B samples (the lerp output) before the
+    // Mackin S1 diff. Each boundary (R0→R lerp, R→S1 diff) is now one multiply. Framing is
+    // push-time (latency-independent), so the two extra stages only need +2 ospace reserve. ----
     reg        r_v, r_in;
     reg [23:0] r_matte, r_A, r_B;
     always @(posedge clk) begin
         if (!rstn || sof) r_v <= 1'b0;
-        else begin r_v <= c1_valid; r_in <= c1_inwin; r_matte <= c1_matte; r_A <= A_in; r_B <= B_in; end
+        else begin r_v <= t_v; r_in <= t_in; r_matte <= t_matte; r_A <= A_in; r_B <= B_in; end
     end
     reg               s1_v, s1_in, s2_v, s2_in, s3_v;
     reg [23:0]        s1_matte, s1_A, s2_matte, s2_A, s3_data;
