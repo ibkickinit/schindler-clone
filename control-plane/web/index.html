@@ -103,10 +103,18 @@
 
   <main>
     <div id="banner" hidden></div>
+    <div style="margin:8px 0;text-align:right">
+      <button id="factory-reset" style="background:#622;color:#fcc" title="Reset all settings to factory defaults">⟳ Factory Reset</button>
+    </div>
 
     <!-- SOURCE / INPUT — shared, upstream of both engines -->
     <div class="controls" style="margin:8px 0;padding:8px;border:1px solid #555;border-radius:4px">
       <h2 style="margin:0 0 6px">Source / Input</h2>
+      <div style="margin-bottom:6px;font-family:monospace">
+        <span id="stat-in-lock" title="source lock">○</span>
+        <span style="opacity:.6">Resolution</span> <b id="stat-in-res">—</b>
+        &nbsp; <span style="opacity:.6">Framerate</span> <b id="stat-in-rate">—</b> Hz
+      </div>
       <div><span style="opacity:.6">Input range (colorspace):&nbsp;</span>
         <button data-range="full">Full (0–255)</button>
         <button data-range="limited">Limited (16–235)</button>
@@ -199,6 +207,13 @@
           <button id="op-fade-out">→ Black</button>
           <button id="op-fade-in">→ Up</button>
         </div>
+      </div>
+
+      <div style="margin:6px 0 4px">
+        <h3 style="margin:0 0 6px">Output</h3>
+        <div style="font-family:monospace"><span style="opacity:.6">Resolution</span> <b id="stat-out-res">720p</b>
+          &nbsp; <span style="opacity:.6">Framerate</span> <b id="stat-out-rate">—</b> Hz
+          <span style="opacity:.45">(format fixed 720p60 this build; selectable when dual-engine lands)</span></div>
       </div>
     </div><!-- /Engine 1 → Output A -->
 
@@ -484,8 +499,20 @@
   // status.update {id, value} from the daemon's TelemetryParser.
   function handleStatusUpdate(p) {
     const rec = controlRows.get(p.id);
-    if (!rec) return;  // unknown id (e.g. catalog 0.2.0 fields not in this catalog)
-    rec.value.textContent = formatValue(rec.control, p.value);
+    if (rec) rec.value.textContent = formatValue(rec.control, p.value);
+    mirrorStatus(p.id, p.value);   // also feed the Source/Output summary lines
+  }
+  // Mirror live status into the Source/Input + Output summary spans (they live outside the catalog grid).
+  function mirrorStatus(id, v) {
+    const set = (eid,t)=>{const e=document.getElementById(eid); if(e) e.textContent=t;};
+    if (id === "status.source_format")      set("stat-in-res",  v);
+    else if (id === "status.source_rate_hz") set("stat-in-rate", v);
+    else if (id === "status.output_format")  set("stat-out-res", v);
+    else if (id === "status.output_rate_hz") set("stat-out-rate", v);
+    else if (id === "status.source_lock") {
+      const e=document.getElementById("stat-in-lock");
+      if (e){ e.textContent = v ? "●" : "○"; e.style.color = v ? "#2a6" : "#a33"; }
+    }
   }
 
   // control.changed {id, value} from another client.
@@ -709,6 +736,19 @@
   // maintain-aspect toggle: when re-enabled, immediately re-lock Y to X's ratio (fix any stretch)
   document.getElementById("geo-aspect").addEventListener("change", (e) => {
     if (e.target.checked) { geo.sy = Math.max(64, Math.min(2160, Math.round(geo.sx / ASPECT))); geoSend(); }
+  });
+  // Factory reset: firmware-side reset (operator/color proc-amp) + reset geometry + slider visuals.
+  document.getElementById("factory-reset").addEventListener("click", async () => {
+    if (!confirm("Factory reset — return ALL settings (geometry, color, gamma, temp, operator) to defaults?")) return;
+    try {
+      try { await setValue("system.reset", true); } catch (e) {}   // firmware proc-amp/color reset
+      Object.assign(geo, { sx:1280, sy:720, px:0, py:0, anchor:false, filt:0, hflip:false, vflip:false });
+      geoSend();                                                   // geometry → defaults (+ syncGeoUI)
+      const setEl=(id,val,txt)=>{const e=document.getElementById(id); if(e){ if(val!==undefined)e.value=val; if(txt!==undefined)e.textContent=txt; }};
+      setEl("temp-r",6500); setEl("temp-val",undefined,"6500K");
+      setEl("gamma-r",1.0); setEl("gamma-val",undefined,"1.0");
+      log("factory reset → defaults", "ok");
+    } catch (e) { log(`factory reset: ${e.message}`, "err"); }
   });
   // scale-anchor checkbox: unchecked = center (default), checked = top-left corner.
   document.getElementById("geo-anchor").addEventListener("change", (e) => {
