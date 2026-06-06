@@ -55,6 +55,7 @@ module pg_compose #(
     input  wire [23:0] matte_rgb,
     input  wire [1:0]  filt_mode,     // #107: 0=NN 1=2-tap box 2=H-bilinear 3=H+V-bilinear
     input  wire [15:0] inv_w,         // #107: Q0.16 reciprocal of out_w_win (firmware) → bilinear H weight
+    input  wire [15:0] inv_h,         // #107b: Q0.16 reciprocal of out_h_win → bilinear V weight
     input  wire        h_dir,         // 1 = horizontal flip (addrgen runs H DDA backward)
     input  wire        v_dir,         // 1 = vertical flip (addrgen + prefetch run V DDA backward)
 
@@ -135,11 +136,11 @@ module pg_compose #(
     reg  [AW-1:0] owr, ord;
     wire ofull  = (ocount == FIFO_DEPTH[AW:0]);
     wire oempty = (ocount == 0);
-    wire ospace = (ocount < (FIFO_DEPTH-6));   // reserve 6: C1 + stage R (#107) + 3-stage blend in flight
+    wire ospace = (ocount < (FIFO_DEPTH-7));   // reserve 7: C1 + R0 + R + R2 (#107/b) + 3-stage blend in flight
 
     // ---------- skid FIFO at addrgen output (absorbs addrgen's 1-cyc latency) ----------
     localparam integer SK = 8, SKW = 3;
-    reg  [33:0] skid [0:SK-1];     // {fw[7:0], new_row, inwin, src_row[11:0], src_col[11:0]}  (#107: precomputed Q0.8 H weight)
+    reg  [41:0] skid [0:SK-1];     // {fw_v[7:0], fw_h[7:0], new_row, inwin, src_row[11:0], src_col[11:0]}  (#107/b precomputed Q0.8 weights)
     reg  [SKW:0] scount;
     reg  [SKW-1:0] swr, srd;
     wire sfull  = (scount == SK[SKW:0]);
@@ -176,10 +177,12 @@ module pg_compose #(
     // lerp combinational together blew WNS -7.8).  fw = (h_frac/win_w) via firmware Q0.16 inv_w.
     wire [27:0] fwprod_p = a_h_frac * inv_w;
     wire [7:0]  fw_push   = fwprod_p[16] ? 8'd255 : fwprod_p[15:8];
+    wire [27:0] fwprodv_p = a_v_frac * inv_h;                        // #107b V weight
+    wire [7:0]  fwv_push   = fwprodv_p[16] ? 8'd255 : fwprodv_p[15:8];
     always @(posedge clk) begin
         if (!rstn || sof) begin swr <= 0; end
         else if (a_valid && !sfull) begin
-            skid[swr] <= {fw_push, a_newrow, a_inwin, a_src_row, a_src_col};
+            skid[swr] <= {fwv_push, fw_push, a_newrow, a_inwin, a_src_row, a_src_col};
             swr <= swr + 1'b1;
         end
     end
@@ -189,6 +192,8 @@ module pg_compose #(
     reg  [11:0] pf_row_r;
     wire [23:0] m3_rd_data, m3_rd_data2, m3_rd_data_h1, m3_rd_data2_h1;
     wire        m3_resident, m3_busy;
+    wire [23:0] m3_rd_v1, m3_rd_v1_h1;     // #107b: row+1 taps (A frame), col & col+1
+    wire        m3_resident1;
 
     // 2-tap horizontal box: rounded average of a pixel and its rd_col+1 neighbour.
     function [7:0] avg8; input [7:0] a,b; reg [8:0] s; begin s = a + b + 9'd1; avg8 = s[8:1]; end endfunction
@@ -212,33 +217,38 @@ module pg_compose #(
     function [23:0] lerp24; input [23:0] a,b; input [7:0] fw;
         lerp24 = { lerp8(a[23:16],b[23:16],fw), lerp8(a[15:8],b[15:8],fw), lerp8(a[7:0],b[7:0],fw) };
     endfunction
-    // H weight (Q0.8) precomputed at skid-push, latched at pop.
-    reg  [7:0]  c1_fw;
-    // Stage R0 registers (assigned after the c1 pop): raw taps + weight + carries. m3_rd_data
-    // carries linefetch-combinational depth, so register the taps HERE → the lerp (stage R)
-    // then starts from registers and fits one clock.
-    reg  [7:0]  t_fw; reg t_v, t_in; reg [23:0] t_matte, t_rd, t_rd_h1, t_rd2, t_rd2_h1;
-    // filtered source samples off the REGISTERED taps (filt_mode==0 → exact NN, zero regression)
-    wire [23:0] A_in = (filt_mode==2'd0) ? t_rd
+    // H/V weights (Q0.8) precomputed at skid-push, latched at pop.
+    reg  [7:0]  c1_fw, c1_fw_v;
+    // Stage R0 registers: raw taps (top row + #107b row-below) + weights + carries. Registering
+    // the taps here lets the lerps (stages R/R2) start from registers and each fit one clock.
+    reg  [7:0]  t_fw, t_fw_v; reg t_v, t_in, t_res1;
+    reg [23:0]  t_matte, t_rd, t_rd_h1, t_rd2, t_rd2_h1, t_rd_v1, t_rd_v1_h1;
+    // H-resampled samples off the REGISTERED taps (filt_mode 0=NN 1=box 2/3=H-bilinear)
+    wire [23:0] topA = (filt_mode==2'd0) ? t_rd
                      : (filt_mode==2'd1) ? avg2  (t_rd,  t_rd_h1)
-                     :                     lerp24(t_rd,  t_rd_h1, t_fw);
+                     :                     lerp24(t_rd,  t_rd_h1, t_fw);          // top row, A
+    wire [23:0] botA = lerp24(t_rd_v1, t_rd_v1_h1, t_fw);                          // #107b row below, A (mode 3)
     wire [23:0] B_in = (filt_mode==2'd0) ? t_rd2
                      : (filt_mode==2'd1) ? avg2  (t_rd2, t_rd2_h1)
-                     :                     lerp24(t_rd2, t_rd2_h1, t_fw);
+                     :                     lerp24(t_rd2, t_rd2_h1, t_fw);          // B (H only)
 
     // skid head descriptor
     wire        h_new   = skid[srd][25];
     wire        h_inwin = skid[srd][24];
     wire [11:0] h_srow  = skid[srd][23:12];
     wire [11:0] h_scol  = skid[srd][11:0];
-    wire [7:0]  h_fw    = skid[srd][33:26];   // #107: this pixel's precomputed Q0.8 bilinear weight
+    wire [7:0]  h_fw    = skid[srd][33:26];   // #107: this pixel's precomputed Q0.8 H weight
+    wire [7:0]  h_fw_v  = skid[srd][41:34];   // #107b: precomputed Q0.8 V weight
+    wire [11:0] h_srow1 = (h_srow >= (IN_H[11:0]-12'd1)) ? h_srow : (h_srow + 12'd1);  // #107b row+1 (clamp last)
 
     pg_linefetch #(.LINE_W(IN_W), .STRIDE(STRIDE), .NBUF(NBUF)) u_fetch (
         .clk(clk), .rstn(rstn),
         .frame_base_addr(frame_base_addr), .frame_base_addr2(base2_l), .blend_en(blend_l),
         .pf_req(pf_req_r), .pf_row(pf_row_r), .flush(ring_flush),
         .rd_row(h_srow), .rd_col(h_scol),       // read keyed on skid head
+        .rd_row1(h_srow1),                       // #107b row-below port
         .rd_data(m3_rd_data), .rd_data2(m3_rd_data2),
+        .rd_data_v1(m3_rd_v1), .rd_data_v1_h1(m3_rd_v1_h1), .rd_resident1(m3_resident1),
         .rd_data_h1(m3_rd_data_h1), .rd_data2_h1(m3_rd_data2_h1), .rd_resident(m3_resident),
         .dbg_fill_sel(dbg_fill_sel), .dbg_rd_sel(dbg_rd_sel), .dbg_have_row(dbg_have_row),
         .fetch_req(fetch_req), .fetch_addr(fetch_addr), .fetch_len(fetch_len),
@@ -251,8 +261,11 @@ module pg_compose #(
     //           present rd (already wired), pop skid, launch into C1.
     // Stage C1: m3_rd_data is now valid for that pixel → push to output FIFO.
     wire head_servable = !sempty && ospace && (!h_inwin || m3_resident);
+    // #107b: do NOT stall on row+1 residency — on V-downscale the prefetch skips rows so row+1 is
+    // never fetched (would deadlock). Instead the V-lerp gates on residency (r_res1) and falls back
+    // to V-NN when row+1 isn't resident. Zoom/upscale keeps row+1 resident (lookahead) → true 4-tap.
     // C1: pop skid head. rd_data (A) + rd_data2 (B) are valid the cycle c1_valid is high.
-    reg        c1_valid, c1_inwin;
+    reg        c1_valid, c1_inwin, c1_res1;   // c1_res1 (#107b): was row+1 resident when this pixel read?
     reg [23:0] c1_matte;
     always @(posedge clk) begin
         if (!rstn || sof) begin srd <= 0; c1_valid <= 1'b0; end
@@ -262,7 +275,8 @@ module pg_compose #(
                 c1_valid <= 1'b1;
                 c1_inwin <= h_inwin;
                 c1_matte <= matte_l;
-                c1_fw <= h_fw;                // #107: ride the precomputed weight with rd_data to c1_valid
+                c1_fw <= h_fw; c1_fw_v <= h_fw_v;   // #107/b: ride the precomputed weights with rd_data
+                c1_res1 <= m3_resident1;      // #107b: latch row+1 residency at the same edge as the read
                 srd <= srd + 1'b1;            // pop head
             end
         end
@@ -281,18 +295,30 @@ module pg_compose #(
     always @(posedge clk) begin
         if (!rstn || sof) t_v <= 1'b0;
         else begin
-            t_v <= c1_valid; t_in <= c1_inwin; t_matte <= c1_matte; t_fw <= c1_fw;
+            t_v <= c1_valid; t_in <= c1_inwin; t_matte <= c1_matte; t_fw <= c1_fw; t_fw_v <= c1_fw_v;
             t_rd <= m3_rd_data; t_rd_h1 <= m3_rd_data_h1; t_rd2 <= m3_rd_data2; t_rd2_h1 <= m3_rd_data2_h1;
+            t_rd_v1 <= m3_rd_v1; t_rd_v1_h1 <= m3_rd_v1_h1; t_res1 <= c1_res1;   // #107b row-below taps (A) + residency
         end
     end
     // ---- Stage R (#107): register the H-resampled A/B samples (the lerp output) before the
     // Mackin S1 diff. Each boundary (R0→R lerp, R→S1 diff) is now one multiply. Framing is
     // push-time (latency-independent), so the two extra stages only need +2 ospace reserve. ----
-    reg        r_v, r_in;
-    reg [23:0] r_matte, r_A, r_B;
+    reg        r_v, r_in, r_res1;
+    reg [23:0] r_matte, r_topA, r_botA, r_B; reg [7:0] r_fwv;
     always @(posedge clk) begin
         if (!rstn || sof) r_v <= 1'b0;
-        else begin r_v <= t_v; r_in <= t_in; r_matte <= t_matte; r_A <= A_in; r_B <= B_in; end
+        else begin r_v <= t_v; r_in <= t_in; r_matte <= t_matte; r_res1 <= t_res1;
+                   r_topA <= topA; r_botA <= botA; r_B <= B_in; r_fwv <= t_fw_v; end
+    end
+    // ---- Stage R2 (#107b): vertical lerp (top↔bottom row by the V weight) in mode 3; else pass top.
+    // r_topA/r_botA come from registers → this lerp is one multiply, fits one clock (like stage R). ----
+    reg        r2_v, r2_in;
+    reg [23:0] r2_matte, r2_A, r2_B;
+    always @(posedge clk) begin
+        if (!rstn || sof) r2_v <= 1'b0;
+        else begin r2_v <= r_v; r2_in <= r_in; r2_matte <= r_matte; r2_B <= r_B;
+                   // V-lerp only when row+1 was resident (zoom); else V-NN fallback (downscale skips rows)
+                   r2_A <= (filt_mode==2'd3 && r_res1) ? lerp24(r_topA, r_botA, r_fwv) : r_topA; end
     end
     reg               s1_v, s1_in, s2_v, s2_in, s3_v;
     reg [23:0]        s1_matte, s1_A, s2_matte, s2_A, s3_data;
@@ -301,11 +327,11 @@ module pg_compose #(
     always @(posedge clk) begin
         if (!rstn || sof) begin s1_v<=1'b0; s2_v<=1'b0; s3_v<=1'b0; end
         else begin
-            // S1: per-channel diff (B - A), on the stage-R resampled samples.
-            s1_v <= r_v; s1_in <= r_in; s1_matte <= r_matte; s1_A <= r_A;
-            s1_dR <= $signed({3'b0,r_B[23:16]}) - $signed({3'b0,r_A[23:16]});
-            s1_dB <= $signed({3'b0,r_B[15:8]})  - $signed({3'b0,r_A[15:8]});
-            s1_dG <= $signed({3'b0,r_B[7:0]})   - $signed({3'b0,r_A[7:0]});
+            // S1: per-channel diff (B - A), on the stage-R2 (H+V resampled) samples.
+            s1_v <= r2_v; s1_in <= r2_in; s1_matte <= r2_matte; s1_A <= r2_A;
+            s1_dR <= $signed({3'b0,r2_B[23:16]}) - $signed({3'b0,r2_A[23:16]});
+            s1_dB <= $signed({3'b0,r2_B[15:8]})  - $signed({3'b0,r2_A[15:8]});
+            s1_dG <= $signed({3'b0,r2_B[7:0]})   - $signed({3'b0,r2_A[7:0]});
             // S2: alpha * diff (DSP)
             s2_v <= s1_v; s2_in <= s1_in; s2_matte <= s1_matte; s2_A <= s1_A;
             s2_pR <= aq * s1_dR; s2_pB <= aq * s1_dB; s2_pG <= aq * s1_dG;

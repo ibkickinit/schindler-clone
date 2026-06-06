@@ -48,7 +48,8 @@ module pg_read_engine_top #(
     input  wire [11:0] h_step_int, h_step_frac, v_step_int, v_step_frac,
     input  wire [23:0] matte_rgb,
     input  wire [1:0]  filt_mode,            // #107: 0=NN 1=2-tap box 2=H-bilinear 3=H+V-bilinear (GEO_C ch2 [31:30])
-    input  wire [15:0] inv_w,                // #107: Q0.16 reciprocal of out_w_win (firmware) for bilinear weight
+    input  wire [15:0] inv_w,                // #107: Q0.16 reciprocal of out_w_win (firmware) for bilinear H weight
+    input  wire [15:0] inv_h,                // #107b: Q0.16 reciprocal of out_h_win for bilinear V weight
     input  wire        h_dir, v_dir,         // horizontal / vertical flip (GEO_C ch2 bit28/bit29)
     input  wire [1:0]  blend_mode,       // 0=off, 1=intelligent, 2=force (FCLK_CLK0, async — pg_cadence CDCs it)
 
@@ -92,8 +93,8 @@ module pg_read_engine_top #(
     // Quasi-static (firmware writes between frames) + frame-atomic latch in
     // pg_compose/pg_addrgen at SOF, so per-bit 2-FF sync is sufficient. XDC
     // false-paths target g_q1_reg[*]/D.
-    localparam integer GW = 10*12 + 24 + 2 + 16 + 2;  // fields + matte + filt_mode(2) + inv_w(16) + h_dir + v_dir
-    wire [GW-1:0] g_in = {inv_w, v_dir, h_dir, filt_mode, src_row0, src_col0, matte_rgb,
+    localparam integer GW = 10*12 + 24 + 2 + 16 + 16 + 2;  // fields + matte + filt_mode(2) + inv_w(16) + inv_h(16) + h_dir + v_dir
+    wire [GW-1:0] g_in = {inv_h, inv_w, v_dir, h_dir, filt_mode, src_row0, src_col0, matte_rgb,
                           v_step_frac, v_step_int, h_step_frac, h_step_int,
                           pos_y, pos_x, out_h_win, out_w_win};
     (* ASYNC_REG = "TRUE" *) reg [GW-1:0] g_q1, g_q2;
@@ -116,6 +117,7 @@ module pg_read_engine_top #(
     wire        s_h_dir     = g_q2[146];
     wire        s_v_dir     = g_q2[147];
     wire [15:0] s_inv_w     = g_q2[163:148];
+    wire [15:0] s_inv_h     = g_q2[179:164];
 
     // ---- FRC cadence controller (replaces pg_genlock's fixed frame_ptr-2 follower) ----
     // Gen-lock mode for now (blend_mode=0 → drop/repeat, single fetch) — this is the
@@ -188,7 +190,7 @@ module pg_read_engine_top #(
         .src_col0(s_src_col), .src_row0(s_src_row),
         .h_step_int(s_hsi), .h_step_frac(s_hsf),
         .v_step_int(s_vsi), .v_step_frac(s_vsf), .matte_rgb(s_matte),
-        .filt_mode(s_filt_mode), .inv_w(s_inv_w),
+        .filt_mode(s_filt_mode), .inv_w(s_inv_w), .inv_h(s_inv_h),
         .h_dir(s_h_dir), .v_dir(s_v_dir),
         .m_tdata(m_axis_tdata), .m_tvalid(m_axis_tvalid), .m_tready(m_axis_tready),
         .m_tuser(m_axis_tuser), .m_tlast(m_axis_tlast),

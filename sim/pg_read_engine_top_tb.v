@@ -29,6 +29,7 @@ module pg_read_engine_top_tb;
     reg  [23:0] matte;
     reg  [1:0]  filt_mode;    // #107: 0=NN 1=box 2=H-bilinear 3=H+V-bilinear
     reg  [15:0] inv_w_tb;     // #107: Q0.16 reciprocal of out_w_win (matches firmware)
+    reg  [15:0] inv_h_tb;     // #107b: Q0.16 reciprocal of out_h_win
     reg         h_dir, v_dir; // flip direction (backward DDA)
 
     wire [23:0] m_tdata; wire m_tvalid;
@@ -43,7 +44,7 @@ module pg_read_engine_top_tb;
         .out_w_win(out_w_win),.out_h_win(out_h_win),.pos_x(pos_x),.pos_y(pos_y),
         .src_col0(src_col0),.src_row0(src_row0),
         .h_step_int(hsi),.h_step_frac(hsf),.v_step_int(vsi),.v_step_frac(vsf),.matte_rgb(matte),
-        .filt_mode(filt_mode),.inv_w(inv_w_tb),
+        .filt_mode(filt_mode),.inv_w(inv_w_tb),.inv_h(inv_h_tb),
         .h_dir(h_dir),.v_dir(v_dir),.blend_mode(2'b00),
         .m_axis_tdata(m_tdata),.m_axis_tvalid(m_tvalid),.m_axis_tready(m_tready),
         .m_axis_cmd_tdata(cmd_tdata),.m_axis_cmd_tvalid(cmd_tvalid),.m_axis_cmd_tready(cmd_tready),
@@ -75,20 +76,25 @@ module pg_read_engine_top_tb;
         r=(a*(256-fw)+b*fw+128)>>8; lrp8t=(r>255)?8'd255:r[7:0]; end endfunction
     function [23:0] lrp2t; input [23:0] a,b; input integer fw;
         lrp2t={lrp8t(a[23:16],b[23:16],fw),lrp8t(a[15:8],b[15:8],fw),lrp8t(a[7:0],b[7:0],fw)}; endfunction
-    function [23:0] golden; input integer ox,oy; integer kx,ky,sc,sr,scn,fox,foy,hf,fw; begin
+    function [23:0] golden; input integer ox,oy; integer kx,ky,sc,sr,scn,srn,fox,foy,hf,fw,vf,fwv; begin
         if (ginwin(ox,oy)) begin
             fox=(c_px<0)?0:c_px; foy=(c_py<0)?0:c_py;
             kx=ox-fox; ky=oy-foy;
             // flip = DDA runs backward from the far-end seed (c_sc/c_sr already seeded far when flipped)
             sc = h_dir ? (c_sc-(kx*IN_W)/c_ow) : (c_sc+(kx*IN_W)/c_ow);
             sr = v_dir ? (c_sr-(ky*IN_H)/c_oh) : (c_sr+(ky*IN_H)/c_oh);
-            scn=(sc>=IN_W-1)?sc:sc+1;                 // 2-tap/bilinear H neighbour (lastcol guard)
+            scn=(sc>=IN_W-1)?sc:sc+1;                 // H neighbour (lastcol guard)
+            srn=(sr>=IN_H-1)?sr:sr+1;                 // row below (lastrow guard) — #107b
             if (filt_mode==2'd1)
                 golden=avg2t(gpix(sr,sc),gpix(sr,scn));            // box (50/50)
-            else if (filt_mode>=2'd2) begin                       // H-bilinear (#107a)
-                hf=(kx*IN_W)%c_ow;                                // DDA H fraction (numerator, denom=c_ow)
-                fw=(hf*inv_w_tb)>>8; if (fw>255) fw=255;          // Q0.8 weight — SAME inv_w as HW
+            else if (filt_mode==2'd2) begin                       // H-bilinear (#107a)
+                hf=(kx*IN_W)%c_ow; fw=(hf*inv_w_tb)>>8; if (fw>255) fw=255;
                 golden=lrp2t(gpix(sr,sc),gpix(sr,scn),fw);
+            end else if (filt_mode==2'd3) begin                   // H+V bilinear (#107b), 4-tap
+                hf=(kx*IN_W)%c_ow; fw =(hf*inv_w_tb)>>8; if (fw >255) fw =255;
+                vf=(ky*IN_H)%c_oh; fwv=(vf*inv_h_tb)>>8; if (fwv>255) fwv=255;
+                golden=lrp2t( lrp2t(gpix(sr ,sc),gpix(sr ,scn),fw),
+                              lrp2t(gpix(srn,sc),gpix(srn,scn),fw), fwv );  // top, bottom, V-blend
             end else golden=gpix(sr,sc);                          // NN
         end else golden=c_matte; end
     endfunction
@@ -174,6 +180,8 @@ module pg_read_engine_top_tb;
         hsi=IN_W/ow;hsf=IN_W%ow;vsi=IN_H/oh;vsf=IN_H%oh;
         inv_w_tb=(ow>0)?((65536+ow/2)/ow):16'hFFFF;   // #107: Q0.16 1/out_w_win (firmware-mirror)
         if (inv_w_tb>16'hFFFF) inv_w_tb=16'hFFFF;
+        inv_h_tb=(oh>0)?((65536+oh/2)/oh):16'hFFFF;    // #107b: Q0.16 1/out_h_win
+        if (inv_h_tb>16'hFFFF) inv_h_tb=16'hFFFF;
     end endtask
 
     task run_case; input integer ow,oh,ppx,ppy,fr; integer f,e0; begin
@@ -186,7 +194,7 @@ module pg_read_engine_top_tb;
 
     initial begin
         errors=0; rstn=0; frame_ptr=0; out_vsync=0; m_tready=0; checking=0; in_active=0;
-        out_w_win=OUT_W;out_h_win=OUT_H;pos_x=0;pos_y=0;src_col0=0;src_row0=0;hsi=1;hsf=0;vsi=1;vsf=0;matte=0;filt_mode=2'd0;inv_w_tb=16'd1;h_dir=0;v_dir=0;
+        out_w_win=OUT_W;out_h_win=OUT_H;pos_x=0;pos_y=0;src_col0=0;src_row0=0;hsi=1;hsf=0;vsi=1;vsf=0;matte=0;filt_mode=2'd0;inv_w_tb=16'd1;inv_h_tb=16'd1;h_dir=0;v_dir=0;
         repeat(6)@(posedge clk); rstn=1; repeat(3)@(posedge clk);
         // advance the ring a few frames so read_slot is well-defined
         repeat(20) @(posedge clk);   // let things settle after reset
@@ -210,6 +218,14 @@ module pg_read_engine_top_tb;
         run_case(40,30,   0,  0, 1);  // downscale 64→40, fraction sweeps
         run_case(128,96,-32,-24, 1);  // 2x ZOOM centered — fraction 0,.5,0,.5… → smooth interp
         run_case(96,72, -16,-12, 1);  // 1.5x zoom, fraction sweep
+        // ---- #107b: H+V bilinear (filt_mode=3): 4-tap, V-fraction weights top↔bottom row.
+        // Only UPSCALE/1:1 here — there row+1 is always resident (lookahead) so the true 4-tap runs.
+        // On V-DOWNSCALE the prefetch skips rows → row+1 residency is mixed → HW falls back to V-NN
+        // per-pixel, which this static golden can't predict, so those aren't golden-checked here. ----
+        filt_mode = 2'd3;
+        run_case(64,48,   0,  0, 1);  // 1:1 → H&V fractions 0 → MUST equal NN (zero-regression)
+        run_case(128,96,-32,-24, 1);  // 2x ZOOM centered — full 4-tap bilinear (Justin's case)
+        run_case(96,72, -16,-12, 1);  // 1.5x zoom, 4-tap
         filt_mode = 2'd0;
 
         // ---- Tier-1a flips (backward DDA, far-end seed) ----

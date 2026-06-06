@@ -48,6 +48,12 @@ module pg_linefetch #(
     output reg  [23:0] rd_data_h1,     // frame A pixel at rd_col+1 (read-side 2-tap H filter; free, in-window)
     output reg  [23:0] rd_data2_h1,    // frame B pixel at rd_col+1
     output reg         rd_resident,    // combinational: rd_row present & valid (both banks)
+    // #107b V-bilinear: 2nd read port — row BELOW (rd_row1=rd_row+1, A frame only). Row+1 is
+    // already resident in the ring (prefetch lookahead), so this is a 2nd READ PORT, not a 2nd fetch.
+    input  wire [11:0] rd_row1,
+    output reg  [23:0] rd_data_v1,     // frame A pixel at (rd_row+1, rd_col)
+    output reg  [23:0] rd_data_v1_h1,  // frame A pixel at (rd_row+1, rd_col+1) — for 4-tap bilinear
+    output reg         rd_resident1,   // combinational: rd_row1 present & valid
 
     // DDR fetch command (to pg_read_engine_top's DataMover command formatter)
     output reg         fetch_req,
@@ -158,6 +164,29 @@ module pg_linefetch #(
     wire [23:0] b_h1_raw = window2[ base_h1 +: 24 ];
     always @* rd_data_h1  = lastcol_q ? rd_data  : a_h1_raw;
     always @* rd_data2_h1 = blendrd_q ? (lastcol_q ? rd_data2 : b_h1_raw) : rd_data_h1;
+
+    // ---- #107b 2nd read port: row BELOW (rd_row1), frame A only. Same column → reuse idx_e/idx_o,
+    // sub_q, b_odd_q, base_h1, lastcol_q; only the buffer-select (rd_sel1 from rd_row1) differs. ----
+    reg [SELW-1:0] rd_sel1; reg rd_hit1;
+    always @* begin
+        rd_sel1 = {SELW{1'b0}}; rd_hit1 = 1'b0;
+        for (i=0;i<NBUF;i=i+1)
+            if ((rd_row1==tag[i]) && val[i] &&
+                !((state!=S_IDLE)&&(i[SELW-1:0]==fill_buf)) && !rd_hit1) begin
+                rd_sel1=i[SELW-1:0]; rd_hit1=1'b1;
+            end
+    end
+    always @* rd_resident1 = rd_hit1;
+    reg [63:0] beat_e_q1, beat_o_q1;
+    always @(posedge clk) begin
+        beat_e_q1 <= mem_e[{rd_sel1, idx_e}];
+        beat_o_q1 <= mem_o[{rd_sel1, idx_o}];
+    end
+    wire [63:0]  lo_beat1 = b_odd_q ? beat_o_q1 : beat_e_q1;
+    wire [63:0]  hi_beat1 = b_odd_q ? beat_e_q1 : beat_o_q1;
+    wire [127:0] window1  = {hi_beat1, lo_beat1};
+    always @* rd_data_v1    = window1[ {sub_q,3'b000} +: 24 ];
+    always @* rd_data_v1_h1 = lastcol_q ? rd_data_v1 : window1[ base_h1 +: 24 ];
 
     // ---- fill FSM: A line, then (if blend) B line, on one DataMover port ----
     always @(posedge clk) begin
