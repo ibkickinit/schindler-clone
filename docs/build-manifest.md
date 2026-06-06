@@ -1158,6 +1158,9 @@ Gate `pg_cadence_tb`: N=5 blend=0, N=7 blend=130/437, collisions=0, min_lap=4. �
   skid-push, stage R0 (register taps), stage R (register lerp), and dropping the provably-dead clamp:
   −7.8 → −5.6 → −0.056 → **+0.109**. Framing is push-time (latency-independent) so the +3 pipeline stages
   only needed +ospace reserve; no SOF/EOL impact.
-- **BENCH TODO:** program #38, verify (a) gamma slider fast/large jumps = no chroma + live-drag smooth,
-  (b) Resample→Bilinear makes 200% zoom smooth. Then UI gamma slider can return to live-drag ('input').
+- ✅ **BENCH-VALIDATED 2026-06-06** (Justin): H-bilinear clean ("works great"); gamma chroma initially
+  PERSISTED → root cause = a **multi-bit CDC RACE in the LUT load** (gamma_put wrote data+toggle in one
+  GPIO word). **Fixed in firmware** (ELF `ae42930`, data-then-strobe; #38 bitstream unchanged) + re-archived
+  `38-720p60-gamma-bilinear`. Gamma chroma GONE + stable across reloads; live-drag restored (`d4c05fb`).
+  #114 closed. See [[schindler_gradient_chroma_readengine]].
 - Next read-engine: **#107b V-bilinear** (2nd read port; row+1 resident — no 2nd fetch).
