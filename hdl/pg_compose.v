@@ -135,11 +135,11 @@ module pg_compose #(
     reg  [AW-1:0] owr, ord;
     wire ofull  = (ocount == FIFO_DEPTH[AW:0]);
     wire oempty = (ocount == 0);
-    wire ospace = (ocount < (FIFO_DEPTH-5));   // reserve 5: C1 + 3-stage blend pipeline in flight
+    wire ospace = (ocount < (FIFO_DEPTH-6));   // reserve 6: C1 + stage R (#107) + 3-stage blend in flight
 
     // ---------- skid FIFO at addrgen output (absorbs addrgen's 1-cyc latency) ----------
     localparam integer SK = 8, SKW = 3;
-    reg  [37:0] skid [0:SK-1];     // {h_frac[11:0], new_row, inwin, src_row[11:0], src_col[11:0]}  (#107 +h_frac)
+    reg  [33:0] skid [0:SK-1];     // {fw[7:0], new_row, inwin, src_row[11:0], src_col[11:0]}  (#107: precomputed Q0.8 H weight)
     reg  [SKW:0] scount;
     reg  [SKW-1:0] swr, srd;
     wire sfull  = (scount == SK[SKW:0]);
@@ -171,10 +171,15 @@ module pg_compose #(
     end
 
     // ---------- skid push (from addrgen) ----------
+    // #107: precompute the Q0.8 bilinear weight HERE (one multiply, registered into the skid)
+    // so the live blend path carries only the lerp — keeps timing closure (the fw multiply +
+    // lerp combinational together blew WNS -7.8).  fw = (h_frac/win_w) via firmware Q0.16 inv_w.
+    wire [27:0] fwprod_p = a_h_frac * inv_w;
+    wire [7:0]  fw_push   = fwprod_p[16] ? 8'd255 : fwprod_p[15:8];
     always @(posedge clk) begin
         if (!rstn || sof) begin swr <= 0; end
         else if (a_valid && !sfull) begin
-            skid[swr] <= {a_h_frac, a_newrow, a_inwin, a_src_row, a_src_col};
+            skid[swr] <= {fw_push, a_newrow, a_inwin, a_src_row, a_src_col};
             swr <= swr + 1'b1;
         end
     end
@@ -205,24 +210,22 @@ module pg_compose #(
     function [23:0] lerp24; input [23:0] a,b; input [7:0] fw;
         lerp24 = { lerp8(a[23:16],b[23:16],fw), lerp8(a[15:8],b[15:8],fw), lerp8(a[7:0],b[7:0],fw) };
     endfunction
-    // H weight for the consumer pixel: fw = c1_hfrac/out_w_win, via firmware Q0.16 reciprocal inv_w.
-    reg  [11:0] c1_hfrac;                          // latched H fraction (aligned with m3_rd_data at c1_valid)
-    wire [27:0] hfprod = c1_hfrac * inv_w;         // (hfrac/win)<<16 for hfrac<win
-    wire [7:0]  fw_h   = hfprod[16] ? 8'd255 : hfprod[15:8];
+    // H weight (Q0.8) precomputed at skid-push, latched at pop → aligned with m3_rd_data here.
+    reg  [7:0]  c1_fw;
     // filtered source samples (filt_mode==0 → exact NN, zero regression)
     wire [23:0] A_in = (filt_mode==2'd0) ? m3_rd_data
                      : (filt_mode==2'd1) ? avg2  (m3_rd_data,  m3_rd_data_h1)
-                     :                     lerp24(m3_rd_data,  m3_rd_data_h1, fw_h);
+                     :                     lerp24(m3_rd_data,  m3_rd_data_h1, c1_fw);
     wire [23:0] B_in = (filt_mode==2'd0) ? m3_rd_data2
                      : (filt_mode==2'd1) ? avg2  (m3_rd_data2, m3_rd_data2_h1)
-                     :                     lerp24(m3_rd_data2, m3_rd_data2_h1, fw_h);
+                     :                     lerp24(m3_rd_data2, m3_rd_data2_h1, c1_fw);
 
     // skid head descriptor
     wire        h_new   = skid[srd][25];
     wire        h_inwin = skid[srd][24];
     wire [11:0] h_srow  = skid[srd][23:12];
     wire [11:0] h_scol  = skid[srd][11:0];
-    wire [11:0] h_hfrac = skid[srd][37:26];   // #107: this pixel's H DDA fraction (denom = out_w_win)
+    wire [7:0]  h_fw    = skid[srd][33:26];   // #107: this pixel's precomputed Q0.8 bilinear weight
 
     pg_linefetch #(.LINE_W(IN_W), .STRIDE(STRIDE), .NBUF(NBUF)) u_fetch (
         .clk(clk), .rstn(rstn),
@@ -253,7 +256,7 @@ module pg_compose #(
                 c1_valid <= 1'b1;
                 c1_inwin <= h_inwin;
                 c1_matte <= matte_l;
-                c1_hfrac <= h_hfrac;          // #107: ride the fraction with rd_data into the c1_valid cycle
+                c1_fw <= h_fw;                // #107: ride the precomputed weight with rd_data to c1_valid
                 srd <= srd + 1'b1;            // pop head
             end
         end
@@ -267,6 +270,15 @@ module pg_compose #(
     // alpha_q15 + blend_l are frame-constant (used directly, not pipelined). Functionally
     // identical to the gate-validated lerp; just pipelined. push lands 3 cyc after C1
     // (order-preserving → SOF/EOL bookkeeping below unaffected; ospace reserves the depth).
+    // ---- Stage R (#107): register the H-resampled A/B samples. Isolates the bilinear lerp
+    // multiply from the Mackin S1 diff so each fits one clock (the combined path blew WNS -7.8).
+    // Framing is push-time (latency-independent), so this extra stage only needs +1 ospace reserve.
+    reg        r_v, r_in;
+    reg [23:0] r_matte, r_A, r_B;
+    always @(posedge clk) begin
+        if (!rstn || sof) r_v <= 1'b0;
+        else begin r_v <= c1_valid; r_in <= c1_inwin; r_matte <= c1_matte; r_A <= A_in; r_B <= B_in; end
+    end
     reg               s1_v, s1_in, s2_v, s2_in, s3_v;
     reg [23:0]        s1_matte, s1_A, s2_matte, s2_A, s3_data;
     reg signed [10:0] s1_dR, s1_dB, s1_dG;
@@ -274,11 +286,11 @@ module pg_compose #(
     always @(posedge clk) begin
         if (!rstn || sof) begin s1_v<=1'b0; s2_v<=1'b0; s3_v<=1'b0; end
         else begin
-            // S1: per-channel diff (B - A), on the H-filtered samples. valid in c1_valid cycle.
-            s1_v <= c1_valid; s1_in <= c1_inwin; s1_matte <= c1_matte; s1_A <= A_in;
-            s1_dR <= $signed({3'b0,B_in[23:16]}) - $signed({3'b0,A_in[23:16]});
-            s1_dB <= $signed({3'b0,B_in[15:8]})  - $signed({3'b0,A_in[15:8]});
-            s1_dG <= $signed({3'b0,B_in[7:0]})   - $signed({3'b0,A_in[7:0]});
+            // S1: per-channel diff (B - A), on the stage-R resampled samples.
+            s1_v <= r_v; s1_in <= r_in; s1_matte <= r_matte; s1_A <= r_A;
+            s1_dR <= $signed({3'b0,r_B[23:16]}) - $signed({3'b0,r_A[23:16]});
+            s1_dB <= $signed({3'b0,r_B[15:8]})  - $signed({3'b0,r_A[15:8]});
+            s1_dG <= $signed({3'b0,r_B[7:0]})   - $signed({3'b0,r_A[7:0]});
             // S2: alpha * diff (DSP)
             s2_v <= s1_v; s2_in <= s1_in; s2_matte <= s1_matte; s2_A <= s1_A;
             s2_pR <= aq * s1_dR; s2_pB <= aq * s1_dB; s2_pG <= aq * s1_dG;
