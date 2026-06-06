@@ -411,18 +411,27 @@ static u32      g_s2mm_vsize = 0;     /* saved S2MM VSIZE (@0x80) to re-arm the 
 
 static void colortemp_preset(unsigned k)
 {
+    /* CONTINUOUS white-balance tint from Kelvin (3200..10000), piecewise-linear between the
+     * calibrated anchors below — exact at the old presets, smooth in between (for a 100K slider).
+     * Relative to D65 (6500K) = video/display neutral. Warmer (<6500) cuts blue; cooler (>6500)
+     * cuts red. Approximate operator "look", not chromaticity-calibrated. */
+    static const unsigned KA[6] = {3200,4800,5600,6500,8000,10000};
+    static const int      RA[6] = {255, 255, 255, 255, 230, 205};
+    static const int      GA[6] = {220, 235, 246, 255, 242, 228};
+    static const int      BA[6] = {160, 195, 225, 255, 255, 255};
+    unsigned i;
+    if (k == 0u) k = 6500u;                                 /* 0 = neutral = D65 */
     g_colortemp = k;
-    /* White-balance tint via white-point gain, relative to D65 (6500K) — the VIDEO/display
-     * neutral (sRGB/Rec.709 white, and what a standard HDMI source is already encoded at, so
-     * no-tint = D65). Warmer (< 6500) cuts blue; cooler (> 6500) cuts red. Approximate (not
-     * chromaticity-calibrated) — an operator "look", until the YCbCr/matrix stage (Phase 3). */
-    switch (k) {
-        case 3200:  g_white_r = 255; g_white_g = 220; g_white_b = 160; break; /* tungsten, strong warm */
-        case 4800:  g_white_r = 255; g_white_g = 235; g_white_b = 195; break; /* warm */
-        case 5600:  g_white_r = 255; g_white_g = 246; g_white_b = 225; break; /* daylight, mild warm */
-        case 8000:  g_white_r = 230; g_white_g = 242; g_white_b = 255; break; /* cool */
-        case 10000: g_white_r = 205; g_white_g = 228; g_white_b = 255; break; /* strong cool / blue */
-        default:    g_white_r = 255; g_white_g = 255; g_white_b = 255; g_colortemp = 6500; break; /* D65 neutral */
+    if (k <= KA[0]) { g_white_r=RA[0]; g_white_g=GA[0]; g_white_b=BA[0]; return; }
+    if (k >= KA[5]) { g_white_r=RA[5]; g_white_g=GA[5]; g_white_b=BA[5]; return; }
+    for (i = 0; i < 5u; i++) {
+        if (k <= KA[i+1]) {
+            int span = (int)(KA[i+1]-KA[i]), d = (int)(k-KA[i]);
+            g_white_r = (unsigned)(RA[i] + (RA[i+1]-RA[i])*d/span);   /* lerp (signed deltas) */
+            g_white_g = (unsigned)(GA[i] + (GA[i+1]-GA[i])*d/span);
+            g_white_b = (unsigned)(BA[i] + (BA[i+1]-BA[i])*d/span);
+            return;
+        }
     }
 }
 
@@ -1020,9 +1029,10 @@ static unsigned g_re_matte = 0, g_re_engine = 0, g_re_blend = 0;
 static void re_write_geometry(void)
 {
     unsigned w = g_re_w, h = g_re_h;
-    /* scale 1..200% of the output raster (w>OUT_RASTER => upscaled = zoom in). */
-    if (w < 1) w = 1; if (w > 2u*OUT_RASTER_W) w = 2u*OUT_RASTER_W;
-    if (h < 1) h = 1; if (h > 2u*OUT_RASTER_H) h = 2u*OUT_RASTER_H;
+    /* scale 1..300% of the output raster (w>OUT_RASTER => upscaled = zoom in).
+     * 3x: out_w_win up to 3840 (<4095, 12-bit OK); centered base_x = (1280-3840)/2 = -1280 (within ±2047). */
+    if (w < 1) w = 1; if (w > 3u*OUT_RASTER_W) w = 3u*OUT_RASTER_W;
+    if (h < 1) h = 1; if (h > 3u*OUT_RASTER_H) h = 3u*OUT_RASTER_H;
 
     /* SIGNED window translation. Place the (scaled w x h) image at output
      *   (px,py) = anchor_base + user_shift.

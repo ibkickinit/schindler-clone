@@ -595,9 +595,9 @@ class Dispatcher:
         def clampi(v: Any, lo: int, hi: int) -> int:
             iv = int(round(float(v)))
             return lo if iv < lo else hi if iv > hi else iv
-        # scale up to 200% of the 720p output raster (2560x1440); firmware clamps too.
-        w = clampi(params.get("w", 1280), 1, 2560)
-        h = clampi(params.get("h", 720), 1, 1440)
+        # scale up to 300% of the 720p output raster (3840x2160); firmware clamps to 3× too.
+        w = clampi(params.get("w", 1280), 1, 3840)
+        h = clampi(params.get("h", 720), 1, 2160)
         # signed shift; range lets the image be pushed fully off-screen at 100%.
         x = clampi(params.get("x", 0), -2560, 2560)
         y = clampi(params.get("y", 0), -1440, 1440)

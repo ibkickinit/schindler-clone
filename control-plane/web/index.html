@@ -108,11 +108,11 @@
       <h2 style="margin:0 0 6px">Geometry (read-engine)</h2>
       <div style="opacity:.6;margin-bottom:6px">Scale = zoom (1280/720 = 100%); Shift = move the image (−ve = off the left/top edge, pixels leave the frame).</div>
       <div style="display:flex;gap:8px;align-items:center;margin:3px 0"><span style="width:64px">Scale X</span>
-        <input type="range" id="geo-sx-r" min="64" max="2560" value="1280" style="flex:1">
-        <input type="number" id="geo-sx-n" min="1" max="2560" value="1280" style="width:72px"><span style="opacity:.5">1280=100%</span></div>
+        <input type="range" id="geo-sx-r" min="64" max="3840" value="1280" style="flex:1">
+        <input type="number" id="geo-sx-n" min="1" max="3840" value="1280" style="width:72px"><span style="opacity:.5">1280=100% · 3840=300%</span></div>
       <div style="display:flex;gap:8px;align-items:center;margin:3px 0"><span style="width:64px">Scale Y</span>
-        <input type="range" id="geo-sy-r" min="64" max="1440" value="720" style="flex:1">
-        <input type="number" id="geo-sy-n" min="1" max="1440" value="720" style="width:72px"><span style="opacity:.5">720=100%</span></div>
+        <input type="range" id="geo-sy-r" min="64" max="2160" value="720" style="flex:1">
+        <input type="number" id="geo-sy-n" min="1" max="2160" value="720" style="width:72px"><span style="opacity:.5">720=100% · 2160=300%</span></div>
       <div style="display:flex;gap:8px;align-items:center;margin:3px 0"><span style="width:64px">Shift X</span>
         <input type="range" id="geo-px-r" min="-1280" max="1280" value="0" style="flex:1">
         <input type="number" id="geo-px-n" min="-1280" max="1280" value="0" style="width:72px"><span style="opacity:.5">±px</span></div>
@@ -153,14 +153,10 @@
         <button id="op-bypass">Bypass</button>
         <button id="op-freeze" disabled title="Deferred to Phase-4 still-buffer capture (VDMA-halt freeze can't un-freeze reliably)">Freeze (Phase 4)</button>
       </div>
-      <div style="margin-bottom:6px"><span style="opacity:.6">Color temp:</span>
-        <button data-temp="3200">3200K</button>
-        <button data-temp="4800">4800K</button>
-        <button data-temp="5600">5600K</button>
-        <button data-temp="6500">6500K</button>
-        <button data-temp="8000">8000K</button>
-        <button data-temp="10000">10000K</button>
-      </div>
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px"><span style="opacity:.6;width:74px">Color temp</span>
+        <input type="range" id="temp-r" min="3200" max="10000" step="100" value="6500" style="flex:1">
+        <span id="temp-val" style="width:56px;text-align:right">6500K</span>
+        <button id="temp-neutral" title="D65 neutral">Neutral</button>
       <div style="margin-bottom:6px"><span style="opacity:.6">Gamma:</span>
         <button data-gamma="0">Off</button>
         <button data-gamma="18">1.8</button>
@@ -629,6 +625,21 @@
     return { w: geo.sx, h: geo.sy, x: geo.px, y: geo.py, anchor: geo.anchor ? 1 : 0, filt: geo.filt,
              hflip: geo.hflip ? 1 : 0, vflip: geo.vflip ? 1 : 0 };
   }
+  // Single source of truth → DOM: keep every geometry control current after ANY change
+  // (sliders, anchor checkbox, flips, resample, active-ARC highlight, applied label).
+  function syncGeoUI() {
+    const setv = (id,v)=>{const e=document.getElementById(id); if(e && +e.value!==+v) e.value=v;};
+    setv("geo-sx-r",geo.sx); setv("geo-sx-n",geo.sx); setv("geo-sy-r",geo.sy); setv("geo-sy-n",geo.sy);
+    setv("geo-px-r",geo.px); setv("geo-px-n",geo.px); setv("geo-py-r",geo.py); setv("geo-py-n",geo.py);
+    const chk=(id,v)=>{const e=document.getElementById(id); if(e) e.checked=!!v;};
+    chk("geo-anchor",geo.anchor); chk("geo-hflip",geo.hflip); chk("geo-vflip",geo.vflip);
+    const f=document.getElementById("geo-filt"); if(f) f.value=String(geo.filt);
+    // active ARC = current size matches a preset AND no shift; else none
+    const arc = Object.keys(ARC_WH).find(m=>ARC_WH[m][0]===geo.sx && ARC_WH[m][1]===geo.sy && geo.px===0 && geo.py===0);
+    document.querySelectorAll("button[data-arc]").forEach(b=>b.style.background=(b.dataset.arc===arc)?"#2a6":"");
+    const g=geoCompute(), lbl=document.getElementById("geo-applied");
+    if(lbl) lbl.textContent=`G ${g.w} ${g.h} ${g.x} ${g.y} ${g.anchor} ${g.filt}`+(arc?`   (ARC: ${arc})`:"   (manual)");
+  }
   let geoInflight = false, geoPending = false;
   async function geoSend() {
     geoPending = true;
@@ -638,7 +649,7 @@
       while (geoPending) {
         geoPending = false;
         const g = geoCompute();
-        document.getElementById("geo-applied").textContent = `G ${g.w} ${g.h} ${g.x} ${g.y} ${g.anchor} ${g.filt}`;
+        syncGeoUI();
         try { await call("geom.set", g); }
         catch (e) { log(`geom.set: ${e.message}`, "err"); }
       }
@@ -670,11 +681,9 @@
       const m = b.dataset.arc, wh = ARC_WH[m];
       try {
         await call("arc.set", { mode: m });
-        // sync local geo state + sliders so the panel reflects the ARC
-        geo.sx = wh[0]; geo.sy = wh[1]; geo.px = 0; geo.py = 0;
-        const set = (id,v)=>{const e=document.getElementById(id); if(e) e.value=v;};
-        set("geo-sx-r",wh[0]); set("geo-sx-n",wh[0]); set("geo-sy-r",wh[1]); set("geo-sy-n",wh[1]);
-        set("geo-px-r",0); set("geo-px-n",0); set("geo-py-r",0); set("geo-py-n",0);
+        // ARC = centered preset window → reflect it AND clear the top-left anchor (it's center-anchored now)
+        geo.sx = wh[0]; geo.sy = wh[1]; geo.px = 0; geo.py = 0; geo.anchor = false;
+        syncGeoUI();   // updates sliders, unchecks anchor, highlights this ARC button, refreshes the label
         log(`ARC ${m}`, "ok");
       } catch (e) { log(`arc.set: ${e.message}`, "err"); }
     }));
@@ -691,11 +700,22 @@
     });
   }
   opToggle("op-mono", "mono"); opToggle("op-black", "black"); opToggle("op-bypass", "bypass"); opToggle("op-freeze", "freeze");
-  document.querySelectorAll("button[data-temp]").forEach((b) =>
-    b.addEventListener("click", async () => {
-      try { await call("operator.set", { temp: +b.dataset.temp }); log(`color temp ${b.dataset.temp || "neutral"}`, "ok"); }
-      catch (e) { log(`operator.set: ${e.message}`, "err"); }
-    }));
+  // Color-temp slider (100K steps, 3200..10000) — live debounced; firmware interpolates white balance.
+  let tempTimer = null;
+  const tr = document.getElementById("temp-r"), tv = document.getElementById("temp-val");
+  const tempCommit = async (k) => {
+    try { await call("operator.set", { temp: k }); log(`color temp ${k}K`, "ok"); }
+    catch (e) { log(`operator.set: ${e.message}`, "err"); }
+  };
+  if (tr) {
+    tr.addEventListener("input", () => {
+      const k = +tr.value; tv.textContent = k + "K";
+      clearTimeout(tempTimer); tempTimer = setTimeout(() => tempCommit(k), 120);
+    });
+    tr.addEventListener("change", () => { clearTimeout(tempTimer); tempCommit(+tr.value); });
+  }
+  const tn = document.getElementById("temp-neutral");
+  if (tn) tn.addEventListener("click", () => { if(tr){tr.value=6500;} if(tv){tv.textContent="6500K";} tempCommit(6500); });
   // continuous gamma slider (0.1 steps) — LIVE drag (debounced). Safe now that the load is
   // race-free (data-then-strobe CDC) and the bank-swap is atomic (gamma_lut double-buffer):
   // dragging is a stream of clean atomic loads → smooth live preview, no chroma.
