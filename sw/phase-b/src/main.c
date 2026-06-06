@@ -925,18 +925,28 @@ static void cp_dispatch_jsonrpc(const char *json)
  * Daemon sends gamma*10 only; firmware computes the 256-entry curve (no libm, no bulk
  * transport over UART). out[i]=round(255*(i/255)^(1/g)); verified <=1 LSB vs float pow. */
 #ifdef GAMMA_GPIO_BASE
-static unsigned g_gamma_tog = 0;
+static unsigned g_gamma_tog = 0, g_gamma_swap = 0, g_gamma_byp = 1;
 
-static void gamma_write_entry(unsigned ch, unsigned addr, unsigned data, unsigned bypass)
+/* Commit one entry to the INACTIVE bank (flip the load toggle). gamma_lut is double-
+ * buffered, so this never touches the displayed bank — load at any speed, no chroma. */
+static void gamma_put(unsigned ch, unsigned addr, unsigned data)
 {
     g_gamma_tog ^= 1u;
-    u32 w = (bypass ? 1u : 0u) | (g_gamma_tog << 1) | ((ch & 3u) << 2)
-          | ((addr & 0xFFu) << 4) | ((data & 0xFFu) << 12);
+    u32 w = (g_gamma_byp ? 1u : 0u) | (g_gamma_tog << 1) | ((ch & 3u) << 2)
+          | ((addr & 0xFFu) << 4) | ((data & 0xFFu) << 12) | (g_gamma_swap << 20);
     Xil_Out32(GAMMA_GPIO_BASE, w);
-    /* Hold each toggle edge long enough for the pixel-clock CDC (t_q1..t_q3, ~3 clk @
-     * 74.25 MHz ≈ 40 ns) to catch it. Without this, back-to-back GPIO writes (~1 AXI
-     * clk apart) flip the toggle twice within one pixel clock and the write is LOST —
-     * leaving stale per-channel LUT entries (gray → cyan speckle). 1 µs = huge margin. */
+    /* Hold each load-toggle edge long enough for the pixel-clock CDC (t_q1..t_q3 ~3 clk
+     * @ 74.25 MHz ≈ 40 ns) to catch it, or the write is lost. 1 µs = huge margin. */
+    usleep(1);
+}
+/* Set bypass and optionally request a bank swap. Does NOT flip the load toggle, so no
+ * spurious LUT write; the swap (if requested) commits atomically at the next SOF. */
+static void gamma_set_byp_swap(unsigned bypass, unsigned do_swap)
+{
+    g_gamma_byp = bypass ? 1u : 0u;
+    if (do_swap) g_gamma_swap ^= 1u;
+    u32 w = (g_gamma_byp ? 1u : 0u) | (g_gamma_tog << 1) | (g_gamma_swap << 20);
+    Xil_Out32(GAMMA_GPIO_BASE, w);
     usleep(1);
 }
 
@@ -962,26 +972,24 @@ static u32 powq16(u32 x, u32 p)
 static void gamma_load(unsigned gx10)
 {
     if (gx10 == 0u || gx10 == 10u) {
-        gamma_write_entry(0, 0, 0, 1);
+        gamma_set_byp_swap(1, 0);           /* off / linear → bypass (no swap needed) */
         g_gamma = 0u;
         xil_printf("GAMMA: off (linear)\r\n");
         return;
     }
-    /* If gamma is already ON (e.g. sliding), load OVER the live LUT (bypass stays 0) so there's
-     * no transparent flash per step — adjacent 0.1-step curves differ <1 LSB so the in-progress
-     * transient is invisible. Only turning gamma ON from OFF uses the clean transparent-then-enable. */
-    unsigned lb = (g_gamma != 0u) ? 0u : 1u;
-    u32 inv_q16 = 655360u / gx10;          /* (1/g) in Q16 */
+    /* Compute the curve into the INACTIVE bank (display untouched — no chroma at any load
+     * speed), then enable + swap: the new bank goes live atomically at the next SOF. */
+    u32 inv_q16 = 655360u / gx10;           /* (1/g) in Q16 */
     unsigned i;
     for (i = 0; i < 256; i++) {
         u32 x = (i == 255u) ? 65536u : ((u32)i * 65536u) / 255u;
         u32 v = powq16(x, inv_q16);
         u32 d = (v * 255u + 32768u) >> 16; if (d > 255u) d = 255u;
-        gamma_write_entry(0, i, (u8)d, lb);
-        gamma_write_entry(1, i, (u8)d, lb);
-        gamma_write_entry(2, i, (u8)d, lb);
+        gamma_put(0, i, (u8)d);
+        gamma_put(1, i, (u8)d);
+        gamma_put(2, i, (u8)d);
     }
-    gamma_write_entry(0, 0, 0, 0);          /* ensure enabled */
+    gamma_set_byp_swap(0, 1);               /* enable + swap-at-next-SOF */
     g_gamma = gx10;
     xil_printf("GAMMA: %u.%u\r\n", gx10 / 10u, gx10 % 10u);
 }

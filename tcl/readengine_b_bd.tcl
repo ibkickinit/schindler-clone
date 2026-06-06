@@ -187,11 +187,13 @@ re_slice sl_g_tog  axi_gpio_11 gpio_io_o 1  1
 re_slice sl_g_ch   axi_gpio_11 gpio_io_o 3  2
 re_slice sl_g_addr axi_gpio_11 gpio_io_o 11 4
 re_slice sl_g_data axi_gpio_11 gpio_io_o 19 12
+re_slice sl_g_swap axi_gpio_11 gpio_io_o 20 20   ;# double-buffer bank-swap toggle (#114)
 connect_bd_net [get_bd_pins sl_g_byp/Dout]  [get_bd_pins gamma_lut_0/bypass]
 connect_bd_net [get_bd_pins sl_g_tog/Dout]  [get_bd_pins gamma_lut_0/lut_tog]
 connect_bd_net [get_bd_pins sl_g_ch/Dout]   [get_bd_pins gamma_lut_0/lut_ch]
 connect_bd_net [get_bd_pins sl_g_addr/Dout] [get_bd_pins gamma_lut_0/lut_addr]
 connect_bd_net [get_bd_pins sl_g_data/Dout] [get_bd_pins gamma_lut_0/lut_data]
+connect_bd_net [get_bd_pins sl_g_swap/Dout] [get_bd_pins gamma_lut_0/swap]
 
 # ---------------------------------------------------------------------------
 # ILA instrumentation (2026-06-02) — pin the read-engine ghost: addressing vs

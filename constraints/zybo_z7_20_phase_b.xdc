@@ -116,6 +116,7 @@ set_false_path -to [get_pins {phase_b_bd_i/gamma_lut_0/inst/byp_q1_reg/D}]
 set_false_path -to [get_pins {phase_b_bd_i/gamma_lut_0/inst/ch_q1_reg[*]/D}]
 set_false_path -to [get_pins {phase_b_bd_i/gamma_lut_0/inst/ad_q1_reg[*]/D}]
 set_false_path -to [get_pins {phase_b_bd_i/gamma_lut_0/inst/da_q1_reg[*]/D}]
+set_false_path -to [get_pins {phase_b_bd_i/gamma_lut_0/inst/sw_q1_reg/D}]   ;# #114 double-buffer swap CDC
 
 # scaler_top runtime IN_W/IN_H CDC false-paths (axi clock → pclk_in domain).
 # Same /inst/ rule.
