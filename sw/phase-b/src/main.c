@@ -939,12 +939,19 @@ static unsigned g_gamma_tog = 0, g_gamma_swap = 0, g_gamma_byp = 1;
  * buffered, so this never touches the displayed bank — load at any speed, no chroma. */
 static void gamma_put(unsigned ch, unsigned addr, unsigned data)
 {
+    /* DATA-then-STROBE clock-domain crossing. Present ch/addr/data with the load toggle
+     * UNCHANGED, let the data's 2-FF sync settle, THEN flip the toggle in a separate write.
+     * The receiver detects the toggle edge (3-FF) only AFTER the data is already stable at
+     * its q2 regs → no metastability skew between the toggle edge and the multi-bit data.
+     * Writing data + toggle in one word raced (toggle edge could land a cycle off from the
+     * settled data) → random per-entry corruption → gray turned chromatic (the persistent
+     * #114 bug; double-buffer + usleep couldn't fix a fundamentally racy load). */
+    u32 base = (g_gamma_byp ? 1u : 0u) | ((ch & 3u) << 2)
+             | ((addr & 0xFFu) << 4) | ((data & 0xFFu) << 12) | (g_gamma_swap << 20);
+    Xil_Out32(GAMMA_GPIO_BASE, base | (g_gamma_tog << 1));   /* 1) data; toggle unchanged */
+    usleep(1);                                               /*    let the data CDC settle */
     g_gamma_tog ^= 1u;
-    u32 w = (g_gamma_byp ? 1u : 0u) | (g_gamma_tog << 1) | ((ch & 3u) << 2)
-          | ((addr & 0xFFu) << 4) | ((data & 0xFFu) << 12) | (g_gamma_swap << 20);
-    Xil_Out32(GAMMA_GPIO_BASE, w);
-    /* Hold each load-toggle edge long enough for the pixel-clock CDC (t_q1..t_q3 ~3 clk
-     * @ 74.25 MHz ≈ 40 ns) to catch it, or the write is lost. 1 µs = huge margin. */
+    Xil_Out32(GAMMA_GPIO_BASE, base | (g_gamma_tog << 1));   /* 2) flip toggle → commit settled data */
     usleep(1);
 }
 /* Set bypass and optionally request a bank swap. Does NOT flip the load toggle, so no
