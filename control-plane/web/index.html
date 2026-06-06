@@ -102,6 +102,11 @@
   </header>
 
   <main>
+    <div id="tabnav" style="display:flex;gap:6px;margin:8px 0">
+      <button id="tab-btn-live" style="background:#2a6">Live</button>
+      <button id="tab-btn-settings">Settings</button>
+    </div>
+    <div id="tab-live">
     <div id="banner" hidden></div>
     <div style="margin:8px 0;text-align:right">
       <button id="factory-reset" style="background:#622;color:#fcc" title="Reset all settings to factory defaults">⟳ Factory Reset</button>
@@ -226,6 +231,30 @@
       <button id="fb-download" style="margin-top:6px">Download PNG</button>
       <span style="opacity:.5;font-size:11px">&nbsp;(captured frame; res is UART-transport-limited)</span>
     </div>
+    </div><!-- /tab-live -->
+
+    <div id="tab-settings" hidden>
+      <div class="controls" style="margin:8px 0;padding:8px;border:1px solid #555;border-radius:4px">
+        <h2 style="margin:0 0 6px">Device</h2>
+        <div id="set-device" style="font-family:monospace;opacity:.85;white-space:pre-wrap">loading…</div>
+      </div>
+      <div class="controls" style="margin:8px 0;padding:8px;border:1px solid #555;border-radius:4px">
+        <h2 style="margin:0 0 6px">Profiles</h2>
+        <div id="set-profiles" style="margin-bottom:6px">loading…</div>
+        <div><input id="set-profile-name" placeholder="profile name" style="width:160px">
+          <button id="set-profile-save">Save current</button></div>
+        <div style="opacity:.5;font-size:.9em;margin-top:4px">Profiles capture the color/catalog
+          controls (saturation, RGB, matrix…). Geometry/temp/gamma profiling is a future extension.</div>
+      </div>
+      <div class="controls" style="margin:8px 0;padding:8px;border:1px solid #555;border-radius:4px">
+        <h2 style="margin:0 0 6px">Network</h2>
+        <div style="font-family:monospace;opacity:.6">Hostname <b>—</b> &nbsp; IP <b>—</b> &nbsp; (DHCP)</div>
+        <div style="opacity:.5;font-size:.9em;margin-top:4px">Network config applies <b>on-target</b>
+          (PetaLinux). The daemon currently runs on the dev host, so these are read-only placeholders
+          until on-target deployment.</div>
+      </div>
+    </div>
+
     <div id="log"></div>
   </main>
 
@@ -749,6 +778,53 @@
       setEl("gamma-r",1.0); setEl("gamma-val",undefined,"1.0");
       log("factory reset → defaults", "ok");
     } catch (e) { log(`factory reset: ${e.message}`, "err"); }
+  });
+  // ---- Live / Settings tabs ----
+  function showTab(which) {
+    const live = which === "live";
+    document.getElementById("tab-live").hidden = !live;
+    document.getElementById("tab-settings").hidden = live;
+    document.getElementById("tab-btn-live").style.background = live ? "#2a6" : "";
+    document.getElementById("tab-btn-settings").style.background = live ? "" : "#2a6";
+    if (!live) loadSettings();
+  }
+  document.getElementById("tab-btn-live").addEventListener("click", () => showTab("live"));
+  document.getElementById("tab-btn-settings").addEventListener("click", () => showTab("settings"));
+  async function loadSettings() {
+    try {
+      const id = await call("system.identify"); const fw = id.firmware || {};
+      document.getElementById("set-device").textContent =
+        `daemon    ${id.daemon} v${id.daemon_version}\ncatalog   ${id.catalog}\n` +
+        `firmware  ${typeof fw === "object" ? JSON.stringify(fw) : fw}`;
+    } catch (e) { document.getElementById("set-device").textContent = "identify failed: " + e.message; }
+    await refreshProfiles();
+  }
+  async function refreshProfiles() {
+    const el = document.getElementById("set-profiles");
+    try {
+      const list = await call("profile.list");
+      if (!list || !list.length) { el.textContent = "(no saved profiles)"; return; }
+      el.innerHTML = "";
+      list.forEach((p) => {
+        const name = (typeof p === "string") ? p : p.name;
+        const b = document.createElement("button"); b.style.marginRight = "6px";
+        b.textContent = "Load " + name + (p && p.factory ? " (factory)" : "");
+        b.addEventListener("click", async () => {
+          try {
+            const r = await call("profile.load", { name });
+            log(`profile '${name}': applied ${r.applied ? r.applied.length : 0}, skipped ${r.skipped ? r.skipped.length : 0}`, "ok");
+            refreshAllValues();
+          } catch (e) { log(`profile.load: ${e.message}`, "err"); }
+        });
+        el.appendChild(b);
+      });
+    } catch (e) { el.textContent = "profile.list failed: " + e.message; }
+  }
+  document.getElementById("set-profile-save").addEventListener("click", async () => {
+    const name = (document.getElementById("set-profile-name").value || "").trim();
+    if (!name) { log("enter a profile name", "err"); return; }
+    try { await call("profile.save", { name }); log(`saved profile '${name}'`, "ok"); refreshProfiles(); }
+    catch (e) { log(`profile.save: ${e.message}`, "err"); }
   });
   // scale-anchor checkbox: unchecked = center (default), checked = top-left corner.
   document.getElementById("geo-anchor").addEventListener("change", (e) => {
