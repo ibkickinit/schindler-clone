@@ -126,6 +126,18 @@ is loaded. No divide. The complexity is **authoring the mesh** (the UI), not the
 Each correction after the engine is incremental (one addrgen variant); the fetch/bilinear/FRC/compose
 tail is shared and done.
 
+## Validation status (math proven in software, pre-HDL)
+
+All three maps rendered through a straight reference grid (`tools/pincushion_preview.py`,
+`tools/correction_preview.py`) and verified visually:
+- **Pincushion** ✅ — +k₁ barrel / −k₁ pincushion, symmetric, linear (±0.30 = ±192 px corner), k₁=0 = identity.
+- **Keystone** ✅ — clean perspective trapezoid; the per-pixel `/w` divide behaves (kv=0.30 = floor-recede).
+- **Warp mesh (9×9)** ✅ — sampling the pincushion map into a mesh reproduces the parametric render
+  (proves the mesh **subsumes** the parametric corrections; slight cell-boundary faceting on a smooth
+  radial is the mesh-vs-parametric tradeoff → finer mesh or use the parametric path for pure lens curves).
+
+So the addrgen math for all three is settled; only the (deferred) engine HDL remains.
+
 ## Open questions
 - Distortion **center** offset: needed for off-axis lenses? (v1 = image center.)
 - Keystone divide: reciprocal-LUT precision vs a true pipelined divider — settle at HDL time.
