@@ -602,7 +602,7 @@ class Dispatcher:
         x = clampi(params.get("x", 0), -2560, 2560)
         y = clampi(params.get("y", 0), -1440, 1440)
         anchor = 1 if params.get("anchor", 0) else 0
-        filt = 1 if params.get("filt", 0) else 0   # read-side 2-tap H anti-alias
+        filt = clampi(params.get("filt", 0), 0, 3)  # #107: 0=NN 1=2-tap box 2=H-bilinear 3=H+V-bilinear
         hflip = 1 if params.get("hflip", 0) else 0
         vflip = 1 if params.get("vflip", 0) else 0  # 180° = both
         # Only emit the flip command when it actually changes — otherwise every size/shift

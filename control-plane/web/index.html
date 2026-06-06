@@ -120,7 +120,13 @@
         <input type="range" id="geo-py-r" min="-720" max="720" value="0" style="flex:1">
         <input type="number" id="geo-py-n" min="-720" max="720" value="0" style="width:72px"><span style="opacity:.5">±px</span></div>
       <label style="display:block;margin:6px 0"><input type="checkbox" id="geo-anchor"> Anchor scale to top-left corner&nbsp;<span style="opacity:.5">(unchecked = scale about center)</span></label>
-      <label style="display:block;margin:6px 0"><input type="checkbox" id="geo-filt"> Anti-alias (2-tap H)&nbsp;<span style="opacity:.5">(softens zoom/scale; horizontal pass)</span></label>
+      <label style="display:block;margin:6px 0">Resample:
+        <select id="geo-filt">
+          <option value="0">Nearest (sharp)</option>
+          <option value="1">2-tap box</option>
+          <option value="2">Bilinear (H)</option>
+          <option value="3">Bilinear (H+V)</option>
+        </select>&nbsp;<span style="opacity:.5">(Bilinear = smooth zoom)</span></label>
       <label style="display:inline-block;margin:6px 12px 6px 0"><input type="checkbox" id="geo-hflip"> Flip H</label>
       <label style="display:inline-block;margin:6px 0"><input type="checkbox" id="geo-vflip"> Flip V&nbsp;<span style="opacity:.5">(both = 180°)</span></label>
       <div style="margin-top:6px"><span style="opacity:.6">ARC:</span>
@@ -618,9 +624,9 @@
   //   Shift  : signed output px. Negative pushes the image off the left/top edge — those
   //            pixels leave the frame and matte fills the opposite edge. Works at 100%.
   //   anchor : false = scale about image CENTER (default); true = anchor TOP-LEFT corner.
-  const geo = { sx: 1280, sy: 720, px: 0, py: 0, anchor: false, filt: false, hflip: false, vflip: false };
+  const geo = { sx: 1280, sy: 720, px: 0, py: 0, anchor: false, filt: 0, hflip: false, vflip: false };
   function geoCompute() {
-    return { w: geo.sx, h: geo.sy, x: geo.px, y: geo.py, anchor: geo.anchor ? 1 : 0, filt: geo.filt ? 1 : 0,
+    return { w: geo.sx, h: geo.sy, x: geo.px, y: geo.py, anchor: geo.anchor ? 1 : 0, filt: geo.filt,
              hflip: geo.hflip ? 1 : 0, vflip: geo.vflip ? 1 : 0 };
   }
   let geoInflight = false, geoPending = false;
@@ -650,9 +656,9 @@
   document.getElementById("geo-anchor").addEventListener("change", (e) => {
     geo.anchor = e.target.checked; geoSend();
   });
-  // read-side 2-tap horizontal anti-alias filter
+  // #107 read-side resample mode: 0=NN 1=2-tap box 2=H-bilinear 3=H+V-bilinear
   document.getElementById("geo-filt").addEventListener("change", (e) => {
-    geo.filt = e.target.checked; geoSend();
+    geo.filt = +e.target.value; geoSend();
   });
   // flips (180° = both)
   document.getElementById("geo-hflip").addEventListener("change", (e) => { geo.hflip = e.target.checked; geoSend(); });
