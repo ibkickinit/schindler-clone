@@ -696,18 +696,21 @@
       try { await call("operator.set", { temp: +b.dataset.temp }); log(`color temp ${b.dataset.temp || "neutral"}`, "ok"); }
       catch (e) { log(`operator.set: ${e.message}`, "err"); }
     }));
-  // continuous gamma slider (0.1 steps). Commit the LUT load on RELEASE only ('change'),
-  // not mid-drag ('input') — a fast/large drag is then ONE clean load instead of a stream of
-  // half-load transients (the current load-over-live writes R/B/G per address non-atomically,
-  // so a mid-load LUT briefly reads chromatic). 'input' just updates the live label.
+  // continuous gamma slider (0.1 steps) — LIVE drag (debounced). Safe now that the load is
+  // race-free (data-then-strobe CDC) and the bank-swap is atomic (gamma_lut double-buffer):
+  // dragging is a stream of clean atomic loads → smooth live preview, no chroma.
+  let gammaTimer = null;
   const gr = document.getElementById("gamma-r"), gv = document.getElementById("gamma-val");
+  const gammaCommit = async (g) => {
+    try { await call("gamma.set", { gamma: g }); log(`gamma γ=${g.toFixed(1)}`, "ok"); }
+    catch (e) { log(`gamma.set: ${e.message}`, "err"); }
+  };
   if (gr) {
-    gr.addEventListener("input", () => { gv.textContent = parseFloat(gr.value).toFixed(1); });
-    gr.addEventListener("change", async () => {
-      const g = parseFloat(gr.value);
-      try { await call("gamma.set", { gamma: g }); log(`gamma γ=${g.toFixed(1)}`, "ok"); }
-      catch (e) { log(`gamma.set: ${e.message}`, "err"); }
+    gr.addEventListener("input", () => {
+      const g = parseFloat(gr.value); gv.textContent = g.toFixed(1);
+      clearTimeout(gammaTimer); gammaTimer = setTimeout(() => gammaCommit(g), 120);
     });
+    gr.addEventListener("change", () => { clearTimeout(gammaTimer); gammaCommit(parseFloat(gr.value)); });
   }
   document.querySelectorAll("button[data-gamma]").forEach((b) =>
     b.addEventListener("click", async () => {
