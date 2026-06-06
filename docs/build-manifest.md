@@ -1143,3 +1143,21 @@ Gate `pg_cadence_tb`: N=5 blend=0, N=7 blend=130/437, collisions=0, min_lap=4. �
   was healthy (VTC configured 1080p30, FRC running, `DRAIN delta_px=0`). Open Q (#115): does the read
   engine emit a true 1920×1080 raster under OUTPUT_1080P, or 720-shaped data into a 1080 raster? Needs a
   1080p30-capable display / scope. Do NOT trust the monitor/MS2109 verdict. 1080-OUT columns blocked on this.
+
+## Build #38 — gamma double-buffer (#114) + H-bilinear resample (#107a) (2026-06-06) ✅ CLEAN, bench-ready
+- Commits up to `4a49211` on iter5-1080p-clean. WNS **+0.109**, WHS **+0.016**. Bundles two HDL features,
+  both sim-verified bit-exact (latency-independent golden) and built off-bench. **Archived:**
+  `artifacts/38-720p60-gamma-bilinear/` → `scripts/program-archived.sh 38-720p60-gamma-bilinear` (~30 s, no rebuild).
+- **#114 gamma double-buffer:** `gamma_lut` 2-bank, firmware loads the hidden bank then swaps atomically at
+  SOF → kills the load chroma + restores live-drag (replaces the re-attributed read-engine theory; sim TB
+  proves loads don't touch the display, swap only at SOF).
+- **#107a H-bilinear:** `pg_addrgen` exposes the DDA fraction; `pg_compose` does a fraction-weighted col/col+1
+  lerp (filt_mode 2). Firmware Q0.16 reciprocal (`axi_gpio_12`), `filt_mode` GEO_C ch2 [31:30], UART `F 0|1|2|3`,
+  UI "Resample" selector. Smooth zoom vs old NN-blocky. TB golden cross-checked (unsigned ref ≡ HW signed lerp).
+- **Timing grind (4 builds):** the bilinear lerp blew WNS −7.8 (#35); fixed by pipelining — fw precompute at
+  skid-push, stage R0 (register taps), stage R (register lerp), and dropping the provably-dead clamp:
+  −7.8 → −5.6 → −0.056 → **+0.109**. Framing is push-time (latency-independent) so the +3 pipeline stages
+  only needed +ospace reserve; no SOF/EOL impact.
+- **BENCH TODO:** program #38, verify (a) gamma slider fast/large jumps = no chroma + live-drag smooth,
+  (b) Resample→Bilinear makes 200% zoom smooth. Then UI gamma slider can return to live-drag ('input').
+- Next read-engine: **#107b V-bilinear** (2nd read port; row+1 resident — no 2nd fetch).
