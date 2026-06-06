@@ -204,7 +204,9 @@ module pg_compose #(
             p  = d * $signed({1'b0,fw});                  // (b-a)*fw
             sh = (p + 20'sd128) >>> 8;                     // round + arithmetic shift
             r  = $signed({1'b0,a}) + sh;                   // a + delta
-            lerp8 = (r < 0) ? 8'd0 : ((r > 20'sd255) ? 8'd255 : r[7:0]);
+            // Interpolating two [0,255] values (fw≤255) always lands in [0,255] → no clamp needed
+            // (the compare+mux tail was the last 56 ps of WNS). r is provably in range.
+            lerp8 = r[7:0];
         end
     endfunction
     function [23:0] lerp24; input [23:0] a,b; input [7:0] fw;
