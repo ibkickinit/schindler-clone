@@ -103,9 +103,23 @@
 
   <main>
     <div id="banner" hidden></div>
-    <div id="catalog-mount"></div>
-    <div id="geometry" style="margin:8px 0;padding:8px;border:1px solid #444;border-radius:4px">
-      <h2 style="margin:0 0 6px">Geometry (read-engine)</h2>
+
+    <!-- SOURCE / INPUT — shared, upstream of both engines -->
+    <div class="controls" style="margin:8px 0;padding:8px;border:1px solid #555;border-radius:4px">
+      <h2 style="margin:0 0 6px">Source / Input</h2>
+      <div><span style="opacity:.6">Input range (colorspace):&nbsp;</span>
+        <button data-range="full">Full (0–255)</button>
+        <button data-range="limited">Limited (16–235)</button>
+      </div>
+    </div>
+
+    <!-- ENGINE 1 → OUTPUT A (HDMI): read engine + its color proc-amp -->
+    <div style="margin:8px 0;padding:8px;border:1px solid #2a6;border-radius:6px">
+      <h2 style="margin:0 0 10px;color:#7d7">Engine 1 → Output A (HDMI)</h2>
+
+      <div id="geometry" style="margin:6px 0 14px">
+        <h3 style="margin:0 0 6px">Geometry &amp; Scale</h3>
+        <label style="display:block;margin:4px 0"><input type="checkbox" id="geo-aspect" checked> Maintain aspect ratio&nbsp;<span style="opacity:.5">(lock X:Y when scaling)</span></label>
       <div style="opacity:.6;margin-bottom:6px">Scale = zoom (1280/720 = 100%); Shift = move the image (−ve = off the left/top edge, pixels leave the frame).</div>
       <div style="display:flex;gap:8px;align-items:center;margin:3px 0"><span style="width:64px">Scale X</span>
         <input type="range" id="geo-sx-r" min="64" max="3840" value="1280" style="flex:1">
@@ -137,47 +151,58 @@
         <button data-arc="letterbox">Letterbox</button>
       </div>
       <div id="geo-applied" style="font-family:monospace;margin-top:6px;opacity:.7">G 1280 720 0 0 0</div>
-      <label style="display:block;margin-top:8px">Mackin blend:&nbsp;
-        <select id="blend-mode">
-          <option value="0">Off — drop/repeat</option>
-          <option value="1">Intelligent — blend mid-phase</option>
-          <option value="2">Force — blend every frame</option>
-        </select>
-      </label>
-    </div>
-    <div class="controls" style="margin-top:10px">
-      <h2 style="margin:0 0 6px">Operator</h2>
-      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">
-        <button id="op-mono">Mono</button>
-        <button id="op-black">Black</button>
-        <button id="op-bypass">Bypass</button>
-        <button id="op-freeze" disabled title="Deferred to Phase-4 still-buffer capture (VDMA-halt freeze can't un-freeze reliably)">Freeze (Phase 4)</button>
+        <div id="mount-scaler"></div>
+      </div><!-- /Geometry -->
+
+      <div style="margin:6px 0 14px">
+        <h3 style="margin:0 0 6px">FRC (frame-rate)</h3>
+        <label style="display:block">Mackin blend:&nbsp;
+          <select id="blend-mode">
+            <option value="0">Off — drop/repeat</option>
+            <option value="1">Intelligent — blend mid-phase</option>
+            <option value="2">Force — blend every frame</option>
+          </select>
+        </label>
+        <div id="mount-frc"></div>
       </div>
-      <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px"><span style="opacity:.6;width:74px">Color temp</span>
-        <input type="range" id="temp-r" min="3200" max="10000" step="100" value="6500" style="flex:1">
-        <span id="temp-val" style="width:56px;text-align:right">6500K</span>
-        <button id="temp-neutral" title="D65 neutral">Neutral</button>
+
+      <div style="margin:6px 0 14px">
+        <h3 style="margin:0 0 6px">Color</h3>
+        <div id="mount-color"></div>
+        <div style="display:flex;gap:8px;align-items:center;margin:6px 0"><span style="opacity:.6;width:74px">Color temp</span>
+          <input type="range" id="temp-r" min="3200" max="10000" step="100" value="6500" style="flex:1">
+          <span id="temp-val" style="width:56px;text-align:right">6500K</span>
+          <button id="temp-neutral" title="D65 neutral">Neutral</button>
+        </div>
+        <div style="margin-bottom:6px"><span style="opacity:.6">Gamma:</span>
+          <button data-gamma="0">Off</button>
+          <button data-gamma="18">1.8</button>
+          <button data-gamma="22">2.2</button>
+          <button data-gamma="24">2.4</button>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
+          <span style="width:64px;opacity:.6">γ slider</span>
+          <input type="range" id="gamma-r" min="0.5" max="4.0" step="0.1" value="1.0" style="flex:1">
+          <span id="gamma-val" style="width:32px;font-family:monospace">1.0</span>
+        </div>
       </div>
-      <div style="margin-bottom:6px"><span style="opacity:.6">Gamma:</span>
-        <button data-gamma="0">Off</button>
-        <button data-gamma="18">1.8</button>
-        <button data-gamma="22">2.2</button>
-        <button data-gamma="24">2.4</button>
+
+      <div style="margin:6px 0 4px">
+        <h3 style="margin:0 0 6px">Operator</h3>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">
+          <button id="op-mono">Mono</button>
+          <button id="op-black">Black</button>
+          <button id="op-bypass">Bypass</button>
+          <button id="op-freeze" disabled title="Deferred to Phase-4 still-buffer capture (VDMA-halt freeze can't un-freeze reliably)">Freeze (Phase 4)</button>
+        </div>
+        <div><span style="opacity:.6">Fade:</span>
+          <button id="op-fade-out">→ Black</button>
+          <button id="op-fade-in">→ Up</button>
+        </div>
       </div>
-      <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
-        <span style="width:64px;opacity:.6">γ slider</span>
-        <input type="range" id="gamma-r" min="0.5" max="4.0" step="0.1" value="1.0" style="flex:1">
-        <span id="gamma-val" style="width:32px;font-family:monospace">1.0</span>
-      </div>
-      <div style="margin-bottom:6px"><span style="opacity:.6">Input range:</span>
-        <button data-range="full">Full (0–255)</button>
-        <button data-range="limited">Limited (16–235)</button>
-      </div>
-      <div><span style="opacity:.6">Fade:</span>
-        <button id="op-fade-out">→ Black</button>
-        <button id="op-fade-in">→ Up</button>
-      </div>
-    </div>
+    </div><!-- /Engine 1 → Output A -->
+
+    <div id="catalog-mount"></div><!-- fallback: System + Status sections render here -->
     <div id="metrics" hidden></div>
     <div id="framedump" hidden>
       <h3>DDR framebuffer (slot 0 thumbnail)</h3>
@@ -335,14 +360,21 @@
     for (const catDef of cat.categories || []) {
       const items = byCategory.get(catDef.id) || [];
       if (!items.length) continue;
-      const sec = document.createElement("section");
-      sec.className = "category";
-      sec.innerHTML = `<h2>${catDef.title}</h2>`;
       const grid = document.createElement("div");
       grid.className = "controls";
       for (const c of items) grid.appendChild(renderControl(c));
-      sec.appendChild(grid);
-      mount.appendChild(sec);
+      // If the static layout has a named slot for this category (mount-<id>), render INTO it
+      // (so e.g. catalog Color controls sit in the Engine-1 "Color" sub-group with temp/gamma).
+      // Otherwise fall back to a standalone titled section in #catalog-mount (system/status).
+      const named = document.getElementById(`mount-${catDef.id}`);
+      if (named) { named.innerHTML = ""; named.appendChild(grid); }
+      else {
+        const sec = document.createElement("section");
+        sec.className = "category";
+        sec.innerHTML = `<h2>${catDef.title}</h2>`;
+        sec.appendChild(grid);
+        mount.appendChild(sec);
+      }
     }
   }
 
@@ -656,14 +688,28 @@
       }
     } finally { geoInflight = false; }
   }
+  const ASPECT = 1280 / 720;   // 16:9 native source aspect
   function geoPair(key, rId, nId) {
     const r = document.getElementById(rId), n = document.getElementById(nId);
-    const set = (v) => { v = +v; if (!isFinite(v)) return; geo[key] = v; r.value = v; n.value = v; geoSend(); };
+    const set = (v) => {
+      v = +v; if (!isFinite(v)) return; geo[key] = v;
+      // maintain aspect ratio: drive the other scale axis to the same % (uniform scale, no stretch)
+      const lock = document.getElementById("geo-aspect");
+      if (lock && lock.checked) {
+        if (key === "sx")      geo.sy = Math.max(64, Math.min(2160, Math.round(v / ASPECT)));
+        else if (key === "sy") geo.sx = Math.max(64, Math.min(3840, Math.round(v * ASPECT)));
+      }
+      geoSend();   // syncGeoUI() inside reflects BOTH axes' sliders/numbers
+    };
     r.addEventListener("input", () => set(r.value));
     n.addEventListener("change", () => set(n.value));
   }
   geoPair("sx", "geo-sx-r", "geo-sx-n"); geoPair("sy", "geo-sy-r", "geo-sy-n");
   geoPair("px", "geo-px-r", "geo-px-n"); geoPair("py", "geo-py-r", "geo-py-n");
+  // maintain-aspect toggle: when re-enabled, immediately re-lock Y to X's ratio (fix any stretch)
+  document.getElementById("geo-aspect").addEventListener("change", (e) => {
+    if (e.target.checked) { geo.sy = Math.max(64, Math.min(2160, Math.round(geo.sx / ASPECT))); geoSend(); }
+  });
   // scale-anchor checkbox: unchecked = center (default), checked = top-left corner.
   document.getElementById("geo-anchor").addEventListener("change", (e) => {
     geo.anchor = e.target.checked; geoSend();
