@@ -47,7 +47,8 @@ module pg_read_engine_top #(
     input  wire [11:0] src_col0, src_row0,   // DDA source seed (firmware: source col/row at first on-screen pixel)
     input  wire [11:0] h_step_int, h_step_frac, v_step_int, v_step_frac,
     input  wire [23:0] matte_rgb,
-    input  wire        filt_h,               // 1 = read-side 2-tap H anti-alias box (GEO_C ch2 bit27)
+    input  wire [1:0]  filt_mode,            // #107: 0=NN 1=2-tap box 2=H-bilinear 3=H+V-bilinear (GEO_C ch2 [31:30])
+    input  wire [15:0] inv_w,                // #107: Q0.16 reciprocal of out_w_win (firmware) for bilinear weight
     input  wire        h_dir, v_dir,         // horizontal / vertical flip (GEO_C ch2 bit28/bit29)
     input  wire [1:0]  blend_mode,       // 0=off, 1=intelligent, 2=force (FCLK_CLK0, async — pg_cadence CDCs it)
 
@@ -91,8 +92,8 @@ module pg_read_engine_top #(
     // Quasi-static (firmware writes between frames) + frame-atomic latch in
     // pg_compose/pg_addrgen at SOF, so per-bit 2-FF sync is sufficient. XDC
     // false-paths target g_q1_reg[*]/D.
-    localparam integer GW = 10*12 + 24 + 3;  // 10 fields + matte + filt_h + h_dir + v_dir
-    wire [GW-1:0] g_in = {v_dir, h_dir, filt_h, src_row0, src_col0, matte_rgb,
+    localparam integer GW = 10*12 + 24 + 2 + 16 + 2;  // fields + matte + filt_mode(2) + inv_w(16) + h_dir + v_dir
+    wire [GW-1:0] g_in = {inv_w, v_dir, h_dir, filt_mode, src_row0, src_col0, matte_rgb,
                           v_step_frac, v_step_int, h_step_frac, h_step_int,
                           pos_y, pos_x, out_h_win, out_w_win};
     (* ASYNC_REG = "TRUE" *) reg [GW-1:0] g_q1, g_q2;
@@ -100,20 +101,21 @@ module pg_read_engine_top #(
         if (!rstn) begin g_q1 <= {GW{1'b0}}; g_q2 <= {GW{1'b0}}; end
         else       begin g_q1 <= g_in; g_q2 <= g_q1; end
     end
-    wire [11:0] s_out_w   = g_q2[11:0];
-    wire [11:0] s_out_h   = g_q2[23:12];
-    wire [11:0] s_pos_x   = g_q2[35:24];
-    wire [11:0] s_pos_y   = g_q2[47:36];
-    wire [11:0] s_hsi     = g_q2[59:48];
-    wire [11:0] s_hsf     = g_q2[71:60];
-    wire [11:0] s_vsi     = g_q2[83:72];
-    wire [11:0] s_vsf     = g_q2[95:84];
-    wire [23:0] s_matte   = g_q2[119:96];
-    wire [11:0] s_src_col = g_q2[131:120];
-    wire [11:0] s_src_row = g_q2[143:132];
-    wire        s_filt_h  = g_q2[144];
-    wire        s_h_dir   = g_q2[145];
-    wire        s_v_dir   = g_q2[146];
+    wire [11:0] s_out_w     = g_q2[11:0];
+    wire [11:0] s_out_h     = g_q2[23:12];
+    wire [11:0] s_pos_x     = g_q2[35:24];
+    wire [11:0] s_pos_y     = g_q2[47:36];
+    wire [11:0] s_hsi       = g_q2[59:48];
+    wire [11:0] s_hsf       = g_q2[71:60];
+    wire [11:0] s_vsi       = g_q2[83:72];
+    wire [11:0] s_vsf       = g_q2[95:84];
+    wire [23:0] s_matte     = g_q2[119:96];
+    wire [11:0] s_src_col   = g_q2[131:120];
+    wire [11:0] s_src_row   = g_q2[143:132];
+    wire [1:0]  s_filt_mode = g_q2[145:144];
+    wire        s_h_dir     = g_q2[146];
+    wire        s_v_dir     = g_q2[147];
+    wire [15:0] s_inv_w     = g_q2[163:148];
 
     // ---- FRC cadence controller (replaces pg_genlock's fixed frame_ptr-2 follower) ----
     // Gen-lock mode for now (blend_mode=0 → drop/repeat, single fetch) — this is the
@@ -185,7 +187,8 @@ module pg_read_engine_top #(
         .out_w_win(s_out_w), .out_h_win(s_out_h), .pos_x(s_pos_x), .pos_y(s_pos_y),
         .src_col0(s_src_col), .src_row0(s_src_row),
         .h_step_int(s_hsi), .h_step_frac(s_hsf),
-        .v_step_int(s_vsi), .v_step_frac(s_vsf), .matte_rgb(s_matte), .filt_h(s_filt_h),
+        .v_step_int(s_vsi), .v_step_frac(s_vsf), .matte_rgb(s_matte),
+        .filt_mode(s_filt_mode), .inv_w(s_inv_w),
         .h_dir(s_h_dir), .v_dir(s_v_dir),
         .m_tdata(m_axis_tdata), .m_tvalid(m_axis_tvalid), .m_tready(m_axis_tready),
         .m_tuser(m_axis_tuser), .m_tlast(m_axis_tlast),

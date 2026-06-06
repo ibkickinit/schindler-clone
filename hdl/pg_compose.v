@@ -53,7 +53,8 @@ module pg_compose #(
     input  wire [11:0] src_col0, src_row0,   // DDA seed: source col/row at the first on-screen in-window pixel
     input  wire [11:0] h_step_int, h_step_frac, v_step_int, v_step_frac,
     input  wire [23:0] matte_rgb,
-    input  wire        filt_h,        // 1 = read-side 2-tap horizontal box filter (anti-alias)
+    input  wire [1:0]  filt_mode,     // #107: 0=NN 1=2-tap box 2=H-bilinear 3=H+V-bilinear
+    input  wire [15:0] inv_w,         // #107: Q0.16 reciprocal of out_w_win (firmware) → bilinear H weight
     input  wire        h_dir,         // 1 = horizontal flip (addrgen runs H DDA backward)
     input  wire        v_dir,         // 1 = vertical flip (addrgen + prefetch run V DDA backward)
 
@@ -138,7 +139,7 @@ module pg_compose #(
 
     // ---------- skid FIFO at addrgen output (absorbs addrgen's 1-cyc latency) ----------
     localparam integer SK = 8, SKW = 3;
-    reg  [25:0] skid [0:SK-1];     // {new_row, inwin, src_row[11:0], src_col[11:0]}
+    reg  [37:0] skid [0:SK-1];     // {h_frac[11:0], new_row, inwin, src_row[11:0], src_col[11:0]}  (#107 +h_frac)
     reg  [SKW:0] scount;
     reg  [SKW-1:0] swr, srd;
     wire sfull  = (scount == SK[SKW:0]);
@@ -152,7 +153,7 @@ module pg_compose #(
 
     // ---------- M1: address generator ----------
     wire        a_valid, a_inwin, a_newrow;
-    wire [11:0] a_src_col, a_src_row;
+    wire [11:0] a_src_col, a_src_row, a_h_frac, a_v_frac;
     pg_addrgen #(.OUT_W(OUT_W), .OUT_H(OUT_H), .IN_W(IN_W), .IN_H(IN_H)) u_addr (
         .clk(clk), .rstn(rstn), .sof(sof), .px_valid(gen_en),
         .out_w_win(out_w_win), .out_h_win(out_h_win), .pos_x(pos_x), .pos_y(pos_y),
@@ -160,7 +161,9 @@ module pg_compose #(
         .h_step_int(h_step_int), .h_step_frac(h_step_frac),
         .v_step_int(v_step_int), .v_step_frac(v_step_frac),
         .o_valid(a_valid), .o_in_window(a_inwin),
-        .o_src_col(a_src_col), .o_src_row(a_src_row), .o_new_row(a_newrow)
+        .o_src_col(a_src_col), .o_src_row(a_src_row),
+        .o_h_frac(a_h_frac), .o_v_frac(a_v_frac),
+        .o_new_row(a_newrow)
     );
     always @(posedge clk) begin
         if (!rstn || sof) produced <= 22'd0;
@@ -171,7 +174,7 @@ module pg_compose #(
     always @(posedge clk) begin
         if (!rstn || sof) begin swr <= 0; end
         else if (a_valid && !sfull) begin
-            skid[swr] <= {a_newrow, a_inwin, a_src_row, a_src_col};
+            skid[swr] <= {a_h_frac, a_newrow, a_inwin, a_src_row, a_src_col};
             swr <= swr + 1'b1;
         end
     end
@@ -187,15 +190,39 @@ module pg_compose #(
     function [23:0] avg2; input [23:0] a,b;
         avg2 = { avg8(a[23:16],b[23:16]), avg8(a[15:8],b[15:8]), avg8(a[7:0],b[7:0]) };
     endfunction
-    // filtered source samples fed to the blend pipeline (filt_h=0 → exact NN, zero regression)
-    wire [23:0] A_in = filt_h ? avg2(m3_rd_data,  m3_rd_data_h1)  : m3_rd_data;
-    wire [23:0] B_in = filt_h ? avg2(m3_rd_data2, m3_rd_data2_h1) : m3_rd_data2;
+    // #107 H-bilinear lerp: out = clamp( a + ((b-a)*fw + 128) >>> 8 ), fw = Q0.8 weight (0..255).
+    // Bit-identical to the unsigned reference (a*(256-fw)+b*fw+128)>>8 — see TB golden.
+    function [7:0] lerp8; input [7:0] a,b; input [7:0] fw;
+        reg signed [19:0] d, p, sh, r;
+        begin
+            d  = $signed({1'b0,b}) - $signed({1'b0,a});   // b - a
+            p  = d * $signed({1'b0,fw});                  // (b-a)*fw
+            sh = (p + 20'sd128) >>> 8;                     // round + arithmetic shift
+            r  = $signed({1'b0,a}) + sh;                   // a + delta
+            lerp8 = (r < 0) ? 8'd0 : ((r > 20'sd255) ? 8'd255 : r[7:0]);
+        end
+    endfunction
+    function [23:0] lerp24; input [23:0] a,b; input [7:0] fw;
+        lerp24 = { lerp8(a[23:16],b[23:16],fw), lerp8(a[15:8],b[15:8],fw), lerp8(a[7:0],b[7:0],fw) };
+    endfunction
+    // H weight for the consumer pixel: fw = c1_hfrac/out_w_win, via firmware Q0.16 reciprocal inv_w.
+    reg  [11:0] c1_hfrac;                          // latched H fraction (aligned with m3_rd_data at c1_valid)
+    wire [27:0] hfprod = c1_hfrac * inv_w;         // (hfrac/win)<<16 for hfrac<win
+    wire [7:0]  fw_h   = hfprod[16] ? 8'd255 : hfprod[15:8];
+    // filtered source samples (filt_mode==0 → exact NN, zero regression)
+    wire [23:0] A_in = (filt_mode==2'd0) ? m3_rd_data
+                     : (filt_mode==2'd1) ? avg2  (m3_rd_data,  m3_rd_data_h1)
+                     :                     lerp24(m3_rd_data,  m3_rd_data_h1, fw_h);
+    wire [23:0] B_in = (filt_mode==2'd0) ? m3_rd_data2
+                     : (filt_mode==2'd1) ? avg2  (m3_rd_data2, m3_rd_data2_h1)
+                     :                     lerp24(m3_rd_data2, m3_rd_data2_h1, fw_h);
 
     // skid head descriptor
     wire        h_new   = skid[srd][25];
     wire        h_inwin = skid[srd][24];
     wire [11:0] h_srow  = skid[srd][23:12];
     wire [11:0] h_scol  = skid[srd][11:0];
+    wire [11:0] h_hfrac = skid[srd][37:26];   // #107: this pixel's H DDA fraction (denom = out_w_win)
 
     pg_linefetch #(.LINE_W(IN_W), .STRIDE(STRIDE), .NBUF(NBUF)) u_fetch (
         .clk(clk), .rstn(rstn),
@@ -226,6 +253,7 @@ module pg_compose #(
                 c1_valid <= 1'b1;
                 c1_inwin <= h_inwin;
                 c1_matte <= matte_l;
+                c1_hfrac <= h_hfrac;          // #107: ride the fraction with rd_data into the c1_valid cycle
                 srd <= srd + 1'b1;            // pop head
             end
         end
