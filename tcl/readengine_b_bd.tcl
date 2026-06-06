@@ -211,6 +211,8 @@ connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]          [get_bd_pins axi_gpio_12
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn] [get_bd_pins axi_gpio_12/s_axi_aresetn]
 re_slice sl_inv_w axi_gpio_12 gpio_io_o 15 0
 connect_bd_net [get_bd_pins sl_inv_w/Dout] [get_bd_pins pg_re_0/inv_w]
+re_slice sl_inv_h axi_gpio_12 gpio_io_o 31 16   ;# #107b Q0.16 reciprocal of out_h_win → V-bilinear weight
+connect_bd_net [get_bd_pins sl_inv_h/Dout] [get_bd_pins pg_re_0/inv_h]
 
 # ---------------------------------------------------------------------------
 # ILA instrumentation (2026-06-02) — pin the read-engine ghost: addressing vs
