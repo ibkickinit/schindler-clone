@@ -52,11 +52,16 @@ module pg_warp_engine #(
     // ---- prefetch affine -> skid -> cache (lead-bounded so eviction only hits consumed tiles) ----
     wire        pa_v, pa_in; wire [11:0] pa_col, pa_row; wire pa_sr;
     wire        pm_v; wire [24:0] pm_d;
-    reg  [15:0] lead_cnt;
+    reg  [15:0] lead_cnt; reg pf_acc_r, c_acc_r;
     wire        pf_gate = (lead_cnt < LEAD[15:0]);          // reg-based -> not in the lookup path
+    // register the accept events so the 16-bit counter add isn't fed by the live lookup (pf_ready).
+    // 1-cycle-stale count only shifts the coarse lead bound by ~1 — harmless.
     always @(posedge clk) begin
-        if(!rstn || sof) lead_cnt <= 16'd0;
-        else lead_cnt <= lead_cnt + ((pm_v&&pf_ready)?16'd1:16'd0) - ((cm_v&&tc_ready)?16'd1:16'd0);
+        if(!rstn || sof) begin pf_acc_r<=1'b0; c_acc_r<=1'b0; lead_cnt<=16'd0; end
+        else begin
+            pf_acc_r <= pm_v && pf_ready; c_acc_r <= cm_v && tc_ready;
+            lead_cnt <= lead_cnt + (pf_acc_r?16'd1:16'd0) - (c_acc_r?16'd1:16'd0);
+        end
     end
     pg_affine #(.OUT_W(OUT_W),.OUT_H(OUT_H),.IN_W(IN_W),.IN_H(IN_H),.CW(CW),.FB(FB)) u_aff_p (
         .clk(clk),.rstn(rstn),.sof(sof),.o_valid(pa_v),.o_ready(pa_sr && pf_gate),
