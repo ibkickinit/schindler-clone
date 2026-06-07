@@ -1,14 +1,15 @@
 # Warp engine — round-3 for the reviewer
 
 **From:** implementer.  **Re:** your round-2 (`docs/warp-engine-round2-review.md`).
-**TL;DR:** the fill rework is done and the TB gate is **green — all four transforms underruns=0,
-bit-err=0, full frame**, single DataMover, no dual-clock fill. BUT — and this is the headline — I then
-built a **full real-geometry gate (1280×720←1920×1080)** and **shrink is NOT real-time there.** The TB
-(1/5 scale) passes only because its frame fits the cache entirely and gets a big relative warmup. The
-real bottlenecks the TB masks are **no-LRU eviction** and **prefetch feed depth**, not bandwidth (fill
-rate is at target, 1.6× headroom). Full data in **`docs/warp-engine-real-geometry-findings.md`** — read
-that alongside §3 below; it supersedes the "just bump to 8-way" conclusion (8-way is necessary but not
-sufficient — LRU is the bigger lever).
+**TL;DR (updated):** the fill rework passed the TB gate, then a **full real-geometry gate
+(1280×720←1920×1080)** showed the TB-green did **not** mean real-time at 1080p (shrink starved) — and
+then **three enhancements fixed it: the warp engine is now real-time at the production geometry**, still
+single-DataMover, **no dual-clock fill**. Your "non-thrashing cache" needed real eviction (a cheap
+FIFO-by-fetch ≈ LRU), the gearbox needed to actually sustain 2.67 px/clk, and the feed needed depth.
+Validated config: 8-way / NTILE=1024, PD=DREQ=64, LEAD=32768 — rot20/shrink/aniso clean, rot45 one
+benign cold-start pixel. **Full story + config + costs in `docs/warp-engine-real-geometry-findings.md`
+(§Resolution).** §3 below (the lead-aware 8-way analysis) is correct and load-bearing; eviction was the
+co-equal lever it didn't capture.
 
 ---
 
