@@ -7,7 +7,7 @@ reusing the existing bilinear / Mackin / compose / FRC-genlock tail unchanged.
 | Phase | Module | Status |
 |---|---|---|
 | 1 | **`pg_affine`** addrgen — incremental 2×3 affine DDA | ✅ done, sim bit-exact (`0a850e6`) |
-| 2 | **`pg_tilecache`** fetch — tile DMA + LRU + prefetch | ▶ next (the big one; HDL-TB w/ behavioral DDR = real-time gate) |
+| 2 | **`pg_tilecache`** fetch — tile DMA + LRU + prefetch | M1 ✅ functional (bit-exact); **M2 real-time gate done — see findings below** |
 | 3 | integrate (swap in for linefetch; wire bilinear/Mackin/compose) | pending |
 | 4 | Vivado build + timing | pending |
 | 5 | bench | pending |
@@ -49,6 +49,29 @@ not walls (avg bandwidth has headroom).
   cold, as the gate modeled). Simplest: flush-on-frame (tag includes frame slot; mismatch = miss).
 - BRAM budget: 384 KB cache + ~FIFO vs the 7020 ~600 KB shared with VDMA/scaler — verify at Phase 4.
 - Associative tag compare timing at 128 entries — use set-associative (e.g. 4-way × 32 sets) if needed.
+
+## M2 real-time gate findings (cycle-accurate, `tools/tilecache_realtime_gate.py`) — 2026-06-06
+
+Cycle-accurate model: full 720p60 timing (active + blanking), prefetch walker, single-channel DDR
+(latency + throughput), output FIFO. Underrun cycles must be 0. **This inverts a bandwidth-gate
+assumption** (which counted only avg miss bandwidth): cycle-timing tells a different story.
+
+- **Tile SIZE is the dominant lever.** 32×32 (3 KB/tile) FAILS everything — one bursty row needs
+  ~60 misses × 384 cyc ≫ a row. **16×16 tiles (same 384 KB cache)** is the design point.
+- **CORRECTIONS are real-time ✅** at 16×16 + ONE DDR port (16 B/cyc): **pincushion, shrink/scale**
+  (and keystone, same locality class) — 0 underruns. These are the stated-priority features.
+- **Free ROTATION is the HARD case** (surprise — the bandwidth gate made it look cheap). Rotation's
+  source advances *orthogonal* to the output scan → low tile locality, sustained (not bursty) miss
+  demand. Even at the aggressive config (8×8 tiles, 2 DDR ports = 32 B/cyc, deep lead) it leaves a
+  tiny residual: rotate-90 ~47, rotate-30 ~174, rotate-45 ~510 underruns (≈0.01–0.07% of pixels).
+  Fully closing rotation needs 3–4 DDR ports (the Zynq has 4 HP) and/or larger cache, OR a dedicated
+  DDR-transpose path for the orthogonal 90/180/270 angles.
+
+**Design implication for M3 HDL:** 16×16 tiles, 512-tile (384 KB) cache, deep prefetch (~4 K lead) +
+FIFO, parameterized DDR-port count. The engine is **real-time-proven for the corrections** (the
+priorities); **rotation is best-effort** at 1–2 ports and needs more DDR (or the transpose trick) to
+be tear-free at all angles. Decision needed before M3: build for corrections now (solid) + treat
+free-rotation as a later DDR-port/transpose upgrade?
 
 ## Phase 5b — corrections on the addrgen (after the engine benches)
 Math already validated (`tools/correction_preview.py`): pincushion = radial post-multiply on
