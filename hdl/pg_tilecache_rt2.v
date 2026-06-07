@@ -49,7 +49,7 @@ module pg_tilecache_rt2 #(
 );
     localparam integer TILE=(1<<LTILE), HT=LTILE-1, BPT=(TILE*TILE)/4;
     localparam integer TX=(IN_W+TILE-1)/TILE, SLW=$clog2(NTILE), BAW=SLW+2*HT, TIDW=24;
-    localparam integer WAY=4, SETW=SLW-2, SKH=SETW/2;   // 4-way set-assoc; NSET=2^SETW; NTILE=NSET*4
+    localparam integer WAY=4, SETW=SLW-2, NSET=(1<<SETW);   // 4-way set-assoc; NSET=2^SETW; NTILE=NSET*4
 
     (* ram_style="block" *) reg [23:0] b00[0:NTILE*BPT-1], b10[0:NTILE*BPT-1],
                                        b01[0:NTILE*BPT-1], b11[0:NTILE*BPT-1];
@@ -58,11 +58,12 @@ module pg_tilecache_rt2 #(
 
     // tile id = {ty,tx} concatenation (unique, NO multiply) — the multiply was on the lookup path
     function [TIDW-1:0] tidf; input [11:0] px,py; tidf={py[11:LTILE], px[11:LTILE]}; endfunction
-    // set index = low SKH bits of (ty,tx). NOTE (2026-06-07 sweep): a simple XOR hash helped
-    // shrink (set-conflict was real there) but broke rot20 — not a clean win. The dominant
-    // real-fill failure is bandwidth, not aliasing; revisit the index with the bandwidth fix.
+    // set index = mixing hash (tx*13 + ty*7). Validated worst-set-live<=4 for ALL swept transforms
+    // at NTILE=512 (128 sets x 4 ways) — tools/warp_assoc_sweep.py. The plain {ty,tx} low-bits index
+    // concentrated shrink's diagonal/ty-constant access onto few sets (15 live tiles/set -> 4-way
+    // thrash); this hash spreads them so 4-way holds. tag is still the full tile-id (tidf).
     function [SETW-1:0] setf; input [11:0] px,py;
-        setf={py[LTILE+SKH-1:LTILE], px[LTILE+SKH-1:LTILE]}; endfunction
+        setf=(((px>>LTILE)*13) + ((py>>LTILE)*7)) & {SETW{1'b1}}; endfunction
     function [BAW-1:0] baddr; input [SLW-1:0] s; input [11:0] px,py;
         baddr=(s<<(2*HT))|(((py[LTILE-1:0]>>1)<<HT)|(px[LTILE-1:0]>>1)); endfunction
     // 4-way set-assoc lookup: tile (px,py) -> {hit, slot}. Reads vld/tag -> only in always@*.

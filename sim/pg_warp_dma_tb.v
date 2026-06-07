@@ -6,7 +6,7 @@
 
 module pg_warp_dma_tb;
     localparam OUT_W=256, OUT_H=144, IN_W=384, IN_H=216;
-    localparam LTILE=4, TILE=16, NTILE=256, CW=32, FB=12, NA=OUT_W*OUT_H, LEAD=2048;
+    localparam LTILE=4, TILE=16, NTILE=512, CW=32, FB=12, NA=OUT_W*OUT_H, LEAD=2048;
     localparam STRIDE=IN_W*3, H_TOT=330, V_TOT=170, VB=26, FRAME_PERIOD=H_TOT*V_TOT;
     reg clk=0, rstn=0, sof=0;
     reg signed [CW-1:0] m_a,m_b,m_c,m_d,m_e,m_f; reg [23:0] matte=24'h101010;
