@@ -10,8 +10,12 @@ reusing the existing bilinear / Mackin / compose / FRC-genlock tail unchanged.
 | 2 | **`pg_tilecache`** fetch — tile DMA + LRU + prefetch | M1 ✅; M2 ✅ model; M3a ✅ gather; **M3b ✅ concurrent real-time cache — tear-free + bit-exact in RTL** (`d9b0e15`, `pg_tilecache_rt2.v`: identity/rot25/rot45/shrink all pass) |
 | 3 | **integrate** (`pg_warp_engine`) | **datapath ✅ end-to-end bit-exact + real-time in RTL** (`239e8a8`, `pg_warp_engine_tb` rot20: 0 bit-err, 38376<56100 cyc). Remaining to bitstream: DataMover 2×2-block reorder · genlock/FRC wrap · BD swap · firmware affine coeffs |
 | 3 | integrate (swap in for linefetch; wire bilinear/Mackin/compose) | pending |
-| 4 | Vivado build + timing | pending |
-| 5 | bench | pending |
+| 3d | **`pg_tile_dma`** — tile fetch + 2x2 reorder (real DataMover fill) | ✅ real-time + bit-exact (`d63ebec`, `pg_warp_dma_tb`: warp+tile_dma+behavioral DataMover, VTC-paced + V-blank warmup, rot20 underruns=0/bit-err=0/56026<56100 cyc) |
+| 3e | cache silicon rework (fits + logic-timing-clean) | ✅ `docs/warp-cache-timing.md` (12k LUT / 48 BRAM, logic 3.9ns) |
+| 4a | BD swap: pg_warp_engine + pg_tile_dma into readengine_b_bd.tcl (DataMover, VTC sof, GPIO coeffs, output) | pending |
+| 4b | firmware: affine coeffs (a..f) from geometry | pending |
+| 4c | Vivado build + timing (the real in-context timing test) | pending |
+| 5 | bench (owner) | pending |
 | 5b | layer pincushion (radial) + keystone (projective divide) on addrgen | pending |
 
 ## Phase 2 — `pg_tilecache` architecture (the design to build)
