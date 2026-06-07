@@ -14,7 +14,7 @@
 
 module pg_warp_engine #(
     parameter integer OUT_W=1280, OUT_H=720, IN_W=1920, IN_H=1080,
-    parameter integer LTILE=4, NTILE=64, CW=32, FB=12,
+    parameter integer LTILE=4, NTILE=64, WAY=4, CW=32, FB=12,
     parameter integer LEAD=512                       // bound prefetch run-ahead so rr never evicts an unconsumed tile
 ) (
     input  wire        clk, rstn,
@@ -53,15 +53,15 @@ module pg_warp_engine #(
     // ---- prefetch affine -> skid -> cache (lead-bounded so eviction only hits consumed tiles) ----
     wire        pa_v, pa_in; wire [11:0] pa_col, pa_row; wire pa_sr;
     wire        pm_v; wire [24:0] pm_d;
-    reg  [15:0] lead_cnt; reg pf_acc_r, c_acc_r;
-    wire        pf_gate = (lead_cnt < LEAD[15:0]);          // reg-based -> not in the lookup path
+    reg  [19:0] lead_cnt; reg pf_acc_r, c_acc_r;            // 20-bit: lead can span a full frame
+    wire        pf_gate = (lead_cnt < LEAD[19:0]);          // reg-based -> not in the lookup path
     // register the accept events so the 16-bit counter add isn't fed by the live lookup (pf_ready).
     // 1-cycle-stale count only shifts the coarse lead bound by ~1 — harmless.
     always @(posedge clk) begin
-        if(!rstn || sof) begin pf_acc_r<=1'b0; c_acc_r<=1'b0; lead_cnt<=16'd0; end
+        if(!rstn || sof) begin pf_acc_r<=1'b0; c_acc_r<=1'b0; lead_cnt<=20'd0; end
         else begin
             pf_acc_r <= pm_v && pf_ready; c_acc_r <= cm_v && tc_ready;
-            lead_cnt <= lead_cnt + (pf_acc_r?16'd1:16'd0) - (c_acc_r?16'd1:16'd0);
+            lead_cnt <= lead_cnt + (pf_acc_r?20'd1:20'd0) - (c_acc_r?20'd1:20'd0);
         end
     end
     pg_affine #(.OUT_W(OUT_W),.OUT_H(OUT_H),.IN_W(IN_W),.IN_H(IN_H),.CW(CW),.FB(FB)) u_aff_p (
@@ -75,7 +75,7 @@ module pg_warp_engine #(
 
     // ---- tile cache ----
     wire        tc_v; wire [23:0] tp00,tp10,tp01,tp11; wire [11:0] tfx,tfy; wire tin; wire [3:0] tsb;
-    pg_tilecache_rt2 #(.IN_W(IN_W),.IN_H(IN_H),.LTILE(LTILE),.NTILE(NTILE),.SB(4)) u_tc (
+    pg_tilecache_rt2 #(.IN_W(IN_W),.IN_H(IN_H),.LTILE(LTILE),.NTILE(NTILE),.WAY(WAY),.SB(4)) u_tc (
         .clk(clk),.rstn(rstn),
         .pf_valid(pm_v),.pf_x(pm_d[24:13]),.pf_y(pm_d[12:1]),.pf_inwin(pm_d[0]),.pf_ready(pf_ready),
         .c_valid(cm_v),.c_x(cm_d[48:37]),.c_y(cm_d[36:25]),.c_fx(cm_d[24:13]),.c_fy(cm_d[12:1]),.c_inwin(cm_d[0]),.c_sb(4'd0),.c_ready(tc_ready),

@@ -19,6 +19,7 @@ module pg_tilecache_rt2 #(
     parameter integer IN_H  = 1080,
     parameter integer LTILE = 4,
     parameter integer NTILE = 64,
+    parameter integer WAY   = 4,          // set-associativity (power of 2); NSET = NTILE/WAY
     parameter integer SB    = 4
 ) (
     input  wire        clk, rstn,
@@ -51,11 +52,11 @@ module pg_tilecache_rt2 #(
 );
     localparam integer TILE=(1<<LTILE), HT=LTILE-1, BPT=(TILE*TILE)/4;
     localparam integer TX=(IN_W+TILE-1)/TILE, SLW=$clog2(NTILE), BAW=SLW+2*HT, TIDW=24;
-    localparam integer WAY=4, SETW=SLW-2, NSET=(1<<SETW);   // 4-way set-assoc; NSET=2^SETW; NTILE=NSET*4
+    localparam integer WAYW=$clog2(WAY), SETW=SLW-WAYW, NSET=(1<<SETW); // WAY-way set-assoc; NTILE=NSET*WAY
 
     (* ram_style="block" *) reg [23:0] b00[0:NTILE*BPT-1], b10[0:NTILE*BPT-1],
                                        b01[0:NTILE*BPT-1], b11[0:NTILE*BPT-1];
-    reg [TIDW-1:0] tag[0:NTILE-1]; reg vld[0:NTILE-1]; reg rsv[0:NTILE-1]; reg [1:0] rr_way;
+    reg [TIDW-1:0] tag[0:NTILE-1]; reg vld[0:NTILE-1]; reg rsv[0:NTILE-1]; reg [WAYW-1:0] rr_way;
     // vld = resident (consumable). rsv = slot reserved for an in-flight fill (not yet consumable).
     // ---- multi-outstanding pending-fill FIFO: up to PD tiles in flight ----
     // PD=16 (with tile_dma DREQ=16 + a deep prefetch lead) covers shrink's worst tile-row-crossing
@@ -73,11 +74,11 @@ module pg_tilecache_rt2 #(
     // evicts a live tile while a free way exists. Only when all 4 ways are occupied (which, given
     // worst-set-live<=4, means at least one holds a now-dead tile) do we round-robin. This is the
     // non-thrashing victim policy the multi-outstanding prefetch needs.
-    function automatic [1:0] vict; input [SETW-1:0] st; reg o0,o1,o2,o3; begin
-        o0=vld[{st,2'b00}]||rsv[{st,2'b00}]; o1=vld[{st,2'b01}]||rsv[{st,2'b01}];
-        o2=vld[{st,2'b10}]||rsv[{st,2'b10}]; o3=vld[{st,2'b11}]||rsv[{st,2'b11}];
-        if(!o0) vict=2'b00; else if(!o1) vict=2'b01; else if(!o2) vict=2'b10;
-        else if(!o3) vict=2'b11; else vict=rr_way; end
+    function automatic [WAYW-1:0] vict; input [SETW-1:0] st; integer w; reg found; begin
+        vict=rr_way; found=1'b0;                          // default: round-robin (all-occupied fallback)
+        for(w=WAY-1;w>=0;w=w-1)                            // else lowest free (not resident, not reserved)
+            if(!vld[{st,w[WAYW-1:0]}] && !rsv[{st,w[WAYW-1:0]}]) begin vict=w[WAYW-1:0]; found=1'b1; end
+        end
     endfunction
 
     // tile id = {ty,tx} concatenation (unique, NO multiply) — the multiply was on the lookup path
@@ -93,8 +94,8 @@ module pg_tilecache_rt2 #(
     // 4-way set-assoc lookup: tile (px,py) -> {hit, slot}. Reads vld/tag -> only in always@*.
     function automatic [SLW:0] looka; input [11:0] px,py;
         integer w; reg hh; reg [SLW-1:0] s; reg [SETW-1:0] st; reg [TIDW-1:0] t; begin
-        st=setf(px,py); t=tidf(px,py); hh=1'b0; s={st,2'b00};
-        for(w=0;w<WAY;w=w+1) if(vld[{st,w[1:0]}]&&tag[{st,w[1:0]}]==t) begin hh=1'b1; s={st,w[1:0]}; end
+        st=setf(px,py); t=tidf(px,py); hh=1'b0; s={st,{WAYW{1'b0}}};
+        for(w=0;w<WAY;w=w+1) if(vld[{st,w[WAYW-1:0]}]&&tag[{st,w[WAYW-1:0]}]==t) begin hh=1'b1; s={st,w[WAYW-1:0]}; end
         looka={hh,s}; end
     endfunction
 
@@ -196,7 +197,7 @@ module pg_tilecache_rt2 #(
 
     reg [2*HT-1:0] fcw; integer pj;
     wire fill_pop = !pf_empty && fill_valid && fill_last;
-    wire [1:0] ua_way = vict(ua_set);                     // victim way in the unavailable tile's set
+    wire [WAYW-1:0] ua_way = vict(ua_set);                // victim way in the unavailable tile's set
     wire [SLW-1:0] ua_slot = {ua_set, ua_way};
     wire [BAW-1:0] fwa = (pf_slot[pf_rd]<<(2*HT)) | fcw;   // fills route to the pending-FIFO head slot
 
