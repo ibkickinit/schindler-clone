@@ -97,28 +97,39 @@ module pg_warp_dma_tb;
         end else underruns<=underruns+1;          // display wanted a pixel, engine had none
     end
 
-    task setrot; input real deg; input real sc; begin : s
-        real th,co,si,inv,cxo,cyo,cxs,cys,aa,bb,dd,ee;
-        th=deg*PI/180.0;co=$cos(th);si=$sin(th);inv=1.0/sc;
+    // affine for rotate(deg) + anisotropic inverse-scale (invx,invy = source-per-output)
+    task setaff; input real deg; input real invx; input real invy; begin : s
+        real th,co,si,cxo,cyo,cxs,cys;
+        th=deg*PI/180.0;co=$cos(th);si=$sin(th);
         cxo=OUT_W/2.0;cyo=OUT_H/2.0;cxs=IN_W/2.0;cys=IN_H/2.0;
-        aa=co*inv;bb=si*inv;dd=-si*inv;ee=co*inv;
-        m_a=$rtoi(aa*4096);m_b=$rtoi(bb*4096);m_c=$rtoi((cxs-aa*cxo-bb*cyo)*4096);
-        m_d=$rtoi(dd*4096);m_e=$rtoi(ee*4096);m_f=$rtoi((cys-dd*cxo-ee*cyo)*4096);
+        m_a=$rtoi(co*invx*4096);m_b=$rtoi(si*invx*4096);
+        m_d=$rtoi(-si*invy*4096);m_e=$rtoi(co*invy*4096);
+        m_c=$rtoi((cxs-co*invx*cxo-si*invx*cyo)*4096);
+        m_f=$rtoi((cys+si*invy*cxo-co*invy*cyo)*4096);
+    end endtask
+
+    task run_x; input real deg; input real invx; input real invy; input [127:0] nm; begin
+        setaff(deg,invx,invy);
+        cn=0;errors=0;underruns=0;started=0;
+        rstn=0; repeat(5)@(posedge clk); rstn=1; repeat(3)@(posedge clk);
+        @(posedge clk); sof<=1; started<=1; @(posedge clk); sof<=0;
+        repeat(FRAME_PERIOD + 2000) @(posedge clk);     // exactly ~one frame (engine emits one frame/sof)
+        started<=0;
+        $display("SWEEP %0s: underruns=%0d bit-err=%0d collected=%0d/%0d | %s",
+                 nm, underruns, errors, cn, NA,
+                 (underruns==0 && errors==0 && cn==NA) ? "PASS" : "FAIL");
+        repeat(80)@(posedge clk);
     end endtask
 
     initial begin
         PI=3.14159265358979;
         for(ayy=0;ayy<IN_H;ayy=ayy+1) for(axx=0;axx<IN_W;axx=axx+1)
             frame[ayy*IN_W+axx]={axx[7:0],ayy[7:0],(axx*3+ayy*5)+8'h07};
-        setrot(20.0,1.0);
-        cn=0;errors=0;total=0;cyc=0;underruns=0;started=0;
-        rstn=0; repeat(5)@(posedge clk); rstn=1; repeat(3)@(posedge clk);
-        @(posedge clk); sof<=1; started<=1; @(posedge clk); sof<=0;
-        t0=cyc;
-        while(cn<NA) @(posedge clk);
-        $display("M4 warp+dma rot20: %0d px, underruns=%0d, bit-err=%0d in %0d cyc (frame %0d) | %s",
-                 total, underruns, errors, cyc-t0, FRAME_PERIOD,
-                 (underruns==0 && errors==0) ? "REAL-TIME OK" : "FAIL");
+        total=0;cyc=0;
+        run_x(20.0, 1.0, 1.0, "rot20    ");
+        run_x(45.0, 1.0, 1.0, "rot45    ");   // diagonal -> tx/ty correlated -> set-index aliasing suspect
+        run_x(0.0,  1.5, 1.5, "shrink1.5");   // heavy downscale -> high tile-cross rate
+        run_x(30.0, 1.5, 1.0, "aniso30  ");   // rotated + anisotropic
         $finish;
     end
     initial begin #2_000_000_000; $display("WATCHDOG cn=%0d err=%0d",cn,errors); $finish; end

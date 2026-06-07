@@ -58,7 +58,9 @@ module pg_tilecache_rt2 #(
 
     // tile id = {ty,tx} concatenation (unique, NO multiply) — the multiply was on the lookup path
     function [TIDW-1:0] tidf; input [11:0] px,py; tidf={py[11:LTILE], px[11:LTILE]}; endfunction
-    // set index = low SKH bits of (ty,tx) — spreads adjacent tiles (the 2x2's 4 tiles) across sets
+    // set index = low SKH bits of (ty,tx). NOTE (2026-06-07 sweep): a simple XOR hash helped
+    // shrink (set-conflict was real there) but broke rot20 — not a clean win. The dominant
+    // real-fill failure is bandwidth, not aliasing; revisit the index with the bandwidth fix.
     function [SETW-1:0] setf; input [11:0] px,py;
         setf={py[LTILE+SKH-1:LTILE], px[LTILE+SKH-1:LTILE]}; endfunction
     function [BAW-1:0] baddr; input [SLW-1:0] s; input [11:0] px,py;
