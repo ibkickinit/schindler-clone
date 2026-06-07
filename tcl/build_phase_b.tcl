@@ -67,6 +67,13 @@ add_files -norecurse [file join $project_root hdl pg_linefetch.v]
 add_files -norecurse [file join $project_root hdl pg_unpack.v]
 add_files -norecurse [file join $project_root hdl pg_compose.v]
 add_files -norecurse [file join $project_root hdl pg_read_engine_top.v]
+# warp read-engine (affine/arbitrary-geometry) modules
+add_files -norecurse [file join $project_root hdl pg_affine.v]
+add_files -norecurse [file join $project_root hdl pg_skid.v]
+add_files -norecurse [file join $project_root hdl pg_tilecache_rt2.v]
+add_files -norecurse [file join $project_root hdl pg_warp_engine.v]
+add_files -norecurse [file join $project_root hdl pg_tile_dma.v]
+add_files -norecurse [file join $project_root hdl pg_warp_top.v]
 add_files -norecurse [file join $project_root hdl axis_mux2.v]
 add_files -norecurse [file join $project_root hdl scaler_top.v]
 add_files -norecurse [file join $project_root hdl scaler_h.v]
@@ -1133,7 +1140,9 @@ connect_bd_net [get_bd_pins rst_mem/peripheral_aresetn]     [get_bd_pins ila_s2m
 # referenced cells (VDMA, color stack, VTC, dvi2rgb, interconnect, clocks)
 # already exist. Gated by READENGINE_B env (default on for this branch build).
 # =============================================================================
-if {![info exists ::env(READENGINE_B)] || $::env(READENGINE_B) ne "0"} {
+if {[info exists ::env(WARP_ENGINE)] && $::env(WARP_ENGINE) ne "0"} {
+    source [file join $project_root tcl readengine_warp_bd.tcl]
+} elseif {![info exists ::env(READENGINE_B)] || $::env(READENGINE_B) ne "0"} {
     source [file join $project_root tcl readengine_b_bd.tcl]
 }
 
