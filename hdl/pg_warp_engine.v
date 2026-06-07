@@ -29,6 +29,7 @@ module pg_warp_engine #(
     // DMA (2x2-block fill)
     output wire        fetch_req,
     output wire [11:0] fetch_tx, fetch_ty,
+    input  wire        fetch_ready,       // tile_dma can accept a fetch (multi-outstanding handshake)
     input  wire        fill_valid,
     input  wire [95:0] fill_blk,
     input  wire        fill_last
@@ -80,7 +81,7 @@ module pg_warp_engine #(
         .c_valid(cm_v),.c_x(cm_d[48:37]),.c_y(cm_d[36:25]),.c_fx(cm_d[24:13]),.c_fy(cm_d[12:1]),.c_inwin(cm_d[0]),.c_sb(4'd0),.c_ready(tc_ready),
         .out_valid(tc_v),.out_p00(tp00),.out_p10(tp10),.out_p01(tp01),.out_p11(tp11),
         .out_fx(tfx),.out_fy(tfy),.out_inwin(tin),.out_sb(tsb),.out_ready(b_ready),
-        .fetch_req(fetch_req),.fetch_tx(fetch_tx),.fetch_ty(fetch_ty),
+        .fetch_req(fetch_req),.fetch_tx(fetch_tx),.fetch_ty(fetch_ty),.t_ready(fetch_ready),
         .fill_valid(fill_valid),.fill_blk(fill_blk),.fill_last(fill_last));
 
     // ---- bilinear (2-stage lerp), registered; matte when out-of-window ----

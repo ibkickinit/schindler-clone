@@ -22,7 +22,7 @@ module pg_warp_dma_tb;
         .clk(clk),.rstn(rstn),.sof(sof),
         .m_a(m_a),.m_b(m_b),.m_c(m_c),.m_d(m_d),.m_e(m_e),.m_f(m_f),.matte(matte),
         .o_valid(o_valid),.o_pix(o_pix),.o_ready(o_ready),
-        .fetch_req(wreq),.fetch_tx(wtx),.fetch_ty(wty),
+        .fetch_req(wreq),.fetch_tx(wtx),.fetch_ty(wty),.fetch_ready(t_ready),
         .fill_valid(fv),.fill_blk(fblk),.fill_last(fl));
 
     pg_tile_dma #(.IN_W(IN_W),.LTILE(LTILE)) u_dma (
