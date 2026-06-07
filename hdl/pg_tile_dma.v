@@ -20,7 +20,8 @@
 module pg_tile_dma #(
     parameter integer IN_W  = 1920,
     parameter integer LTILE = 4,
-    parameter integer DREQ  = 4                      // outstanding tile requests buffered
+    parameter integer DREQ  = 16                     // outstanding tile requests buffered (covers the
+                                                     // prefetch's in-flight burst; see pg_tilecache_rt2)
 ) (
     input  wire        clk, rstn,
     input  wire [31:0] frame_base,

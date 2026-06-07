@@ -58,7 +58,9 @@ module pg_tilecache_rt2 #(
     reg [TIDW-1:0] tag[0:NTILE-1]; reg vld[0:NTILE-1]; reg rsv[0:NTILE-1]; reg [1:0] rr_way;
     // vld = resident (consumable). rsv = slot reserved for an in-flight fill (not yet consumable).
     // ---- multi-outstanding pending-fill FIFO: up to PD tiles in flight ----
-    localparam integer PD=8, PW=$clog2(PD);
+    // PD=16 (with tile_dma DREQ=16 + a deep prefetch lead) covers shrink's worst tile-row-crossing
+    // burst (~a full tile-row of misses); 12 still starves, 16 clears all four transforms.
+    localparam integer PD=16, PW=$clog2(PD);
     reg [SLW-1:0] pf_slot[0:PD-1]; reg [TIDW-1:0] pf_tid[0:PD-1]; reg pf_occ[0:PD-1];
     reg [PW-1:0]  pf_wr, pf_rd; reg [PW:0] pf_cnt;
     wire pf_full  = (pf_cnt==PD[PW:0]);
