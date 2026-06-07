@@ -7,7 +7,8 @@ reusing the existing bilinear / Mackin / compose / FRC-genlock tail unchanged.
 | Phase | Module | Status |
 |---|---|---|
 | 1 | **`pg_affine`** addrgen — incremental 2×3 affine DDA | ✅ done, sim bit-exact (`0a850e6`) |
-| 2 | **`pg_tilecache`** fetch — tile DMA + LRU + prefetch | M1 ✅ functional; **M2 ✅ tear-free for ALL transforms** (16×16 tiles, 1 DDR port, V-blank-warmed prefetch — findings below) |
+| 2 | **`pg_tilecache`** fetch — tile DMA + LRU + prefetch | M1 ✅; M2 ✅ model; M3a ✅ gather; **M3b ✅ concurrent real-time cache — tear-free + bit-exact in RTL** (`d9b0e15`, `pg_tilecache_rt2.v`: identity/rot25/rot45/shrink all pass) |
+| 3 | **integrate** into pg_read_engine_top | ▶ NEXT (M3c): replace pg_addrgen+pg_linefetch with pg_affine+pg_tilecache_rt2; DataMover→2x2-block fill reorder; 2nd affine for prefetch; firmware affine coeffs; BD wiring |
 | 3 | integrate (swap in for linefetch; wire bilinear/Mackin/compose) | pending |
 | 4 | Vivado build + timing | pending |
 | 5 | bench | pending |
