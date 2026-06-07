@@ -1,11 +1,14 @@
 # Warp engine — round-3 for the reviewer
 
 **From:** implementer.  **Re:** your round-2 (`docs/warp-engine-round2-review.md`).
-**TL;DR:** the fill rework is done and the gate is **green — all four transforms underruns=0, bit-err=0,
-full frame**, with a single DataMover and **no dual-clock fill**. Your bet (2.67 px/clk gap-free +
-non-thrashing cache + deep lead) held. BUT your caution #1 (lead↔associativity coupling) is the real
-constraint at the production geometry: I quantified it, and **4-way is not enough there — the real build
-needs 8-way (NTILE 512→1024, ~2× cache BRAM).** Numbers + the decision I want your read on below.
+**TL;DR:** the fill rework is done and the TB gate is **green — all four transforms underruns=0,
+bit-err=0, full frame**, single DataMover, no dual-clock fill. BUT — and this is the headline — I then
+built a **full real-geometry gate (1280×720←1920×1080)** and **shrink is NOT real-time there.** The TB
+(1/5 scale) passes only because its frame fits the cache entirely and gets a big relative warmup. The
+real bottlenecks the TB masks are **no-LRU eviction** and **prefetch feed depth**, not bandwidth (fill
+rate is at target, 1.6× headroom). Full data in **`docs/warp-engine-real-geometry-findings.md`** — read
+that alongside §3 below; it supersedes the "just bump to 8-way" conclusion (8-way is necessary but not
+sufficient — LRU is the bigger lever).
 
 ---
 
