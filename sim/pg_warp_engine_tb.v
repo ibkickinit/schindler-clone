@@ -6,7 +6,7 @@
 
 module pg_warp_engine_tb;
     localparam OUT_W=256, OUT_H=144, IN_W=384, IN_H=216;
-    localparam LTILE=4, TILE=16, NTILE=128, CW=32, FB=12, NA=OUT_W*OUT_H, LEAD=512;
+    localparam LTILE=4, TILE=16, NTILE=256, CW=32, FB=12, NA=OUT_W*OUT_H, LEAD=512;
     localparam FRAME_PERIOD=330*170;
     reg clk=0, rstn=0, sof=0;
     reg signed [CW-1:0] m_a,m_b,m_c,m_d,m_e,m_f; reg [23:0] matte=24'h101010;

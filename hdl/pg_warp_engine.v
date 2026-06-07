@@ -78,18 +78,24 @@ module pg_warp_engine #(
     function [23:0] lerp24; input [23:0] a,b; input [7:0] w;
         lerp24={lerp8(a[23:16],b[23:16],w),lerp8(a[15:8],b[15:8],w),lerp8(a[7:0],b[7:0],w)}; endfunction
     wire [7:0] wx=tfx[11:4], wy=tfy[11:4];
-    wire [23:0] btop=lerp24(tp00,tp10,wx), bbot=lerp24(tp01,tp11,wx);
-    wire [23:0] bil = lerp24(btop,bbot,wy);
 
-    // output stage (1-deep), backpressured
+    // PIPELINED bilinear: stage H (the two row lerps) -> stage V (the column lerp). Splits the
+    // chained 2x lerp24 critical path. Backpressured: cache out_ready = h_ready.
+    reg        h_v, h_in; reg [23:0] h_top, h_bot; reg [7:0] h_wy;
     reg        ov; reg [23:0] opix;
-    wire       b_ready = !ov || o_ready;
+    wire       v_ready = !ov || o_ready;
+    wire       h_ready = !h_v || v_ready;
+    wire       b_ready = h_ready;
     assign o_valid = ov; assign o_pix = opix;
     always @(posedge clk) begin
-        if(!rstn) ov<=0;
+        if(!rstn) begin h_v<=1'b0; ov<=1'b0; end
         else begin
-            if(ov && o_ready) ov<=0;
-            if(tc_v && b_ready) begin ov<=1; opix <= tin ? bil : matte; end
+            if(ov && o_ready) ov<=1'b0;
+            if(v_ready) begin ov<=h_v; opix <= h_in ? lerp24(h_top,h_bot,h_wy) : matte; end
+            if(h_ready) begin
+                h_v<=tc_v; h_in<=tin; h_wy<=wy;
+                h_top<=lerp24(tp00,tp10,wx); h_bot<=lerp24(tp01,tp11,wx);
+            end
         end
     end
 endmodule
