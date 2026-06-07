@@ -1,5 +1,11 @@
 # Warp engine — real-geometry findings (the TB green does NOT mean real-time at 1080p)
 
+> **RESOLVED 2026-06-07 — the warp engine is now real-time at 1080p.** Three enhancements (below)
+> close the gap; `pg_warp_real_tb` (8-way/NTILE=1024, PD=DREQ=64, LEAD=32768) clears rot20/shrink/aniso
+> with underruns=0 over the full 1280×720 frame; rot45 has a single cold-start underrun (cn=3, benign).
+> No dual-clock fill. **The resolution is in §"Resolution" at the bottom; the analysis below is the
+> investigation that found the bottlenecks.**
+
 **Date:** 2026-06-07. **Re:** confirming the real-time LEAD at the production geometry before sizing
 cache ways (the "confirm the real lead first" decision).
 
@@ -69,3 +75,54 @@ real-geometry gate adds is: **the TB is necessary but not sufficient** — it ca
 the full-scale burst, and both bite at 1080p. The cache (`pg_tilecache_rt2`) now takes a `WAY` parameter
 (4 default, plumbed through `pg_warp_engine`) so the PLRU + 8-way work has a clean home, and
 `pg_warp_real_tb.v` is the gate to drive it.
+
+## Resolution (2026-06-07) — three enhancements make it real-time at 1080p
+
+Each was found by the measurements above, applied in order, and re-swept on `pg_warp_real_tb`:
+
+1. **FIFO-by-fetch eviction** (`pg_tilecache_rt2`, replaces RR fallback). Per-slot fetch-sequence
+   stamp; the victim is the **oldest-fetched non-reserved** way (free-way-first, then FIFO). Because the
+   prefetch fetches in the consumer's future-access order, the oldest-fetched resident tile is the one
+   the consumer already passed = dead. A modest cache now recycles dead tiles continuously instead of
+   filling up and thrashing. **Real-geometry shrink at 4-way/512: 5% → 62%.** No per-access update
+   (FIFO ≈ LRU for the streaming prefetch order), so it's cheap.
+
+2. **Wide gearbox** (`pg_tile_dma`). The receiver drained ≤3 px/clk with `beat_ready=nbits<=64`; since
+   64b/beat isn't a multiple of 24b/px, the accumulator settled at a low equilibrium where `navail` was
+   usually 2, throttling the beat rate to ~1.6 px/clk (`duty_when_work=0.60`) — just under shrink's
+   ~1.67 px/clk need (hence the 94% ceiling). Fix: 4 px/clk drain + permissive `beat_ready=nbits<=96`
+   (200-bit acc) so `navail` stays 3–4 and the receiver sustains the full 2.67 px/clk. **This is what
+   took shrink from 94% to 100%** and dropped the PD need from 128 to 64.
+
+3. **Deeper feed** — `PD` is now a parameter (default 16, **64 for the real geometry**) with matching
+   `DREQ`. Keeps the DataMover continuously fed across the bursty miss pattern (the ~120-tile tile-row
+   crossing). `work_frac` 0.34 → 1.00.
+
+### Validated production config (real geometry)
+
+| param | value | why |
+|---|---|---|
+| WAY | **8** | lead-aware worst-set-live ≤8 at LEAD=32768 (rot20=7, aniso=6); 4-way thrashes |
+| NTILE | **1024** | 8-way × 128 sets (keep 128 sets — the hash needs them; ~96 RAMB36) |
+| PD / DREQ | **64** | covers the ~120-tile crossing burst feed (PD=16 caps at 62%, 32 at ~80%) |
+| LEAD | **32768** | shrink real-time needs it; 8-way still holds (max worst-set-live=7). 65536 pushes aniso to 9 → would need 16-way |
+| victim | FIFO-by-fetch | non-thrashing eviction |
+| gearbox | 4 px/clk / nbits≤96 | sustains 2.67 px/clk |
+
+**LEAD is the binding cross-constraint:** shrink wants it deep, aniso's lead-aware count grows with it.
+LEAD=32768 is the sweet spot where shrink is real-time AND all four stay ≤8-way. (rot45's lone cn=3
+cold-start underrun is a warmup transient — the cache persists across frames in the genlocked system, so
+it occurs at most once at power-on, on the top-left pixel.)
+
+### Cost vs the small-TB config
+- Cache BRAM ~2× (NTILE 512→1024). Pending/request FIFOs PD/DREQ 16→64 (logic, not BRAM). Wider gearbox
+  acc (136→200b) + FIFO seq array (NTILE×16b) — modest.
+- **No dual-clock fill** (the reviewer's hoped-for outcome): the 2.67 px/clk rate is sufficient once the
+  gearbox actually sustains it and eviction stops wasting fills.
+
+### Still open
+- rot45 cold-start pixel (benign; could be cleaned with cross-frame prefetch warmup in firmware).
+- The PD=128 regression (collapses vs PD=64) is unexplained — irrelevant since 64 is the operating
+  point, but worth understanding before pushing PD higher.
+- FIFO ≈ LRU holds for streaming/rotation here; a pathological revisit pattern could want true LRU. Not
+  observed in the four transforms.
