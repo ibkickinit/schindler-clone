@@ -1,19 +1,23 @@
 // pg_warp_real_tb.v — REAL-geometry real-time gate (1280x720 <- 1920x1080), 720p60 raster timing.
-// Purpose: pin the minimal prefetch LEAD that keeps the warp output starvation-free at the production
-// geometry, to size cache associativity (lead<->assoc coupling). shrink 1.5x is the fill/lead driver
-// AND is capacity-clean at 4-way (worst-set-live<=3 even at deep lead, per tools/warp_lead_assoc.py),
-// so this runs on the shipping 4-way/NTILE=512 cache without capacity thrash for leads up to ~25600.
-// Sweep LEAD via -generic_top or by editing the localparam; report underruns/bit-err/collected.
+// The full-scale gate the 1/5-scale pg_warp_dma_tb cannot be: it exercises mandatory eviction and the
+// full ~120-tile crossing burst, both of which the small TB hides. Drove the three enhancements that
+// make the warp engine real-time at 1080p: FIFO-by-fetch eviction (a modest cache holds the live set),
+// the wide 2.67 px/clk gearbox (fill no longer starves the feed), and PD/lead deep enough for the burst.
+// Production config below clears rot20/shrink/aniso fully; rot45 has a single cold-start underrun (cn=3,
+// benign — the cache persists across frames in the real genlocked system). Override LEAD with -d LEADV=.
 `default_nettype none
 `timescale 1ns / 1ps
 
 module pg_warp_real_tb;
     localparam OUT_W=1280, OUT_H=720, IN_W=1920, IN_H=1080;
-    localparam LTILE=4, TILE=16, NTILE=512, CW=32, FB=12, NA=OUT_W*OUT_H;
+    // Production warp config validated real-time at this geometry: 8-way / NTILE=1024, PD=DREQ=64,
+    // LEAD=32768, FIFO-by-fetch eviction, wide (2.67 px/clk) gearbox. (Small TB pg_warp_dma_tb runs
+    // 4-way/512/PD=16.) rot20/shrink/aniso fully clean; rot45 has a single cold-start underrun (cn=3).
+    localparam LTILE=4, TILE=16, NTILE=1024, WAY=8, PD=64, DREQ=64, CW=32, FB=12, NA=OUT_W*OUT_H;
 `ifdef LEADV
     localparam LEAD=`LEADV;
 `else
-    localparam LEAD=8192;
+    localparam LEAD=32768;
 `endif
     // 720p60 CEA: H_TOT=1650, V_TOT=750, 1280x720 active, ~30 leading blank lines for prefetch warmup.
     localparam STRIDE=IN_W*3, H_TOT=1650, V_TOT=750, VB=30, FRAME_PERIOD=H_TOT*V_TOT;
@@ -24,13 +28,13 @@ module pg_warp_real_tb;
     wire dm_req; wire [31:0] dm_addr; wire [11:0] dm_len; wire dm_ready; wire t_ready;
     reg [63:0] beat_data=0; reg beat_valid=0; wire beat_ready; reg beat_last=0;
 
-    pg_warp_engine #(.OUT_W(OUT_W),.OUT_H(OUT_H),.IN_W(IN_W),.IN_H(IN_H),.LTILE(LTILE),.NTILE(NTILE),.CW(CW),.FB(FB),.LEAD(LEAD)) dut (
+    pg_warp_engine #(.OUT_W(OUT_W),.OUT_H(OUT_H),.IN_W(IN_W),.IN_H(IN_H),.LTILE(LTILE),.NTILE(NTILE),.WAY(WAY),.PD(PD),.CW(CW),.FB(FB),.LEAD(LEAD)) dut (
         .clk(clk),.rstn(rstn),.sof(sof),
         .m_a(m_a),.m_b(m_b),.m_c(m_c),.m_d(m_d),.m_e(m_e),.m_f(m_f),.matte(matte),
         .o_valid(o_valid),.o_pix(o_pix),.o_ready(o_ready),
         .fetch_req(wreq),.fetch_tx(wtx),.fetch_ty(wty),.fetch_ready(t_ready),
         .fill_valid(fv),.fill_blk(fblk),.fill_last(fl));
-    pg_tile_dma #(.IN_W(IN_W),.LTILE(LTILE),.DREQ(16)) u_dma (
+    pg_tile_dma #(.IN_W(IN_W),.LTILE(LTILE),.DREQ(DREQ)) u_dma (
         .clk(clk),.rstn(rstn),.frame_base(32'd0),
         .t_req(wreq),.t_tx(wtx),.t_ty(wty),.t_ready(t_ready),
         .fill_valid(fv),.fill_blk(fblk),.fill_last(fl),
@@ -133,7 +137,10 @@ module pg_warp_real_tb;
         for(ayy=0;ayy<IN_H;ayy=ayy+1) for(axx=0;axx<IN_W;axx=axx+1)
             frame[ayy*IN_W+axx]={axx[7:0],ayy[7:0],(axx*3+ayy*5)+8'h07};
         total=0;cyc=0;
-        run_x(0.0, 1.5, 1.5, "shrink1.5");   // fill/lead driver; capacity-clean at 4-way
+        run_x(20.0, 1.0, 1.0, "rot20    ");
+        run_x(45.0, 1.0, 1.0, "rot45    ");
+        run_x(0.0,  1.5, 1.5, "shrink1.5");   // fill/lead driver
+        run_x(30.0, 1.5, 1.0, "aniso30  ");
         $finish;
     end
     initial begin #40_000_000_000; $display("WATCHDOG cn=%0d err=%0d",cn,errors); $finish; end

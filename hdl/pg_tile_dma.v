@@ -70,20 +70,23 @@ module pg_tile_dma #(
     reg        rx_sub;                                // 0 = even row of the pair, 1 = odd row
     reg [2:0]  rx_pr;                                 // pair index within the current tile (0..7)
     reg [3:0]  rcol;                                  // column 0..TILE-1 within the current row
-    reg [135:0] acc; reg [7:0] nbits;
+    reg [199:0] acc; reg [7:0] nbits;                 // wide accumulator: holds enough that >=3 whole px
+                                                      // are usually available, so the drain sustains 2.67px/clk
     reg [23:0] be[0:1][0:TILE-1];                     // even-row pixels  [slot][col]
     reg [23:0] bo[0:1][0:TILE-1];                     // odd-row  pixels  [slot][col]
     reg        full[0:1];                             // pair slot filled, waiting to emit
     wire       can_rx = rx_act && !full[rx_pp];       // receiving AND target slot free
-    wire [2:0] navail = (nbits>=8'd72)?3'd3:(nbits>=8'd48)?3'd2:(nbits>=8'd24)?3'd1:3'd0;
+    // drain up to 4 px/clk: must beat the 2.67 px/clk (64b) beat rate so the gearbox never backs up and
+    // stalls the DataMover (a 3px/clk cap + the row-boundary trim averages below 2.67 -> nbits overflow).
+    wire [3:0] navail = (nbits>=8'd96)?4'd4:(nbits>=8'd72)?4'd3:(nbits>=8'd48)?4'd2:(nbits>=8'd24)?4'd1:4'd0;
     wire [4:0] room   = TILE[4:0]-{1'b0,rcol};        // px left in this row
-    wire [2:0] ndrain = !can_rx ? 3'd0 : (navail>room[2:0] && room<3) ? room[2:0] : navail;
-    assign beat_ready = (nbits <= 8'd64) && rx_act;   // room for a beat, and we're receiving
+    wire [3:0] ndrain = !can_rx ? 4'd0 : (navail>room[3:0] && room<4) ? room[3:0] : navail;
+    assign beat_ready = (nbits <= 8'd96) && rx_act;   // hold up to ~96b so navail stays 3-4 (sustains rate)
     wire       acc_beat = beat_valid && beat_ready;
-    wire [7:0] drbits = {1'b0,ndrain,4'b0000} + {2'b0,ndrain,3'b000};      // 24*ndrain
+    wire [7:0] drbits = {1'b0,ndrain,4'b0000} + {1'b0,ndrain,3'b000};      // 24*ndrain (max 96)
     wire [7:0] nbits_a = nbits - drbits;
-    wire [135:0] acc_a = acc >> drbits;
-    wire [23:0] px0 = acc[23:0], px1 = acc[47:24], px2 = acc[71:48];
+    wire [199:0] acc_a = acc >> drbits;
+    wire [23:0] px0 = acc[23:0], px1 = acc[47:24], px2 = acc[71:48], px3 = acc[95:72];
     wire       row_done = (ndrain!=0) && (rcol + ndrain >= TILE);
     wire       rx_done  = row_done && rx_sub && (rx_pr==3'd7);   // tile fully received this cycle
 
@@ -113,8 +116,8 @@ module pg_tile_dma #(
             rx_left <= rx_left + (iss_load?1:0) - ((rx_act && rx_done)?1:0);
 
             // ----- receive: gearbox drain into the pair ping-pong -----
-            if(acc_beat) begin acc <= acc_a | ({72'd0, beat_data} << nbits_a); nbits <= nbits_a + 8'd64; end
-            else         begin acc <= acc_a;                                   nbits <= nbits_a; end
+            if(acc_beat) begin acc <= acc_a | ({136'd0, beat_data} << nbits_a); nbits <= nbits_a + 8'd64; end
+            else         begin acc <= acc_a;                                    nbits <= nbits_a; end
             if(!rx_act) begin
                 if(rx_left!=0) begin rx_act<=1; rcol<=0; rx_sub<=0; rx_pr<=0; end
             end else if(ndrain!=0) begin
@@ -122,10 +125,12 @@ module pg_tile_dma #(
                     if(ndrain>=1) bo[rx_pp][rcol]   <= px0;
                     if(ndrain>=2) bo[rx_pp][rcol+1] <= px1;
                     if(ndrain>=3) bo[rx_pp][rcol+2] <= px2;
+                    if(ndrain>=4) bo[rx_pp][rcol+3] <= px3;
                 end else begin                            // even row -> be
                     if(ndrain>=1) be[rx_pp][rcol]   <= px0;
                     if(ndrain>=2) be[rx_pp][rcol+1] <= px1;
                     if(ndrain>=3) be[rx_pp][rcol+2] <= px2;
+                    if(ndrain>=4) be[rx_pp][rcol+3] <= px3;
                 end
                 if(row_done) begin
                     rcol<=0;
@@ -135,7 +140,7 @@ module pg_tile_dma #(
                         if(rx_pr==3'd7) begin rx_pr<=0; rx_act<=0; end  // tile done
                         else rx_pr<=rx_pr+1'b1;
                     end
-                end else rcol<=rcol+{1'b0,ndrain};
+                end else rcol<=rcol+ndrain;
             end
 
             // ----- emit: drain a full pair slot as 8 blocks (paircol 0..7) -----

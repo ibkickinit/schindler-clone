@@ -20,6 +20,7 @@ module pg_tilecache_rt2 #(
     parameter integer LTILE = 4,
     parameter integer NTILE = 64,
     parameter integer WAY   = 4,          // set-associativity (power of 2); NSET = NTILE/WAY
+    parameter integer PD    = 16,         // multi-outstanding pending-fill depth (real geom needs ~64)
     parameter integer SB    = 4
 ) (
     input  wire        clk, rstn,
@@ -58,10 +59,17 @@ module pg_tilecache_rt2 #(
                                        b01[0:NTILE*BPT-1], b11[0:NTILE*BPT-1];
     reg [TIDW-1:0] tag[0:NTILE-1]; reg vld[0:NTILE-1]; reg rsv[0:NTILE-1]; reg [WAYW-1:0] rr_way;
     // vld = resident (consumable). rsv = slot reserved for an in-flight fill (not yet consumable).
+    // FIFO-by-fetch eviction: per-slot fetch sequence; fseq increments per fill. The prefetch fetches in
+    // walk order = the consumer's future access order, so the oldest-fetched resident tile in a set is
+    // the one the consumer reached/passed earliest = the dead one. Evicting it (vs round-robin) lets a
+    // modest cache hold the live working set indefinitely instead of thrashing once eviction is
+    // mandatory (which never happens in the small TB but is the rule at 1080p). ~LRU for streaming.
+    localparam integer SEQW=16;
+    reg [SEQW-1:0] fseq; reg [SEQW-1:0] seq[0:NTILE-1];
     // ---- multi-outstanding pending-fill FIFO: up to PD tiles in flight ----
-    // PD=16 (with tile_dma DREQ=16 + a deep prefetch lead) covers shrink's worst tile-row-crossing
-    // burst (~a full tile-row of misses); 12 still starves, 16 clears all four transforms.
-    localparam integer PD=16, PW=$clog2(PD);
+    // Keeps the DataMover continuously fed across the prefetch's bursty miss pattern. The small TB clears
+    // all four at PD=16; the full 1280x720<-1920x1080 geometry needs PD~64 (set at instantiation).
+    localparam integer PW=$clog2(PD);
     reg [SLW-1:0] pf_slot[0:PD-1]; reg [TIDW-1:0] pf_tid[0:PD-1]; reg pf_occ[0:PD-1];
     reg [PW-1:0]  pf_wr, pf_rd; reg [PW:0] pf_cnt;
     wire pf_full  = (pf_cnt==PD[PW:0]);
@@ -70,14 +78,21 @@ module pg_tilecache_rt2 #(
     function automatic pend_has; input [TIDW-1:0] t; integer i; begin pend_has=1'b0;
         for(i=0;i<PD;i=i+1) if(pf_occ[i] && pf_tid[i]==t) pend_has=1'b1; end
     endfunction
-    // victim way for a set: prefer a way that is neither resident nor reserved (free), so a fill never
-    // evicts a live tile while a free way exists. Only when all 4 ways are occupied (which, given
-    // worst-set-live<=4, means at least one holds a now-dead tile) do we round-robin. This is the
-    // non-thrashing victim policy the multi-outstanding prefetch needs.
-    function automatic [WAYW-1:0] vict; input [SETW-1:0] st; integer w; reg found; begin
-        vict=rr_way; found=1'b0;                          // default: round-robin (all-occupied fallback)
-        for(w=WAY-1;w>=0;w=w-1)                            // else lowest free (not resident, not reserved)
-            if(!vld[{st,w[WAYW-1:0]}] && !rsv[{st,w[WAYW-1:0]}]) begin vict=w[WAYW-1:0]; found=1'b1; end
+    // victim way for a set: (1) a FREE way (not resident, not reserved) if any — a fill never evicts a
+    // live tile while a free way exists; (2) else the OLDEST-FETCHED non-reserved resident way (FIFO ~
+    // LRU for the streaming prefetch order); (3) else round-robin (all ways reserved — rare). This is
+    // the non-thrashing victim the multi-outstanding prefetch needs once eviction is mandatory.
+    function automatic [WAYW-1:0] vict; input [SETW-1:0] st;
+        integer w; reg freef; reg [WAYW-1:0] freew, oldw; reg [SEQW-1:0] maxage, age; begin
+        freef=1'b0; freew=rr_way; oldw=rr_way; maxage={SEQW{1'b1}};   // maxage seeds so first sets it
+        for(w=WAY-1;w>=0;w=w-1)
+            if(!vld[{st,w[WAYW-1:0]}] && !rsv[{st,w[WAYW-1:0]}]) begin freew=w[WAYW-1:0]; freef=1'b1; end
+        maxage={SEQW{1'b0}};
+        for(w=0;w<WAY;w=w+1) begin
+            age = fseq - seq[{st,w[WAYW-1:0]}];          // modular age; larger = fetched longer ago
+            if(!rsv[{st,w[WAYW-1:0]}] && (age>=maxage)) begin maxage=age; oldw=w[WAYW-1:0]; end
+        end
+        vict = freef ? freew : oldw;
         end
     endfunction
 
@@ -202,8 +217,8 @@ module pg_tilecache_rt2 #(
     wire [BAW-1:0] fwa = (pf_slot[pf_rd]<<(2*HT)) | fcw;   // fills route to the pending-FIFO head slot
 
     always @(posedge clk) begin
-        if(!rstn) begin p_busy<=0; rr_way<=0; fcw<=0; pf_wr<=0; pf_rd<=0; pf_cnt<=0;
-            for(pj=0;pj<NTILE;pj=pj+1) begin vld[pj]<=0; rsv[pj]<=0; end
+        if(!rstn) begin p_busy<=0; rr_way<=0; fcw<=0; pf_wr<=0; pf_rd<=0; pf_cnt<=0; fseq<=1;
+            for(pj=0;pj<NTILE;pj=pj+1) begin vld[pj]<=0; rsv[pj]<=0; seq[pj]<=0; end
             for(pj=0;pj<PD;pj=pj+1) pf_occ[pj]<=0; end
         else begin
             // issue: pick a free (or dead) victim way, invalidate it now (no stale hits during the
@@ -224,6 +239,7 @@ module pg_tilecache_rt2 #(
                 fcw<=fcw+1'b1;
                 if(fill_last) begin                        // tile complete -> commit + pop head
                     tag[pf_slot[pf_rd]]<=pf_tid[pf_rd]; vld[pf_slot[pf_rd]]<=1'b1; rsv[pf_slot[pf_rd]]<=1'b0;
+                    seq[pf_slot[pf_rd]]<=fseq; fseq<=fseq+1'b1;     // stamp fetch order (FIFO ~ LRU)
                     pf_occ[pf_rd]<=1'b0; pf_rd<=pf_rd+1'b1; fcw<=6'd0;
                 end
             end
