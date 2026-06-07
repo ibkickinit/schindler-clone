@@ -111,7 +111,7 @@ module pg_warp_dma_tb;
         for(ayy=0;ayy<IN_H;ayy=ayy+1) for(axx=0;axx<IN_W;axx=axx+1)
             frame[ayy*IN_W+axx]={axx[7:0],ayy[7:0],(axx*3+ayy*5)+8'h07};
         setrot(20.0,1.0);
-        cn=0;errors=0;total=0;cyc=0;underruns=0;started=0;fcnt=0;traced_req=0;
+        cn=0;errors=0;total=0;cyc=0;underruns=0;started=0;
         rstn=0; repeat(5)@(posedge clk); rstn=1; repeat(3)@(posedge clk);
         @(posedge clk); sof<=1; started<=1; @(posedge clk); sof<=0;
         t0=cyc;
