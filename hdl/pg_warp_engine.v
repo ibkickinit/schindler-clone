@@ -33,38 +33,46 @@ module pg_warp_engine #(
     input  wire [95:0] fill_blk,
     input  wire        fill_last
 );
-    // ---- consumer affine (ready/valid: advances only when the cache accepts) ----
-    wire        ca_v, ca_in, ca_nr;
-    wire [11:0] ca_col, ca_row, ca_fx, ca_fy;
-    wire        tc_ready;
+    // Skid buffers between each affine and the cache decouple the affine's o_ready from the cache's
+    // live tag lookup (which was the -3.5ns combinational handshake loop through the affine DDA).
+    wire        tc_ready, pf_ready;
+
+    // ---- consumer affine -> skid -> cache ----
+    wire        ca_v, ca_in, ca_nr; wire [11:0] ca_col, ca_row, ca_fx, ca_fy; wire ca_sr;
+    wire        cm_v; wire [48:0] cm_d;
     pg_affine #(.OUT_W(OUT_W),.OUT_H(OUT_H),.IN_W(IN_W),.IN_H(IN_H),.CW(CW),.FB(FB)) u_aff_c (
-        .clk(clk),.rstn(rstn),.sof(sof),.o_valid(ca_v),.o_ready(tc_ready),
+        .clk(clk),.rstn(rstn),.sof(sof),.o_valid(ca_v),.o_ready(ca_sr),
         .m_a(m_a),.m_b(m_b),.m_c(m_c),.m_d(m_d),.m_e(m_e),.m_f(m_f),
         .o_in_window(ca_in),.o_src_col(ca_col),.o_src_row(ca_row),
         .o_h_frac(ca_fx),.o_v_frac(ca_fy),.o_new_row(ca_nr));
+    pg_skid #(.W(49)) u_skid_c (.clk(clk),.rstn(rstn),
+        .s_valid(ca_v),.s_data({ca_col,ca_row,ca_fx,ca_fy,ca_in}),.s_ready(ca_sr),
+        .m_valid(cm_v),.m_data(cm_d),.m_ready(tc_ready));
 
-    // ---- prefetch affine (leads consumer, bounded by LEAD so eviction only hits consumed tiles) ----
-    wire        pa_v, pa_in; wire [11:0] pa_col, pa_row; wire pf_ready;
+    // ---- prefetch affine -> skid -> cache (lead-bounded so eviction only hits consumed tiles) ----
+    wire        pa_v, pa_in; wire [11:0] pa_col, pa_row; wire pa_sr;
+    wire        pm_v; wire [24:0] pm_d;
     reg  [15:0] lead_cnt;
-    wire        pf_gate = pf_ready && (lead_cnt < LEAD[15:0]);
-    wire        pf_acc  = pa_v && pf_gate;
-    wire        c_acc   = ca_v && tc_ready;
+    wire        pf_gate = (lead_cnt < LEAD[15:0]);          // reg-based -> not in the lookup path
     always @(posedge clk) begin
         if(!rstn || sof) lead_cnt <= 16'd0;
-        else lead_cnt <= lead_cnt + (pf_acc ? 16'd1 : 16'd0) - (c_acc ? 16'd1 : 16'd0);
+        else lead_cnt <= lead_cnt + ((pm_v&&pf_ready)?16'd1:16'd0) - ((cm_v&&tc_ready)?16'd1:16'd0);
     end
     pg_affine #(.OUT_W(OUT_W),.OUT_H(OUT_H),.IN_W(IN_W),.IN_H(IN_H),.CW(CW),.FB(FB)) u_aff_p (
-        .clk(clk),.rstn(rstn),.sof(sof),.o_valid(pa_v),.o_ready(pf_gate),
+        .clk(clk),.rstn(rstn),.sof(sof),.o_valid(pa_v),.o_ready(pa_sr && pf_gate),
         .m_a(m_a),.m_b(m_b),.m_c(m_c),.m_d(m_d),.m_e(m_e),.m_f(m_f),
         .o_in_window(pa_in),.o_src_col(pa_col),.o_src_row(pa_row),
         .o_h_frac(),.o_v_frac(),.o_new_row());
+    pg_skid #(.W(25)) u_skid_p (.clk(clk),.rstn(rstn),
+        .s_valid(pa_v && pf_gate),.s_data({pa_col,pa_row,pa_in}),.s_ready(pa_sr),
+        .m_valid(pm_v),.m_data(pm_d),.m_ready(pf_ready));
 
     // ---- tile cache ----
     wire        tc_v; wire [23:0] tp00,tp10,tp01,tp11; wire [11:0] tfx,tfy; wire tin; wire [3:0] tsb;
     pg_tilecache_rt2 #(.IN_W(IN_W),.IN_H(IN_H),.LTILE(LTILE),.NTILE(NTILE),.SB(4)) u_tc (
         .clk(clk),.rstn(rstn),
-        .pf_valid(pa_v),.pf_x(pa_col),.pf_y(pa_row),.pf_inwin(pa_in),.pf_ready(pf_ready),
-        .c_valid(ca_v),.c_x(ca_col),.c_y(ca_row),.c_fx(ca_fx),.c_fy(ca_fy),.c_inwin(ca_in),.c_sb(4'd0),.c_ready(tc_ready),
+        .pf_valid(pm_v),.pf_x(pm_d[24:13]),.pf_y(pm_d[12:1]),.pf_inwin(pm_d[0]),.pf_ready(pf_ready),
+        .c_valid(cm_v),.c_x(cm_d[48:37]),.c_y(cm_d[36:25]),.c_fx(cm_d[24:13]),.c_fy(cm_d[12:1]),.c_inwin(cm_d[0]),.c_sb(4'd0),.c_ready(tc_ready),
         .out_valid(tc_v),.out_p00(tp00),.out_p10(tp10),.out_p01(tp01),.out_p11(tp11),
         .out_fx(tfx),.out_fy(tfy),.out_inwin(tin),.out_sb(tsb),.out_ready(b_ready),
         .fetch_req(fetch_req),.fetch_tx(fetch_tx),.fetch_ty(fetch_ty),
