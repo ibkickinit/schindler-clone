@@ -56,7 +56,8 @@ module pg_tilecache_rt2 #(
     reg [TIDW-1:0] tag[0:NTILE-1]; reg vld[0:NTILE-1]; reg [1:0] rr_way;  // round-robin victim way
     reg [TIDW-1:0] pend_tid; reg pend_v;        // single in-flight fill
 
-    function [TIDW-1:0] tidf; input [11:0] px,py; tidf=(py>>LTILE)*TX+(px>>LTILE); endfunction
+    // tile id = {ty,tx} concatenation (unique, NO multiply) — the multiply was on the lookup path
+    function [TIDW-1:0] tidf; input [11:0] px,py; tidf={py[11:LTILE], px[11:LTILE]}; endfunction
     // set index = low SKH bits of (ty,tx) — spreads adjacent tiles (the 2x2's 4 tiles) across sets
     function [SETW-1:0] setf; input [11:0] px,py;
         setf={py[LTILE+SKH-1:LTILE], px[LTILE+SKH-1:LTILE]}; endfunction
