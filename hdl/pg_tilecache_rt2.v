@@ -69,15 +69,14 @@ module pg_tilecache_rt2 #(
     // ---- multi-outstanding pending-fill FIFO: up to PD tiles in flight ----
     // Keeps the DataMover continuously fed across the prefetch's bursty miss pattern. The small TB clears
     // all four at PD=16; the full 1280x720<-1920x1080 geometry needs PD~64 (set at instantiation).
+    // Holds only the in-FIFO-order victim SLOTS for in-order fill routing; "in-flight" is not tracked by
+    // scanning this FIFO — the tag is written at issue (with rsv=1), so availability (resident OR pending)
+    // is a single (vld||rsv)&&tag lookup over a set's WAY ways, NOT a PD-deep scan.
     localparam integer PW=$clog2(PD);
-    reg [SLW-1:0] pf_slot[0:PD-1]; reg [TIDW-1:0] pf_tid[0:PD-1]; reg pf_occ[0:PD-1];
+    reg [SLW-1:0] pf_slot[0:PD-1];
     reg [PW-1:0]  pf_wr, pf_rd; reg [PW:0] pf_cnt;
     wire pf_full  = (pf_cnt==PD[PW:0]);
     wire pf_empty = (pf_cnt==0);
-    // a tile is in-flight if any occupied pending slot holds its id
-    function automatic pend_has; input [TIDW-1:0] t; integer i; begin pend_has=1'b0;
-        for(i=0;i<PD;i=i+1) if(pf_occ[i] && pf_tid[i]==t) pend_has=1'b1; end
-    endfunction
     // victim way for a set: (1) a FREE way (not resident, not reserved) if any — a fill never evicts a
     // live tile while a free way exists; (2) else the OLDEST-FETCHED non-reserved resident way (FIFO ~
     // LRU for the streaming prefetch order); (3) else round-robin (all ways reserved — rare). This is
@@ -175,20 +174,20 @@ module pg_tilecache_rt2 #(
     wire [11:0] ppx0=(px_[0]==0)?px_:pxr, ppx1=(px_[0]==1)?px_:pxr;
     wire [11:0] ppy0=(py_[0]==0)?py_:pyb, ppy1=(py_[0]==1)?py_:pyb;
     wire [TIDW-1:0] pt00=tidf(ppx0,ppy0), pt10=tidf(ppx1,ppy0), pt01=tidf(ppx0,ppy1), pt11=tidf(ppx1,ppy1);
-    reg pr00,pr10,pr01,pr11; reg [SLW-1:0] pd;
+    wire [SETW-1:0] ps00=setf(ppx0,ppy0), ps10=setf(ppx1,ppy0), ps01=setf(ppx0,ppy1), ps11=setf(ppx1,ppy1);
+    // av* : tile is available (resident OR fill-in-flight). Because the tag is written at ISSUE with
+    // rsv=1, a single (vld||rsv)&&tag lookup over the set's WAY ways covers both — no PD-deep scan. The
+    // compare is INLINED (direct vld/rsv/tag array reads) so the always@* is sensitive to them: a
+    // function form is not sensitive to the internal array reads in xsim and the prefetch re-issues a
+    // just-issued tile forever. Cost is WAY (8) per tile, bounded by associativity not lead depth.
+    reg av00, av10, av01, av11; integer aw;
     always @* begin
-        {pr00,pd}=looka(ppx0,ppy0); {pr10,pd}=looka(ppx1,ppy0);
-        {pr01,pd}=looka(ppx0,ppy1); {pr11,pd}=looka(ppx1,ppy1);
-    end
-    // av* : resident (pr*) OR in-flight (matches an occupied pending slot). The pending compare is
-    // INLINED here (not via a function) so the always@* is sensitive to the pf_occ/pf_tid array reads
-    // — a wire/function form misses a tile becoming pending and the prefetch re-issues it forever.
-    reg av00, av10, av01, av11; integer ai;
-    always @* begin
-        av00 = pr00; av10 = pr10; av01 = pr01; av11 = pr11;
-        for(ai=0;ai<PD;ai=ai+1) if(pf_occ[ai]) begin
-            if(pf_tid[ai]==pt00) av00=1'b1; if(pf_tid[ai]==pt10) av10=1'b1;
-            if(pf_tid[ai]==pt01) av01=1'b1; if(pf_tid[ai]==pt11) av11=1'b1;
+        av00=1'b0; av10=1'b0; av01=1'b0; av11=1'b0;
+        for(aw=0;aw<WAY;aw=aw+1) begin
+            if((vld[{ps00,aw[WAYW-1:0]}]||rsv[{ps00,aw[WAYW-1:0]}]) && tag[{ps00,aw[WAYW-1:0]}]==pt00) av00=1'b1;
+            if((vld[{ps10,aw[WAYW-1:0]}]||rsv[{ps10,aw[WAYW-1:0]}]) && tag[{ps10,aw[WAYW-1:0]}]==pt10) av10=1'b1;
+            if((vld[{ps01,aw[WAYW-1:0]}]||rsv[{ps01,aw[WAYW-1:0]}]) && tag[{ps01,aw[WAYW-1:0]}]==pt01) av01=1'b1;
+            if((vld[{ps11,aw[WAYW-1:0]}]||rsv[{ps11,aw[WAYW-1:0]}]) && tag[{ps11,aw[WAYW-1:0]}]==pt11) av11=1'b1;
         end
     end
     wire all_av = av00&av10&av01&av11;
@@ -219,15 +218,16 @@ module pg_tilecache_rt2 #(
     always @(posedge clk) begin
         if(!rstn) begin p_busy<=0; rr_way<=0; fcw<=0; pf_wr<=0; pf_rd<=0; pf_cnt<=0; fseq<=1;
             for(pj=0;pj<NTILE;pj=pj+1) begin vld[pj]<=0; rsv[pj]<=0; seq[pj]<=0; end
-            for(pj=0;pj<PD;pj=pj+1) pf_occ[pj]<=0; end
+            end
         else begin
-            // issue: pick a free (or dead) victim way, invalidate it now (no stale hits during the
-            // fill), reserve the slot, enqueue as pending. rr_way advances only as the all-occupied
+            // issue: pick a free (or dead) victim way; write the NEW tag now (so availability sees the
+            // tile as in-flight) and invalidate-as-resident (rsv=1, vld=0 -> no stale hits during fill).
+            // Enqueue the slot for in-order fill routing. rr_way advances only as the all-occupied
             // tiebreak so it stays meaningful.
             if(issue_go) begin
-                pf_slot[pf_wr]<=ua_slot; pf_tid[pf_wr]<=ua_tid; pf_occ[pf_wr]<=1'b1;
-                vld[ua_slot]<=1'b0; rsv[ua_slot]<=1'b1;
-                pf_wr<=pf_wr+1'b1; rr_way<=rr_way+1'b1;
+                pf_slot[pf_wr]<=ua_slot; pf_wr<=pf_wr+1'b1;
+                tag[ua_slot]<=ua_tid; vld[ua_slot]<=1'b0; rsv[ua_slot]<=1'b1;
+                rr_way<=rr_way+1'b1;
             end
             // accept next prefetch coord when current is done; else drop busy if nothing pending
             if(pf_valid && pf_ready) begin px_<=pf_x; py_<=pf_y; pin_<=pf_inwin; p_busy<=1; end
@@ -237,10 +237,10 @@ module pg_tilecache_rt2 #(
                 b00[fwa]<=fill_blk[23:0];  b10[fwa]<=fill_blk[47:24];
                 b01[fwa]<=fill_blk[71:48]; b11[fwa]<=fill_blk[95:72];
                 fcw<=fcw+1'b1;
-                if(fill_last) begin                        // tile complete -> commit + pop head
-                    tag[pf_slot[pf_rd]]<=pf_tid[pf_rd]; vld[pf_slot[pf_rd]]<=1'b1; rsv[pf_slot[pf_rd]]<=1'b0;
-                    seq[pf_slot[pf_rd]]<=fseq; fseq<=fseq+1'b1;     // stamp fetch order (FIFO ~ LRU)
-                    pf_occ[pf_rd]<=1'b0; pf_rd<=pf_rd+1'b1; fcw<=6'd0;
+                if(fill_last) begin                        // tile complete -> make resident + pop head
+                    vld[pf_slot[pf_rd]]<=1'b1; rsv[pf_slot[pf_rd]]<=1'b0;   // tag already written at issue
+                    seq[pf_slot[pf_rd]]<=fseq; fseq<=fseq+1'b1;             // stamp fetch order (FIFO ~ LRU)
+                    pf_rd<=pf_rd+1'b1; fcw<=6'd0;
                 end
             end
             pf_cnt <= pf_cnt + (issue_go?1:0) - (fill_pop?1:0);

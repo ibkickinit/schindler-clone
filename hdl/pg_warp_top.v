@@ -19,6 +19,9 @@ module pg_warp_top #(
     parameter integer NUM_FRAMES  = 7,
     parameter integer SLOT_STRIDE  = 2768640,
     parameter integer NTILE = 256,
+    parameter integer WAY   = 4,
+    parameter integer PD    = 16,
+    parameter integer DREQ  = 16,
     parameter integer LTILE = 4,
     parameter integer LEAD  = 2048,
     parameter integer CW = 32,
@@ -80,25 +83,31 @@ module pg_warp_top #(
     wire        fv; wire [95:0] fblk; wire fl;
     wire        o_valid; wire [23:0] o_pix; wire o_ready;
     wire        fetch_req; wire [31:0] fetch_addr; wire [11:0] fetch_len;
+    wire        t_rdy;                    // tile_dma can accept a fetch (multi-outstanding handshake)
+    wire        cmd_rdy;                  // DataMover command formatter can accept a row command
 
     pg_warp_engine #(.OUT_W(OUT_W),.OUT_H(OUT_H),.IN_W(IN_W),.IN_H(IN_H),
-                     .LTILE(LTILE),.NTILE(NTILE),.CW(CW),.FB(FB),.LEAD(LEAD)) u_eng (
+                     .LTILE(LTILE),.NTILE(NTILE),.WAY(WAY),.PD(PD),.CW(CW),.FB(FB),.LEAD(LEAD)) u_eng (
         .clk(clk),.rstn(rstn),.sof(sof),
         .m_a(a2),.m_b(b2),.m_c(c2),.m_d(d2),.m_e(e2),.m_f(f2),.matte(mt2),
         .o_valid(o_valid),.o_pix(o_pix),.o_ready(o_ready),
-        .fetch_req(wreq),.fetch_tx(wtx),.fetch_ty(wty),
+        .fetch_req(wreq),.fetch_tx(wtx),.fetch_ty(wty),.fetch_ready(t_rdy),
         .fill_valid(fv),.fill_blk(fblk),.fill_last(fl));
 
-    pg_tile_dma #(.IN_W(IN_W),.LTILE(LTILE)) u_dma (
+    pg_tile_dma #(.IN_W(IN_W),.LTILE(LTILE),.DREQ(DREQ)) u_dma (
         .clk(clk),.rstn(rstn),.frame_base(frame_base),
-        .t_req(wreq),.t_tx(wtx),.t_ty(wty),
+        .t_req(wreq),.t_tx(wtx),.t_ty(wty),.t_ready(t_rdy),
         .fill_valid(fv),.fill_blk(fblk),.fill_last(fl),
-        .fetch_req(fetch_req),.fetch_addr(fetch_addr),.fetch_len(fetch_len),
+        .fetch_req(fetch_req),.fetch_addr(fetch_addr),.fetch_len(fetch_len),.fetch_ready(cmd_rdy),
         .beat_data(s_axis_dm_tdata),.beat_valid(s_axis_dm_tvalid),
         .beat_ready(s_axis_dm_tready),.beat_last(s_axis_dm_tlast));
 
     // ---- DataMover command formatter (one row per fetch) ----
+    // tile_dma holds fetch_req (combinational) and a row is consumed on cmd_rdy. The formatter buffers
+    // one command; cmd_rdy=!cmd_valid is the row-command handshake back to tile_dma. The DataMover IP's
+    // own command FIFO buffers the rest, keeping the row stream gap-free.
     reg cmd_valid; reg [71:0] cmd_data;
+    assign cmd_rdy = !cmd_valid;
     assign m_axis_cmd_tvalid = cmd_valid;
     assign m_axis_cmd_tdata  = cmd_data;
     wire [22:0] btt = fetch_len * 3;

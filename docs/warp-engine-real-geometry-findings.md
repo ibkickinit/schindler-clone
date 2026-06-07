@@ -126,3 +126,22 @@ it occurs at most once at power-on, on the top-left pixel.)
   point, but worth understanding before pushing PD higher.
 - FIFO ≈ LRU holds for streaming/rotation here; a pathological revisit pattern could want true LRU. Not
   observed in the four transforms.
+
+### Cold-start is power-on-once (not per-coeff-change) — confirmed by HDL inspection
+The cache (`pg_tilecache_rt2`) has **no `sof`, no flush, no invalidate-all**: `vld` is cleared only
+per-slot on evict and set per-slot on fill. `sof` resets only the prefetch's `lead_cnt` (benign — with a
+warm cache the prefetch re-establishes its lead through hits, no refetch). Coeffs latch frame-atomically
+inside `pg_affine`; on a live geometry change the FIFO age (global `fseq`) recycles the old-geometry
+tiles as the new working set arrives — a smooth working-set shift, **not** a cold-start. So the rot45
+cn=3 transient occurs at most once at power-on/reset, on the top-left pixel — it does NOT recur per frame
+or per zoom/rotate/pan adjustment. (A very large single geometry jump could cost a one-frame transient as
+the whole working set turns over, but not a persistent twinkle during incremental tuning. A mid-stream
+coeff-change sim would be the definitive confirmation — good follow-up.)
+
+### Timing: pending-availability cone collapsed from PD-deep to associativity-deep
+The multi-outstanding pending check was refactored from a PD(64)×4 = 256-comparator FIFO scan to a
+single `(vld||rsv)&&tag` lookup over a set's WAY ways (write the tag at ISSUE with rsv=1, so resident
+and in-flight are the same lookup): **WAY(8)×4 = 32 comparators**, bounded by associativity not lead
+depth, and it scales if PD grows. Removes the cone rather than pipelining it. Both gates re-verified
+identical. The consumer gather tag lookup (the original in-context WNS −3.5 path) is now 8-way; the build
+will say whether it needs the reserved tag-lookup pipeline stage.
