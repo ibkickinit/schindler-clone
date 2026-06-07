@@ -61,9 +61,10 @@ def simulate(need, CACHE, LEAD, FIFO, DDR_LAT, DDR_XFER):
     NA = H_ACT*V_ACT
     cyc = 0
     # active-pixel index as a function of timing position
+    VB, HB = 25, 260                     # LEADING blank (porch) before active -> prefetch warmup slack
     for vy in range(V_TOT):
         for hx in range(H_TOT):
-            active = (vy < V_ACT) and (hx < H_ACT)
+            active = (vy >= VB) and (vy < VB+V_ACT) and (hx >= HB) and (hx < HB+H_ACT)
             # ---- DDR completions ----
             done = [t for t,c in pending.items() if c <= cyc]
             for t in done:
@@ -111,8 +112,8 @@ def run():
              ("zoom 50% shrink", dict(kind="affine", scale=0.5))]
     # tile-size sweep at constant ~384KB BRAM: ntiles = 131072 / (tile^2)
     # DDR_XFER = tile_bytes / 16 B/cyc (16 = 1 HP port at a faster AXI clock, or 2 ports @ pixelclk)
-    # (TILE, ntiles@384KB, DDR B/cyc, lead). 16=1 HP port faster-clk; 32=2 HP ports.
-    configs = [(16, 512, 16, 4096), (16, 512, 32, 8192), (8, 2048, 32, 8192)]
+    # (TILE, ntiles@384KB, DDR B/cyc, lead). 16=1 port; 32=2 ports; 64=4 ports (Zynq has 4 HP).
+    configs = [(16, 512, 16, 8192), (16, 512, 32, 8192), (16, 512, 64, 16384), (8, 2048, 64, 16384)]
     for name, p in cases:
         for TILE, NT, BPC, lead in configs:
             need = tiles_per_active(TILE=TILE, **p)
