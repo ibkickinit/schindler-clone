@@ -15,7 +15,7 @@ module pg_warp_dma_tb;
     wire wreq; wire [11:0] wtx,wty;
     wire fv; wire [95:0] fblk; wire fl;
     // tile_dma <-> DataMover
-    wire dm_req; wire [31:0] dm_addr; wire [11:0] dm_len;
+    wire dm_req; wire [31:0] dm_addr; wire [11:0] dm_len; wire dm_ready; wire t_ready;
     reg  [63:0] beat_data=0; reg beat_valid=0; wire beat_ready; reg beat_last=0;
 
     pg_warp_engine #(.OUT_W(OUT_W),.OUT_H(OUT_H),.IN_W(IN_W),.IN_H(IN_H),.LTILE(LTILE),.NTILE(NTILE),.CW(CW),.FB(FB),.LEAD(LEAD)) dut (
@@ -27,38 +27,47 @@ module pg_warp_dma_tb;
 
     pg_tile_dma #(.IN_W(IN_W),.LTILE(LTILE)) u_dma (
         .clk(clk),.rstn(rstn),.frame_base(32'd0),
-        .t_req(wreq),.t_tx(wtx),.t_ty(wty),
+        .t_req(wreq),.t_tx(wtx),.t_ty(wty),.t_ready(t_ready),
         .fill_valid(fv),.fill_blk(fblk),.fill_last(fl),
-        .fetch_req(dm_req),.fetch_addr(dm_addr),.fetch_len(dm_len),
+        .fetch_req(dm_req),.fetch_addr(dm_addr),.fetch_len(dm_len),.fetch_ready(dm_ready),
         .beat_data(beat_data),.beat_valid(beat_valid),.beat_ready(beat_ready),.beat_last(beat_last));
     always #5 clk=~clk;
 
     reg [23:0] frame[0:IN_W*IN_H-1];
     function [23:0] pxf; input integer x,y; pxf=frame[y*IN_W+x]; endfunction
 
-    // behavioral DataMover (proper AXIS source): pack TILE pixels into 64-bit beats, present one beat
-    // at a time, advance ONLY on (beat_valid && beat_ready). beat_* driven combinationally so a beat
-    // is consumed exactly once.
-    reg [383:0] packed; integer srcrow, srccol, k; reg [2:0] dstate, bidx;
-    localparam NBEAT=(TILE*3)/8;   // 16*3/8 = 6
-    always @* begin
-        beat_valid = (dstate==3'd1);
-        beat_data  = packed[bidx*64 +: 64];
-        beat_last  = (dstate==3'd1) && (bidx==NBEAT-1);
-    end
+    // behavioral AXI DataMover — GAP-FREE pipelined model with a REGISTERED output (a real DataMover's
+    // AXIS master is registered). Row commands (dm_req) queue in a depth-DMD FIFO; the streamer presents
+    // one 64-bit beat/clk and, when a row's last beat is consumed, immediately presents the next queued
+    // row's first beat — a kept-full FIFO => continuous 1-beat/clk (8 B/clk = 2.67 px/clk) across rows
+    // AND tiles. Output is registered (beat_data/valid/last clocked) so reloading the row buffer never
+    // races the comb beat read. fetch_ready (=FIFO not full) backpressures the issuer.
+    localparam NBEAT=(TILE*3)/8, DMD=8;            // 6 beats/row; command-FIFO depth 8 (DMD=2^k)
+    reg  [31:0] cq[0:DMD-1]; reg [3:0] cq_cnt; reg [$clog2(DMD)-1:0] cq_wr, cq_rd;  // ptrs wrap at DMD
+    assign dm_ready = (cq_cnt!=DMD);
+    wire cq_push = dm_req && dm_ready;
+    reg [383:0] rb; integer srcrow, srccol, k; reg [2:0] bidx; reg loaded;
+    wire beat_go   = !beat_valid || beat_ready;            // output reg free to advance
+    wire cont_row  = loaded && (bidx!=NBEAT-1);            // more beats in the current row
+    wire take_new  = beat_go && !cont_row && (cq_cnt!=0);  // pop+load a new row this cycle
     always @(posedge clk) begin
-        if(!rstn) begin dstate<=0; bidx<=0; end
-        else case(dstate)
-            0: if(dm_req) begin
-                   srcrow=dm_addr/STRIDE; srccol=(dm_addr-srcrow*STRIDE)/3;
-                   for(k=0;k<TILE;k=k+1) packed[k*24 +: 24] = pxf(srccol+k, srcrow);
-                   bidx<=0; dstate<=1;
-               end
-            1: if(beat_ready) begin
-                   if(bidx==NBEAT-1) dstate<=0; else bidx<=bidx+1;
-               end
-            default: dstate<=0;
-        endcase
+        if(!rstn) begin cq_cnt<=0; cq_wr<=0; cq_rd<=0; bidx<=0; loaded<=0;
+                        beat_valid<=0; beat_data<=0; beat_last<=0; end
+        else begin
+            if(cq_push) begin cq[cq_wr]<=dm_addr; cq_wr<=cq_wr+1'b1; end
+            if(beat_go) begin
+                if(cont_row) begin
+                    beat_data<=rb[(bidx+1)*64 +: 64]; beat_last<=((bidx+1)==NBEAT-1);
+                    beat_valid<=1; bidx<=bidx+1'b1;
+                end else if(cq_cnt!=0) begin               // start next queued row
+                    srcrow=cq[cq_rd]/STRIDE; srccol=(cq[cq_rd]-srcrow*STRIDE)/3;
+                    for(k=0;k<TILE;k=k+1) rb[k*24 +: 24] = pxf(srccol+k, srcrow);
+                    cq_rd<=cq_rd+1'b1; bidx<=0; loaded<=1;
+                    beat_data<=rb[0 +: 64]; beat_last<=(NBEAT==1); beat_valid<=1;
+                end else begin beat_valid<=0; loaded<=0; end
+            end
+            cq_cnt <= cq_cnt + (cq_push?1:0) - (take_new?1:0);
+        end
     end
 
     // golden (identical lerp to pg_warp_engine)
