@@ -144,3 +144,17 @@ set_false_path -quiet -to [get_pins -hier -filter {NAME =~ */sel_q1_reg/D}]
 # only route-B async CDC left unconstrained → build #25 WNS -3.428 on exactly this
 # pin (axi_gpio_10 -> u_cadence/bm_q1_reg/D). ASYNC_REG handles metastability.
 set_false_path -quiet -to [get_pins -hier -filter {NAME =~ */bm_q1_reg[*]/D}]
+
+# Warp read-engine (pg_warp_top) affine-coefficient + matte CDC (AXI GPIO FCLK_CLK0 → output pixel clock).
+# pg_warp_top has the standard 2-FF ASYNC_REG sync: a1/b1/c1/d1/e1/f1 (+mt1) are the q1 capture regs,
+# a2..f2/mt2 the q2 feeding the engine. Coeffs are frame-atomic (firmware writes them in vblank); ASYNC_REG
+# handles metastability. This was the WNS=-3.601 path (axi_gpio_8 -> pg_re_0/inst/b1_reg/D) after the
+# prefetch issue cone was pipelined out. Scoped to *pg_re_0* (verified: 32 pins each / mt1 24) so a stray
+# a1_reg elsewhere can't be caught. Same hierarchy-robust -hier rule as the route-B/scaler CDC paths.
+set_false_path -quiet -to [get_pins -hier -filter {NAME =~ *pg_re_0*/a1_reg[*]/D}]
+set_false_path -quiet -to [get_pins -hier -filter {NAME =~ *pg_re_0*/b1_reg[*]/D}]
+set_false_path -quiet -to [get_pins -hier -filter {NAME =~ *pg_re_0*/c1_reg[*]/D}]
+set_false_path -quiet -to [get_pins -hier -filter {NAME =~ *pg_re_0*/d1_reg[*]/D}]
+set_false_path -quiet -to [get_pins -hier -filter {NAME =~ *pg_re_0*/e1_reg[*]/D}]
+set_false_path -quiet -to [get_pins -hier -filter {NAME =~ *pg_re_0*/f1_reg[*]/D}]
+set_false_path -quiet -to [get_pins -hier -filter {NAME =~ *pg_re_0*/mt1_reg[*]/D}]
