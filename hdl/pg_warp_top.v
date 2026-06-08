@@ -149,24 +149,22 @@ module pg_warp_top #(
     // READY but the warp has NO pixel (o_ready && !o_valid) -> if it grows, the warp is cache/DMA-bound
     // (downstream waiting on us). o_rdy_live = is the output even pulling? If o_ready stays 0 -> the
     // deadlock is OUTPUT-side (axis_to_vid_io framing/blanking-flush stopped pulling -> backpressure).
-    reg [9:0] line_cnt, lines_per_frame; reg opix_nz, dbg_sts_err;
-    reg [7:0] fill_fr; reg [8:0] stall_oc;
-    wire dm_issue   = wreq && t_rdy;
-    wire out_beat   = o_valid && o_ready;
-    wire out_eol    = m_axis_tvalid && m_axis_tready && m_axis_tlast;
+    // v4: probe the DataMover handshake at the pg_warp_top boundary. v3 showed cache/DMA-bound +
+    // fill_fr frozen + cmd_valid=0 -> the DataMover accepted the commands but returns no data (IP stall?).
+    // beat_cnt/cmd_acc free-running (firmware double-read shows frozen). Live flags localize the stall:
+    //   cmd_rdy=0 -> DataMover not accepting commands; dm_tvalid=0 + dm_tready=1 -> DataMover not returning
+    //   data while we wait; sts_tv -> status flowing.  m_axis_cmd_tready / s_axis_dm_* are module pins.
+    reg [9:0] beat_cnt, cmd_acc;
     always @(posedge clk) begin
-        if(!rstn) begin line_cnt<=0; lines_per_frame<=0; opix_nz<=0; dbg_sts_err<=0; fill_fr<=0; stall_oc<=0; end
+        if(!rstn) begin beat_cnt<=0; cmd_acc<=0; end
         else begin
-            if(sof) begin lines_per_frame <= line_cnt; line_cnt <= 0; end
-            else if(out_eol && line_cnt!=10'h3FF) line_cnt <= line_cnt + 10'd1;
-            if(out_beat && (o_pix != 24'd0)) opix_nz <= 1'b1;
-            if(fv && fl)   fill_fr  <= fill_fr  + 8'd1;
-            if(o_ready && !o_valid) stall_oc <= stall_oc + 9'd1;  // output-ready-but-warp-empty cycles
-            if(s_axis_sts_tvalid && (s_axis_sts_tdata[6:4]!=3'b000)) dbg_sts_err <= 1'b1;
+            if(s_axis_dm_tvalid && s_axis_dm_tready)   beat_cnt <= beat_cnt + 10'd1;  // beats received
+            if(m_axis_cmd_tvalid && m_axis_cmd_tready) cmd_acc  <= cmd_acc  + 10'd1;  // cmds accepted by DM
         end
     end
-    // dbg = {sts_err, cmd_valid, o_ready, o_valid, opix_nz, stall_oc[8:0], fill_fr[7:0], lines_per_frame[9:0]}
-    assign dbg = {dbg_sts_err, cmd_valid, o_ready, o_valid, opix_nz, stall_oc, fill_fr, lines_per_frame};
+    // dbg = {o_ready,o_valid,sts_tv,cmd_rdy,dm_tready,dm_tvalid,cmd_valid, cmd_acc[9:0], beat_cnt[9:0]}
+    assign dbg = {o_ready, o_valid, s_axis_sts_tvalid, m_axis_cmd_tready, s_axis_dm_tready,
+                  s_axis_dm_tvalid, m_axis_cmd_tvalid, cmd_acc, beat_cnt};
 endmodule
 
 `default_nettype wire
