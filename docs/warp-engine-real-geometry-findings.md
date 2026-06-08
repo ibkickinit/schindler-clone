@@ -288,3 +288,29 @@ something else must give (smaller cache for that debug build, or fewer ILA slots
 `build_logs/warp_build_noila.log` produced a routed bitstream, but with WNS −28.76 it is **NON-FUNCTIONAL
 at 74.25 MHz — do not bench it.** It only proves fit (place+route+BRAM+slices). A functional bitstream
 needs the prefetch pipelining above + a clean WNS≥0 build.
+
+### Fit round 4 (prefetch feedforward pipelined): WNS −28.76 → −20.27, suffix is the residue
+Step 1 (register the feedforward — neighbour coords + setf *13/*7 multiplies into stage 2, suffix atomic;
+commit `<feedforward>`) moved WNS from −28.76 to **−20.27** and is sim-verified (small TB 4/4 bit-exact;
+real-geometry shrink@24576 / aniso@12288 / rot20@1280 real-time). New worst path:
+`u_tc/ps01_reg → u_tc/tag_reg`, **32 logic levels / 33.3 ns (CARRY4=7, LUT6=9, MUXF7×4/MUXF8×2), 78%
+route.** The setf is gone (source is the registered ps). The residue is the state-dependent SUFFIX:
+`ps(reg) → (vld||rsv)&&tag availability over WAY ways → first-unavailable select → vict age-argmax →
+tag/rsv write`.
+
+**To close the remaining ~20 ns (next session — the hazard-prone part):**
+1. **Replace the `vict` age-argmax with an O(1) per-set FIFO victim pointer.** `rr_set[NSET]` (WAYW bits/
+   set) advanced on each rr-victim issue ≈ FIFO-per-set (rr naturally fills empty ways 0..WAY-1 first,
+   then evicts oldest). Must still skip reserved (in-flight) ways to avoid double-victim. Removes the
+   CARRY4×7 (the 16-bit fseq−seq subtracts) AND frees the 8192-FF `seq[512]×16b` array. Re-verify BOTH
+   gates — it changes the eviction policy from global-FIFO to per-set-RR (should be equivalent for the
+   streaming prefetch order, but prove it: underruns=0, bit-err=0, real-time).
+2. **Then PIPELINE the suffix** (32 levels, 78% route, won't close by logic-trim alone — need ~10
+   levels/stage). Split into ~3 stages with the agent's rule: keep the **`rsv` reservation combinational/
+   immediate at issue** (victim now O(1) so the slot is known same-cycle the set is) and pipeline only
+   the availability read behind a **k≈4 recently-issued shift-register checked combinationally** (a
+   k-entry CAM) to cover the read-side shadow (cycles where a just-issued tile isn't yet in the arrays).
+   This is the re-issue/double-victim hazard junction — re-verify both gates after.
+3. Then check the consumer gather path (looka→baddr→BRAM, separate/shorter). Rebuild, read WNS.
+
+Progress so far is monotone and sim-clean; the finish is careful hazard work. WHS healthy (+0.03).
