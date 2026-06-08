@@ -247,3 +247,44 @@ recommended for a fresh session per the build/WNS boundary.
 **State at handoff:** fit + real-time both solved (all four real-time at 4-way/512 with per-geometry
 leads: rot20@1280, rot45@4096, shrink@24576, aniso@12288 — rot45 1 cold-start px). Bitstream exists but
 is non-functional at speed until the prefetch cone is pipelined. Build log: build_logs/warp_build_noila.log.
+
+### Next-session pipelining plan (REFINED — feedforward vs state-dependent split)
+The 41-level cone is two different animals; only one is hazard-prone. Do them in this order:
+
+**1. Pipeline the FEEDFORWARD PREFIX first — hazard-free, biggest level reduction.**
+   prefetch coord (px_) → ±1 neighbour coords → `setf` `×13`/`×7` multiplies → set indices + tile-ids
+   (ps00..11, pt00..11). This depends ONLY on the coords (the affine DDA produces them deterministically
+   ahead of time), touches no mutable cache state, so register it into ~3 stages with **zero re-issue
+   hazard**. This is probably the bulk of the 41 levels (the two multiplies + neighbour math, CARRY4×11).
+   Keep `lookup → reserve → write` as a single ATOMIC cycle.
+
+**2. Re-time. If the atomic suffix now closes in one cycle, you are DONE — no hazard work at all.**
+   Because the reservation still happens in the same cycle it reads state, the next prefetch coord sees
+   it. Most likely outcome once the multiplies are staged out.
+
+**3. ONLY IF the atomic suffix is still too deep, split it — "reserve immediately, compute pipelined":**
+   - The `rsv` slot-reservation bit MUST be set combinationally at issue so it is visible next cycle —
+     that single-cycle reservation prevents BOTH double-issue AND double-victim (two fills racing for one
+     slot — the nastier corruption).
+   - Pipeline only the heavy compute behind it (availability read, first-unavailable select, `vict`
+     age-argmax).
+   - Add a small **k-deep recently-issued shift-register (k≈4), checked combinationally** = a k-entry CAM
+     covering the read-side shadow (the k cycles where a just-issued tile isn't yet in the arrays). This
+     is far cheaper and safer than a coord-advance stall — a stall would throttle the prefetch and risk
+     reintroducing the lead/starvation just solved.
+   - **Re-run BOTH sim gates** after this — `pg_warp_dma_tb` (underruns=0, bit-err=0) AND
+     `pg_warp_real_tb` (real-time, no re-issue starvation) + the lead-aware check. This re-verify is the
+     part that must not be done tired.
+
+Then: check the consumer gather path (looka→baddr→BRAM — separate, shorter) timing; rebuild; read WNS.
+
+### ⚠️ NO_ILA is a load-bearing build constraint
+The warp build fits the 7020 **only with the 3 debug ILAs gated off** (`NO_ILA=1`). Carry this into
+bench/debug: you lose on-chip ILA visibility (scaler_out / mm2s_out / s2mm_axi pixel-stream capture)
+exactly in the warp build where you might want it. If ILA visibility is needed for a warp bench session,
+something else must give (smaller cache for that debug build, or fewer ILA slots).
+
+### Bitstream status
+`build_logs/warp_build_noila.log` produced a routed bitstream, but with WNS −28.76 it is **NON-FUNCTIONAL
+at 74.25 MHz — do not bench it.** It only proves fit (place+route+BRAM+slices). A functional bitstream
+needs the prefetch pipelining above + a clean WNS≥0 build.
