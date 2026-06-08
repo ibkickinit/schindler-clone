@@ -922,6 +922,60 @@ static void cp_dispatch_jsonrpc(const char *json)
 #  define GEO_C_BASE XPAR_PHASE_B_BD_AXI_GPIO_10_BASEADDR
 #endif
 
+/* ==========================================================================
+ * WARP read-engine (pg_warp_top) affine geometry. In the WARP build the SAME
+ * GPIOs axi_gpio_8/9/10 carry the 6 affine coeffs m_a..m_f (Q20.12 signed),
+ * NOT route-B DDA steps; the mux (axi_gpio_12 bit0) defaults to 1=warp in HW.
+ * Coeffs are frame-atomic (pg_affine re-latches at sof) -> a plain GPIO write
+ * suffices (no data-then-strobe). Geometry: per output (ox,oy),
+ *   src_x = (m_a*ox + m_b*oy + m_c) >> 12 ;  src_y = (m_d*ox + m_e*oy + m_f) >> 12.
+ * ========================================================================== */
+#ifdef WARP_BUILD
+/* sin(deg)*4096 (Q12), deg 0..90. */
+static const short warp_sin_q12[91] = {
+       0,   71,  143,  214,  286,  357,  428,  499,  570,  641,  711,  782,  852,
+     921,  991, 1060, 1129, 1198, 1266, 1334, 1401, 1468, 1534, 1600, 1666, 1731,
+    1796, 1860, 1923, 1986, 2048, 2110, 2171, 2231, 2290, 2349, 2408, 2465, 2522,
+    2578, 2633, 2687, 2741, 2793, 2845, 2896, 2946, 2996, 3044, 3091, 3138, 3183,
+    3228, 3271, 3314, 3355, 3396, 3435, 3474, 3511, 3547, 3582, 3617, 3650, 3681,
+    3712, 3742, 3770, 3798, 3824, 3849, 3873, 3896, 3917, 3937, 3956, 3974, 3991,
+    4006, 4021, 4034, 4046, 4056, 4065, 4074, 4080, 4086, 4090, 4094, 4095, 4096
+};
+static int warp_sin(int d) {           /* sin(d deg)*4096, any integer d */
+    d %= 360; if (d < 0) d += 360;
+    if (d <=  90) return  warp_sin_q12[d];
+    if (d <= 180) return  warp_sin_q12[180 - d];
+    if (d <= 270) return -warp_sin_q12[d - 180];
+    return -warp_sin_q12[360 - d];
+}
+static int warp_cos(int d) { return warp_sin(d + 90); }
+static int g_warp_deg = 0, g_warp_invx = 4096, g_warp_invy = 4096;  /* Q12 inverse-scale */
+
+/* Compute + write the 6 affine coeffs for rotation `deg` with inverse-scale
+ * invx/invy (Q12; 4096 = 1.0 source-px per output-px, >4096 = downscale). */
+static void warp_set_rotation(int deg, int invx, int invy)
+{
+    int co = warp_cos(deg), si = warp_sin(deg);          /* Q12 */
+    int cxo = OUT_RASTER_W / 2, cyo = OUT_RASTER_H / 2;   /* output center */
+    int cxs = FRAME_W / 2,      cys = FRAME_H / 2;        /* source center */
+    int m_a =  (int)(((long long)co * invx) >> 12);
+    int m_b =  (int)(((long long)si * invx) >> 12);
+    int m_d = -(int)(((long long)si * invy) >> 12);
+    int m_e =  (int)(((long long)co * invy) >> 12);
+    int m_c = cxs * 4096 - m_a * cxo - m_b * cyo;
+    int m_f = cys * 4096 - m_d * cxo - m_e * cyo;
+    Xil_Out32(GEO_A_BASE + 0x00, (u32)m_a);
+    Xil_Out32(GEO_A_BASE + 0x08, (u32)m_b);
+    Xil_Out32(GEO_B_BASE + 0x00, (u32)m_c);
+    Xil_Out32(GEO_B_BASE + 0x08, (u32)m_d);
+    Xil_Out32(GEO_C_BASE + 0x00, (u32)m_e);
+    Xil_Out32(GEO_C_BASE + 0x08, (u32)m_f);
+    g_warp_deg = deg; g_warp_invx = invx; g_warp_invy = invy;
+    xil_printf("WARP rot=%d invx=%d invy=%d: a=%d b=%d c=%d d=%d e=%d f=%d\r\n",
+               deg, invx, invy, m_a, m_b, m_c, m_d, m_e, m_f);
+}
+#endif /* WARP_BUILD */
+
 /* Phase-3 gamma/tone LUT load GPIO (axi_gpio_11): bit0=bypass, bit1=tog,
  * [3:2]=ch, [11:4]=addr, [19:12]=data. See gamma_lut.v / readengine_b_bd.tcl. */
 #if defined(XPAR_AXI_GPIO_11_BASEADDR)
@@ -1160,6 +1214,24 @@ static void uart_dispatch(const char *line)
         }
 #else
         xil_printf("UART: kernel-mode GPIO not present in this build\r\n");
+#endif
+    } else if (op == 'W') {
+        /* WARP live rotation: W <deg> [invx_q12] [invy_q12]  (invx/y default 4096=1.0x).
+         *   W 30            — rotate 30 deg, 1:1 (centered crop of the master).
+         *   W 0 6144 6144   — no rotation, 1.5x downscale (whole master into the raster).
+         *   W               — query current. NOTE: a fixed build LEAD favours a band of
+         *   angles; gentle angles may thrash until runtime-LEAD lands. */
+#ifdef WARP_BUILD
+        int deg; unsigned ivx = 4096, ivy = 4096, t;
+        if (parse_int(&p, &deg)) {
+            if (parse_uint(&p, &t) && t >= 256u) ivx = t;
+            if (parse_uint(&p, &t) && t >= 256u) ivy = t;
+            warp_set_rotation(deg, (int)ivx, (int)ivy);
+        } else {
+            xil_printf("WARP rot=%d invx=%d invy=%d\r\n", g_warp_deg, g_warp_invx, g_warp_invy);
+        }
+#else
+        xil_printf("UART: 'W' is warp-only; no warp engine in this build\r\n");
 #endif
     } else if (op == 'G') {
         /* Route-B read-engine geometry (additive+mux build):
@@ -2294,11 +2366,21 @@ int main(void)
      * raster (mux→read-engine). MM2S can't downscale a 1080 master into 720p,
      * so the read-engine is the output path. re_write_geometry sets the DDA
      * steps (FRAME_W/out_w = 1920/1280, etc.) + mux sel = 1. */
+#ifdef WARP_BUILD
+    /* WARP build: same GPIOs are the 6 affine coeffs (NOT route-B DDA). Boot to a
+     * 45 deg rotation (1:1 scale = centered OUT_RASTERxOUT_RASTER crop of the master,
+     * rotated) — validated clean at the build LEAD. mux already defaults to warp.
+     * Use UART 'W <deg> [invx] [invy]' to change the rotation live. */
+    warp_set_rotation(45, 4096, 4096);
+    xil_printf("WARP engaged: %ux%u master -> %ux%u output, boot rot=45 (UART 'W <deg>' to change)\r\n",
+               FRAME_W, FRAME_H, OUT_RASTER_W, OUT_RASTER_H);
+#else
     g_re_w = OUT_RASTER_W; g_re_h = OUT_RASTER_H; g_re_x = 0; g_re_y = 0;
     g_re_matte = 0; g_re_engine = 1;
     re_write_geometry();
     xil_printf("READ-ENGINE engaged: full master %ux%u -> %ux%u output raster\r\n",
                FRAME_W, FRAME_H, OUT_RASTER_W, OUT_RASTER_H);
+#endif
 #endif
 
     /* iter4g DIAG: correct PG020 register offsets:

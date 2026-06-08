@@ -125,6 +125,15 @@ if {[info exists ::env(READENGINE_FULLMASTER)] && $::env(READENGINE_FULLMASTER) 
     app config -name vdma_init -add define-compiler-symbols READENGINE_FULLMASTER=1
     puts "FW BUILD: added -DREADENGINE_FULLMASTER=1 (full 1080p master → 720p via read-engine)"
 }
+# WARP build: the read-engine is pg_warp_top (affine warp). axi_gpio_8/9/10 carry the
+# 6 affine coeffs (m_a..m_f, Q20.12) instead of route-B DDA. Define WARP_BUILD so main.c
+# uses warp_set_rotation at boot + the 'W' UART command. Warp always needs the full 1080p
+# master in DDR, so imply READENGINE_FULLMASTER too.
+if {[info exists ::env(WARP_ENGINE)] && $::env(WARP_ENGINE) ne "0"} {
+    app config -name vdma_init -add define-compiler-symbols WARP_BUILD=1
+    app config -name vdma_init -add define-compiler-symbols READENGINE_FULLMASTER=1
+    puts "FW BUILD: added -DWARP_BUILD=1 + -DREADENGINE_FULLMASTER=1 (warp affine geometry)"
+}
 
 app build -name vdma_init
 
