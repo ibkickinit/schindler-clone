@@ -1902,9 +1902,10 @@ static void telemetry_loop(UINTPTR vdma_base)
                  * fetch=0 -> prefetch never issues a DMA cmd; fill=0 -> DataMover returns nothing;
                  * ovalid=0 -> consumer never produces a pixel. Pinpoints the black-output break. */
                 u32 wdbg = Xil_In32(DIAG_GPIO_BASEADDR + 0x00);
-                xil_printf("WARP DBG: fetch=%u fill=%u ovalid=%u cmd_valid=%u sts_err=%u\r\n",
+                xil_printf("WARP DBG: lines/frame=%u fill_fr=%u fetch_fr=%u opix_nz=%u ovalid_live=%u cmd=%u sts_err=%u\r\n",
                            (unsigned)(wdbg & 0x3FFu), (unsigned)((wdbg >> 10) & 0x3FFu),
-                           (unsigned)((wdbg >> 20) & 0x3FFu), (unsigned)((wdbg >> 30) & 1u),
+                           (unsigned)((wdbg >> 20) & 0xFFu), (unsigned)((wdbg >> 28) & 1u),
+                           (unsigned)((wdbg >> 29) & 1u), (unsigned)((wdbg >> 30) & 1u),
                            (unsigned)((wdbg >> 31) & 1u));
 #endif
                 /* DRAIN (2026-06-03): from axis_to_vid_io_0/predrain_snap, routed onto

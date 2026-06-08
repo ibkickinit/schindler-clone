@@ -140,22 +140,28 @@ module pg_warp_top #(
             end
         end
     end
-    // ---- bring-up diagnostic: SATURATING activity counters (single read pinpoints the break) ----
-    // fetch=0 -> prefetch/affine never issues a DMA cmd; fill=0 -> DataMover returns no data;
-    // ovalid=0 -> consumer never produces a pixel. + live status flags. Routed to axi_gpio_2.
-    reg [9:0] dbg_fetch, dbg_fill, dbg_ovalid; reg dbg_sts_err;
-    wire dm_issue = wreq && t_rdy;             // a DMA row command accepted
+    // ---- bring-up diagnostic v2: the warp PRODUCES pixels (v1 showed fetch/fill/ovalid all active).
+    // Now distinguish: full-frame-real-pixels (=> output framing/WRAP bug) vs stall (=> cache) vs
+    // black pixels (=> fill-data bug). lines_per_frame = EOL count in the last frame (720 = full,
+    // <720 = stalls); opix_nz = ever saw a non-black engine output pixel; free-running fill/fetch
+    // low bits so a firmware double-read shows ongoing activity.
+    reg [9:0] line_cnt, lines_per_frame; reg opix_nz, dbg_sts_err;
+    reg [9:0] fill_fr; reg [7:0] fetch_fr;     // free-running (wrap) activity
+    wire dm_issue   = wreq && t_rdy;
+    wire out_beat   = o_valid && o_ready;       // engine pixel accepted downstream
+    wire out_eol    = m_axis_tvalid && m_axis_tready && m_axis_tlast;
     always @(posedge clk) begin
-        if(!rstn) begin dbg_fetch<=0; dbg_fill<=0; dbg_ovalid<=0; dbg_sts_err<=0; end
+        if(!rstn) begin line_cnt<=0; lines_per_frame<=0; opix_nz<=0; dbg_sts_err<=0; fill_fr<=0; fetch_fr<=0; end
         else begin
-            if(dm_issue          && dbg_fetch !=10'h3FF) dbg_fetch  <= dbg_fetch  + 10'd1;
-            if((fv && fl)        && dbg_fill  !=10'h3FF) dbg_fill   <= dbg_fill   + 10'd1;
-            if((o_valid&&o_ready)&& dbg_ovalid!=10'h3FF) dbg_ovalid <= dbg_ovalid + 10'd1;
-            // DataMover status: any non-OKAY (bits[6:4] = slv/dec/internal err) latches sticky
+            if(sof) begin lines_per_frame <= line_cnt; line_cnt <= 0; end
+            else if(out_eol && line_cnt!=10'h3FF) line_cnt <= line_cnt + 10'd1;
+            if(out_beat && (o_pix != 24'd0)) opix_nz <= 1'b1;     // a non-black output pixel exists
+            if(dm_issue)   fetch_fr <= fetch_fr + 8'd1;            // free-running -> delta = active
+            if(fv && fl)   fill_fr  <= fill_fr  + 10'd1;
             if(s_axis_sts_tvalid && (s_axis_sts_tdata[6:4]!=3'b000)) dbg_sts_err <= 1'b1;
         end
     end
-    assign dbg = {dbg_sts_err, cmd_valid, dbg_ovalid, dbg_fill, dbg_fetch};
+    assign dbg = {dbg_sts_err, cmd_valid, o_valid, opix_nz, fetch_fr, fill_fr, lines_per_frame};
 endmodule
 
 `default_nettype wire
