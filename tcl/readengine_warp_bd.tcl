@@ -54,11 +54,15 @@ set_property -dict [list CONFIG.CONST_WIDTH {24} CONFIG.CONST_VAL {0x101010}] [g
 
 # ---- warp compositor ----
 create_bd_cell -type module -reference pg_warp_top pg_re_0
-# Real-geometry-validated config (docs/warp-engine-real-geometry-findings.md §Resolution):
-# 8-way / NTILE=1024, PD=DREQ=64, LEAD=32768. All four transforms real-time at 1280x720<-1920x1080.
+# Device-fitting config (docs/warp-engine-real-geometry-findings.md §Fit):
+# 8-way/NTILE=1024 (the single-global-LEAD real-time config) needs 192 RAMB36 > 140 on the 7020 (dev AND
+# production TE0720). With PER-GEOMETRY LEAD (firmware sets a shallow lead for rotation, deep for
+# downscale) every transform is real-time at a lead where worst-set-live <= 4, so 4-way/NTILE=512 (~96
+# RAMB36) fits. LEAD here is the placeholder default; real-time requires the firmware to set it per
+# geometry (deep for downscale). PD/DREQ=64 (feed depth) is independent of associativity.
 set_property -dict [list CONFIG.IN_W {1920} CONFIG.IN_H {1080} CONFIG.OUT_W {1280} CONFIG.OUT_H {720} \
     CONFIG.SLOT_STRIDE {6226560} CONFIG.NUM_FRAMES {7} \
-    CONFIG.NTILE {1024} CONFIG.WAY {8} CONFIG.PD {64} CONFIG.DREQ {64} CONFIG.LEAD {32768}] [get_bd_cells pg_re_0]
+    CONFIG.NTILE {512} CONFIG.WAY {4} CONFIG.PD {64} CONFIG.DREQ {64} CONFIG.LEAD {4096}] [get_bd_cells pg_re_0]
 connect_bd_net $pclk  [get_bd_pins pg_re_0/clk]
 connect_bd_net $prstn [get_bd_pins pg_re_0/rstn]
 connect_bd_net [get_bd_pins axi_vdma_0/s2mm_frame_ptr_out] [get_bd_pins pg_re_0/frame_ptr]
