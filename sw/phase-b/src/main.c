@@ -1136,8 +1136,10 @@ static void re_write_geometry(void)
               ((g_re_vflip ? 1u : 0u) << 29) | ((g_re_hflip ? 1u : 0u) << 28) |
               ((sr0 & 0xFFFu) << 15) | ((sc0 & 0xFFFu) << 3) |
               ((g_re_blend & 3u) << 1) | (g_re_engine ? 1u : 0u));
-#ifdef INVW_GPIO_BASE
+#if defined(INVW_GPIO_BASE) && !defined(WARP_BUILD)
     Xil_Out32(INVW_GPIO_BASE, (inv_h << 16) | (inv_w & 0xFFFFu));   /* #107a: bilinear weight reciprocals */
+    /* NOTE: in the WARP build axi_gpio_12 is the MUX SEL, not INVW — never write it here or the mux
+     * flips to passthrough (1080p master into 720p raster = black). Guarded by !WARP_BUILD. */
 #endif
     xil_printf("GEO: %ux%u shift(%d,%d) %s flip(%u,%u) -> pos(%d,%d) seed(%u,%u) hstep=%u+%u/%u vstep=%u+%u/%u engine=%u blend=%u filt=%u invw=%u\r\n",
                w, h, sx, sy, g_re_anchor ? "TL" : "center", g_re_hflip, g_re_vflip, px, py, sc0, sr0,
@@ -1971,7 +1973,11 @@ static void telemetry_loop(UINTPTR vdma_base)
                                (unsigned)(dhsize & 0x3FFF),
                                (unsigned)(dvsize & 0x3FFF),
                                (unsigned)(dpol & 0x1F));
+#ifdef WARP_BUILD
+                    dump_slot_head_pixels(0, 0, 4);   /* warp: thin the flood so UART RX stays responsive */
+#else
                     dump_slot_head_pixels(0, 0, 99);
+#endif
                     ddr_dump_count = trigger;
                 }
             }
@@ -2371,8 +2377,9 @@ int main(void)
      * 45 deg rotation (1:1 scale = centered OUT_RASTERxOUT_RASTER crop of the master,
      * rotated) — validated clean at the build LEAD. mux already defaults to warp.
      * Use UART 'W <deg> [invx] [invy]' to change the rotation live. */
-    warp_set_rotation(45, 4096, 4096);
-    xil_printf("WARP engaged: %ux%u master -> %ux%u output, boot rot=45 (UART 'W <deg>' to change)\r\n",
+    Xil_Out32(INVW_GPIO_BASE, 1u);           /* axi_gpio_12 = mux sel = warp (explicit; def is 1) */
+    warp_set_rotation(0, 4096, 4096);        /* boot IDENTITY (simplest cache case) — UART 'W <deg>' to rotate */
+    xil_printf("WARP engaged: %ux%u master -> %ux%u output, boot IDENTITY (UART 'W <deg>' to rotate)\r\n",
                FRAME_W, FRAME_H, OUT_RASTER_W, OUT_RASTER_H);
 #else
     g_re_w = OUT_RASTER_W; g_re_h = OUT_RASTER_H; g_re_x = 0; g_re_y = 0;
