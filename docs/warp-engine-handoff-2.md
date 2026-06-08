@@ -6,6 +6,27 @@ from this host; he does the physical/bench work. **Verify visuals on the bench M
 capture stick.** Branch `iter5-1080p-clean`. Source Vivado 2025.2 (`source /tools/Xilinx/2025.2/Vivado/
 settings64.sh`) and `export BOARD_PARTS_REPO_PATHS=~/fpga/vivado-boards/new/board_files`.
 
+## ⚠️ SCOPE: the warp path MUST support 1080p OUTPUT (not just 720p) — re-target timing to 148.5 MHz
+Everything below was developed/validated at **720p output** (1280×720) from a **1080p source**
+(1920×1080), at the 74.25 MHz / 13.468 ns output clock. **Justin confirmed (2026-06-08) the warp path
+must also do 1080p OUTPUT.** That runs at **148.5 MHz / 6.734 ns — half the period.** Implications you
+must carry from the start:
+- The banked WNS **−15.38 ns is against the 13.468 ns (720p) clock** → the critical path is ~28.8 ns. At
+  the 1080p period that's **WNS ≈ −22 ns**, and there are ~2.25× the output pixels. Closing 1080p60
+  needs the path ≤6.7 ns — a ~4.3× reduction (TE0720 −2 silicon only buys ~15–20%).
+- **Re-target the warp timing constraint to 148.5 MHz now** so you solve the real problem (constrain the
+  warp logic to 6.734 ns even though the 1080p60 HDMI *output stage* is Zybo-silicon-blocked — that's
+  the TE0720-relevant number). Then read WNS against 6.7 ns.
+- The storage-shape fix (Step 1) is even more critical at 1080p (it cuts per-stage logic). Pipelining
+  (Step 2) must go **deeper** — each stage ≤6.7 ns. Latency budget exists (prefetch-led cache), so it's
+  plausible, but the stateful prefetch issue loop is the hard part to pipeline arbitrarily deep.
+- **Architectural fallback if pipelining can't reach 6.7 ns:** decouple the warp logic from the output
+  clock — process **2 px/clk at 74.25 MHz** (back to a 13.5 ns budget) with an output FIFO. Costs 2×
+  cache read bandwidth (more banks / dual-port reads). Evaluate this if deep pipelining stalls.
+- The 720p-out validation (real-time, BRAM/slice fit, per-geometry leads) does NOT transfer to 1080p out
+  unchanged — 1080p out reads the source more densely (more fill bandwidth + bigger working set) and runs
+  2× faster. Re-validate `pg_warp_real_tb` at OUT_W/OUT_H=1920/1080 and re-check the cache fit/leads.
+
 ## What the warp engine is
 An arbitrary-geometry read path (any-angle rotate, keystone, pincushion, downscale): `pg_affine` (2×3
 affine DDA addrgen, ×2 — one consumer, one prefetch) → `pg_tilecache_rt2` (set-assoc tile cache, FIFO
