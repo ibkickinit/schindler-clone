@@ -345,3 +345,24 @@ Then check consumer gather; read WNS.
 Progress this session: WNS −28.76 → −20.27 (feedforward pipeline) → −15.38 (per-set RR), monotone, each
 step committed + both sim gates green. The finish is multi-stage prefetch pipelining (the array-read
 muxes) — careful, re-verify-heavy, recommended fresh. WHS healthy throughout (+0.02).
+
+### avm-snapshot design subtlety (resolved on paper — the key note for the fresh session)
+Working the avm-snapshot through, the naive version DOESN'T work, for a non-obvious reason — document
+this so it isn't re-discovered the hard way:
+- **Compute avm combinationally each cycle** → the deep array-read mux is back on the path (the thing
+  we're removing). No good.
+- **Compute avm once at coord-LOAD into stage C** → 1-cycle bubble per coord. Fatal: hit-coords then
+  take 2 cycles → prefetch advances ~0.5 coord/cycle < the consumer's ~0.78 (active fraction) → the lead
+  erodes → starvation. (Verified by reasoning, not yet sim.)
+- **Precompute avm one stage early (stage B, while stage C processes the current coord)** → STALE:
+  adjacent coords SHARE tiles, so a tile coord-C reserves between the snapshot (T_b) and when coord-D
+  is processed (T_c) is missed by avm(D) → D re-issues it → double-issue / wasted fetch / starvation.
+
+**Resolution = the CAM bypass after all:** precompute avm in stage B, but OR-in a k-deep "recently
+issued" list (the ua_tids issued since the snapshot) when loading stage C — `avm(D) =
+precomputed_avail(D) | (D-tile ∈ recently_issued)`. k covers the issues in the snapshot→process window
+(the current coord's ≤WAY issues + a margin; k≈WAY+2). This is the hazard junction the agent flagged;
+it must be sim-verified (both gates) with attention to the shared-tile case (adjacent coords, and the
+2×2 neighbour overlap within a coord). So the honest path is: **avm-snapshot (stage B precompute) +
+k-deep recently-issued CAM bypass**, then pipeline vict, then re-time. Not a quick step — a careful
+stateful pipeline with a real correctness hazard (double-issue via stale availability).
