@@ -314,3 +314,34 @@ tag/rsv write`.
 3. Then check the consumer gather path (looka→baddr→BRAM, separate/shorter). Rebuild, read WNS.
 
 Progress so far is monotone and sim-clean; the finish is careful hazard work. WHS healthy (+0.03).
+
+### Fit round 5 (per-set RR victim): WNS −20.27 → −15.38, root cause = dynamic-addressed array reads
+Per-set FIFO victim pointer (commit `<per-set-rr>`) removed the age-argmax: WNS −20.27 → **−15.38**,
+CARRY4 11→2. Sim-verified (small TB 4/4; real-geom shrink/aniso/rot20 real-time). New worst path:
+`u_tc/ps00_reg → u_tc/rr_set_reg`, **31 levels (LUT6=15, MUXF7=8, MUXF8=4, CARRY4=2), 76% route.**
+
+**Root cause of the residue:** the tag/vld/rsv arrays are read at the COMPUTED slot `{ps, way}` — a
+512-entry (NTILE) mux each (the MUXF7/8 cascade). The prefetch availability does 16 such reads
+(4 tiles × WAY) and `vict` does WAY more; the chain `ps → array-read mux → compare → ua → vict →
+ua_slot → tag/rsv/rr write` is the cone. Logic-trimming is exhausted (CARRY4 already gone); it must be
+PIPELINED, and the array-read muxes are the deep part.
+
+**Remaining closure (next session — multi-stage, careful):**
+1. **Quick win first:** narrow `TIDW` 24→16 (tidf only uses {py[11:4],px[11:4]} = 16 b). Shrinks every
+   tag mux + compare ~33% and the tag array. Low risk; re-verify gates.
+2. **avm-snapshot (hazard-free) — the main lever.** Read each coord's 4-tile availability ONCE at
+   coord-load (the deep array-read mux, pipelined into a registered 4-bit `avm` mask), then run the
+   issue loop off `avm` + a local "issued" mask (set as tiles are reserved). This removes the array
+   reads from the per-cycle issue loop entirely. It's hazard-free: coords process serially, so the
+   snapshot + local updates are exact (no other coord issues mid-processing; prior issues are committed
+   before s2_adv). Needs a 3rd prefetch stage (coord → ps/pt → avm+issue) with its own valid bit.
+3. **Pipeline `vict`'s array reads** if it's then critical (it reads vld/rsv[{ua_set,way}] for the
+   free-way scan): register the free-way/rr decision, or maintain a per-set "has-free-way" + the rr
+   pointer incrementally so vict is a pure register read.
+4. Rebuild; if still short, register the tag/vld/rsv READ itself (1-cycle) with the 1-entry
+   current-issue bypass (issues commit to arrays in 1 cycle, so a 1-deep bypass covers the shadow).
+Then check consumer gather; read WNS.
+
+Progress this session: WNS −28.76 → −20.27 (feedforward pipeline) → −15.38 (per-set RR), monotone, each
+step committed + both sim gates green. The finish is multi-stage prefetch pipelining (the array-read
+muxes) — careful, re-verify-heavy, recommended fresh. WHS healthy throughout (+0.02).
