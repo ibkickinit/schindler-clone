@@ -366,3 +366,26 @@ it must be sim-verified (both gates) with attention to the shared-tile case (adj
 2×2 neighbour overlap within a coord). So the honest path is: **avm-snapshot (stage B precompute) +
 k-deep recently-issued CAM bypass**, then pipeline vict, then re-time. Not a quick step — a careful
 stateful pipeline with a real correctness hazard (double-issue via stale availability).
+
+### ★ LEAD next-session step (CONFIRMED): the 512:1 mux is a STORAGE-SHAPE artifact, not inherent
+Confirmed against source: `tag`/`vld`/`rsv` are declared `reg [..] x[0:NTILE-1]` (flat, 512 entries) and
+read everywhere at the full slot `{set,way}` (e.g. `tag[{ps00,aw}]`, `vld[{st,w}]`) → a 9-bit dynamic
+address → the 512:1 mux that IS the −15 ns critical cone (in both availability and vict). A set-assoc
+cache should NOT produce this: the set should address storage, the ways come out in parallel as one wide
+word, then W comparators.
+
+**Try this FIRST next session — it may close timing with NO pipelining and NO re-issue hazard:**
+- Restructure to set-indexed wide words: `reg [WAY*TIDW-1:0] tagset[0:NSET-1]` (+ `vldset`/`rsvset` =
+  `reg [WAY-1:0] x[0:NSET-1]`). Read `tagset[set]` (a 128-deep addressed read → LUTRAM/shallow), split to
+  WAY ways, do WAY parallel 24-bit comparators. The 512:1 mux → 128-deep read + WAY-way compare.
+- The 2×2 needs 4 neighbour tiles in 4 different sets in ONE cycle = 4 simultaneous set-reads. Store
+  `tagset` (etc.) as **LUTRAM replicated ×4** (128×96b ×4 ≈ 48 Kb distributed RAM — cheap on the 7020,
+  async read = combinational, no added latency). 4 addresses → 4 wide words → the comparators. vict's
+  free-way/rr reads the same wide word → benefits too.
+- Writes: issue/fill write one way's slice — `tagset[set][way*TIDW +: TIDW] <= ...` (and the ×4 replicas).
+- This is a STORAGE-SHAPE change, identical logic → re-verify is just the two gates (bit-exact). No new
+  control flow, no double-issue hazard, no multi-stage re-verify.
+
+Order: (1) this storage restructure → re-synth, read WNS. (2) If it closes → DONE (no pipelining, no
+hazard). (3) If only partial → THEN the avm-snapshot+CAM pipelining on the residual, then vict. The
+storage fix is the smaller, safer, fresh-head-friendly lever — lead with it.
