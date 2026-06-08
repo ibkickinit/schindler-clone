@@ -168,18 +168,28 @@ module pg_tilecache_rt2 #(
         end
     end
 
-    // ============= PREFETCH (fill) — PARALLEL 4-tile check, ~1 coord/cycle =============
-    reg [11:0] px_,py_; reg pin_; reg p_busy;
+    // ============= PREFETCH — 2-STAGE: feedforward registered, state-dependent suffix ATOMIC =========
+    // The 41-level WNS cone was px_ -> setf *13/*7 mults -> availability -> victim -> tag write, all in
+    // one cycle. Split: STAGE 1 = the incoming coord; its 2x2 neighbour set-indices (setf, the multiply)
+    // + tile-ids are combinational from px_ and REGISTERED into STAGE 2. The state-dependent suffix
+    // (availability lookup -> first-unavailable -> victim age-argmax -> tag/rsv WRITE) reads the
+    // registered stage-2 values and writes ATOMICALLY in the same cycle, so a just-issued tile's rsv is
+    // visible to the next cycle -> NO re-issue / double-victim hazard (the reservation never trails the
+    // read). The multiply is now between registers (px_ -> stage 2), out of the lookup cone. The prefetch
+    // leads by LEAD, so the 1-cycle pipeline fill is free; throughput stays 1 coord/cycle through hits.
+    localparam integer HALF = 12-LTILE;             // tile-coord bits/axis in tidf = {py-tile, px-tile}
+    // ---- stage 1: incoming coord + combinational feedforward (neighbours, setf, tidf) ----
+    reg [11:0] px_,py_; reg pin_; reg s1_v;
     wire [11:0] pxr=(px_>=IN_W-1)?px_:px_+1, pyb=(py_>=IN_H-1)?py_:py_+1;
     wire [11:0] ppx0=(px_[0]==0)?px_:pxr, ppx1=(px_[0]==1)?px_:pxr;
     wire [11:0] ppy0=(py_[0]==0)?py_:pyb, ppy1=(py_[0]==1)?py_:pyb;
-    wire [TIDW-1:0] pt00=tidf(ppx0,ppy0), pt10=tidf(ppx1,ppy0), pt01=tidf(ppx0,ppy1), pt11=tidf(ppx1,ppy1);
-    wire [SETW-1:0] ps00=setf(ppx0,ppy0), ps10=setf(ppx1,ppy0), ps01=setf(ppx0,ppy1), ps11=setf(ppx1,ppy1);
-    // av* : tile is available (resident OR fill-in-flight). Because the tag is written at ISSUE with
-    // rsv=1, a single (vld||rsv)&&tag lookup over the set's WAY ways covers both — no PD-deep scan. The
-    // compare is INLINED (direct vld/rsv/tag array reads) so the always@* is sensitive to them: a
-    // function form is not sensitive to the internal array reads in xsim and the prefetch re-issues a
-    // just-issued tile forever. Cost is WAY (8) per tile, bounded by associativity not lead depth.
+    wire [TIDW-1:0] f_pt00=tidf(ppx0,ppy0), f_pt10=tidf(ppx1,ppy0), f_pt01=tidf(ppx0,ppy1), f_pt11=tidf(ppx1,ppy1);
+    wire [SETW-1:0] f_ps00=setf(ppx0,ppy0), f_ps10=setf(ppx1,ppy0), f_ps01=setf(ppx0,ppy1), f_ps11=setf(ppx1,ppy1);
+    // ---- stage 2: registered feedforward of the coord being processed ----
+    reg [TIDW-1:0] pt00,pt10,pt01,pt11; reg [SETW-1:0] ps00,ps10,ps01,ps11; reg pin2,s2_v;
+    // av* : (resident OR fill-in-flight) per the WAY ways of each tile's set, off the REGISTERED ps/pt.
+    // Inlined (direct vld/rsv/tag array reads) so the always@* tracks them (a function form is not
+    // sensitive to internal array reads in xsim). Cost WAY per tile, bounded by associativity.
     reg av00, av10, av01, av11; integer aw;
     always @* begin
         av00=1'b0; av10=1'b0; av01=1'b0; av11=1'b0;
@@ -191,19 +201,21 @@ module pg_tilecache_rt2 #(
         end
     end
     wire all_av = av00&av10&av01&av11;
-    reg [TIDW-1:0] ua_tid; reg [11:0] ua_tx, ua_ty; reg [SETW-1:0] ua_set;   // first unavailable tile
+    reg [TIDW-1:0] ua_tid; reg [SETW-1:0] ua_set;   // first unavailable tile (no setf recompute — use ps)
     always @* begin
-        if(!av00) begin ua_tid=pt00; ua_tx=ppx0>>LTILE; ua_ty=ppy0>>LTILE; ua_set=setf(ppx0,ppy0); end
-        else if(!av10) begin ua_tid=pt10; ua_tx=ppx1>>LTILE; ua_ty=ppy0>>LTILE; ua_set=setf(ppx1,ppy0); end
-        else if(!av01) begin ua_tid=pt01; ua_tx=ppx0>>LTILE; ua_ty=ppy1>>LTILE; ua_set=setf(ppx0,ppy1); end
-        else begin ua_tid=pt11; ua_tx=ppx1>>LTILE; ua_ty=ppy1>>LTILE; ua_set=setf(ppx1,ppy1); end
+        if(!av00) begin ua_tid=pt00; ua_set=ps00; end
+        else if(!av10) begin ua_tid=pt10; ua_set=ps10; end
+        else if(!av01) begin ua_tid=pt01; ua_set=ps01; end
+        else begin ua_tid=pt11; ua_set=ps11; end
     end
-    wire cur_done = !pin_ || all_av;
-    assign pf_ready = !p_busy || cur_done;
+    wire [11:0] ua_tx = ua_tid[HALF-1:0];           // tidf low half = px-tile, high half = py-tile
+    wire [11:0] ua_ty = ua_tid[2*HALF-1:HALF];
+    wire cur_done = !pin2 || all_av;                // stage-2 coord done
+    wire s2_adv   = !s2_v || cur_done;              // stage 2 free to take stage 1's coord
+    assign pf_ready = !s1_v || s2_adv;              // stage 1 can take a new skid coord
 
-    // issue a fetch for the first unavailable tile while the pending FIFO has room. fetch_req is held
-    // combinationally (VALID independent of t_ready) and is accepted by tile_dma on t_ready.
-    wire issue_want = p_busy && pin_ && !all_av && !pf_full;
+    // issue a fetch for the first unavailable tile of the STAGE-2 coord while the FIFO has room.
+    wire issue_want = s2_v && pin2 && !all_av && !pf_full;
     assign fetch_req = issue_want;
     assign fetch_tx  = ua_tx;
     assign fetch_ty  = ua_ty;
@@ -216,22 +228,28 @@ module pg_tilecache_rt2 #(
     wire [BAW-1:0] fwa = (pf_slot[pf_rd]<<(2*HT)) | fcw;   // fills route to the pending-FIFO head slot
 
     always @(posedge clk) begin
-        if(!rstn) begin p_busy<=0; rr_way<=0; fcw<=0; pf_wr<=0; pf_rd<=0; pf_cnt<=0; fseq<=1;
+        if(!rstn) begin s1_v<=0; s2_v<=0; rr_way<=0; fcw<=0; pf_wr<=0; pf_rd<=0; pf_cnt<=0; fseq<=1;
             for(pj=0;pj<NTILE;pj=pj+1) begin vld[pj]<=0; rsv[pj]<=0; seq[pj]<=0; end
             end
         else begin
             // issue: pick a free (or dead) victim way; write the NEW tag now (so availability sees the
             // tile as in-flight) and invalidate-as-resident (rsv=1, vld=0 -> no stale hits during fill).
             // Enqueue the slot for in-order fill routing. rr_way advances only as the all-occupied
-            // tiebreak so it stays meaningful.
+            // tiebreak so it stays meaningful. ATOMIC with the availability read (same cycle, stage 2).
             if(issue_go) begin
                 pf_slot[pf_wr]<=ua_slot; pf_wr<=pf_wr+1'b1;
                 tag[ua_slot]<=ua_tid; vld[ua_slot]<=1'b0; rsv[ua_slot]<=1'b1;
                 rr_way<=rr_way+1'b1;
             end
-            // accept next prefetch coord when current is done; else drop busy if nothing pending
-            if(pf_valid && pf_ready) begin px_<=pf_x; py_<=pf_y; pin_<=pf_inwin; p_busy<=1; end
-            else if(p_busy && cur_done) p_busy<=0;
+            // prefetch pipeline: stage 1 <- skid; stage 2 <- stage 1's feedforward (setf mults register
+            // here, out of the suffix cone). Stage 2 holds across a miss coord's multi-cycle issuing.
+            if(pf_valid && pf_ready) begin px_<=pf_x; py_<=pf_y; pin_<=pf_inwin; s1_v<=1'b1; end
+            else if(s2_adv) s1_v<=1'b0;
+            if(s2_adv) begin
+                pt00<=f_pt00; pt10<=f_pt10; pt01<=f_pt01; pt11<=f_pt11;
+                ps00<=f_ps00; ps10<=f_ps10; ps01<=f_ps01; ps11<=f_ps11;
+                pin2<=pin_; s2_v<=s1_v;
+            end
             // DMA fill: one 2x2 block/beat -> all 4 banks at the same within-tile addr (head tile's slot)
             if(!pf_empty && fill_valid) begin
                 b00[fwa]<=fill_blk[23:0];  b10[fwa]<=fill_blk[47:24];
