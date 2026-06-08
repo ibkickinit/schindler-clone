@@ -145,3 +145,47 @@ and in-flight are the same lookup): **WAY(8)×4 = 32 comparators**, bounded by a
 depth, and it scales if PD grows. Removes the cone rather than pipelining it. Both gates re-verified
 identical. The consumer gather tag lookup (the original in-context WNS −3.5 path) is now 8-way; the build
 will say whether it needs the reserved tag-lookup pipeline stage.
+
+## Fit (2026-06-07) — 8-way/1024 does NOT fit the 7020; per-geometry LEAD does
+
+The in-context build at the real-time config (8-way / NTILE=1024) **synthesized but failed impl DRC on
+resource over-utilization, not timing**: `pg_re_0` (the warp engine) alone = **192 RAMB36 > 140
+available**; total LUT 72580 / 53200. The cache is 4 banks × NTILE·64 × 24b; at NTILE=1024 that is
+192 RAMB36 by itself. **The production target (TE0720) is also a Zynq-7020** (−2 silicon, same 140 BRAM)
+— so 8-way/1024 fits neither the dev board nor the product. Removing the debug ILAs (~32 BRAM) is not
+enough.
+
+**Root of the 8-way requirement, and the fix.** 8-way came from the lead-aware worst-set-live at a
+*single global* LEAD=32768 (rot20=7, aniso=6). But rot20 and aniso don't *need* a deep lead — only
+downscale (shrink) does. A deep global lead over-inflates the easy transforms' per-set occupancy. With a
+**per-geometry LEAD** — the firmware sets a shallow lead for rotation and a deep one for downscale —
+every transform is real-time at a lead where worst-set-live ≤ 4 (validated on `pg_warp_real_tb`,
+generous cache so capacity isn't the variable):
+
+| transform | minimal real-time LEAD | worst-set-live @ that lead |
+|---|---|---|
+| rot20 | 1280 | 4 |
+| rot45 | ~4096 | 2 |
+| shrink 1.5× | 24576 | 3 |
+| aniso (rot30+1.5×H) | ~10240–12288 | 4 |
+
+Max worst-set-live across the per-geometry leads = **4 → 4-way / NTILE=512 (~96 RAMB36) fits the 7020.**
+The cache only ever sees one transform's pattern at a time (at that transform's lead), so the global
+lead-aware table that demanded 8-way no longer applies.
+
+**LEAD must become a runtime register** (firmware-written per geometry, deep ∝ downscale factor) instead
+of a build parameter — a small follow-up (the engine already takes LEAD as a param; expose it as a
+GPIO-driven port). Cache persistence + frame-atomic coeff latching mean changing LEAD with the geometry
+is a smooth working-set shift (same as the cold-start analysis above). Until then, a single fixed LEAD
+will thrash whichever transform's lead it doesn't match at 4-way.
+
+**Build status:** BD config set to 4-way/NTILE=512/PD=64/DREQ=64 (LEAD placeholder); rebuilding to confirm
+the device holds the warp engine (BRAM ✓ expected ~96, LUT TBD) and timing closes. Per-geometry LEAD is
+the remaining real-time mechanism (firmware).
+
+### Cost ledger (4-way/512, the fitting config)
+- Cache ~96 RAMB36 (4 banks × 512·64 × 24b). Fits 140 with room for VDMA/scaler/output once debug ILAs
+  are dropped.
+- LUT: 8-way build was 72580 (36% over). 4-way halves the lookup/vict/availability/seq logic; PD=64
+  FIFOs + wide gearbox unchanged. Rebuild will say if it now fits 53200.
+- No dual-clock fill. Single DataMover. Set-index unchanged.
