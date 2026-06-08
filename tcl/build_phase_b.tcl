@@ -1083,6 +1083,12 @@ connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]    [get_bd_pins axi_gpio
 # 2048-sample depth covers > one output row (1280 pixels) so we can trigger
 # on TUSER and capture the entire first row of an output frame.
 
+# Debug ILAs (scaler_out / mm2s_out / s2mm_axi) — gated behind NO_ILA. They cost ~10.5k LUT + 32 BRAM
+# and are pure capture instrumentation; the WARP build sets NO_ILA=1 to recover slices/BRAM for the warp
+# cache. Re-enable (unset NO_ILA) when ILA capture of the scaler/VDMA pixel stream is needed.
+if {[info exists ::env(NO_ILA)] && $::env(NO_ILA) ne "0"} {
+puts "BUILD: debug ILAs disabled (NO_ILA set) — recovering ~10.5k LUT + 32 BRAM"
+} else {
 # System ILA on the scaler output AXIS interface (pclk_in domain, 148.5 MHz).
 # Monitors all standard AXIS signals (tdata, tvalid, tready, tlast, tuser) by
 # attaching to the interface bundle — no manual signal peel-off, which is the
@@ -1134,6 +1140,8 @@ set_property -dict [list \
 connect_bd_intf_net [get_bd_intf_pins axi_vdma_0/M_AXI_S2MM] [get_bd_intf_pins ila_s2mm_axi/SLOT_0_AXI]
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK1]              [get_bd_pins ila_s2mm_axi/clk]
 connect_bd_net [get_bd_pins rst_mem/peripheral_aresetn]     [get_bd_pins ila_s2mm_axi/resetn]
+}
+;# end NO_ILA gate
 
 # =============================================================================
 # Route-B present-geometry read-engine (additive + mux). Sourced here so all
