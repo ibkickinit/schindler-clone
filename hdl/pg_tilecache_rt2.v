@@ -64,6 +64,12 @@ module pg_tilecache_rt2 #(
     reg [WAY*TIDW-1:0] tagset[0:NSET-1];
     reg [WAY-1:0]      vldset[0:NSET-1];
     reg [WAY-1:0]      rsvset[0:NSET-1];
+    // CONSUMER-private replica of tag+vld (the gather looka reads ONLY vld+tag for a hit; never rsv).
+    // Written in PARALLEL with tagset/vldset on issue/fill/reset -> identical contents, separate physical
+    // LUTRAM. P&R places this copy next to the consumer gather, so the hit lookup no longer routes across
+    // the die to the prefetch-side tagset (the post-CDC -1.26 ns cone was 62% route: cx_ -> tagset @far).
+    reg [WAY*TIDW-1:0] tagset_c[0:NSET-1];
+    reg [WAY-1:0]      vldset_c[0:NSET-1];
     // vld = resident (consumable). rsv = slot reserved for an in-flight fill (not yet consumable).
     // FIFO-by-fetch eviction via a PER-SET victim pointer rr_set[set] (the way to evict next). The
     // prefetch fetches in consumer-future-access order, so within a set the oldest-fetched way is the
@@ -114,7 +120,7 @@ module pg_tilecache_rt2 #(
         integer w; reg hh; reg [SLW-1:0] s; reg [SETW-1:0] st; reg [TIDW-1:0] t;
         reg [WAY-1:0] vw; reg [WAY*TIDW-1:0] tw; begin
         st=setf(px,py); t=tidf(px,py); hh=1'b0; s={st,{WAYW{1'b0}}};
-        vw=vldset[st]; tw=tagset[st];                     // one wide read; WAY parallel comparators below
+        vw=vldset_c[st]; tw=tagset_c[st];                 // consumer-private replica (placed near gather)
         for(w=0;w<WAY;w=w+1) if(vw[w[WAYW-1:0]]&&tw[w*TIDW +: TIDW]==t) begin hh=1'b1; s={st,w[WAYW-1:0]}; end
         looka={hh,s}; end
     endfunction
@@ -263,7 +269,7 @@ module pg_tilecache_rt2 #(
 
     always @(posedge clk) begin
         if(!rstn) begin s1_v<=0; s2_v<=0; s3_v<=0; done3<=4'b0; fcw<=0; pf_wr<=0; pf_rd<=0; pf_cnt<=0;
-            for(pj=0;pj<NSET;pj=pj+1) begin vldset[pj]<=0; rsvset[pj]<=0; rr_set[pj]<=0; end
+            for(pj=0;pj<NSET;pj=pj+1) begin vldset[pj]<=0; vldset_c[pj]<=0; rsvset[pj]<=0; rr_set[pj]<=0; end
             end
         else begin
             // issue: pick a free (or rr-victim) way; write the NEW tag now (so availability sees the
@@ -275,7 +281,9 @@ module pg_tilecache_rt2 #(
             if(issue_go) begin
                 pf_slot[pf_wr]<=ua_slot; pf_wr<=pf_wr+1'b1;
                 tagset[ua_set][ua_way*TIDW +: TIDW]<=ua_tid;     // write the chosen way's tag slice
+                tagset_c[ua_set][ua_way*TIDW +: TIDW]<=ua_tid;   // mirror to the consumer replica
                 vldset[ua_set][ua_way]<=1'b0; rsvset[ua_set][ua_way]<=1'b1;
+                vldset_c[ua_set][ua_way]<=1'b0;
                 if(vldset[ua_set][ua_way]) rr_set[ua_set]<=rr_set[ua_set]+1'b1;
             end
             // 3-STAGE prefetch pipeline. stage 1 <- skid; stage 2 <- stage-1 feedforward (setf mults);
@@ -302,6 +310,7 @@ module pg_tilecache_rt2 #(
                 fcw<=fcw+1'b1;
                 if(fill_last) begin                        // tile complete -> make resident + pop head
                     vldset[fl_set][fl_way]<=1'b1; rsvset[fl_set][fl_way]<=1'b0; // tag already written at issue
+                    vldset_c[fl_set][fl_way]<=1'b1;                             // mirror to consumer replica
                     pf_rd<=pf_rd+1'b1; fcw<=6'd0;
                 end
             end
