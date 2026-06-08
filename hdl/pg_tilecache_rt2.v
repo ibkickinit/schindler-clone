@@ -52,12 +52,18 @@ module pg_tilecache_rt2 #(
     input  wire        fill_last
 );
     localparam integer TILE=(1<<LTILE), HT=LTILE-1, BPT=(TILE*TILE)/4;
-    localparam integer TX=(IN_W+TILE-1)/TILE, SLW=$clog2(NTILE), BAW=SLW+2*HT, TIDW=24;
+    localparam integer TX=(IN_W+TILE-1)/TILE, SLW=$clog2(NTILE), BAW=SLW+2*HT, TIDW=16;
     localparam integer WAYW=$clog2(WAY), SETW=SLW-WAYW, NSET=(1<<SETW); // WAY-way set-assoc; NTILE=NSET*WAY
 
     (* ram_style="block" *) reg [23:0] b00[0:NTILE*BPT-1], b10[0:NTILE*BPT-1],
                                        b01[0:NTILE*BPT-1], b11[0:NTILE*BPT-1];
-    reg [TIDW-1:0] tag[0:NTILE-1]; reg vld[0:NTILE-1]; reg rsv[0:NTILE-1];
+    // SET-INDEXED WIDE-WORD storage (was flat reg x[0:NTILE-1] read at the 9-bit {set,way} slot -> a
+    // 512:1 mux that WAS the WNS critical cone). Now the SET addresses storage (128-deep) and the WAY
+    // ways come out in one wide word -> WAY parallel comparators. tagset[set] packs WAY tag-slices
+    // ({way*TIDW +: TIDW}); vldset/rsvset are WAY-bit-per-set. Identical logic, storage-shape only.
+    reg [WAY*TIDW-1:0] tagset[0:NSET-1];
+    reg [WAY-1:0]      vldset[0:NSET-1];
+    reg [WAY-1:0]      rsvset[0:NSET-1];
     // vld = resident (consumable). rsv = slot reserved for an in-flight fill (not yet consumable).
     // FIFO-by-fetch eviction via a PER-SET victim pointer rr_set[set] (the way to evict next). The
     // prefetch fetches in consumer-future-access order, so within a set the oldest-fetched way is the
@@ -82,12 +88,13 @@ module pg_tilecache_rt2 #(
     // (3) else any non-reserved way (all-reserved is rare). O(1): a register read + a 4-way scan, no
     // age-argmax / subtracts.
     function automatic [WAYW-1:0] vict; input [SETW-1:0] st;
-        integer w; reg [WAYW-1:0] v; reg gotfree; begin
+        integer w; reg [WAYW-1:0] v; reg gotfree; reg [WAY-1:0] vw, rw; begin
+        vw=vldset[st]; rw=rsvset[st];                     // one wide read; ways come out in parallel
         gotfree=1'b0; v=rr_set[st];
         for(w=WAY-1;w>=0;w=w-1)
-            if(!vld[{st,w[WAYW-1:0]}] && !rsv[{st,w[WAYW-1:0]}]) begin v=w[WAYW-1:0]; gotfree=1'b1; end
-        if(!gotfree && rsv[{st,rr_set[st]}])
-            for(w=WAY-1;w>=0;w=w-1) if(!rsv[{st,w[WAYW-1:0]}]) v=w[WAYW-1:0];
+            if(!vw[w[WAYW-1:0]] && !rw[w[WAYW-1:0]]) begin v=w[WAYW-1:0]; gotfree=1'b1; end
+        if(!gotfree && rw[rr_set[st]])
+            for(w=WAY-1;w>=0;w=w-1) if(!rw[w[WAYW-1:0]]) v=w[WAYW-1:0];
         vict = v;
         end
     endfunction
@@ -104,9 +111,11 @@ module pg_tilecache_rt2 #(
         baddr=(s<<(2*HT))|(((py[LTILE-1:0]>>1)<<HT)|(px[LTILE-1:0]>>1)); endfunction
     // 4-way set-assoc lookup: tile (px,py) -> {hit, slot}. Reads vld/tag -> only in always@*.
     function automatic [SLW:0] looka; input [11:0] px,py;
-        integer w; reg hh; reg [SLW-1:0] s; reg [SETW-1:0] st; reg [TIDW-1:0] t; begin
+        integer w; reg hh; reg [SLW-1:0] s; reg [SETW-1:0] st; reg [TIDW-1:0] t;
+        reg [WAY-1:0] vw; reg [WAY*TIDW-1:0] tw; begin
         st=setf(px,py); t=tidf(px,py); hh=1'b0; s={st,{WAYW{1'b0}}};
-        for(w=0;w<WAY;w=w+1) if(vld[{st,w[WAYW-1:0]}]&&tag[{st,w[WAYW-1:0]}]==t) begin hh=1'b1; s={st,w[WAYW-1:0]}; end
+        vw=vldset[st]; tw=tagset[st];                     // one wide read; WAY parallel comparators below
+        for(w=0;w<WAY;w=w+1) if(vw[w[WAYW-1:0]]&&tw[w*TIDW +: TIDW]==t) begin hh=1'b1; s={st,w[WAYW-1:0]}; end
         looka={hh,s}; end
     endfunction
 
@@ -188,13 +197,21 @@ module pg_tilecache_rt2 #(
     // Inlined (direct vld/rsv/tag array reads) so the always@* tracks them (a function form is not
     // sensitive to internal array reads in xsim). Cost WAY per tile, bounded by associativity.
     reg av00, av10, av01, av11; integer aw;
+    // wide reads of the 4 neighbour sets (4 simultaneous 128-deep set-reads of the packed ways), then
+    // WAY parallel comparators per tile — replaces the 16 flat 512:1 slot muxes that were the issue cone.
+    reg [WAY-1:0] avw00,avw10,avw01,avw11, arw00,arw10,arw01,arw11;
+    reg [WAY*TIDW-1:0] atw00,atw10,atw01,atw11;
     always @* begin
+        avw00=vldset[ps00]; arw00=rsvset[ps00]; atw00=tagset[ps00];
+        avw10=vldset[ps10]; arw10=rsvset[ps10]; atw10=tagset[ps10];
+        avw01=vldset[ps01]; arw01=rsvset[ps01]; atw01=tagset[ps01];
+        avw11=vldset[ps11]; arw11=rsvset[ps11]; atw11=tagset[ps11];
         av00=1'b0; av10=1'b0; av01=1'b0; av11=1'b0;
         for(aw=0;aw<WAY;aw=aw+1) begin
-            if((vld[{ps00,aw[WAYW-1:0]}]||rsv[{ps00,aw[WAYW-1:0]}]) && tag[{ps00,aw[WAYW-1:0]}]==pt00) av00=1'b1;
-            if((vld[{ps10,aw[WAYW-1:0]}]||rsv[{ps10,aw[WAYW-1:0]}]) && tag[{ps10,aw[WAYW-1:0]}]==pt10) av10=1'b1;
-            if((vld[{ps01,aw[WAYW-1:0]}]||rsv[{ps01,aw[WAYW-1:0]}]) && tag[{ps01,aw[WAYW-1:0]}]==pt01) av01=1'b1;
-            if((vld[{ps11,aw[WAYW-1:0]}]||rsv[{ps11,aw[WAYW-1:0]}]) && tag[{ps11,aw[WAYW-1:0]}]==pt11) av11=1'b1;
+            if((avw00[aw[WAYW-1:0]]||arw00[aw[WAYW-1:0]]) && atw00[aw*TIDW +: TIDW]==pt00) av00=1'b1;
+            if((avw10[aw[WAYW-1:0]]||arw10[aw[WAYW-1:0]]) && atw10[aw*TIDW +: TIDW]==pt10) av10=1'b1;
+            if((avw01[aw[WAYW-1:0]]||arw01[aw[WAYW-1:0]]) && atw01[aw*TIDW +: TIDW]==pt01) av01=1'b1;
+            if((avw11[aw[WAYW-1:0]]||arw11[aw[WAYW-1:0]]) && atw11[aw*TIDW +: TIDW]==pt11) av11=1'b1;
         end
     end
     wire all_av = av00&av10&av01&av11;
@@ -223,11 +240,13 @@ module pg_tilecache_rt2 #(
     wire [WAYW-1:0] ua_way = vict(ua_set);                // victim way in the unavailable tile's set
     wire [SLW-1:0] ua_slot = {ua_set, ua_way};
     wire [BAW-1:0] fwa = (pf_slot[pf_rd]<<(2*HT)) | fcw;   // fills route to the pending-FIFO head slot
+    // fill-complete slot decoded back to {set,way} for the set-indexed wide-word writes
+    wire [SETW-1:0] fl_set = pf_slot[pf_rd][SLW-1:WAYW];
+    wire [WAYW-1:0] fl_way = pf_slot[pf_rd][WAYW-1:0];
 
     always @(posedge clk) begin
         if(!rstn) begin s1_v<=0; s2_v<=0; fcw<=0; pf_wr<=0; pf_rd<=0; pf_cnt<=0;
-            for(pj=0;pj<NTILE;pj=pj+1) begin vld[pj]<=0; rsv[pj]<=0; end
-            for(pj=0;pj<NSET;pj=pj+1) rr_set[pj]<=0;
+            for(pj=0;pj<NSET;pj=pj+1) begin vldset[pj]<=0; rsvset[pj]<=0; rr_set[pj]<=0; end
             end
         else begin
             // issue: pick a free (or rr-victim) way; write the NEW tag now (so availability sees the
@@ -235,11 +254,12 @@ module pg_tilecache_rt2 #(
             // Enqueue the slot for in-order fill routing. ATOMIC with the availability read (same cycle,
             // stage 2). If the victim was an OCCUPIED way (an actual eviction, not a free way), advance
             // that set's FIFO pointer so the next victim is the next-oldest way. (the victim is never
-            // reserved, so vld[ua_slot] alone distinguishes evict-vs-fill-empty.)
+            // reserved, so vldset[ua_set][ua_way] alone distinguishes evict-vs-fill-empty.)
             if(issue_go) begin
                 pf_slot[pf_wr]<=ua_slot; pf_wr<=pf_wr+1'b1;
-                tag[ua_slot]<=ua_tid; vld[ua_slot]<=1'b0; rsv[ua_slot]<=1'b1;
-                if(vld[ua_slot]) rr_set[ua_set]<=rr_set[ua_set]+1'b1;
+                tagset[ua_set][ua_way*TIDW +: TIDW]<=ua_tid;     // write the chosen way's tag slice
+                vldset[ua_set][ua_way]<=1'b0; rsvset[ua_set][ua_way]<=1'b1;
+                if(vldset[ua_set][ua_way]) rr_set[ua_set]<=rr_set[ua_set]+1'b1;
             end
             // prefetch pipeline: stage 1 <- skid; stage 2 <- stage 1's feedforward (setf mults register
             // here, out of the suffix cone). Stage 2 holds across a miss coord's multi-cycle issuing.
@@ -256,7 +276,7 @@ module pg_tilecache_rt2 #(
                 b01[fwa]<=fill_blk[71:48]; b11[fwa]<=fill_blk[95:72];
                 fcw<=fcw+1'b1;
                 if(fill_last) begin                        // tile complete -> make resident + pop head
-                    vld[pf_slot[pf_rd]]<=1'b1; rsv[pf_slot[pf_rd]]<=1'b0;   // tag already written at issue
+                    vldset[fl_set][fl_way]<=1'b1; rsvset[fl_set][fl_way]<=1'b0; // tag already written at issue
                     pf_rd<=pf_rd+1'b1; fcw<=6'd0;
                 end
             end
