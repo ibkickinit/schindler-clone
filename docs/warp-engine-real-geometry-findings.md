@@ -452,3 +452,23 @@ avm-snapshot: the prefetch issue cone DROPS OUT of the top paths (SOLVED). New l
 - **2 px/clk @74.25 (RECOMMENDED for 1080p):** only needs <=13.468ns — we're at -1.868 (consumer) + the
   easy CDC false-path. Costs 2x cache read bandwidth (more banks / dual-port). Pragmatic 1080p path.
   Analysis tooling: `tcl/warp_timing_148.tcl` (overall), `tcl/warp_timing_148b.tcl` (intra-pclk isolation).
+
+### 2026-06-08 cont'd — CDC false-path + consumer replica: WNS -3.60 -> -1.26 -> -0.93 (720p 94% closed)
+After avm-snapshot, the limiter was (a) the GPIO coeff async CDC and (b) the consumer gather.
+- **CDC false-path** (commit `a277861`): pg_warp_top already had the 2-FF ASYNC_REG sync (a1..f1/mt1 =
+  q1); added the missing `set_false_path -to */a1_reg..f1_reg/mt1_reg/D` (scoped *pg_re_0*, verified 32/24
+  pins). WNS -3.601 -> **-1.263** (router freed from the false path improved the real cone too).
+- **Consumer tag+vld replica** (commit `c12fca3`): looka reads only vld+tag -> a consumer-private
+  tagset_c/vldset_c written in parallel (identical contents, separate LUTRAM). Both gates match baseline.
+  WNS -1.263 -> **-0.930**. Helped less than hoped: congestion placed tagset_c at X94 vs consumer X65
+  (still 66% route), and the `setf` ×13/×7 multiply (CARRY4) is still IN the looka loop.
+- Worst path now: `cx_ -> setf mult (CARRY4) -> tagset_c read (far route) -> compare -> stage_ready ->
+  cx_ advance`, 14.07 ns (logic 4.78 / route 9.30), 16 levels. WNS@148.5 ~ -7.7.
+
+**Next (foundational for BOTH 720p-single-px AND 2px/clk):** pipeline the consumer `setf`/`tidf` one stage
+early — precompute the 2x2 neighbour set-indices+tile-ids from the INCOMING c_x/c_y and register them
+alongside cx_/cy_ (the prefetch stage-1 feedforward trick, on the read side). Removes the multiply from
+the looka loop; leaves looka = registered-read + compare. Delicate: the consumer gather has op_rdy
+lockstep + stall-on-miss; the set-index precompute is feedforward (coord-only -> hazard-free) but the
+restructure touches the 2-stage consumer control. Then the consumer needs the same avm-style read-pipeline
+to reach 6.734 for single-clock 148.5 — which is exactly what the 2px/clk consumer rebuild subsumes.
