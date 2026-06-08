@@ -8,19 +8,19 @@
 `default_nettype none
 `timescale 1ns / 1ps
 
-module pg_warp_real_tb;
-    localparam OUT_W=1280, OUT_H=720, IN_W=1920, IN_H=1080;
+module pg_warp_real_1080_4w_tb;
+    localparam OUT_W=1920, OUT_H=1080, IN_W=1920, IN_H=1080;
     // Production warp config validated real-time at this geometry: 8-way / NTILE=1024, PD=DREQ=64,
     // LEAD=32768, FIFO-by-fetch eviction, wide (2.67 px/clk) gearbox. (Small TB pg_warp_dma_tb runs
     // 4-way/512/PD=16.) rot20/shrink/aniso fully clean; rot45 has a single cold-start underrun (cn=3).
-    localparam LTILE=4, TILE=16, NTILE=1024, WAY=8, PD=64, DREQ=64, CW=32, FB=12, NA=OUT_W*OUT_H;
+    localparam LTILE=4, TILE=16, NTILE=512, WAY=4, PD=64, DREQ=64, CW=32, FB=12, NA=OUT_W*OUT_H;
 `ifdef LEADV
     localparam LEAD=`LEADV;
 `else
     localparam LEAD=32768;
 `endif
     // 720p60 CEA: H_TOT=1650, V_TOT=750, 1280x720 active, ~30 leading blank lines for prefetch warmup.
-    localparam STRIDE=IN_W*3, H_TOT=1650, V_TOT=750, VB=30, FRAME_PERIOD=H_TOT*V_TOT;
+    localparam STRIDE=IN_W*3, H_TOT=2200, V_TOT=1125, VB=40, FRAME_PERIOD=H_TOT*V_TOT;
     reg clk=0, rstn=0, sof=0;
     reg signed [CW-1:0] m_a,m_b,m_c,m_d,m_e,m_f; reg [23:0] matte=24'h101010;
     wire o_valid; wire [23:0] o_pix; reg o_ready;
@@ -137,10 +137,13 @@ module pg_warp_real_tb;
         for(ayy=0;ayy<IN_H;ayy=ayy+1) for(axx=0;axx<IN_W;axx=axx+1)
             frame[ayy*IN_W+axx]={axx[7:0],ayy[7:0],(axx*3+ayy*5)+8'h07};
         total=0;cyc=0;
+        // 1080-out (1920x1080 from 1920x1080) — realistic product geometry: 1:1-scale rotation
+        // (corners rotate OOB -> matte; interior fully sampled). rot45 = worst cache stress (a rotated
+        // output row crosses the most source tile-rows). aniso = mild x-downscale (wider source read).
         run_x(20.0, 1.0, 1.0, "rot20    ");
-        run_x(45.0, 1.0, 1.0, "rot45    ");
-        run_x(0.0,  1.5, 1.5, "shrink1.5");   // fill/lead driver
-        run_x(30.0, 1.5, 1.0, "aniso30  ");
+        run_x(45.0, 1.0, 1.0, "rot45    ");   // worst cache stress at 1080 out
+        run_x(10.0, 1.0, 1.0, "rot10    ");
+        run_x(30.0, 1.2, 1.0, "aniso30  ");   // mild x-downscale -> wider working set
         $finish;
     end
     initial begin #40_000_000_000; $display("WATCHDOG cn=%0d err=%0d",cn,errors); $finish; end

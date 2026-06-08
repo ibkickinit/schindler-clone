@@ -19,6 +19,7 @@ module pg_warp_engine #(
 ) (
     input  wire        clk, rstn,
     input  wire        sof,                        // 1-cyc: start the raster walk (affines self-pace via ready)
+    input  wire [19:0] lead_rt,                    // runtime prefetch lead (0 -> use build-param LEAD)
     // affine coeffs (signed Q(CW-FB).FB), firmware-computed
     input  wire signed [CW-1:0] m_a,m_b,m_c,m_d,m_e,m_f,
     input  wire [23:0] matte,                     // out-of-window fill
@@ -54,7 +55,10 @@ module pg_warp_engine #(
     wire        pa_v, pa_in; wire [11:0] pa_col, pa_row; wire pa_sr;
     wire        pm_v; wire [24:0] pm_d;
     reg  [19:0] lead_cnt; reg pf_acc_r, c_acc_r;            // 20-bit: lead can span a full frame
-    wire        pf_gate = (lead_cnt < LEAD[19:0]);          // reg-based -> not in the lookup path
+    // runtime per-geometry lead: firmware sets lead_rt from the affine (shallow for gentle rotation,
+    // deep for downscale/steep). 0 -> fall back to the build-param LEAD (safe boot default).
+    wire [19:0] lead_eff = (lead_rt==20'd0) ? LEAD[19:0] : lead_rt;
+    wire        pf_gate   = (lead_cnt < lead_eff);          // reg-based -> not in the lookup path
     // register the accept events so the 16-bit counter add isn't fed by the live lookup (pf_ready).
     // 1-cycle-stale count only shifts the coarse lead bound by ~1 — harmless.
     always @(posedge clk) begin

@@ -88,7 +88,7 @@ module pg_warp_top #(
 
     pg_warp_engine #(.OUT_W(OUT_W),.OUT_H(OUT_H),.IN_W(IN_W),.IN_H(IN_H),
                      .LTILE(LTILE),.NTILE(NTILE),.WAY(WAY),.PD(PD),.CW(CW),.FB(FB),.LEAD(LEAD)) u_eng (
-        .clk(clk),.rstn(rstn),.sof(sof),
+        .clk(clk),.rstn(rstn),.sof(sof),.lead_rt(20'd0),   // 0 -> engine uses build-param LEAD (runtime GPIO TODO)
         .m_a(a2),.m_b(b2),.m_c(c2),.m_d(d2),.m_e(e2),.m_f(f2),.matte(mt2),
         .o_valid(o_valid),.o_pix(o_pix),.o_ready(o_ready),
         .fetch_req(wreq),.fetch_tx(wtx),.fetch_ty(wty),.fetch_ready(t_rdy),
