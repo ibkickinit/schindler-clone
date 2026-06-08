@@ -189,3 +189,28 @@ the remaining real-time mechanism (firmware).
 - LUT: 8-way build was 72580 (36% over). 4-way halves the lookup/vict/availability/seq logic; PD=64
   FIFOs + wide gearbox unchanged. Rebuild will say if it now fits 53200.
 - No dual-clock fill. Single DataMover. Set-index unchanged.
+
+### Fit round 2 (4-way/512): BRAM clears, now SLICES (LUT/FF) over by ~24%
+4-way/NTILE=512 cleared the BRAM wall (cache ~96 RAMB36, no BRAM DRC error). Impl now fails at **place**
+on slices: **13456 required / 10893 available (~24% over)** — LUT/FF, still not timing. Per-IP LUTs
+(synth OOC):
+- `pg_re_0` (warp engine) = **29723 LUTs** — dominant. PD=64/DREQ=64 FIFOs, the 200-bit wide gearbox
+  (variable barrel shifters), the 512×16b `seq` array + 4-way age-argmax, the `(vld||rsv)&&tag`
+  availability (4×4×24b), 2× affine DDAs, bilinear, `setf` multiplies.
+- 3 system ILAs = ~10549 LUTs (`ila_s2mm_axi` 5218 + `ila_scaler_out` 2799 + `ila_mm2s_out` 2532),
+  plus `ila_pixclk`/`ila_refclk` — **all debug-only.**
+- VDMA 2982, scaler mem 2297, v_tc_rx/tx 1522/1327, etc.
+
+**Closing the ~2563-slice gap (well-scoped, next session — verify each with a rebuild):**
+1. **Drop the debug ILAs** (gate the `system_ila` cells + their probe nets behind an `ILA_EN` flag in
+   `build_phase_b.tcl`, default off for warp builds): ~10549+ LUT ≈ ~1300–1500 slices. Closes roughly
+   half. Low risk but touches the BD (must remove probe connections cleanly).
+2. **PD/DREQ 64→32** if shrink real-time tolerates (re-check on `pg_warp_real_tb`): halves the pf_slot
+   (64×9b) + tile_dma rq (64×24b) FIFOs.
+3. **Trim `seq` width** 16→~10 bits (age only needs to order the live working set) and/or move it to
+   LUTRAM/BRAM: saves ~512×6 FFs off the slice count.
+4. If still short, narrow the gearbox barrel shifters (the 200-bit acc / variable 96-bit shifts are
+   LUT-heavy) — but the wide gearbox is load-bearing for shrink's 2.67 px/clk, so re-verify real-time.
+
+ILAs (1) + PD↓ (2) + seq↓ (3) should clear ~24% comfortably. None affects the validated datapath/
+real-time behaviour; they're area trims + debug removal. After a clean place, read post-route WNS.
