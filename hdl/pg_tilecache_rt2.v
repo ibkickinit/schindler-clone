@@ -115,15 +115,9 @@ module pg_tilecache_rt2 #(
         setf=(((px>>LTILE)*13) + ((py>>LTILE)*7)) & {SETW{1'b1}}; endfunction
     function [BAW-1:0] baddr; input [SLW-1:0] s; input [11:0] px,py;
         baddr=(s<<(2*HT))|(((py[LTILE-1:0]>>1)<<HT)|(px[LTILE-1:0]>>1)); endfunction
-    // 4-way set-assoc lookup: tile (px,py) -> {hit, slot}. Reads vld/tag -> only in always@*.
-    function automatic [SLW:0] looka; input [11:0] px,py;
-        integer w; reg hh; reg [SLW-1:0] s; reg [SETW-1:0] st; reg [TIDW-1:0] t;
-        reg [WAY-1:0] vw; reg [WAY*TIDW-1:0] tw; begin
-        st=setf(px,py); t=tidf(px,py); hh=1'b0; s={st,{WAYW{1'b0}}};
-        vw=vldset_c[st]; tw=tagset_c[st];                 // consumer-private replica (placed near gather)
-        for(w=0;w<WAY;w=w+1) if(vw[w[WAYW-1:0]]&&tw[w*TIDW +: TIDW]==t) begin hh=1'b1; s={st,w[WAYW-1:0]}; end
-        looka={hh,s}; end
-    endfunction
+    // Consumer hit detect is INLINED in the gather always@* below (the setf ×13/×7 multiply + tidf are
+    // pipelined into the consumer feedforward cs*/ct*, so the per-cycle gather path is just the registered
+    // replica read + WAY comparators). Inlined (not a function) so xsim tracks the array reads.
 
     // ===================== CONSUMER (gather) =====================
     reg [11:0] cx_,cy_,cfx_,cfy_; reg cin_; reg [SB-1:0] csb_; reg c_busy;
@@ -131,10 +125,30 @@ module pg_tilecache_rt2 #(
     wire ce_x=(cxr==cx_), ce_y=(cyb==cy_);
     wire [11:0] cpx0=(cx_[0]==0)?cx_:cxr, cpx1=(cx_[0]==1)?cx_:cxr;
     wire [11:0] cpy0=(cy_[0]==0)?cy_:cyb, cpy1=(cy_[0]==1)?cy_:cyb;
-    reg gh00,gh10,gh01,gh11; reg [SLW-1:0] gs00,gs10,gs01,gs11;
+    // ---- consumer feedforward: 2x2 neighbour set-indices + tile-ids of the INCOMING coord (c_x/c_y),
+    //      computed combinationally and registered into cs*/ct* alongside cx_/cy_. Same coord, same edge,
+    //      same source -> the setf ×13/×7 multiply leaves the looka loop (prefetch stage-1 trick, read side).
+    wire [11:0] nxr=(c_x>=IN_W-1)?c_x:c_x+1, nyb=(c_y>=IN_H-1)?c_y:c_y+1;
+    wire [11:0] npx0=(c_x[0]==0)?c_x:nxr, npx1=(c_x[0]==1)?c_x:nxr;
+    wire [11:0] npy0=(c_y[0]==0)?c_y:nyb, npy1=(c_y[0]==1)?c_y:nyb;
+    wire [SETW-1:0] ncs00=setf(npx0,npy0), ncs10=setf(npx1,npy0), ncs01=setf(npx0,npy1), ncs11=setf(npx1,npy1);
+    wire [TIDW-1:0] nct00=tidf(npx0,npy0), nct10=tidf(npx1,npy0), nct01=tidf(npx0,npy1), nct11=tidf(npx1,npy1);
+    reg [SETW-1:0] cs00,cs10,cs01,cs11; reg [TIDW-1:0] ct00,ct10,ct01,ct11;  // staged, in step with cx_/cy_
+    reg gh00,gh10,gh01,gh11; reg [SLW-1:0] gs00,gs10,gs01,gs11; integer gw;
+    // INLINED hit detect (direct vldset_c/tagset_c reads in always@* so xsim tracks them — a function
+    // form is not sensitive to internal array reads, same gotcha the prefetch availability avoids).
+    reg [WAY-1:0] gv00,gv10,gv01,gv11; reg [WAY*TIDW-1:0] gt00,gt10,gt01,gt11;
     always @* begin
-        {gh00,gs00}=looka(cpx0,cpy0); {gh10,gs10}=looka(cpx1,cpy0);
-        {gh01,gs01}=looka(cpx0,cpy1); {gh11,gs11}=looka(cpx1,cpy1);
+        gv00=vldset_c[cs00]; gt00=tagset_c[cs00]; gv10=vldset_c[cs10]; gt10=tagset_c[cs10];
+        gv01=vldset_c[cs01]; gt01=tagset_c[cs01]; gv11=vldset_c[cs11]; gt11=tagset_c[cs11];
+        gh00=1'b0; gh10=1'b0; gh01=1'b0; gh11=1'b0;
+        gs00={cs00,{WAYW{1'b0}}}; gs10={cs10,{WAYW{1'b0}}}; gs01={cs01,{WAYW{1'b0}}}; gs11={cs11,{WAYW{1'b0}}};
+        for(gw=0;gw<WAY;gw=gw+1) begin
+            if(gv00[gw[WAYW-1:0]]&&gt00[gw*TIDW +: TIDW]==ct00) begin gh00=1'b1; gs00={cs00,gw[WAYW-1:0]}; end
+            if(gv10[gw[WAYW-1:0]]&&gt10[gw*TIDW +: TIDW]==ct10) begin gh10=1'b1; gs10={cs10,gw[WAYW-1:0]}; end
+            if(gv01[gw[WAYW-1:0]]&&gt01[gw*TIDW +: TIDW]==ct01) begin gh01=1'b1; gs01={cs01,gw[WAYW-1:0]}; end
+            if(gv11[gw[WAYW-1:0]]&&gt11[gw*TIDW +: TIDW]==ct11) begin gh11=1'b1; gs11={cs11,gw[WAYW-1:0]}; end
+        end
     end
     wire c_all = gh00&gh10&gh01&gh11;
     wire op_rdy = !out_valid || out_ready;             // OUT stage can take a gather result
@@ -169,11 +183,13 @@ module pg_tilecache_rt2 #(
                 // S1 produce: capture the staged coord (cr* clocked above) + carry its meta
                 if(!c_busy) begin
                     s1d_v<=1'b0;
-                    if(c_valid) begin cx_<=c_x;cy_<=c_y;cfx_<=c_fx;cfy_<=c_fy;cin_<=c_inwin;csb_<=c_sb; c_busy<=1'b1; end
+                    if(c_valid) begin cx_<=c_x;cy_<=c_y;cfx_<=c_fx;cfy_<=c_fy;cin_<=c_inwin;csb_<=c_sb;
+                        cs00<=ncs00;cs10<=ncs10;cs01<=ncs01;cs11<=ncs11;ct00<=nct00;ct10<=nct10;ct01<=nct01;ct11<=nct11; c_busy<=1'b1; end
                 end else if(stage_ready) begin
                     s1d_v<=1'b1; s1d_x0<=cx_[0]; s1d_y0<=cy_[0]; s1d_ex<=ce_x; s1d_ey<=ce_y;
                     s1d_fx<=cfx_; s1d_fy<=cfy_; s1d_in<=cin_; s1d_sb<=csb_;
-                    if(c_valid) begin cx_<=c_x;cy_<=c_y;cfx_<=c_fx;cfy_<=c_fy;cin_<=c_inwin;csb_<=c_sb; end
+                    if(c_valid) begin cx_<=c_x;cy_<=c_y;cfx_<=c_fx;cfy_<=c_fy;cin_<=c_inwin;csb_<=c_sb;
+                        cs00<=ncs00;cs10<=ncs10;cs01<=ncs01;cs11<=ncs11;ct00<=nct00;ct10<=nct10;ct01<=nct01;ct11<=nct11; end
                     else c_busy<=1'b0;
                 end else s1d_v<=1'b0;                            // staged miss -> bubble
             end
