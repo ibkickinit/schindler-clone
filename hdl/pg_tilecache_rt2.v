@@ -57,15 +57,14 @@ module pg_tilecache_rt2 #(
 
     (* ram_style="block" *) reg [23:0] b00[0:NTILE*BPT-1], b10[0:NTILE*BPT-1],
                                        b01[0:NTILE*BPT-1], b11[0:NTILE*BPT-1];
-    reg [TIDW-1:0] tag[0:NTILE-1]; reg vld[0:NTILE-1]; reg rsv[0:NTILE-1]; reg [WAYW-1:0] rr_way;
+    reg [TIDW-1:0] tag[0:NTILE-1]; reg vld[0:NTILE-1]; reg rsv[0:NTILE-1];
     // vld = resident (consumable). rsv = slot reserved for an in-flight fill (not yet consumable).
-    // FIFO-by-fetch eviction: per-slot fetch sequence; fseq increments per fill. The prefetch fetches in
-    // walk order = the consumer's future access order, so the oldest-fetched resident tile in a set is
-    // the one the consumer reached/passed earliest = the dead one. Evicting it (vs round-robin) lets a
-    // modest cache hold the live working set indefinitely instead of thrashing once eviction is
-    // mandatory (which never happens in the small TB but is the rule at 1080p). ~LRU for streaming.
-    localparam integer SEQW=16;
-    reg [SEQW-1:0] fseq; reg [SEQW-1:0] seq[0:NTILE-1];
+    // FIFO-by-fetch eviction via a PER-SET victim pointer rr_set[set] (the way to evict next). The
+    // prefetch fetches in consumer-future-access order, so within a set the oldest-fetched way is the
+    // dead one. rr_set advances on each EVICTION (rr-victim issue, i.e. no free way), so it naturally
+    // fills the empty ways 0..WAY-1 first, then cycles through them in fetch order = FIFO ~ LRU for the
+    // streaming pattern. O(1) victim (a register read) — replaces the global fseq/seq age-argmax, which
+    // was a CARRY4-heavy 16-bit-subtract cone on the prefetch issue critical path (WNS).
     // ---- multi-outstanding pending-fill FIFO: up to PD tiles in flight ----
     // Keeps the DataMover continuously fed across the prefetch's bursty miss pattern. The small TB clears
     // all four at PD=16; the full 1280x720<-1920x1080 geometry needs PD~64 (set at instantiation).
@@ -77,21 +76,19 @@ module pg_tilecache_rt2 #(
     reg [PW-1:0]  pf_wr, pf_rd; reg [PW:0] pf_cnt;
     wire pf_full  = (pf_cnt==PD[PW:0]);
     wire pf_empty = (pf_cnt==0);
+    reg [WAYW-1:0] rr_set[0:NSET-1];                  // per-set FIFO victim pointer (way to evict next)
     // victim way for a set: (1) a FREE way (not resident, not reserved) if any — a fill never evicts a
-    // live tile while a free way exists; (2) else the OLDEST-FETCHED non-reserved resident way (FIFO ~
-    // LRU for the streaming prefetch order); (3) else round-robin (all ways reserved — rare). This is
-    // the non-thrashing victim the multi-outstanding prefetch needs once eviction is mandatory.
+    // live tile while a free way exists; (2) else the rr_set pointer way if it isn't reserved (FIFO);
+    // (3) else any non-reserved way (all-reserved is rare). O(1): a register read + a 4-way scan, no
+    // age-argmax / subtracts.
     function automatic [WAYW-1:0] vict; input [SETW-1:0] st;
-        integer w; reg freef; reg [WAYW-1:0] freew, oldw; reg [SEQW-1:0] maxage, age; begin
-        freef=1'b0; freew=rr_way; oldw=rr_way; maxage={SEQW{1'b1}};   // maxage seeds so first sets it
+        integer w; reg [WAYW-1:0] v; reg gotfree; begin
+        gotfree=1'b0; v=rr_set[st];
         for(w=WAY-1;w>=0;w=w-1)
-            if(!vld[{st,w[WAYW-1:0]}] && !rsv[{st,w[WAYW-1:0]}]) begin freew=w[WAYW-1:0]; freef=1'b1; end
-        maxage={SEQW{1'b0}};
-        for(w=0;w<WAY;w=w+1) begin
-            age = fseq - seq[{st,w[WAYW-1:0]}];          // modular age; larger = fetched longer ago
-            if(!rsv[{st,w[WAYW-1:0]}] && (age>=maxage)) begin maxage=age; oldw=w[WAYW-1:0]; end
-        end
-        vict = freef ? freew : oldw;
+            if(!vld[{st,w[WAYW-1:0]}] && !rsv[{st,w[WAYW-1:0]}]) begin v=w[WAYW-1:0]; gotfree=1'b1; end
+        if(!gotfree && rsv[{st,rr_set[st]}])
+            for(w=WAY-1;w>=0;w=w-1) if(!rsv[{st,w[WAYW-1:0]}]) v=w[WAYW-1:0];
+        vict = v;
         end
     endfunction
 
@@ -228,18 +225,21 @@ module pg_tilecache_rt2 #(
     wire [BAW-1:0] fwa = (pf_slot[pf_rd]<<(2*HT)) | fcw;   // fills route to the pending-FIFO head slot
 
     always @(posedge clk) begin
-        if(!rstn) begin s1_v<=0; s2_v<=0; rr_way<=0; fcw<=0; pf_wr<=0; pf_rd<=0; pf_cnt<=0; fseq<=1;
-            for(pj=0;pj<NTILE;pj=pj+1) begin vld[pj]<=0; rsv[pj]<=0; seq[pj]<=0; end
+        if(!rstn) begin s1_v<=0; s2_v<=0; fcw<=0; pf_wr<=0; pf_rd<=0; pf_cnt<=0;
+            for(pj=0;pj<NTILE;pj=pj+1) begin vld[pj]<=0; rsv[pj]<=0; end
+            for(pj=0;pj<NSET;pj=pj+1) rr_set[pj]<=0;
             end
         else begin
-            // issue: pick a free (or dead) victim way; write the NEW tag now (so availability sees the
+            // issue: pick a free (or rr-victim) way; write the NEW tag now (so availability sees the
             // tile as in-flight) and invalidate-as-resident (rsv=1, vld=0 -> no stale hits during fill).
-            // Enqueue the slot for in-order fill routing. rr_way advances only as the all-occupied
-            // tiebreak so it stays meaningful. ATOMIC with the availability read (same cycle, stage 2).
+            // Enqueue the slot for in-order fill routing. ATOMIC with the availability read (same cycle,
+            // stage 2). If the victim was an OCCUPIED way (an actual eviction, not a free way), advance
+            // that set's FIFO pointer so the next victim is the next-oldest way. (the victim is never
+            // reserved, so vld[ua_slot] alone distinguishes evict-vs-fill-empty.)
             if(issue_go) begin
                 pf_slot[pf_wr]<=ua_slot; pf_wr<=pf_wr+1'b1;
                 tag[ua_slot]<=ua_tid; vld[ua_slot]<=1'b0; rsv[ua_slot]<=1'b1;
-                rr_way<=rr_way+1'b1;
+                if(vld[ua_slot]) rr_set[ua_set]<=rr_set[ua_set]+1'b1;
             end
             // prefetch pipeline: stage 1 <- skid; stage 2 <- stage 1's feedforward (setf mults register
             // here, out of the suffix cone). Stage 2 holds across a miss coord's multi-cycle issuing.
@@ -257,7 +257,6 @@ module pg_tilecache_rt2 #(
                 fcw<=fcw+1'b1;
                 if(fill_last) begin                        // tile complete -> make resident + pop head
                     vld[pf_slot[pf_rd]]<=1'b1; rsv[pf_slot[pf_rd]]<=1'b0;   // tag already written at issue
-                    seq[pf_slot[pf_rd]]<=fseq; fseq<=fseq+1'b1;             // stamp fetch order (FIFO ~ LRU)
                     pf_rd<=pf_rd+1'b1; fcw<=6'd0;
                 end
             end
