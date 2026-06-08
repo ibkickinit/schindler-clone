@@ -214,38 +214,55 @@ module pg_tilecache_rt2 #(
             if((avw11[aw[WAYW-1:0]]||arw11[aw[WAYW-1:0]]) && atw11[aw*TIDW +: TIDW]==pt11) av11=1'b1;
         end
     end
-    wire all_av = av00&av10&av01&av11;
-    reg [TIDW-1:0] ua_tid; reg [SETW-1:0] ua_set;   // first unavailable tile (no setf recompute — use ps)
+    // ===== STAGE 3 — availability SNAPSHOT + issue loop (avm-snapshot, WNS step 2) =====
+    // The ~7 ns tagset-read+compare (av00..11 above) is now PIPELINED: it is a stage-2-internal
+    // register-to-register path (ps2/tagset -> av2 -> the av3 snapshot below). The per-cycle ISSUE LOOP
+    // runs in stage 3 OFF the registered snapshot, so the deep array read is out of the recurrence.
+    // FRESHNESS (why no CAM is needed): av00..11 are recomputed LIVE every cycle in stage 2 from the
+    // written tagset and are captured into av3 ONLY at the hand-off edge — the edge the PRECEDING stage-3
+    // coord is cur_done3 (so it issues nothing that edge). Thus av3 sees every prior coord's committed
+    // issues; there is no stale-availability window. Intra-coord 2x2 tile sharing is handled by done3 (a
+    // tile issued for one position resolves all positions with the same tile-id). A tile that is resident
+    // OR in-flight (rsv) reads available, so a fill completing mid-issue can never apply to a tile this
+    // coord still wants -> freezing av3 for the coord's issue window is exact.
+    reg av3_0,av3_1,av3_2,av3_3; reg [TIDW-1:0] t3_0,t3_1,t3_2,t3_3;
+    reg [SETW-1:0] s3_0,s3_1,s3_2,s3_3; reg pin3,s3_v; reg [3:0] done3;
+    wire eu0 = pin3 && !av3_0 && !done3[0];      // position still needs a fetch (unavailable + unresolved)
+    wire eu1 = pin3 && !av3_1 && !done3[1];
+    wire eu2 = pin3 && !av3_2 && !done3[2];
+    wire eu3 = pin3 && !av3_3 && !done3[3];
+    wire any_eu = eu0|eu1|eu2|eu3;
+    reg [TIDW-1:0] ua_tid; reg [SETW-1:0] ua_set;        // first unresolved-unavailable tile of the coord
     always @* begin
-        if(!av00) begin ua_tid=pt00; ua_set=ps00; end
-        else if(!av10) begin ua_tid=pt10; ua_set=ps10; end
-        else if(!av01) begin ua_tid=pt01; ua_set=ps01; end
-        else begin ua_tid=pt11; ua_set=ps11; end
+        if(eu0) begin ua_tid=t3_0; ua_set=s3_0; end
+        else if(eu1) begin ua_tid=t3_1; ua_set=s3_1; end
+        else if(eu2) begin ua_tid=t3_2; ua_set=s3_2; end
+        else begin ua_tid=t3_3; ua_set=s3_3; end
     end
-    wire [11:0] ua_tx = ua_tid[HALF-1:0];           // tidf low half = px-tile, high half = py-tile
-    wire [11:0] ua_ty = ua_tid[2*HALF-1:HALF];
-    wire cur_done = !pin2 || all_av;                // stage-2 coord done
-    wire s2_adv   = !s2_v || cur_done;              // stage 2 free to take stage 1's coord
-    assign pf_ready = !s1_v || s2_adv;              // stage 1 can take a new skid coord
+    wire cur_done3 = !pin3 || !any_eu;                   // stage-3 coord fully resolved
+    wire s3_adv = !s3_v || cur_done3;                    // stage 3 free to take stage 2's snapshot
+    wire s2_adv = !s2_v || s3_adv;                       // stage 2 free to take stage 1's coord
+    assign pf_ready = !s1_v || s2_adv;                   // stage 1 can take a new skid coord
+    // positions of THIS coord sharing the issued tile-id (intra-coord 2x2 overlap) -> resolve together
+    wire [3:0] sh3 = {(t3_3==ua_tid),(t3_2==ua_tid),(t3_1==ua_tid),(t3_0==ua_tid)};
 
-    // issue a fetch for the first unavailable tile of the STAGE-2 coord while the FIFO has room.
-    wire issue_want = s2_v && pin2 && !all_av && !pf_full;
+    // issue a fetch for the first unresolved-unavailable tile while the FIFO has room.
+    wire issue_want = s3_v && pin3 && any_eu && !pf_full;
     assign fetch_req = issue_want;
-    assign fetch_tx  = ua_tx;
-    assign fetch_ty  = ua_ty;
-    wire   issue_go  = issue_want && t_ready;       // fetch accepted this cycle -> becomes pending
+    assign fetch_tx  = ua_tid[HALF-1:0];                 // tidf low half = px-tile, high half = py-tile
+    assign fetch_ty  = ua_tid[2*HALF-1:HALF];
+    wire   issue_go  = issue_want && t_ready;            // fetch accepted -> becomes pending
 
     reg [2*HT-1:0] fcw; integer pj;
     wire fill_pop = !pf_empty && fill_valid && fill_last;
-    wire [WAYW-1:0] ua_way = vict(ua_set);                // victim way in the unavailable tile's set
+    wire [WAYW-1:0] ua_way = vict(ua_set);               // victim way in the unavailable tile's set
     wire [SLW-1:0] ua_slot = {ua_set, ua_way};
-    wire [BAW-1:0] fwa = (pf_slot[pf_rd]<<(2*HT)) | fcw;   // fills route to the pending-FIFO head slot
-    // fill-complete slot decoded back to {set,way} for the set-indexed wide-word writes
-    wire [SETW-1:0] fl_set = pf_slot[pf_rd][SLW-1:WAYW];
+    wire [BAW-1:0] fwa = (pf_slot[pf_rd]<<(2*HT)) | fcw;  // fills route to the pending-FIFO head slot
+    wire [SETW-1:0] fl_set = pf_slot[pf_rd][SLW-1:WAYW];  // fill-complete slot -> {set,way} for wide writes
     wire [WAYW-1:0] fl_way = pf_slot[pf_rd][WAYW-1:0];
 
     always @(posedge clk) begin
-        if(!rstn) begin s1_v<=0; s2_v<=0; fcw<=0; pf_wr<=0; pf_rd<=0; pf_cnt<=0;
+        if(!rstn) begin s1_v<=0; s2_v<=0; s3_v<=0; done3<=4'b0; fcw<=0; pf_wr<=0; pf_rd<=0; pf_cnt<=0;
             for(pj=0;pj<NSET;pj=pj+1) begin vldset[pj]<=0; rsvset[pj]<=0; rr_set[pj]<=0; end
             end
         else begin
@@ -261,8 +278,10 @@ module pg_tilecache_rt2 #(
                 vldset[ua_set][ua_way]<=1'b0; rsvset[ua_set][ua_way]<=1'b1;
                 if(vldset[ua_set][ua_way]) rr_set[ua_set]<=rr_set[ua_set]+1'b1;
             end
-            // prefetch pipeline: stage 1 <- skid; stage 2 <- stage 1's feedforward (setf mults register
-            // here, out of the suffix cone). Stage 2 holds across a miss coord's multi-cycle issuing.
+            // 3-STAGE prefetch pipeline. stage 1 <- skid; stage 2 <- stage-1 feedforward (setf mults);
+            // stage 3 <- stage-2 availability SNAPSHOT (av3) + reset the per-position done mask. Stage 2
+            // HOLDS (recomputing av live) across a miss coord's multi-cycle issuing in stage 3, so the
+            // snapshot captured at the hand-off edge is fresh.
             if(pf_valid && pf_ready) begin px_<=pf_x; py_<=pf_y; pin_<=pf_inwin; s1_v<=1'b1; end
             else if(s2_adv) s1_v<=1'b0;
             if(s2_adv) begin
@@ -270,6 +289,12 @@ module pg_tilecache_rt2 #(
                 ps00<=f_ps00; ps10<=f_ps10; ps01<=f_ps01; ps11<=f_ps11;
                 pin2<=pin_; s2_v<=s1_v;
             end
+            if(s3_adv) begin                              // capture the FRESH availability snapshot
+                av3_0<=av00; av3_1<=av10; av3_2<=av01; av3_3<=av11;
+                t3_0<=pt00; t3_1<=pt10; t3_2<=pt01; t3_3<=pt11;
+                s3_0<=ps00; s3_1<=ps10; s3_2<=ps01; s3_3<=ps11;
+                pin3<=pin2; s3_v<=s2_v; done3<=4'b0;
+            end else if(issue_go) done3<=done3|sh3;        // mark the issued tile's shared positions resolved
             // DMA fill: one 2x2 block/beat -> all 4 banks at the same within-tile addr (head tile's slot)
             if(!pf_empty && fill_valid) begin
                 b00[fwa]<=fill_blk[23:0];  b10[fwa]<=fill_blk[47:24];
