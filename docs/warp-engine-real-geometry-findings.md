@@ -427,3 +427,28 @@ already clears this set at 1080 out. So 1080p real-time is NOT the blocker; TIMI
    next cycle's availability check or you double-issue — a true cycle pipelining can't break). If Step 2
    floors it < 6.734 -> single-clock 1080p ships. If not -> **2 px/clk @ 74.25** (13.468 ns budget; we're
    only -4.69 from closing there, so comfortable margin). De-risked fallback, not yet needed.
+
+### Step 2 (avm-snapshot) BUILT 2026-06-08 — prefetch SOLVED; bottleneck moved to consumer gather + CDC
+3-stage avm-snapshot (commit `bf9f0fd`, build `build_logs/warp_build_avmsnapshot.log`). Both gates green,
+NO new underruns vs baseline (small TB bit-exact; 720p per-geom rot20/shrink/aniso clean + rot45 1
+cold-start; 1080p all-four @32768 = 2073600/2073600). Freshness proof held (no double-issue).
+
+**WNS journey (warp logic):** -15.38 (prefetch cone 28.85ns) -> storage fix -4.69 (cone 18.16) ->
+avm-snapshot: the prefetch issue cone DROPS OUT of the top paths (SOLVED). New landscape:
+- **Overall WNS@74.25 = -3.601** but this is the **GPIO->engine coefficient CDC** (`axi_gpio_8/
+  gpio2_Data_Out -> pg_re_0/b1_reg`, src clk_fpga_0 100MHz -> dst pclk; data delay only 1.668ns, slack
+  negative purely from the unconstrained async crossing). Same artifact as the color_correct -3.5ns note.
+  **Fix = false-path / set_max_delay -datapath_only** in the XDC. Frame-atomic coeffs; functionally fine.
+- **Real intra-pclk warp WNS = -1.868 @74.25 / -8.599 @148.5.** Worst path = the CONSUMER GATHER:
+  `cx_/cy_ -> tidf -> tagset lookup (looka hit) -> stage_ready -> c_ready -> cx_/cy_ advance`, 18 levels,
+  ~15.3ns. The looka hit-detection is combinational in the per-cycle consumer-advance decision — the SAME
+  tag-lookup-in-the-loop shape the prefetch had, now the read-side limiter. Has a stall-on-miss recurrence.
+
+**Refined fork (well-grounded now):**
+- **720p single-px @74.25 is within reach:** (1) false-path the GPIO coeff CDC (removes -3.60), (2) close
+  the consumer gather -1.868 (pipeline the looka hit-detect or logic-trim). Ships 720p warp.
+- **1080p @148.5 single-clock:** consumer gather 15.3ns -> 6.734 (2.3x, stall hazard) PLUS re-pipeline
+  prefetch to 6.734. Hard + uncertain.
+- **2 px/clk @74.25 (RECOMMENDED for 1080p):** only needs <=13.468ns — we're at -1.868 (consumer) + the
+  easy CDC false-path. Costs 2x cache read bandwidth (more banks / dual-port). Pragmatic 1080p path.
+  Analysis tooling: `tcl/warp_timing_148.tcl` (overall), `tcl/warp_timing_148b.tcl` (intra-pclk isolation).
