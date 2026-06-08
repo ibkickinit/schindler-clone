@@ -142,8 +142,10 @@ connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn] [get_bd_pins axi_gpio_12
 re_slice sl_sel axi_gpio_12 gpio_io_o 0 0
 connect_bd_net [get_bd_pins sl_sel/Dout] [get_bd_pins re_mux/sel]
 
-# predrain_snap diag (axis_to_vid_io) onto repurposed scaler GPIO ch1 — unchanged from route-B
+# BRING-UP DIAG: route the warp engine's activity counters to axi_gpio_2 (firmware readback)
+# instead of predrain_snap. dbg={sts_err,cmd_valid,ovalid_cnt[9:0],fill_cnt[9:0],fetch_cnt[9:0]}.
+# fetch=0 -> prefetch dead; fill=0 -> DataMover returns nothing; ovalid=0 -> consumer never produces.
 delete_bd_objs [get_bd_nets -of_objects [get_bd_pins axi_gpio_2/gpio_io_i]]
-connect_bd_net [get_bd_pins axis_to_vid_io_0/predrain_snap] [get_bd_pins axi_gpio_2/gpio_io_i]
+connect_bd_net [get_bd_pins pg_re_0/dbg] [get_bd_pins axi_gpio_2/gpio_io_i]
 
 puts "READENGINE-WARP: integration block complete (pg_warp_top + 6-coeff GPIO + sel)"

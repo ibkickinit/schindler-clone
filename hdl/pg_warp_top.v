@@ -51,7 +51,8 @@ module pg_warp_top #(
     input  wire        s_axis_sts_tkeep,
     input  wire        s_axis_sts_tlast,
     input  wire        s_axis_sts_tvalid,
-    output wire        s_axis_sts_tready
+    output wire        s_axis_sts_tready,
+    output wire [31:0] dbg                     // bring-up diag (routed to axi_gpio_2 readback)
 );
     assign s_axis_sts_tready = 1'b1;          // drain status FIFO
 
@@ -139,6 +140,22 @@ module pg_warp_top #(
             end
         end
     end
+    // ---- bring-up diagnostic: SATURATING activity counters (single read pinpoints the break) ----
+    // fetch=0 -> prefetch/affine never issues a DMA cmd; fill=0 -> DataMover returns no data;
+    // ovalid=0 -> consumer never produces a pixel. + live status flags. Routed to axi_gpio_2.
+    reg [9:0] dbg_fetch, dbg_fill, dbg_ovalid; reg dbg_sts_err;
+    wire dm_issue = wreq && t_rdy;             // a DMA row command accepted
+    always @(posedge clk) begin
+        if(!rstn) begin dbg_fetch<=0; dbg_fill<=0; dbg_ovalid<=0; dbg_sts_err<=0; end
+        else begin
+            if(dm_issue          && dbg_fetch !=10'h3FF) dbg_fetch  <= dbg_fetch  + 10'd1;
+            if((fv && fl)        && dbg_fill  !=10'h3FF) dbg_fill   <= dbg_fill   + 10'd1;
+            if((o_valid&&o_ready)&& dbg_ovalid!=10'h3FF) dbg_ovalid <= dbg_ovalid + 10'd1;
+            // DataMover status: any non-OKAY (bits[6:4] = slv/dec/internal err) latches sticky
+            if(s_axis_sts_tvalid && (s_axis_sts_tdata[6:4]!=3'b000)) dbg_sts_err <= 1'b1;
+        end
+    end
+    assign dbg = {dbg_sts_err, cmd_valid, dbg_ovalid, dbg_fill, dbg_fetch};
 endmodule
 
 `default_nettype wire

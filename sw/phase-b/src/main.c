@@ -1897,6 +1897,16 @@ static void telemetry_loop(UINTPTR vdma_base)
                  * ratio); ~60 = blending every frame (force mode). Answers "is it blending?". */
                 u32 blendw = Xil_In32(DIAG_GPIO_BASEADDR + 0x08);
                 xil_printf("BLEND: %u/60 frames blended\r\n", (unsigned)(blendw & 0xFFFFu));
+#ifdef WARP_BUILD
+                /* BRING-UP: axi_gpio_2 ch1 = pg_warp_top/dbg (saturating counters @ 0x3FF).
+                 * fetch=0 -> prefetch never issues a DMA cmd; fill=0 -> DataMover returns nothing;
+                 * ovalid=0 -> consumer never produces a pixel. Pinpoints the black-output break. */
+                u32 wdbg = Xil_In32(DIAG_GPIO_BASEADDR + 0x00);
+                xil_printf("WARP DBG: fetch=%u fill=%u ovalid=%u cmd_valid=%u sts_err=%u\r\n",
+                           (unsigned)(wdbg & 0x3FFu), (unsigned)((wdbg >> 10) & 0x3FFu),
+                           (unsigned)((wdbg >> 20) & 0x3FFu), (unsigned)((wdbg >> 30) & 1u),
+                           (unsigned)((wdbg >> 31) & 1u));
+#endif
                 /* DRAIN (2026-06-03): from axis_to_vid_io_0/predrain_snap, routed onto
                  * the (dead-in-route-B) scaler ch1 of the diag GPIO.
                  *   delta  = active pixels elapsed before SOF emits = the column pixel
