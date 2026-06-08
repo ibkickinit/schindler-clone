@@ -389,3 +389,41 @@ word, then W comparators.
 Order: (1) this storage restructure → re-synth, read WNS. (2) If it closes → DONE (no pipelining, no
 hazard). (3) If only partial → THEN the avm-snapshot+CAM pipelining on the residual, then vict. The
 storage fix is the smaller, safer, fresh-head-friendly lever — lead with it.
+
+### ★ Storage-shape fix BUILT (2026-06-08): WNS@74.25 -15.38 -> -4.69; SCOPE re-targeted to 1080p/148.5
+Step-1 storage restructure (flat tag/vld/rsv[0:NTILE-1] -> set-indexed wide words tagset[0:NSET-1] +
+vldset/rsvset, ways-in-parallel + W comparators; TIDW 24->16). Committed `ec95a04`. Both sim gates
+green (small TB bit-exact 4/4; 720p real-geom rot20/shrink/aniso clean at per-geom leads, rot45 the
+documented benign cold-start). Build `build_logs/warp_build_storageshape.log` (720p, WARP_ENGINE=1
+NO_ILA=1):
+- **WNS@74.25 (13.468 ns) = -4.691** (was -15.380) -> +10.69 ns, critical-path 28.85 -> 18.16 ns (-37%).
+- Routed path: `tagset` now maps to **RAMD64E (LUTRAM)** + a single MUXF7 (old MUXF7=8/MUXF8=4 512:1
+  cascade gone). Worst path is still the warp issue cone in `u_tc` (the number IS the warp logic).
+
+**SCOPE CHANGE (Justin 2026-06-08, commit 019f47c):** warp must support **1080p OUTPUT** = 148.5 MHz /
+6.734 ns. Re-targeted measurement (routed dcp, pclk retimed to 6.734 via `tcl/warp_timing_148.tcl`;
+single-cycle pclk->pclk so slack drops 1:1 with period):
+- **WNS@148.5 (6.734 ns) = -11.42** (measured) = -11.425 (arithmetic, WNS@74.25 - 6.734). Path 18.16 ns
+  must reach 6.734 ns = 2.7x reduction.
+
+The remaining 18.16 ns cone = the stateful issue loop, all combinational/cycle: `ps00_reg -> tagset
+LUTRAM read + compare (av001) -> first-unavail -> victim (pf_slot) -> rsvset/tagset write` (~20 levels:
+~7 ns tag-read front-end + ~11 ns victim/FIFO-slot LUT+CARRY4 cascade). This is exactly the Step-2
+target (avm-snapshot removes the read from the loop; vict pipeline splits the cascade).
+
+**1080p-out real-time RE-VALIDATION (sim, `sim/pg_warp_real_1080_tb.v`, 1920x1080<-1920x1080, 1:1-scale
+rotation):** the 8-way/1024 cache + leads TRANSFER to 1080 out.
+| LEAD  | rot20 | rot45 | rot10 | aniso |  (PASS = 2073600/2073600, 0 underrun, 0 bit-err)
+| 1280  | PASS  | FAIL  | PASS  | PASS  |
+| 32768 | PASS  | PASS  | PASS  | PASS  |  <- uniform lead clears all four at 1080 out
+| 65536 | FAIL  | PASS  | PASS  | PASS  |
+rot20 wants shallow / rot45 wants deep -> per-geometry LEAD (Step 3) widens margin but a uniform 32768
+already clears this set at 1080 out. So 1080p real-time is NOT the blocker; TIMING is.
+
+**THE FORK (grounded):**
+1. **Step 2 (avm-snapshot + CAM + vict pipeline) is mandatory for ANY target** — even 720p@74.25 isn't
+   closed (-4.69). Do it next; re-measure WNS@148.5 after.
+2. **148.5/1px-clk reachability hinges on the issue-loop recurrence** (rsv-write must be visible to the
+   next cycle's availability check or you double-issue — a true cycle pipelining can't break). If Step 2
+   floors it < 6.734 -> single-clock 1080p ships. If not -> **2 px/clk @ 74.25** (13.468 ns budget; we're
+   only -4.69 from closing there, so comfortable margin). De-risked fallback, not yet needed.

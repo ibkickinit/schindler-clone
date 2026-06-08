@@ -112,3 +112,34 @@ Artifacts: `sim/pg_warp_dma_tb.v` (gate), `tools/warp_lead_assoc.py` (lead-aware
 `tools/warp_assoc_sweep.py` (capacity), `hdl/pg_tilecache_rt2.v` / `pg_tile_dma.v` (cache + fill).
 The in-context Vivado build (WNS, with the tag-lookup pipeline) is the next step and will go in a
 follow-up note — holding the ways decision for your read first.
+
+---
+
+## ROUND 3 UPDATE (2026-06-08) — storage-shape fix built; SCOPE re-targeted to 1080p/148.5 MHz
+
+**Storage-shape fix (the lead next-step from handoff #2) is BUILT and sim-verified** (commit `ec95a04`).
+Flat `tag/vld/rsv[0:NTILE-1]` (read at the 9-bit {set,way} slot = a 512:1 MUXF7/F8 cascade — the WNS
+cone) -> **set-indexed wide words** `tagset[0:NSET-1]` + `vldset/rsvset`, ways-in-parallel + W
+comparators; also TIDW 24->16. Identical logic (small TB bit-exact; 720p real-geom matches baseline).
+
+**Result @ 74.25 MHz (720p build): WNS -15.380 -> -4.691 (+10.69 ns), critical path 28.85 -> 18.16 ns.**
+Routed netlist confirms `tagset` -> RAMD64E (LUTRAM) + one MUXF7; the 512:1 mux is gone.
+
+**Scope change landed mid-session (Justin, `019f47c`):** the warp path must do **1080p OUTPUT =
+148.5 MHz / 6.734 ns** (half the 720p period). Re-targeted number (routed dcp, pclk retimed to 6.734):
+**WNS@148.5 = -11.42 ns** (path 18.16 ns must reach 6.734 = 2.7x). 1080p-out real-time re-validated in
+sim — 8-way/1024 cache holds all four transforms at a uniform LEAD=32768; timing is the sole blocker.
+
+### What I want your read on (round 3)
+1. The residual 18.16 ns cone is the stateful issue loop (`ps -> tagset read+compare -> first-unavail ->
+   victim -> rsv/tag write`). Plan: Step 2 = **avm-snapshot + k-deep recently-issued CAM** (read
+   availability ONCE at coord-load into a registered mask, removes the ~7 ns tag-read from the per-cycle
+   loop) + **pipeline `vict`** (split the ~11 ns victim/FIFO-slot cascade). Needed for any target (even
+   720p@74.25 is -4.69). **Agree this is the next move?**
+2. **Issue-loop recurrence floor:** rsv-write must be visible to the next cycle's availability check (or
+   double-issue). That cycle can't be pipelined away. Do you have a read on whether it floors above or
+   below 6.734 ns? If above -> **2 px/clk @ 74.25 MHz + output FIFO** (2x cache read bandwidth) is the
+   1080p path; if below -> single-clock 148.5 ships. I'll measure post-Step-2 either way.
+3. The avm-snapshot is the hazard junction (stale-availability double-issue via shared tiles between
+   adjacent coords / 2x2 overlap). CAM bypass `avm(D) = precomputed_avail(D) | (D-tile in recently_issued)`
+   with k≈WAY+2. **Any concern with that bypass before I build it?**
