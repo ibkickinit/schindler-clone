@@ -214,3 +214,36 @@ on slices: **13456 required / 10893 available (~24% over)** — LUT/FF, still no
 
 ILAs (1) + PD↓ (2) + seq↓ (3) should clear ~24% comfortably. None affects the validated datapath/
 real-time behaviour; they're area trims + debug removal. After a clean place, read post-route WNS.
+
+## Fit round 3 (4-way/512 + NO_ILA): FITS and routes — but WNS −28.76 (prefetch cone)
+Gating the 3 debug ILAs (NO_ILA=1) recovered enough slices: the 4-way/NTILE=512/PD=64 warp build
+**places, routes, and writes a bitstream on the 7020** (BRAM ✓ ~96, slices ✓). WHS=+0.0096 (hold ok).
+But **WNS = −28.757 ns** at the 74.25 MHz pixel clock (13.468 ns period).
+
+**Failing path (single dominant cone):**
+`pg_re_0/.../u_tc/px__reg` (prefetch coord) → `u_tc/tag_reg[241]` (tag write). **41 logic levels, 41.5 ns**
+(logic 10 ns / route 31.5 ns), CARRY4=11 (the `setf` `*13`/`*7` multiplies) + 12×LUT6 + MUXF7/8. This is
+the **entire prefetch issue decision computed combinationally in one cycle**: px_ → ppx/ppy neighbours →
+`setf`/`tidf` for 4 tiles → `(vld||rsv)&&tag` availability over the ways → first-unavailable select →
+`vict` age-argmax → `ua_slot` → tag/slot write. The earlier in-context −3.5 was this same cone at 4-way
+*without* the tag-at-issue + FIFO-vict additions; those (correct, and needed) deepened it to 41 levels.
+
+**Fix (next session — the prefetch has slack, leads the consumer by LEAD, so pipeline latency is free):**
+Pipeline the prefetch issue path into ~3–4 register stages, e.g.
+ 1. px_ → register ppx/ppy (4 neighbour coords) + their `setf`/`tidf` (the multiply — isolate it).
+ 2. register the `(vld||rsv)&&tag` availability result (av00..av11) per tile.
+ 3. register all_av + the first-unavailable `ua_*` (set/way/tid) selection (incl. `vict`).
+ 4. issue (tag/rsv/pf write).
+**Hazard:** with pipeline latency, a tile issued at cycle T is not visible in the tag/rsv arrays for k
+cycles, so cycles T+1..T+k could re-issue it (the same class as the original pend_has bug). Add a small
+"recently-issued" bypass — a k-deep register of the last ua_slot/ua_tid checked in the availability —
+or stall the coord-advance until the issue retires. The consumer gather lookup (looka→baddr→BRAM) is a
+*separate*, shorter path and was not the worst; check it after the prefetch is pipelined.
+
+Note the path is **76% route** (31.5 of 41.5 ns) — 41 logic levels scattered across the die. Pipelining
+cuts both the logic depth and the routing (shorter nets per stage). This is careful hazard-prone work;
+recommended for a fresh session per the build/WNS boundary.
+
+**State at handoff:** fit + real-time both solved (all four real-time at 4-way/512 with per-geometry
+leads: rot20@1280, rot45@4096, shrink@24576, aniso@12288 — rot45 1 cold-start px). Bitstream exists but
+is non-functional at speed until the prefetch cone is pipelined. Build log: build_logs/warp_build_noila.log.
