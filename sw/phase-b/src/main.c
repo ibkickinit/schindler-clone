@@ -1950,16 +1950,28 @@ static void telemetry_loop(UINTPTR vdma_base)
                 u32 blendw = Xil_In32(DIAG_GPIO_BASEADDR + 0x08);
                 xil_printf("BLEND: %u/60 frames blended\r\n", (unsigned)(blendw & 0xFFFFu));
 #ifdef WARP_BUILD
-                /* BRING-UP: axi_gpio_2 ch1 = pg_warp_top/dbg (saturating counters @ 0x3FF).
-                 * fetch=0 -> prefetch never issues a DMA cmd; fill=0 -> DataMover returns nothing;
-                 * ovalid=0 -> consumer never produces a pixel. Pinpoints the black-output break. */
+                /* BRING-UP v5: pg_warp_top/dbg = STICKY pipeline-chain + live flags + beat_cnt.
+                 * Sticky bits latch "this stage ever happened" — read left-to-right to find the break:
+                 *   dmv  : DataMover ever returned a beat
+                 *   fill : tile_dma ever emitted a fill block
+                 *   resid: a tile ever became resident (fill completed)
+                 *   cmv  : consumer affine ever produced a coord
+                 *   call : consumer ever found all-4 tiles resident (a gather hit)
+                 *   gath : gather ever produced a result;   ov: output ever valid;  sts: DM status posted
+                 * e.g. resid=1 call=0 => consumer never SEES tiles resident (vldset_c replica / set|tag
+                 * mismatch); resid=0 => fills never complete (DMA/tile_dma); call=1 ov=0 => bilinear/out. */
                 u32 wdbg = Xil_In32(DIAG_GPIO_BASEADDR + 0x00);
-                xil_printf("WARP DBG: beat_cnt=%u cmd_acc=%u | cmd_valid=%u dm_tvalid=%u dm_tready=%u cmd_rdy=%u sts_tv=%u o_valid=%u o_ready=%u\r\n",
-                           (unsigned)(wdbg & 0x3FFu), (unsigned)((wdbg >> 10) & 0x3FFu),
-                           (unsigned)((wdbg >> 20) & 1u), (unsigned)((wdbg >> 21) & 1u),
-                           (unsigned)((wdbg >> 22) & 1u), (unsigned)((wdbg >> 23) & 1u),
+                xil_printf("WARP DBG: beat=%u | STICKY[dmv=%u fill=%u resid=%u cmv=%u call=%u gath=%u ov=%u sts=%u] "
+                           "LIVE[ordy=%u ov=%u dmv=%u drdy=%u cmdv=%u crdy=%u hcall=%u hcmv=%u]\r\n",
+                           (unsigned)(wdbg & 0xFFFFu),
                            (unsigned)((wdbg >> 24) & 1u), (unsigned)((wdbg >> 25) & 1u),
-                           (unsigned)((wdbg >> 26) & 1u));
+                           (unsigned)((wdbg >> 26) & 1u), (unsigned)((wdbg >> 27) & 1u),
+                           (unsigned)((wdbg >> 28) & 1u), (unsigned)((wdbg >> 29) & 1u),
+                           (unsigned)((wdbg >> 30) & 1u), (unsigned)((wdbg >> 31) & 1u),
+                           (unsigned)((wdbg >> 23) & 1u), (unsigned)((wdbg >> 22) & 1u),
+                           (unsigned)((wdbg >> 21) & 1u), (unsigned)((wdbg >> 20) & 1u),
+                           (unsigned)((wdbg >> 19) & 1u), (unsigned)((wdbg >> 18) & 1u),
+                           (unsigned)((wdbg >> 17) & 1u), (unsigned)((wdbg >> 16) & 1u));
 #endif
                 /* DRAIN (2026-06-03): from axis_to_vid_io_0/predrain_snap, routed onto
                  * the (dead-in-route-B) scaler ch1 of the diag GPIO.

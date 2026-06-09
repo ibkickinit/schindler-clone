@@ -58,7 +58,12 @@ module pg_warp_engine #(
     // runtime per-geometry lead: firmware sets lead_rt from the affine (shallow for gentle rotation,
     // deep for downscale/steep). 0 -> fall back to the build-param LEAD (safe boot default).
     wire [19:0] lead_eff = (lead_rt==20'd0) ? LEAD[19:0] : lead_rt;
-    wire        pf_gate   = (lead_cnt < lead_eff);          // reg-based -> not in the lookup path
+    // REGISTERED gate: the 20-bit compare (dynamic since lead_rt became a runtime GPIO) is now a reg-to-reg
+    // path feeding a FF, NOT combinational into the prefetch affine's o_ready — keeps the runtime-LEAD
+    // comparator out of (and its congestion away from) the marginal prefetch-issue cone. 1-cycle-stale gate
+    // only shifts the coarse lead bound by ~1 (harmless; same rationale as pf_acc_r/c_acc_r below).
+    reg pf_gate;
+    always @(posedge clk) pf_gate <= (!rstn) ? 1'b1 : (lead_cnt < lead_eff);
     // register the accept events so the 16-bit counter add isn't fed by the live lookup (pf_ready).
     // 1-cycle-stale count only shifts the coarse lead bound by ~1 — harmless.
     always @(posedge clk) begin

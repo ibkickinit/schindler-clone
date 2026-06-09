@@ -159,17 +159,38 @@ module pg_warp_top #(
     // beat_cnt/cmd_acc free-running (firmware double-read shows frozen). Live flags localize the stall:
     //   cmd_rdy=0 -> DataMover not accepting commands; dm_tvalid=0 + dm_tready=1 -> DataMover not returning
     //   data while we wait; sts_tv -> status flowing.  m_axis_cmd_tready / s_axis_dm_* are module pins.
-    reg [9:0] beat_cnt, cmd_acc;
+    // STICKY PIPELINE-CHAIN telemetry (warp-bring-up v5): the engine works in sim but the consumer
+    // produces NO output on silicon (o_valid=0, full black). To localize WHERE the chain breaks, latch a
+    // sticky "ever happened" bit at each stage (hierarchical read-only taps — registered, so no combinational
+    // load on the timing-critical gather). Read order tells the story: dmv->fill->resident->cmv->call->
+    // gather->ovalid. e.g. resident=1 but call=0 => the consumer never SEES tiles resident (replica /
+    // set-or-tag mismatch); resident=0 => fills never complete (DMA/tile_dma); call=1 ov=0 => bilinear/out.
+    wire h_call    = u_eng.u_tc.c_all;          // consumer gather found all 4 neighbour tiles (a hit)
+    wire h_fillpop = u_eng.u_tc.fill_pop;       // a tile fill completed -> tile became resident (vld<=1)
+    wire h_cmv     = u_eng.cm_v;                // consumer coord stream valid into the cache
+    wire h_gather  = u_eng.u_tc.out_valid;      // gather produced a result downstream of the cache
+    reg st_dmv, st_fill, st_resident, st_cmv, st_call, st_gather, st_ovalid, st_sts;
+    reg [15:0] beat_cnt;
     always @(posedge clk) begin
-        if(!rstn) begin beat_cnt<=0; cmd_acc<=0; end
-        else begin
-            if(s_axis_dm_tvalid && s_axis_dm_tready)   beat_cnt <= beat_cnt + 10'd1;  // beats received
-            if(m_axis_cmd_tvalid && m_axis_cmd_tready) cmd_acc  <= cmd_acc  + 10'd1;  // cmds accepted by DM
+        if(!rstn) begin
+            st_dmv<=0; st_fill<=0; st_resident<=0; st_cmv<=0; st_call<=0; st_gather<=0; st_ovalid<=0; st_sts<=0;
+            beat_cnt<=0;
+        end else begin
+            if(s_axis_dm_tvalid)                     st_dmv<=1'b1;       // DataMover ever returned a beat
+            if(fv)                                   st_fill<=1'b1;      // tile_dma ever emitted a fill block
+            if(h_fillpop)                            st_resident<=1'b1;  // a tile ever became resident
+            if(h_cmv)                                st_cmv<=1'b1;       // consumer affine ever produced a coord
+            if(h_call)                               st_call<=1'b1;      // consumer ever found all-4-resident
+            if(h_gather)                             st_gather<=1'b1;    // gather ever produced
+            if(o_valid)                              st_ovalid<=1'b1;    // output ever valid
+            if(s_axis_sts_tvalid)                    st_sts<=1'b1;       // DataMover ever posted a status
+            if(s_axis_dm_tvalid && s_axis_dm_tready) beat_cnt <= beat_cnt + 16'd1;
         end
     end
-    // dbg = {o_ready,o_valid,sts_tv,cmd_rdy,dm_tready,dm_tvalid,cmd_valid, cmd_acc[9:0], beat_cnt[9:0]}
-    assign dbg = {o_ready, o_valid, s_axis_sts_tvalid, m_axis_cmd_tready, s_axis_dm_tready,
-                  s_axis_dm_tvalid, m_axis_cmd_tvalid, cmd_acc, beat_cnt};
+    // dbg[31:24]=sticky chain  [23:16]=live flags  [15:0]=beat_cnt
+    assign dbg = { st_sts, st_ovalid, st_gather, st_call, st_cmv, st_resident, st_fill, st_dmv,
+                   o_ready, o_valid, s_axis_dm_tvalid, s_axis_dm_tready, m_axis_cmd_tvalid, m_axis_cmd_tready, h_call, h_cmv,
+                   beat_cnt };
 endmodule
 
 `default_nettype wire
