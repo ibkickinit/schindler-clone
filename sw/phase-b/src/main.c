@@ -970,14 +970,17 @@ static unsigned g_warp_lead = 0;            /* last lead actually written (for s
  * overrides live at the bench. 20-bit. */
 static unsigned warp_calc_lead(int deg, int invx, int invy)
 {
+    /* The prefetch must run far enough ahead to cover the tile-DMA round-trip or the consumer starves and
+     * the frame comes up short (measured on silicon: identity @lead=1024 made only 762k/921600 px; @8192 it
+     * makes the full frame). So the FLOOR is a throughput floor (~8192), NOT a shallow angle bias — the old
+     * 1024..1744 heuristic was the shear/under-production cause. Downscale reads each tile many times -> goes
+     * deeper. (Deep lead is fine for identity/gentle; steep-rotation eviction is re-checked on the good
+     * timing build — the old "deep-lead deadlock" was the stale failed-timing bitstream.) */
+    (void)deg;
     unsigned mx = (unsigned)(invx > invy ? invx : invy);
-    if (mx > 4096u) {                         /* downscale -> deep; ~4x the inverse-scale (6144 -> 24576) */
-        unsigned l = mx * 4u;
-        return l > 0x000FFFFFu ? 0x000FFFFFu : l;
-    }
-    int d = deg % 90; if (d < 0) d += 90;     /* near-1:1 rotation -> SHALLOW, deadlock-safe (<2048) */
-    int axis = d < 45 ? d : 90 - d;           /* 0 (axis-aligned) .. 45 (diagonal) */
-    return 1024u + (unsigned)axis * 16u;      /* 1024 .. 1744 */
+    unsigned lead = 8192u;
+    if (mx > 4096u) { unsigned l = mx * 4u; if (l > lead) lead = l; }   /* downscale 6144 -> 24576 */
+    return lead > 0x000FFFFFu ? 0x000FFFFFu : lead;
 }
 
 /* Compute + write the 6 affine coeffs for rotation `deg` with inverse-scale

@@ -58,17 +58,25 @@ module pg_warp_top #(
     assign s_axis_sts_tready = 1'b1;          // drain status FIFO
 
     // ---- frame_ptr CDC + sof (vsync rising) + frame_base latch ----
-    (* ASYNC_REG="TRUE" *) reg [5:0] fp_q1, fp_q2;
+    // s2mm_frame_ptr_out is GRAY-CODED (bench-confirmed 2026-06-03; see pg_genlock). It MUST be
+    // gray2bin-decoded + debounced before the slot arithmetic — reading the Gray value as plain binary
+    // (the old code did) gives wrong/out-of-range slots, so the warp periodically read garbage DDR ->
+    // white/black frames beating at the source-vs-output rate diff (~2-3 Hz) AND intermittent black at boot.
+    (* ASYNC_REG="TRUE" *) reg [5:0] fp_q1, fp_q2; reg [5:0] fp_q3, fp_stable;
     reg vs_d; wire sof = out_vsync & ~vs_d;
     reg [31:0] frame_base;
+    function [5:0] gray2bin; input [5:0] g; begin
+        gray2bin[5]=g[5];            gray2bin[4]=gray2bin[5]^g[4]; gray2bin[3]=gray2bin[4]^g[3];
+        gray2bin[2]=gray2bin[3]^g[2]; gray2bin[1]=gray2bin[2]^g[1]; gray2bin[0]=gray2bin[1]^g[0];
+    end endfunction
+    wire [5:0] fp_bin  = gray2bin(fp_stable) % NUM_FRAMES[5:0];      // settled write slot (binary)
+    wire [5:0] rd_slot = (fp_bin==6'd0) ? (NUM_FRAMES[5:0]-6'd1) : (fp_bin-6'd1);  // completed = ptr-1
     always @(posedge clk) begin
-        if(!rstn) begin fp_q1<=0; fp_q2<=0; vs_d<=0; frame_base<=FRAME_BUF_BASE; end
+        if(!rstn) begin fp_q1<=0; fp_q2<=0; fp_q3<=0; fp_stable<=0; vs_d<=0; frame_base<=FRAME_BUF_BASE; end
         else begin
-            fp_q1<=frame_ptr; fp_q2<=fp_q1; vs_d<=out_vsync;
-            if(sof) begin                     // latch the latest COMPLETED slot (frame_ptr - 1)
-                frame_base <= FRAME_BUF_BASE +
-                    ((fp_q2==6'd0) ? (NUM_FRAMES-1) : (fp_q2-6'd1)) * SLOT_STRIDE;
-            end
+            fp_q1<=frame_ptr; fp_q2<=fp_q1; fp_q3<=fp_q2; vs_d<=out_vsync;
+            if(fp_q2==fp_q3) fp_stable<=fp_q2;     // accept only a SETTLED value (debounce)
+            if(sof) frame_base <= FRAME_BUF_BASE + rd_slot * SLOT_STRIDE;
         end
     end
 
