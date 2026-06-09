@@ -213,10 +213,15 @@ module pg_warp_top #(
             default: dbg_lo = beat_cnt;
         endcase
     end
-    // dbg[31:24]=sticky chain  [23:16]=live flags  [15:0]=selected deep view
-    assign dbg = { st_sts, st_ovalid, st_gather, st_call, st_cmv, st_resident, st_fill, st_dmv,
+    // dbg[31:24]=sticky chain  [23:16]=live flags  [15:0]=selected deep view.
+    // REGISTERED in pclk so the deep-tap mux (signals from all over u_tc) is a pclk-internal path, NOT a long
+    // combinational route into the FCLK_CLK0 GPIO-input sampler. dbg_r_reg/C is false-pathed in the XDC
+    // (quasi-static readback; coherent because the values are FROZEN at the wedge we read).
+    reg [31:0] dbg_r;
+    always @(posedge clk) dbg_r <= { st_sts, st_ovalid, st_gather, st_call, st_cmv, st_resident, st_fill, st_dmv,
                    o_ready, o_valid, s_axis_dm_tvalid, s_axis_dm_tready, m_axis_cmd_tvalid, m_axis_cmd_tready, h_call, h_cmv,
                    dbg_lo };
+    assign dbg = dbg_r;
 endmodule
 
 `default_nettype wire

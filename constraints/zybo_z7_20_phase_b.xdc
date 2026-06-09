@@ -158,5 +158,12 @@ set_false_path -quiet -to [get_pins -hier -filter {NAME =~ *pg_re_0*/d1_reg[*]/D
 set_false_path -quiet -to [get_pins -hier -filter {NAME =~ *pg_re_0*/e1_reg[*]/D}]
 set_false_path -quiet -to [get_pins -hier -filter {NAME =~ *pg_re_0*/f1_reg[*]/D}]
 set_false_path -quiet -to [get_pins -hier -filter {NAME =~ *pg_re_0*/mt1_reg[*]/D}]
-# runtime per-geometry LEAD GPIO CDC (axi_gpio_13 FCLK_CLK0 -> pixel clock), same 2-FF ASYNC_REG capture reg.
+# runtime per-geometry LEAD GPIO CDC (axi_gpio_12 ch2 FCLK_CLK0 -> pixel clock), same 2-FF ASYNC_REG capture reg.
 set_false_path -quiet -to [get_pins -hier -filter {NAME =~ *pg_re_0*/lr1_reg[*]/D}]
+# telemetry dbg_sel CDC (lead_cfg[23:20] FCLK_CLK0 -> pixel clock); quasi-static (fw sets+waits+reads).
+# WITHOUT this, the timer chases the unconstrained GPIO->dsel1 path (-3.35) and collaterally wrecks the
+# real datapath placement (+0.212 -> -0.435). Same 2-FF ASYNC_REG capture reg as lr1.
+set_false_path -quiet -to [get_pins -hier -filter {NAME =~ *pg_re_0*/dsel1_reg[*]/D}]
+# telemetry dbg readback (registered dbg_r in pixel clock -> FCLK_CLK0 axi_gpio_2 input sampler).
+# Quasi-static readback; false-path FROM dbg_r so the pclk->FCLK_CLK0 crossing isn't timed.
+set_false_path -quiet -from [get_pins -hier -filter {NAME =~ *pg_re_0*/dbg_r_reg[*]/C}]
