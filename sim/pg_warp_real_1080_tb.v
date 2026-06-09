@@ -35,7 +35,7 @@ module pg_warp_real_1080_tb;
         .fetch_req(wreq),.fetch_tx(wtx),.fetch_ty(wty),.fetch_ready(t_ready),
         .fill_valid(fv),.fill_blk(fblk),.fill_last(fl));
     pg_tile_dma #(.IN_W(IN_W),.LTILE(LTILE),.DREQ(DREQ)) u_dma (
-        .clk(clk),.rstn(rstn),.frame_base(32'd0),
+        .clk(clk),.rstn(rstn),.srst(1'b0),.frame_base(32'd0),
         .t_req(wreq),.t_tx(wtx),.t_ty(wty),.t_ready(t_ready),
         .fill_valid(fv),.fill_blk(fblk),.fill_last(fl),
         .fetch_req(dm_req),.fetch_addr(dm_addr),.fetch_len(dm_len),.fetch_ready(dm_ready),

@@ -1025,6 +1025,13 @@ static void warp_set_rotation(int deg, int invx, int invy)
 #ifdef LEAD_GPIO_BASE
     g_warp_lead = g_warp_lead_ovr ? g_warp_lead_ovr : warp_calc_lead(deg, invx, invy);
     Xil_Out32(LEAD_GPIO_BASE, g_warp_lead);
+    /* Pulse the engine SOFT-RESET (lead_cfg[31]) AFTER the coeffs+lead are written: it clears the warp
+     * engine + tile-cache + cmd formatter + output FIFO and FLUSHes the DataMover's in-flight beats, so the
+     * cache starts clean on the new geometry -> NO transition wedge. The next sof restarts the walk with the
+     * new coeffs. Held briefly (~150us, well under a frame); the flush self-completes after deassert. */
+    Xil_Out32(LEAD_GPIO_BASE, (1u << 31) | (g_warp_lead & 0xFFFFFu));
+    for (volatile int d = 0; d < 30000; d++) { }
+    Xil_Out32(LEAD_GPIO_BASE, g_warp_lead & 0xFFFFFu);
 #endif
     xil_printf("WARP rot=%d invx=%d invy=%d lead=%u: a=%d b=%d c=%d d=%d e=%d f=%d\r\n",
                deg, invx, invy, (unsigned)g_warp_lead, m_a, m_b, m_c, m_d, m_e, m_f);

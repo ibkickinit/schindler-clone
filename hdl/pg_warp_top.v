@@ -88,11 +88,18 @@ module pg_warp_top #(
     // lead_cfg[19:0]=LEAD, [23:20]=dbg_sel (read-only telemetry view select, quasi-static).
     (* ASYNC_REG="TRUE" *) reg [19:0] lr1, lr2;
     (* ASYNC_REG="TRUE" *) reg [3:0]  dsel1, dsel2;
+    // lead_cfg[31] = SOFT-RESET request (firmware pulses it on a geometry change). 2-FF synced -> srst.
+    // engine_rstn resets the affines+cache+consumer; u_dma gets srst (resets + FLUSHes the DataMover); the
+    // cmd formatter + output FIFO reset too. The DataMover is NOT reset (its in-flight beats are DRAINED by
+    // the flush) so HP1 never hangs. This makes a live rotation change clean (no transition wedge).
+    (* ASYNC_REG="TRUE" *) reg sr1, srst;
+    wire engine_rstn = rstn & ~srst;
     always @(posedge clk) begin
         a1<=m_a;b1<=m_b;c1<=m_c;d1<=m_d;e1<=m_e;f1<=m_f; mt1<=matte_rgb;
         a2<=a1;b2<=b1;c2<=c1;d2<=d1;e2<=e1;f2<=f1; mt2<=mt1;
         lr1<=lead_cfg[19:0]; lr2<=lr1;
         dsel1<=lead_cfg[23:20]; dsel2<=dsel1;
+        sr1<=lead_cfg[31]; srst<=sr1;
     end
 
     // ---- engine + tile DMA ----
@@ -105,14 +112,14 @@ module pg_warp_top #(
 
     pg_warp_engine #(.OUT_W(OUT_W),.OUT_H(OUT_H),.IN_W(IN_W),.IN_H(IN_H),
                      .LTILE(LTILE),.NTILE(NTILE),.WAY(WAY),.PD(PD),.CW(CW),.FB(FB),.LEAD(LEAD)) u_eng (
-        .clk(clk),.rstn(rstn),.sof(sof),.lead_rt(lr2),     // runtime per-geometry LEAD (GPIO); 0 -> build LEAD
+        .clk(clk),.rstn(engine_rstn),.sof(sof),.lead_rt(lr2),  // engine_rstn includes the soft-reset
         .m_a(a2),.m_b(b2),.m_c(c2),.m_d(d2),.m_e(e2),.m_f(f2),.matte(mt2),
         .o_valid(o_valid),.o_pix(o_pix),.o_ready(o_ready),
         .fetch_req(wreq),.fetch_tx(wtx),.fetch_ty(wty),.fetch_ready(t_rdy),
         .fill_valid(fv),.fill_blk(fblk),.fill_last(fl));
 
     pg_tile_dma #(.IN_W(IN_W),.LTILE(LTILE),.DREQ(DREQ)) u_dma (
-        .clk(clk),.rstn(rstn),.frame_base(frame_base),
+        .clk(clk),.rstn(rstn),.srst(srst),.frame_base(frame_base),
         .t_req(wreq),.t_tx(wtx),.t_ty(wty),.t_ready(t_rdy),
         .fill_valid(fv),.fill_blk(fblk),.fill_last(fl),
         .fetch_req(fetch_req),.fetch_addr(fetch_addr),.fetch_len(fetch_len),.fetch_ready(cmd_rdy),
@@ -129,7 +136,7 @@ module pg_warp_top #(
     assign m_axis_cmd_tdata  = cmd_data;
     wire [22:0] btt = fetch_len * 3;
     always @(posedge clk) begin
-        if(!rstn) begin cmd_valid<=1'b0; cmd_data<=72'd0; end
+        if(!rstn || srst) begin cmd_valid<=1'b0; cmd_data<=72'd0; end
         else begin
             if(cmd_valid && m_axis_cmd_tready) cmd_valid<=1'b0;
             if(fetch_req && !cmd_valid) begin
@@ -165,7 +172,7 @@ module pg_warp_top #(
     assign m_axis_tuser  = of_qv && of_q[24];              // SOF anchor for axis_to_vid_io
     assign m_axis_tlast  = of_qv && (ecol == OUT_W[11:0]-12'd1);
     always @(posedge clk) begin
-        if(!rstn) begin of_wr<=0; of_rd<=0; of_cnt<=0; fr_first<=1'b1; of_qv<=1'b0; dcol<=12'd0; end
+        if(!rstn || srst) begin of_wr<=0; of_rd<=0; of_cnt<=0; fr_first<=1'b1; of_qv<=1'b0; dcol<=12'd0; end
         else begin
             if(sof) fr_first<=1'b1;
             if(ow_en) begin ofifo[of_wr] <= {fr_first, o_pix}; of_wr<=of_wr+1'b1; fr_first<=1'b0; end

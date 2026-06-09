@@ -24,6 +24,9 @@ module pg_tile_dma #(
                                                      // prefetch's in-flight burst; see pg_tilecache_rt2)
 ) (
     input  wire        clk, rstn,
+    input  wire        srst,                         // soft-reset (geometry change): reset state + FLUSH the
+                                                      // DataMover's in-flight beats (drain, don't store) so a
+                                                      // live geometry switch never desyncs the receiver/cache.
     input  wire [31:0] frame_base,
     // tile request in (handshake; t_req may assert while busy -> queued)
     input  wire        t_req,
@@ -51,14 +54,16 @@ module pg_tile_dma #(
     reg [DW:0] rq_cnt; reg [DW-1:0] rq_wr, rq_rd;
     wire rq_full  = (rq_cnt==DREQ[DW:0]);
     wire rq_empty = (rq_cnt==0);
-    assign t_ready = !rq_full;
+    reg  flushing; reg [8:0] flush_cnt;               // FLUSH state: drain in-flight beats after a soft-reset
+    localparam [8:0] FLUSH_K = 9'd320;                // beat-idle cycles confirming the DataMover is drained
+    assign t_ready = !rq_full && !flushing;           // don't accept new tile reqs while flushing
     wire rq_push = t_req && t_ready;
 
     // ---------------- command issuer (pipelined rows; gap-free across rows AND tiles) ----------
     reg        iss_act;                               // a tile is being issued (rows 0..TILE-1)
     reg [11:0] iss_tx, iss_ty; reg [LTILE-1:0] iss_row;
     wire       iss_load = !iss_act && !rq_empty;       // latch+pop the next tile to issue
-    assign     fetch_req  = iss_act;                   // hold a row command while a tile is active
+    assign     fetch_req  = iss_act && !flushing;       // hold a row command while a tile is active
     assign     fetch_addr = frame_base + (iss_ty*TILE + iss_row)*STRIDE + (iss_tx*TILE)*3;
     assign     fetch_len  = TILE[11:0];
     wire       iss_emit = iss_act && fetch_ready;      // a row command is consumed this cycle
@@ -81,7 +86,9 @@ module pg_tile_dma #(
     wire [3:0] navail = (nbits>=8'd96)?4'd4:(nbits>=8'd72)?4'd3:(nbits>=8'd48)?4'd2:(nbits>=8'd24)?4'd1:4'd0;
     wire [4:0] room   = TILE[4:0]-{1'b0,rcol};        // px left in this row
     wire [3:0] ndrain = !can_rx ? 4'd0 : (navail>room[3:0] && room<4) ? room[3:0] : navail;
-    assign beat_ready = (nbits <= 8'd96) && rx_act;   // hold up to ~96b so navail stays 3-4 (sustains rate)
+    // while flushing, accept EVERY beat (drain the DataMover's in-flight reads) but discard it (the rx
+    // gearbox below doesn't run in the flush branch, so acc/be/bo are untouched).
+    assign beat_ready = flushing ? 1'b1 : ((nbits <= 8'd96) && rx_act);
     wire       acc_beat = beat_valid && beat_ready;
     wire [7:0] drbits = {1'b0,ndrain,4'b0000} + {1'b0,ndrain,3'b000};      // 24*ndrain (max 96)
     wire [7:0] nbits_a = nbits - drbits;
@@ -94,13 +101,21 @@ module pg_tile_dma #(
     reg        em_pp; reg [2:0] ecol, epr; reg emit_act;
 
     always @(posedge clk) begin
-        if(!rstn) begin
+        if(!rstn || srst) begin
             rq_cnt<=0; rq_wr<=0; rq_rd<=0;
             iss_act<=0; iss_row<=0;
             acc<=0; nbits<=0; rcol<=0; rx_act<=0; rx_left<=0; rx_pp<=0; rx_sub<=0; rx_pr<=0;
             full[0]<=0; full[1]<=0;
             em_pp<=0; ecol<=0; epr<=0; emit_act<=0;
             fill_valid<=0; fill_last<=0;
+            flushing <= srst;                          // enter FLUSH on soft-reset (not power-on)
+            flush_cnt <= 9'd0;
+        end else if(flushing) begin
+            // FLUSH: beat_ready=1 drains the DataMover's in-flight beats (discarded — gearbox not run here);
+            // count beat-idle cycles to detect the DataMover has drained, then resume clean.
+            fill_valid<=0; fill_last<=0;
+            if(beat_valid) flush_cnt <= 9'd0; else flush_cnt <= flush_cnt + 9'd1;
+            if(flush_cnt >= FLUSH_K) flushing <= 1'b0;
         end else begin
             fill_valid<=0; fill_last<=0;
 
