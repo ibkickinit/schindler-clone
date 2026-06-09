@@ -37,10 +37,13 @@ connect_bd_net $prstn [get_bd_pins re_datamover/m_axis_mm2s_cmdsts_aresetn]
 connect_bd_net $pclk  [get_bd_pins axi_sc_mem2/aclk1]
 
 # ---- coeff GPIOs (3 dual-channel = 6 coeffs). Defaults = fit-scale affine ----
+# Default coeffs = IDENTITY (centered 1:1 crop) so the pre-firmware boot phase is the gentlest cache case
+# and matches the firmware's boot geometry (no shrink-boot wedge, no geometry transition). m_a=m_e=4096
+# (1.0, 0x1000); m_c=320*4096=0x140000, m_f=180*4096=0xB4000 (center 1920x1080 source in 1280x720 raster).
 foreach {gname dflt1 dflt2} {
-    axi_gpio_8  0x00001800 0x00000000
-    axi_gpio_9  0x00000000 0x00000000
-    axi_gpio_10 0x00001800 0x00000000
+    axi_gpio_8  0x00001000 0x00000000
+    axi_gpio_9  0x00140000 0x00000000
+    axi_gpio_10 0x00001000 0x000B4000
 } {
     create_bd_cell -type ip -vlnv xilinx.com:ip:axi_gpio $gname
     set_property -dict [list CONFIG.C_GPIO_WIDTH {32} CONFIG.C_GPIO2_WIDTH {32} \

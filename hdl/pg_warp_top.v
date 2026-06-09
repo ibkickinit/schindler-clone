@@ -77,11 +77,14 @@ module pg_warp_top #(
     (* ASYNC_REG="TRUE" *) reg [23:0] mt1, mt2;
     // runtime LEAD CDC (quasi-static GPIO; firmware writes the per-geometry lead at sof-far). 2-FF sync;
     // lr1's D is false-pathed in the XDC (same as the coeff CDC). 0 -> engine falls back to build LEAD.
+    // lead_cfg[19:0]=LEAD, [23:20]=dbg_sel (read-only telemetry view select, quasi-static).
     (* ASYNC_REG="TRUE" *) reg [19:0] lr1, lr2;
+    (* ASYNC_REG="TRUE" *) reg [3:0]  dsel1, dsel2;
     always @(posedge clk) begin
         a1<=m_a;b1<=m_b;c1<=m_c;d1<=m_d;e1<=m_e;f1<=m_f; mt1<=matte_rgb;
         a2<=a1;b2<=b1;c2<=c1;d2<=d1;e2<=e1;f2<=f1; mt2<=mt1;
         lr1<=lead_cfg[19:0]; lr2<=lr1;
+        dsel1<=lead_cfg[23:20]; dsel2<=dsel1;
     end
 
     // ---- engine + tile DMA ----
@@ -187,10 +190,33 @@ module pg_warp_top #(
             if(s_axis_dm_tvalid && s_axis_dm_tready) beat_cnt <= beat_cnt + 16'd1;
         end
     end
-    // dbg[31:24]=sticky chain  [23:16]=live flags  [15:0]=beat_cnt
+    // DEEP WEDGE-STATE telemetry: dbg[15:0] is a SELECTABLE view (dbg_sel = lead_cfg[23:20]) of the
+    // tile_dma + cache internals, so the post-wedge readback shows EXACTLY where it's stuck. Hierarchical
+    // read-only taps (u_dma at this level; u_eng.u_tc.* one deeper). Firmware sweeps dsel and prints all.
+    //   0: beat_cnt[15:0]                          (beats received; frozen => DMA idle)
+    //   1: {rx_left[7:0], nbits[7:0]}              (tiles issued-not-received ; receiver accumulator)
+    //   2: {pf_cnt[7:0], rq_cnt[7:0]}              (cache pending-fills ; tile_dma request queue)
+    //   3: lead_cnt[15:0]                          (prefetch run-ahead; ==LEAD => prefetch gated)
+    //   4: state flags {rx_act,iss_act,full1,full0,emit_act,fetch_req_tc,pf_full_tc,c_busy, 8'b0}
+    //   5: {fetch_tx_tc[7:0], fetch_ty_tc[7:0]}    (tile the prefetch is trying to fetch when stuck)
+    wire        tc_fetch_req = u_eng.u_tc.fetch_req;
+    wire        tc_pf_full   = u_eng.u_tc.pf_full;
+    reg [15:0]  dbg_lo;
+    always @* begin
+        case(dsel2)
+            4'd1: dbg_lo = {u_dma.rx_left[7:0], u_dma.nbits[7:0]};
+            4'd2: dbg_lo = {1'b0, u_eng.u_tc.pf_cnt[6:0], 1'b0, u_dma.rq_cnt[6:0]};
+            4'd3: dbg_lo = u_eng.lead_cnt[15:0];
+            4'd4: dbg_lo = {u_dma.rx_act, u_dma.iss_act, u_dma.full[1], u_dma.full[0], u_dma.emit_act,
+                            tc_fetch_req, tc_pf_full, u_eng.u_tc.c_busy, 8'b0};
+            4'd5: dbg_lo = {u_eng.u_tc.fetch_tx[7:0], u_eng.u_tc.fetch_ty[7:0]};
+            default: dbg_lo = beat_cnt;
+        endcase
+    end
+    // dbg[31:24]=sticky chain  [23:16]=live flags  [15:0]=selected deep view
     assign dbg = { st_sts, st_ovalid, st_gather, st_call, st_cmv, st_resident, st_fill, st_dmv,
                    o_ready, o_valid, s_axis_dm_tvalid, s_axis_dm_tready, m_axis_cmd_tvalid, m_axis_cmd_tready, h_call, h_cmv,
-                   beat_cnt };
+                   dbg_lo };
 endmodule
 
 `default_nettype wire

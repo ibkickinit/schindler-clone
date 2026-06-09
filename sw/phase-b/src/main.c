@@ -1960,18 +1960,36 @@ static void telemetry_loop(UINTPTR vdma_base)
                  *   gath : gather ever produced a result;   ov: output ever valid;  sts: DM status posted
                  * e.g. resid=1 call=0 => consumer never SEES tiles resident (vldset_c replica / set|tag
                  * mismatch); resid=0 => fills never complete (DMA/tile_dma); call=1 ov=0 => bilinear/out. */
-                u32 wdbg = Xil_In32(DIAG_GPIO_BASEADDR + 0x00);
-                xil_printf("WARP DBG: beat=%u | STICKY[dmv=%u fill=%u resid=%u cmv=%u call=%u gath=%u ov=%u sts=%u] "
-                           "LIVE[ordy=%u ov=%u dmv=%u drdy=%u cmdv=%u crdy=%u hcall=%u hcmv=%u]\r\n",
-                           (unsigned)(wdbg & 0xFFFFu),
-                           (unsigned)((wdbg >> 24) & 1u), (unsigned)((wdbg >> 25) & 1u),
-                           (unsigned)((wdbg >> 26) & 1u), (unsigned)((wdbg >> 27) & 1u),
-                           (unsigned)((wdbg >> 28) & 1u), (unsigned)((wdbg >> 29) & 1u),
-                           (unsigned)((wdbg >> 30) & 1u), (unsigned)((wdbg >> 31) & 1u),
-                           (unsigned)((wdbg >> 23) & 1u), (unsigned)((wdbg >> 22) & 1u),
-                           (unsigned)((wdbg >> 21) & 1u), (unsigned)((wdbg >> 20) & 1u),
-                           (unsigned)((wdbg >> 19) & 1u), (unsigned)((wdbg >> 18) & 1u),
-                           (unsigned)((wdbg >> 17) & 1u), (unsigned)((wdbg >> 16) & 1u));
+                /* v7 deep telemetry: dbg[31:16] (sticky+live) is sel-independent; dbg[15:0] is a SELECTABLE
+                 * view picked by lead_cfg[23:20]. Sweep sel 0..5 (write sel|lead to the lead GPIO, let the
+                 * CDC+mux settle, read back) to dump the full tile_dma+cache wedge state in one DIAG. */
+#ifdef LEAD_GPIO_BASE
+                u32 lead_word = (g_warp_lead & 0xFFFFFu);
+                u32 dv[6];
+                for (int sel = 0; sel < 6; sel++) {
+                    Xil_Out32(LEAD_GPIO_BASE, ((u32)sel << 20) | lead_word);
+                    for (volatile int d = 0; d < 4000; d++) { }   /* CDC (2FF) + mux settle */
+                    dv[sel] = Xil_In32(DIAG_GPIO_BASEADDR + 0x00);
+                }
+                Xil_Out32(LEAD_GPIO_BASE, lead_word);             /* restore sel=0 (live LEAD only) */
+                u32 wdbg = dv[0];
+                u32 f4 = dv[4];   /* sel4 state flags in [15:8] */
+                xil_printf("WARP DBG: STICKY[dmv=%u fill=%u resid=%u cmv=%u call=%u gath=%u ov=%u sts=%u] "
+                           "LIVE[ordy=%u ov=%u dmv=%u drdy=%u cmdv=%u crdy=%u hcall=%u hcmv=%u]\r\n"
+                           "  DEEP: beat=%u rx_left=%u nbits=%u pf_cnt=%u rq_cnt=%u lead_cnt=%u "
+                           "fetch_tx=%u fetch_ty=%u | FL[rx_act=%u iss=%u f1=%u f0=%u emit=%u fetchreq=%u pf_full=%u c_busy=%u]\r\n",
+                           (unsigned)((wdbg>>24)&1u),(unsigned)((wdbg>>25)&1u),(unsigned)((wdbg>>26)&1u),(unsigned)((wdbg>>27)&1u),
+                           (unsigned)((wdbg>>28)&1u),(unsigned)((wdbg>>29)&1u),(unsigned)((wdbg>>30)&1u),(unsigned)((wdbg>>31)&1u),
+                           (unsigned)((wdbg>>23)&1u),(unsigned)((wdbg>>22)&1u),(unsigned)((wdbg>>21)&1u),(unsigned)((wdbg>>20)&1u),
+                           (unsigned)((wdbg>>19)&1u),(unsigned)((wdbg>>18)&1u),(unsigned)((wdbg>>17)&1u),(unsigned)((wdbg>>16)&1u),
+                           (unsigned)(dv[0]&0xFFFFu),
+                           (unsigned)((dv[1]>>8)&0xFFu),(unsigned)(dv[1]&0xFFu),
+                           (unsigned)((dv[2]>>8)&0x7Fu),(unsigned)(dv[2]&0x7Fu),
+                           (unsigned)(dv[3]&0xFFFFu),
+                           (unsigned)((dv[5]>>8)&0xFFu),(unsigned)(dv[5]&0xFFu),
+                           (unsigned)((f4>>15)&1u),(unsigned)((f4>>14)&1u),(unsigned)((f4>>13)&1u),(unsigned)((f4>>12)&1u),
+                           (unsigned)((f4>>11)&1u),(unsigned)((f4>>10)&1u),(unsigned)((f4>>9)&1u),(unsigned)((f4>>8)&1u));
+#endif
 #endif
                 /* DRAIN (2026-06-03): from axis_to_vid_io_0/predrain_snap, routed onto
                  * the (dead-in-route-B) scaler ch1 of the diag GPIO.
@@ -2455,8 +2473,9 @@ int main(void)
      * unconsumed tile). warp_set_rotation now writes the per-geometry LEAD GPIO (rot20 -> 1344, proven
      * deadlock-safe in sim/pg_warp_real_faithful_tb.v). 'W <deg>' to change rotation, 'L <n>' to tune lead. */
     Xil_Out32(INVW_GPIO_BASE, 1u);           /* axi_gpio_12 = mux sel = warp (explicit; def is 1) */
-    warp_set_rotation(20, 4096, 4096);       /* boot rot20 (was the LEAD-deadlock case; now lead-safe) */
-    xil_printf("WARP engaged: %ux%u master -> %ux%u output, boot rot=20 (UART 'W <deg>' / 'L <n>')\r\n",
+    warp_set_rotation(0, 4096, 4096);        /* boot IDENTITY — matches BD default coeffs (NO shrink-boot,
+                                              * NO geometry transition); simplest cache case. 'W <deg>' to rotate */
+    xil_printf("WARP engaged: %ux%u master -> %ux%u output, boot IDENTITY (UART 'W <deg>' / 'L <n>')\r\n",
                FRAME_W, FRAME_H, OUT_RASTER_W, OUT_RASTER_H);
 #else
     g_re_w = OUT_RASTER_W; g_re_h = OUT_RASTER_H; g_re_x = 0; g_re_y = 0;
