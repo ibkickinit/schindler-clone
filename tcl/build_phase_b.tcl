@@ -1189,6 +1189,20 @@ if {[get_property PROGRESS [get_runs synth_1]] ne "100%"} {
 }
 puts "STAGE_OK: synthesis complete"
 
+# WARP build is timing-tight on the -1 7020 at 74.25 MHz (consumer tagset_c replica = very-high-fanout
+# route cone). Default impl barely closes (+0.002) which is BELOW clock jitter -> the consumer replica write
+# glitches at runtime and the warp wedges after producing ~50 tiles. Use a timing-focused strategy WITH
+# in-flow pre- AND post-route phys_opt so (a) we get real margin and (b) the written .bit is the timing-met
+# one (the default flow exported a STALE pre-phys_opt .bit -> we were benching a failed-timing bitstream).
+if {[info exists ::env(WARP_ENGINE)] && $::env(WARP_ENGINE) ne "0"} {
+    set_property STEPS.PLACE_DESIGN.ARGS.DIRECTIVE               ExtraTimingOpt    [get_runs impl_1]
+    set_property STEPS.PHYS_OPT_DESIGN.IS_ENABLED               true               [get_runs impl_1]
+    set_property STEPS.PHYS_OPT_DESIGN.ARGS.DIRECTIVE           AggressiveExplore  [get_runs impl_1]
+    set_property STEPS.ROUTE_DESIGN.ARGS.DIRECTIVE              Explore            [get_runs impl_1]
+    set_property STEPS.POST_ROUTE_PHYS_OPT_DESIGN.IS_ENABLED    true               [get_runs impl_1]
+    set_property STEPS.POST_ROUTE_PHYS_OPT_DESIGN.ARGS.DIRECTIVE AggressiveExplore [get_runs impl_1]
+    puts "BUILD: WARP timing-focused impl (ExtraTimingOpt place + Explore route + pre/post phys_opt)"
+}
 launch_runs impl_1 -to_step write_bitstream -jobs 4
 wait_on_run impl_1
 if {[get_property PROGRESS [get_runs impl_1]] ne "100%"} {
