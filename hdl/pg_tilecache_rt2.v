@@ -200,7 +200,7 @@ module pg_tilecache_rt2 #(
     // stages. The consumer is STALLED while demand-fetching, so the 1-2 cycle latency is free. dem_busy
     // interlocks one tile at a time: the issued tile shows in-flight (rsv) the next cycle, so the gather then
     // advances cd to the next absent neighbour -> no double-issue.
-    reg dem_busy; reg [TIDW-1:0] cd_tid_r; reg [SETW-1:0] cd_set_r;
+    reg dem_busy, dem_iss; reg [TIDW-1:0] cd_tid_r; reg [SETW-1:0] cd_set_r; reg [WAYW-1:0] ua_way_r;
     reg [TIDW-1:0] cn0_r, cn1_r, cn2_r, cn3_r;
     wire op_rdy = !out_valid || out_ready;             // OUT stage can take a gather result
     wire stage_ready = cin_ ? c_all : 1'b1;            // staged coord resident (or matte)?
@@ -322,11 +322,13 @@ module pg_tilecache_rt2 #(
     // issue a fetch: the CONSUMER DEMAND (cdemand) has PRIORITY over the prefetch (it blocks the output and
     // bypasses the lead-gate); otherwise the first unresolved-unavailable prefetch tile. On a demand cycle
     // the prefetch's stage-3 HOLDS (cur_done3 stays low -> it doesn't advance), so the prefetch isn't lost.
-    wire issue_pf   = s3_v && pin3 && any_eu;
+    wire issue_pf   = s3_v && pin3 && any_eu && !dem_busy;  // prefetch BLOCKED while a demand is in flight, so
+                                                         // the demand's registered victim (ua_way_r) can't
+                                                         // collide with a prefetch issue (single issuer).
     wire dem_room   = !(&rsvset[cd_set_r]);              // a non-reserved way exists -> vict won't evict an
                                                          // in-flight fill; if the set is FULL of reservations
                                                          // the demand waits (those fills WILL complete + free).
-    wire issue_dem  = dem_busy && dem_room;              // REGISTERED demand-fetch (priority, lead-gate bypassed)
+    wire issue_dem  = dem_iss;                            // STAGE 3: victim already computed (registered) -> issue
     wire issue_want = (issue_dem || issue_pf) && !pf_full;
     wire [TIDW-1:0] iss_tid = issue_dem ? cd_tid_r : ua_tid;
     wire [SETW-1:0] iss_set = issue_dem ? cd_set_r : ua_set;
@@ -337,23 +339,25 @@ module pg_tilecache_rt2 #(
 
     reg [2*HT-1:0] fcw; integer pj;
     wire fill_pop = !pf_empty && fill_valid && fill_last;
-    // demand evicts avoiding the consumer's own (REGISTERED) neighbours; prefetch uses the plain FIFO victim.
-    wire [WAYW-1:0] ua_way = issue_dem ? vict_dem(iss_set, cn0_r, cn1_r, cn2_r, cn3_r) : vict(iss_set);
+    // demand uses the REGISTERED victim (computed in the VICT stage); prefetch uses the plain FIFO victim.
+    wire [WAYW-1:0] ua_way = issue_dem ? ua_way_r : vict(iss_set);
     wire [SLW-1:0] ua_slot = {iss_set, ua_way};
     wire [BAW-1:0] fwa = (pf_slot[pf_rd]<<(2*HT)) | fcw;  // fills route to the pending-FIFO head slot
     wire [SETW-1:0] fl_set = pf_slot[pf_rd][SLW-1:WAYW];  // fill-complete slot -> {set,way} for wide writes
     wire [WAYW-1:0] fl_way = pf_slot[pf_rd][WAYW-1:0];
 
     always @(posedge clk) begin
-        if(!rstn) begin s1_v<=0; s2_v<=0; s3_v<=0; done3<=4'b0; fcw<=0; pf_wr<=0; pf_rd<=0; pf_cnt<=0; dem_busy<=0;
+        if(!rstn) begin s1_v<=0; s2_v<=0; s3_v<=0; done3<=4'b0; fcw<=0; pf_wr<=0; pf_rd<=0; pf_cnt<=0; dem_busy<=0; dem_iss<=0;
             for(pj=0;pj<NSET;pj=pj+1) begin vldset[pj]<=0; vldset_c[pj]<=0; rsvset[pj]<=0; rsvset_c[pj]<=0; rr_set[pj]<=0; end
             end
         else begin
-            // ---- demand-fetch FSM: STAGE 1 latch (gather-bounded) / clear on issue ----
-            if(!dem_busy) begin
+            // ---- demand-fetch FSM (3 registered stages: LATCH -> VICT -> ISSUE) ----
+            if(!dem_busy) begin                              // IDLE/LATCH: capture the absent tile + neighbours
                 if(cdemand) begin cd_tid_r<=cd_tid; cd_set_r<=cd_set;
-                    cn0_r<=ct00; cn1_r<=ct10; cn2_r<=ct01; cn3_r<=ct11; dem_busy<=1'b1; end
-            end else if(issue_go && issue_dem) dem_busy<=1'b0;   // STAGE 2 issued -> ready for the next absent
+                    cn0_r<=ct00; cn1_r<=ct10; cn2_r<=ct01; cn3_r<=ct11; dem_busy<=1'b1; dem_iss<=1'b0; end
+            end else if(!dem_iss) begin                      // VICT: compute + REGISTER the victim (when room)
+                if(dem_room) begin ua_way_r <= vict_dem(cd_set_r, cn0_r, cn1_r, cn2_r, cn3_r); dem_iss<=1'b1; end
+            end else if(issue_go) begin dem_busy<=1'b0; dem_iss<=1'b0; end  // ISSUE: fetched -> next absent
             // issue: pick a free (or rr-victim) way; write the NEW tag now (so availability sees the
             // tile as in-flight) and invalidate-as-resident (rsv=1, vld=0 -> no stale hits during fill).
             // Enqueue the slot for in-order fill routing. ATOMIC with the availability read (same cycle,
