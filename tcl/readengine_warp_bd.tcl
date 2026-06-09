@@ -29,11 +29,12 @@ connect_bd_intf_net [get_bd_intf_pins re_datamover/M_AXI_MM2S] [get_bd_intf_pins
 connect_bd_intf_net [get_bd_intf_pins axi_sc_mem2/M00_AXI]     [get_bd_intf_pins zynq_ps/S_AXI_HP1]
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK1] [get_bd_pins zynq_ps/S_AXI_HP1_ACLK]
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK1] [get_bd_pins axi_sc_mem2/aclk]
+connect_bd_net $prstn                          [get_bd_pins axi_sc_mem2/aresetn]
 connect_bd_net $pclk  [get_bd_pins re_datamover/m_axi_mm2s_aclk]
 connect_bd_net $pclk  [get_bd_pins re_datamover/m_axis_mm2s_cmdsts_aclk]
+connect_bd_net $prstn [get_bd_pins re_datamover/m_axi_mm2s_aresetn]
+connect_bd_net $prstn [get_bd_pins re_datamover/m_axis_mm2s_cmdsts_aresetn]
 connect_bd_net $pclk  [get_bd_pins axi_sc_mem2/aclk1]
-# NOTE: the DataMover + axi_sc_mem2 aresetn are driven by pg_re_0/dm_aresetn (= prstn & ~soft_reset),
-# wired AFTER pg_re_0 is created (below) so the geometry-change soft-reset also clears any hung HP1 read.
 
 # ---- coeff GPIOs (3 dual-channel = 6 coeffs). Defaults = fit-scale affine ----
 # Default coeffs = IDENTITY (centered 1:1 crop) so the pre-firmware boot phase is the gentlest cache case
@@ -68,11 +69,6 @@ set_property -dict [list CONFIG.IN_W {1920} CONFIG.IN_H {1080} CONFIG.OUT_W {128
     CONFIG.NTILE {512} CONFIG.WAY {4} CONFIG.PD {64} CONFIG.DREQ {64} CONFIG.LEAD {4096}] [get_bd_cells pg_re_0]
 connect_bd_net $pclk  [get_bd_pins pg_re_0/clk]
 connect_bd_net $prstn [get_bd_pins pg_re_0/rstn]
-# DataMover + SmartConnect reset = pg_re_0/dm_aresetn (prstn & ~soft_reset): a geometry-change soft-reset
-# resets the DataMover too, clearing any hung HP1 read (the flush alone can't recover a hung IP).
-connect_bd_net [get_bd_pins pg_re_0/dm_aresetn] [get_bd_pins re_datamover/m_axi_mm2s_aresetn]
-connect_bd_net [get_bd_pins pg_re_0/dm_aresetn] [get_bd_pins re_datamover/m_axis_mm2s_cmdsts_aresetn]
-connect_bd_net [get_bd_pins pg_re_0/dm_aresetn] [get_bd_pins axi_sc_mem2/aresetn]
 connect_bd_net [get_bd_pins axi_vdma_0/s2mm_frame_ptr_out] [get_bd_pins pg_re_0/frame_ptr]
 connect_bd_net [get_bd_pins v_tc_tx/vsync_out]            [get_bd_pins pg_re_0/out_vsync]
 # 6 affine coeffs wired DIRECTLY (full 32-bit, no slices)

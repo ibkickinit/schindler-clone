@@ -977,15 +977,16 @@ static unsigned warp_calc_lead(int deg, int invx, int invy)
      * deeper. (Deep lead is fine for identity/gentle; steep-rotation eviction is re-checked on the good
      * timing build — the old "deep-lead deadlock" was the stale failed-timing bitstream.) */
     unsigned mx = (unsigned)(invx > invy ? invx : invy);
-    int dd = deg % 90; if (dd < 0) dd += 90;
-    int axis = (dd < 45) ? dd : (90 - dd);        /* 0 = axis-aligned, 45 = diagonal */
+    int d360 = deg % 360; if (d360 < 0) d360 += 360;
     unsigned lead;
     if (mx > 4096u) {
         lead = mx * 4u;                            /* downscale: deep (heavy tile reuse tolerates it) */
-    } else if (axis <= 2) {
-        /* identity / axis-aligned 1:1: each SOURCE tile is used ONCE -> high unique-fetch rate -> the
-         * prefetch must run DEEP to cover the DMA round-trip (measured: 762k/921600 px @1024, FULL @8192);
-         * sequential access means no eviction, so deep is safe. */
+    } else if (d360 == 0) {
+        /* TRUE identity (deg=0, no rotation): each SOURCE tile used ONCE in normal raster order -> high
+         * unique-fetch rate -> the prefetch must run DEEP to cover the DMA round-trip (measured 762k px
+         * @1024, FULL @8192); sequential -> no eviction, deep is safe. NOTE: 90/180/270 are NOT identity —
+         * they transpose/reverse the access and EVICTION-WEDGE at deep lead, so they take the rotation
+         * branch below. (deg%90==0 was the bug that gave rot90/-90 deep lead.) */
         lead = 8192u;
     } else {
         /* rotation: tiles are REUSED (bilinear 2x2 + rotated overlap) -> lower fetch rate, so SHALLOW lead
@@ -994,7 +995,6 @@ static unsigned warp_calc_lead(int deg, int invx, int invy)
          * @2312), and steep angles reuse tiles MORE so need LESS throughput lead. So go FLAT + shallow:
          * 1280 is full-frame for rot20 (measured) and wedge-safe for steeper (which short-frame at worst
          * -> tune live with 'L'). Bias safe: a short frame is mild, a wedge is not. */
-        (void)axis;
         lead = 1280u;
     }
     return lead > 0x000FFFFFu ? 0x000FFFFFu : lead;
