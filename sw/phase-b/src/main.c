@@ -977,26 +977,15 @@ static unsigned warp_calc_lead(int deg, int invx, int invy)
      * deeper. (Deep lead is fine for identity/gentle; steep-rotation eviction is re-checked on the good
      * timing build — the old "deep-lead deadlock" was the stale failed-timing bitstream.) */
     unsigned mx = (unsigned)(invx > invy ? invx : invy);
-    int d360 = deg % 360; if (d360 < 0) d360 += 360;
-    unsigned lead;
-    if (mx > 4096u) {
-        lead = mx * 4u;                            /* downscale: deep (heavy tile reuse tolerates it) */
-    } else if (d360 == 0) {
-        /* TRUE identity (deg=0, no rotation): each SOURCE tile used ONCE in normal raster order -> high
-         * unique-fetch rate -> the prefetch must run DEEP to cover the DMA round-trip (measured 762k px
-         * @1024, FULL @8192); sequential -> no eviction, deep is safe. NOTE: 90/180/270 are NOT identity —
-         * they transpose/reverse the access and EVICTION-WEDGE at deep lead, so they take the rotation
-         * branch below. (deg%90==0 was the bug that gave rot90/-90 deep lead.) */
-        lead = 8192u;
-    } else {
-        /* rotation: tiles are REUSED (bilinear 2x2 + rotated overlap) -> lower fetch rate, so SHALLOW lead
-         * sustains; AND deep lead over-runs the 4-way cache set -> eviction WEDGE (catastrophic, needs a
-         * reprogram). The eviction limit DROPS as the angle steepens (rot20 tolerated ~2048, rot45 wedged
-         * @2312), and steep angles reuse tiles MORE so need LESS throughput lead. So go FLAT + shallow:
-         * 1280 is full-frame for rot20 (measured) and wedge-safe for steeper (which short-frame at worst
-         * -> tune live with 'L'). Bias safe: a short frame is mild, a wedge is not. */
-        lead = 1280u;
-    }
+    int d180 = deg % 180; if (d180 < 0) d180 += 180;   /* 0 (and 180) = axis-aligned */
+    /* DEEP lead (8192) ONLY for the one geometry class that both NEEDS it (high unique-fetch rate) and
+     * TOLERATES it (no set over-run): axis-aligned (0 or 180 deg) at 1:1 or zoom-IN (mx<=4096). Each source
+     * tile is used ~once in forward/reverse raster -> no eviction, deep covers the DMA round-trip (measured
+     * 762k px @1024, FULL @8192). EVERYTHING ELSE -> shallow 1280: rotations spread tiles across the 4-way
+     * sets and downscale reads sparsely-but-widely, so both EVICTION-WEDGE at deep lead. 1280 is eviction-
+     * safe for all of them (full frame for gentle rotation; steep/downscale short-frame at worst -> tune via
+     * 'L'). Bias safe: a short frame is mild, a wedge needs a reprogram. */
+    unsigned lead = (d180 == 0 && mx <= 4096u) ? 8192u : 1280u;
     return lead > 0x000FFFFFu ? 0x000FFFFFu : lead;
 }
 

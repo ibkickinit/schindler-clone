@@ -585,15 +585,31 @@ class Dispatcher:
         return {"id": cid, "value": out_val}
 
     async def _m_warp_set(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        """Warp read-engine rotation. Raw 'W <deg>' firmware command (WARP build only;
-        not a catalog control). deg in -180..180; firmware wraps mod 360 and picks the
-        per-geometry prefetch LEAD automatically (identity deep, rotation shallow)."""
-        deg = int(round(float(params.get("deg", 0))))
-        while deg > 180:  deg -= 360
-        while deg < -180: deg += 360
-        self.uart.send_raw(f"W {deg}")
-        self.bus.publish({"jsonrpc": "2.0", "method": "warp.changed", "params": {"deg": deg}})
-        return {"deg": deg}
+        """Warp read-engine geometry: rotation + zoom, sent COHERENTLY as one raw
+        'W <deg> <invx> <invy>' (WARP build only; not a catalog control). The daemon holds the
+        current (deg, invx, invy) so changing zoom preserves rotation and vice-versa — unlike the
+        route-B 'G' command, which writes the same GPIOs as the warp coeffs and would clobber them.
+          deg          : -180..180 (firmware wraps mod 360, auto per-geometry LEAD)
+          invx/invy    : inverse scale, Q12 (4096 = 1:1; >4096 = zoom OUT/downscale; <4096 = zoom IN)
+          zoom         : convenience % (100 = 1:1; 200 = 2x zoom-in); maps to invx=invy=4096*100/zoom"""
+        if not hasattr(self, "_warp_deg"):
+            self._warp_deg, self._warp_invx, self._warp_invy = 0, 4096, 4096
+        if "deg" in params:
+            d = int(round(float(params["deg"])))
+            while d > 180:  d -= 360
+            while d < -180: d += 360
+            self._warp_deg = d
+        def cl(v): return 256 if v < 256 else 0xFFFFF if v > 0xFFFFF else v
+        if "invx" in params: self._warp_invx = cl(int(round(float(params["invx"]))))
+        if "invy" in params: self._warp_invy = cl(int(round(float(params["invy"]))))
+        if "zoom" in params:
+            z = max(25.0, min(400.0, float(params["zoom"])))
+            iv = cl(int(round(4096.0 * 100.0 / z)))
+            self._warp_invx = self._warp_invy = iv
+        self.uart.send_raw(f"W {self._warp_deg} {self._warp_invx} {self._warp_invy}")
+        out = {"deg": self._warp_deg, "invx": self._warp_invx, "invy": self._warp_invy}
+        self.bus.publish({"jsonrpc": "2.0", "method": "warp.changed", "params": out})
+        return out
 
     async def _m_geom_set(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """Read-engine geometry: scale w×h, SIGNED shift (x,y), anchor mode.

@@ -148,7 +148,10 @@
         <input type="number" id="geo-py-n" min="-720" max="720" value="0" style="width:72px"><span style="opacity:.5">±px</span></div>
       <div style="display:flex;gap:8px;align-items:center;margin:3px 0"><span style="width:64px">Rotation</span>
         <input type="range" id="warp-rot-r" min="-180" max="180" value="0" style="flex:1">
-        <input type="number" id="warp-rot-n" min="-180" max="180" value="0" style="width:72px"><span style="opacity:.5">° (warp engine)</span></div>
+        <input type="number" id="warp-rot-n" min="-180" max="180" value="0" style="width:72px"><span style="opacity:.5">° (warp)</span></div>
+      <div style="display:flex;gap:8px;align-items:center;margin:3px 0"><span style="width:64px">Warp Zoom</span>
+        <input type="range" id="warp-zoom-r" min="100" max="300" value="100" style="flex:1">
+        <input type="number" id="warp-zoom-n" min="100" max="300" value="100" style="width:72px"><span style="opacity:.5">% zoom-in (warp — use instead of Scale)</span></div>
       <label style="display:block;margin:6px 0"><input type="checkbox" id="geo-anchor"> Anchor scale to top-left corner&nbsp;<span style="opacity:.5">(unchecked = scale about center)</span></label>
       <label style="display:block;margin:6px 0">Resample:
         <select id="geo-filt">
@@ -766,25 +769,35 @@
   geoPair("sx", "geo-sx-r", "geo-sx-n"); geoPair("sy", "geo-sy-r", "geo-sy-n");
   geoPair("px", "geo-px-r", "geo-px-n"); geoPair("py", "geo-py-r", "geo-py-n");
 
-  // Warp rotation slider: -180..180 deg -> 'W <deg>' (warp.set). Coalesced (one in flight,
-  // latest wins) so dragging doesn't flood the firmware's polled UART RX.
+  // Warp geometry: Rotation (deg) + Warp Zoom (%) -> ONE coherent warp.set 'W <deg> <invx> <invy>'.
+  // Each warp.set triggers a firmware soft-reset (~1 frame black) to avoid the tile-cache transition wedge,
+  // so we DEBOUNCE: while dragging, the number boxes track live but NOTHING is sent until the slider has
+  // been still ~180ms (or released) -> one clean update per settled adjustment, not a flash per drag-step.
   (function(){
-    let rotInflight = false, rotPending = null;
-    async function rotSend(deg) {
-      if (rotInflight) { rotPending = deg; return; }
-      rotInflight = true;
-      try { await call("warp.set", { deg }); }
+    let inflight = false, pending = null, timer = null;
+    async function warpSend(p) {           // p = {deg} | {zoom}; daemon holds the other axis
+      if (inflight) { pending = p; return; }
+      inflight = true;
+      try { await call("warp.set", p); }
       catch (e) { log(`warp.set: ${e.message}`, "err"); }
-      finally {
-        rotInflight = false;
-        if (rotPending !== null) { const d = rotPending; rotPending = null; rotSend(d); }
-      }
+      finally { inflight = false; if (pending) { const q = pending; pending = null; warpSend(q); } }
     }
-    const r = document.getElementById("warp-rot-r"), n = document.getElementById("warp-rot-n");
-    function set(v) { v = Math.max(-180, Math.min(180, Math.round(v))); r.value = v; n.value = v; rotSend(v); }
-    if (r && n) {
-      r.addEventListener("input",  () => set(+r.value));
-      n.addEventListener("change", () => set(+n.value));
+    function debounced(p) { clearTimeout(timer); timer = setTimeout(() => warpSend(p), 180); }
+    const rr = document.getElementById("warp-rot-r"),  rn = document.getElementById("warp-rot-n");
+    const zr = document.getElementById("warp-zoom-r"), zn = document.getElementById("warp-zoom-n");
+    if (rr && rn) {
+      const setRot = (v, now) => { v = Math.max(-180, Math.min(180, Math.round(v))); rr.value = v; rn.value = v;
+        (now ? warpSend : debounced)({ deg: v }); };
+      rr.addEventListener("input",  () => setRot(+rr.value, false));  // live track, debounced send
+      rr.addEventListener("change", () => setRot(+rr.value, true));   // release -> send now
+      rn.addEventListener("change", () => setRot(+rn.value, true));
+    }
+    if (zr && zn) {
+      const setZoom = (v, now) => { v = Math.max(100, Math.min(300, Math.round(v))); zr.value = v; zn.value = v;
+        (now ? warpSend : debounced)({ zoom: v }); };
+      zr.addEventListener("input",  () => setZoom(+zr.value, false));
+      zr.addEventListener("change", () => setZoom(+zr.value, true));
+      zn.addEventListener("change", () => setZoom(+zn.value, true));
     }
   })();
   // maintain-aspect toggle: when re-enabled, immediately re-lock Y to X's ratio (fix any stretch)
