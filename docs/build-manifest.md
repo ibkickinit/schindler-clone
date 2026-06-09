@@ -1164,3 +1164,124 @@ Gate `pg_cadence_tb`: N=5 blend=0, N=7 blend=130/437, collisions=0, min_lap=4. �
   `38-720p60-gamma-bilinear`. Gamma chroma GONE + stable across reloads; live-drag restored (`d4c05fb`).
   #114 closed. See [[schindler_gradient_chroma_readengine]].
 - Next read-engine: **#107b V-bilinear** (2nd read port; row+1 resident — no 2nd fetch).
+
+## Warp read-engine — TIMING CLOSED + first bench build (2026-06-08) ✅ PROGRAMMED, bench-ready
+Experimental arbitrary-geometry read path (pg_affine → pg_tilecache_rt2 tile cache → bilinear → AXIS),
+`WARP_ENGINE=1` variant on `iter5-1080p-clean`. Real-time + 7020-fit were already done; this session
+**closed timing** and **programmed the first warp build to the board**.
+
+**Timing march (WNS @74.25 MHz, each step both sim gates green + committed):**
+| Step | commit | WNS@74.25 | note |
+|------|--------|-----------|------|
+| storage-shape fix (set-indexed wide-word tag/vld/rsv → LUTRAM) | `ec95a04` | -15.38 → **-4.69** | TIDW 24→16 too |
+| avm-snapshot 3-stage prefetch (tag-read out of issue loop; no CAM) | `bf9f0fd` | **-3.60** | prefetch cone SOLVED |
+| CDC false-path (warp affine-coeff axi_gpio→pclk async) | `a277861` | **-1.26** | XDC only; removed artifact |
+| consumer-private tag+vld replica (cut gather route) | `c12fca3` | **-0.93** | |
+| consumer setf-pipeline (×13/×7 mult out of looka) | `441cd6f` | **+0.240** ✅ | TIMING MET (WHS +0.007) |
+- Build log `build_logs/warp_build_consumer_setfpipe.log`. Worst path was the consumer gather; the prefetch
+  issue cone (the whole prior focus) dropped out. Config: 4-way/NTILE=512/PD=DREQ=64, NO_ILA.
+- `lead_rt` runtime-LEAD port added (`7a6b99b`, tied 0 = build-param LEAD; GPIO wiring deferred).
+
+**1080p-out finding (sim):** 4-way/512 holds rot10/rot45/aniso at 1080p-out but worst-angle rot20 needs a
+*shallow* lead (≈2048) while rot45 needs *deep* (≈32768) — no single lead covers all angles, so full-angle
+1080p rotation needs **runtime per-geometry LEAD** (the `lead_rt` GPIO, iteration 2). Not a capacity wall
+(4-way≡8-way at NTILE=512; angle works with the right lead). 1080p60 HDMI out stays Zybo-blocked → the
+benchable 1080 target is **1080p30 @ 74.25 MHz** (same timing-closed logic, bigger frame).
+
+**Firmware (first warp bench, `9ca5a8b`):** warp build reuses axi_gpio_8/9/10 as the 6 affine coeffs
+(Q20.12); `warp_set_rotation(deg,invx,invy)` (Q12 sin table) writes them; boot = 45° rot; UART `W <deg>
+[invx] [invy]` for live rotation. `build_phase_b_app.tcl`: `WARP_ENGINE` → `-DWARP_BUILD -DREADENGINE_FULLMASTER`.
+
+**PROGRAMMED 2026-06-08 (this host, JTAG):** bitstream = setf-pipe `441cd6f` (WNS +0.240, archived
+`artifacts/iter5-1080p-clean-720p-scaler_top-enable-441cd6f` and `…-7a6b99b`) + warp fw. UART boot CLEAN:
+source 1920×1080 detected, full master captured, `VDMA running`, `WARP rot=45: a=2896 b=2896 c=1036160
+d=-2896 e=2896 f=3022720` (coeffs verified correct), `WARP engaged: 1920x1080 → 1280x720`, output VTC
+`LOCK=1`, per-row pixel dumps flowing. **Awaiting Justin's monitor verification of the 45° rotated 720p
+image.** ⚠️ monitor only, never MS2109. Re-flash: `scripts/program-archived.sh` or `xsct tcl/program_phase_b_full.tcl`
+(stop the schindlerd daemon first to free /dev/ttyUSB1). NEXT: 1080p30 build + runtime-LEAD GPIO.
+
+## Warp FIRST BENCH (2026-06-08) — programmed + running; ⚠️ output black: HW deadlock after ~1 line
+First warp build on the board. Bitstream = setf-pipe `441cd6f` (WNS +0.240). Firmware = warp affine
+(`9ca5a8b`+): reuses axi_gpio_8/9/10 as the 6 affine coeffs (Q20.12), boot rotation, UART `W <deg>`.
+Boots CLEAN: source 1920×1080 captured (all 7 DDR slots have image), VDMA running, mux=warp, output VTC
+LOCK=1, coeffs verified correct. **But monitor output is BLACK.**
+
+**Triage (eliminated):** capture, frame_base (base 0x10000000 / stride 6226560 match fw), DMA cmd
+(addr/len correct, btt=48, 8-byte aligned — unaligned theory dead), mux (found+fixed latent axi_gpio_12
+conflict: route-B INVW write flips the warp mux to passthrough → guarded with !WARP_BUILD), output
+framing (axis_mux2 passes warp SOF/EOL), color pipeline (boots passthrough), DataMover clocking + HP1
+(byte-identical to working route-B).
+
+**Diagnostic instrumentation (pg_warp_top `dbg` → axi_gpio_2, firmware "WARP DBG" telemetry):**
+- v1 (`3f3d5f1`): fetch/fill/ovalid ALL active, sts_err=0 → **the warp ENGINE works** (issues DMA cmds,
+  fills cache, produces valid pixels). Black is downstream of pixel production.
+- v2 (`9979fac`): **opix_nz=1** (real non-black pixels), **lines/frame=0**, fetch_fr/fill_fr FROZEN →
+  warp produces ~1 line of correct pixels then **HARD-DEADLOCKS** (prefetch hit LEAD because the consumer
+  stopped advancing). Hardware-specific (sim is real-time, never triggers it).
+- v3 (`7b94cf0`, building): adds o_ready + stall_oc to classify — o_ready stuck 0 ⇒ OUTPUT-side
+  (axis_to_vid_io framing/blanking-flush stopped pulling → backpressure); o_ready=1 + stall_oc growing ⇒
+  cache/DMA-bound. **Pending readout.**
+
+**Shell gotcha logged:** `pkill -f schindlerd` self-matches the wrapping shell → exit 144; use `fuser
+/dev/ttyUSB1` to free the UART instead. **Daemon caveat:** route-B daemon sends 'G' → clobbers warp coeffs;
+INVW guard added but stop it (free ttyUSB1) before warp UART debug.
+
+## Warp bench — ROOT-CAUSE LOCALIZED (2026-06-08 cont'd): pg_tile_dma beat-receiver DMA-handshake deadlock
+Diagnostic builds v1→v4 (dbg counters -> axi_gpio_2) took the black-output bug from "no idea" to a precise
+root cause:
+- v1 (`3f3d5f1`): warp ENGINE works (fetch/fill/ovalid active).
+- v2 (`9979fac`): produces ~1 line of REAL pixels (opix_nz=1, lines/frame=0) then HARD-deadlocks.
+- v3 (`7b94cf0`): cache/DMA-bound (o_ready=1, o_valid=0, fills frozen) — NOT output framing.
+- v4 (`48f01d9`): **beat_cnt=192 + cmd_acc=544 FROZEN, dm_tready=0, dm_tvalid=0, cmd_rdy=1, sts_err=0.**
+  The DataMover accepted 544 cmds (34 tiles×16 rows) but only returned 192 beats (2 tiles), and
+  **pg_tile_dma backpressures it (beat_ready=0) after ~2 tiles**: `beat_ready=(nbits<=96)&&rx_act`, so
+  nbits stuck >96 -> the receiver can't drain -> the 2-slot pair ping-pong (be/bo, full[0/1]) wedges (the
+  emitter stops draining: it only drains full[em_pp], so an em_pp/rx_pp desync deadlocks). DataMover itself
+  is healthy (cmd_rdy=1, no AXI error). **Triggered ONLY by the real DataMover's bursty/latency beat
+  delivery** — the gap-free behavioral sim never hits it.
+
+**Repro tooling:** `sim/pg_warp_real_bursty_tb.v` (commit `beddc14`) gates beat production to mimic gaps +
+dumps u_dma state on consumer-stall. Deadlocks under gaps (PASS with dm_stall=0) but as startup-starvation
+(DMD=8 cmd queue + strict TB o_ready vs HW's buffered axis_to_vid_io), not the exact mid-stream freeze.
+
+**FIX PATH (next session, fresh):** (a) build a FAITHFUL DataMover sim model (realistic latency + real
+cmd/data FIFO depths + a buffered output to mimic axis_to_vid_io) to reproduce the exact emitter/receiver
+desync, OR (b) make pg_tile_dma's receiver/emitter robust to bursty delivery — the fragile point is the
+emitter draining only full[em_pp] (drain whichever slot is full, in fill order) and/or a deeper beat buffer.
+The warp ENGINE + timing (+0.24) + 1080p real-time are all DONE; this is the last integration blocker.
+**Re-target the bitstream to the latest non-diag commit before bench (the v2-v4 builds are diag-only,
+some at marginal WNS).**
+
+## ⚠️ Warp bench — ROOT CAUSE CORRECTED (2026-06-08 next session): NOT a pg_tile_dma deadlock — prefetch LEAD eviction
+The "ROOT-CAUSE LOCALIZED" section ABOVE is **WRONG** and is kept only as history. The first-bench freeze
+is a **prefetch-LEAD-too-deep cache eviction in pg_tilecache_rt2**, not a pg_tile_dma DMA-handshake deadlock.
+- **How disproven:** built a FAITHFUL DataMover model (no-beat-loss, real cmd-FIFO depth + cmd→data latency
+  + mid-burst gaps) **+ a buffered axis_to_vid_io line-FIFO sink** in `sim/pg_warp_real_faithful_tb.v`.
+  pg_tile_dma NEVER wedges — at the freeze it is clean and **IDLE** (rx_act=0, rx_left=0, nbits=0), NOT
+  back-pressured. The 2-slot pair ping-pong (rx_pp/em_pp) provably advances in lockstep and cannot desync;
+  the emitter is never back-pressured (the cache fill port has no `ready`). The old "beat_ready=0 /
+  nbits>96 / em_pp-desync" reading came from the broken bursty TB whose DataMover model X-props (`cq_cnt=x`).
+- **Real mechanism:** the bench BD runs the **4-way/512** cache (NTILE=512/WAY=4) with `lead_rt` tied 0, so
+  the engine used the build LEAD=4096 for EVERY geometry. Too deep a LEAD for a gentle rotation makes the
+  prefetch run far enough ahead to **evict an unconsumed tile** the consumer later needs → consumer stall →
+  prefetch hits LEAD → whole pipeline idle. **Reproduced: rot20@LEAD=4096 freezes at cn=1437 (~1 output
+  line, matches HW); rot20@LEAD=1344 PASSES.**
+- **Sweep facts (4-way/512, faithful TB):** LEAD≤2048 deadlock-free for ALL geometries; deep LEAD deadlocks
+  only GENTLE geometries (rot45/aniso tolerate deeper, rot20 doesn't); each geometry is clean at its OWN
+  validated lead (rot20@1280, rot45@4096, aniso@12288, shrink@24576) → per-geometry LEAD is sound by
+  construction. (Underruns in the faithful TB are 75%-bandwidth pessimism; gap-free real_tb passes — the
+  DEADLOCK is the structural finding. Honest gap: sim passes the exact booted rot45@4096; the fix is
+  live-tunable so the bench dials it directly.)
+- **FIX (commit `e555c7a`, sim-verified):** per-geometry RUNTIME LEAD via the existing pg_warp_engine
+  `lead_rt` port. pg_warp_top exposes `lead_cfg` (2-FF ASYNC_REG CDC; lr1 false-pathed in the XDC like the
+  coeff CDC) → BD wires it to **axi_gpio_12 ch2** (made DUAL — classic axi_interconnect maxed at 16 MI, no
+  room for a 17th GPIO; ch1=mux sel @+0x00, ch2=lead @+0x08, default 0x500 deadlock-safe). Firmware
+  `warp_calc_lead()` sets the lead per geometry (shallow ~1024–1744 for rotation, ~4× inverse-scale for
+  downscale) in `warp_set_rotation`, plus UART **`L <n>`** live override and boot **rot20** (the old
+  deadlock case, now lead-safe). Verified in sim: lead_rt=1344 passes rot20 even with build LEAD forced
+  0xFFFFF; lead_rt=4096 reproduces the deadlock. Both maintained gates green (run_warp_sweep bit-exact,
+  run_warp_real real-time). **pg_tile_dma / pg_warp_engine / pg_tilecache_rt2 UNCHANGED.** The diag builds
+  v1–v4 and `sim/pg_warp_real_bursty_tb.v` are obsolete (chased the wrong theory).
+- **Bench validation plan:** boot should show a clean 20° rotation (no black). If any UART `W <deg>` angle
+  thrashes/underruns, tune `L <n>` live (raise for underrun, LOWER if it ever freezes). WARP DBG telemetry
+  `beat_cnt` should no longer freeze.
