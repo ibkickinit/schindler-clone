@@ -20,6 +20,11 @@
 module pg_tile_dma #(
     parameter integer IN_W  = 1920,
     parameter integer LTILE = 4,
+    parameter integer TILED = 0,                     // 0 = source is RASTER in DDR (16 strided 48B row reads
+                                                     //     per tile, ~37% efficient — legacy warp path).
+                                                     // 1 = source is TILED in DDR (pg_raster_to_tile): ONE
+                                                     //     contiguous 768B burst per tile (~1.1 GB/s, the
+                                                     //     1080p60 proof). Receive/reorder is identical.
     parameter integer DREQ  = 16                     // outstanding tile requests buffered (covers the
                                                      // prefetch's in-flight burst; see pg_tilecache_rt2)
 ) (
@@ -48,6 +53,7 @@ module pg_tile_dma #(
     input  wire        beat_last
 );
     localparam integer TILE=(1<<LTILE), STRIDE=IN_W*3, DW=$clog2(DREQ);
+    localparam integer TILES_X=IN_W/TILE, TBYTES=TILE*TILE*3;   // tiles per source row; bytes per tile (768)
 
     // ---------------- input tile request FIFO ----------------
     reg [23:0] rq[0:DREQ-1];                          // {ty,tx}
@@ -64,8 +70,9 @@ module pg_tile_dma #(
     reg [11:0] iss_tx, iss_ty; reg [LTILE-1:0] iss_row;
     wire       iss_load = !iss_act && !rq_empty;       // latch+pop the next tile to issue
     assign     fetch_req  = iss_act && !flushing;       // hold a row command while a tile is active
-    assign     fetch_addr = frame_base + (iss_ty*TILE + iss_row)*STRIDE + (iss_tx*TILE)*3;
-    assign     fetch_len  = TILE[11:0];
+    assign     fetch_addr = TILED ? (frame_base + (iss_ty*TILES_X + iss_tx)*TBYTES)      // tiled: 1 burst/tile
+                                  : (frame_base + (iss_ty*TILE + iss_row)*STRIDE + (iss_tx*TILE)*3);
+    assign     fetch_len  = TILED ? (TILE*TILE) : TILE[11:0];   // 256 px (768B) tiled vs 16 px (48B) raster-row
     wire       iss_emit = iss_act && fetch_ready;      // a row command is consumed this cycle
 
     // ---------------- receive: 64b beats -> px, into a 2-slot pair ping-pong ----------
@@ -125,7 +132,7 @@ module pg_tile_dma #(
                 iss_tx<=rq[rq_rd][11:0]; iss_ty<=rq[rq_rd][23:12]; iss_row<=0; iss_act<=1;
                 rq_rd<=rq_rd+1'b1;
             end else if(iss_emit) begin
-                if(iss_row==TILE-1) iss_act<=0; else iss_row<=iss_row+1'b1;
+                if(TILED || iss_row==TILE-1) iss_act<=0; else iss_row<=iss_row+1'b1;  // tiled = one burst/tile
             end
             rq_cnt  <= rq_cnt  + (rq_push?1:0) - (iss_load?1:0);
             rx_left <= rx_left + (iss_load?1:0) - ((rx_act && rx_done)?1:0);
