@@ -167,3 +167,6 @@ set_false_path -quiet -to [get_pins -hier -filter {NAME =~ *pg_re_0*/dsel1_reg[*
 # telemetry dbg readback (registered dbg_r in pixel clock -> FCLK_CLK0 axi_gpio_2 input sampler).
 # Quasi-static readback; false-path FROM dbg_r so the pclk->FCLK_CLK0 crossing isn't timed.
 set_false_path -quiet -from [get_pins -hier -filter {NAME =~ *pg_re_0*/dbg_r_reg[*]/C}]
+# soft-reset CDC (lead_cfg[31] FCLK_CLK0 -> pixel clock); quasi-static, firmware-pulsed. Same 2-FF capture
+# reg as lr1/dsel1 — without this the timer chases the unconstrained GPIO->sr1 path and wrecks placement.
+set_false_path -quiet -to [get_pins -hier -filter {NAME =~ *pg_re_0*/sr1_reg/D}]
