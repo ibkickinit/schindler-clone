@@ -17,7 +17,7 @@ module pg_warp_top_tb;
                   .FRAME_BUF_BASE(32'd0),.NUM_FRAMES(7),.SLOT_STRIDE(0),
                   .NTILE(256),.LTILE(4),.LEAD(2048),.CW(CW),.FB(FB)) dut (
         .clk(clk),.rstn(rstn),.frame_ptr(6'd1),.out_vsync(out_vsync),
-        .m_a(m_a),.m_b(m_b),.m_c(m_c),.m_d(m_d),.m_e(m_e),.m_f(m_f),.matte_rgb(matte),
+        .m_a(m_a),.m_b(m_b),.m_c(m_c),.m_d(m_d),.m_e(m_e),.m_f(m_f),.matte_rgb(matte),.lead_cfg(32'd0),
         .m_axis_tdata(mt),.m_axis_tvalid(mv),.m_axis_tready(mready),.m_axis_tuser(mtuser),.m_axis_tlast(mtlast),
         .m_axis_cmd_tdata(cmd_td),.m_axis_cmd_tvalid(cmd_tv),.m_axis_cmd_tready(cmd_tr),
         .s_axis_dm_tdata(dm_td),.s_axis_dm_tvalid(dm_tv),.s_axis_dm_tready(dm_tr),.s_axis_dm_tlast(dm_tl),

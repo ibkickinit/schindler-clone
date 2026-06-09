@@ -158,3 +158,5 @@ set_false_path -quiet -to [get_pins -hier -filter {NAME =~ *pg_re_0*/d1_reg[*]/D
 set_false_path -quiet -to [get_pins -hier -filter {NAME =~ *pg_re_0*/e1_reg[*]/D}]
 set_false_path -quiet -to [get_pins -hier -filter {NAME =~ *pg_re_0*/f1_reg[*]/D}]
 set_false_path -quiet -to [get_pins -hier -filter {NAME =~ *pg_re_0*/mt1_reg[*]/D}]
+# runtime per-geometry LEAD GPIO CDC (axi_gpio_13 FCLK_CLK0 -> pixel clock), same 2-FF ASYNC_REG capture reg.
+set_false_path -quiet -to [get_pins -hier -filter {NAME =~ *pg_re_0*/lr1_reg[*]/D}]

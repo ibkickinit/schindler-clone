@@ -33,6 +33,7 @@ module pg_warp_top #(
     // affine coeffs (AXI GPIO, async — frame-atomic latched at sof inside pg_affine)
     input  wire signed [CW-1:0] m_a, m_b, m_c, m_d, m_e, m_f,
     input  wire [23:0] matte_rgb,
+    input  wire [31:0] lead_cfg,          // runtime per-geometry prefetch LEAD (AXI GPIO, async; 0 -> build LEAD)
     // output AXIS -> color stack
     output wire [23:0] m_axis_tdata,
     output wire        m_axis_tvalid,
@@ -74,9 +75,13 @@ module pg_warp_top #(
     // ---- coeff CDC (quasi-static; pg_affine re-latches at sof) ----
     (* ASYNC_REG="TRUE" *) reg signed [CW-1:0] a1,b1,c1,d1,e1,f1, a2,b2,c2,d2,e2,f2;
     (* ASYNC_REG="TRUE" *) reg [23:0] mt1, mt2;
+    // runtime LEAD CDC (quasi-static GPIO; firmware writes the per-geometry lead at sof-far). 2-FF sync;
+    // lr1's D is false-pathed in the XDC (same as the coeff CDC). 0 -> engine falls back to build LEAD.
+    (* ASYNC_REG="TRUE" *) reg [19:0] lr1, lr2;
     always @(posedge clk) begin
         a1<=m_a;b1<=m_b;c1<=m_c;d1<=m_d;e1<=m_e;f1<=m_f; mt1<=matte_rgb;
         a2<=a1;b2<=b1;c2<=c1;d2<=d1;e2<=e1;f2<=f1; mt2<=mt1;
+        lr1<=lead_cfg[19:0]; lr2<=lr1;
     end
 
     // ---- engine + tile DMA ----
@@ -89,7 +94,7 @@ module pg_warp_top #(
 
     pg_warp_engine #(.OUT_W(OUT_W),.OUT_H(OUT_H),.IN_W(IN_W),.IN_H(IN_H),
                      .LTILE(LTILE),.NTILE(NTILE),.WAY(WAY),.PD(PD),.CW(CW),.FB(FB),.LEAD(LEAD)) u_eng (
-        .clk(clk),.rstn(rstn),.sof(sof),.lead_rt(20'd0),   // 0 -> engine uses build-param LEAD (runtime GPIO TODO)
+        .clk(clk),.rstn(rstn),.sof(sof),.lead_rt(lr2),     // runtime per-geometry LEAD (GPIO); 0 -> build LEAD
         .m_a(a2),.m_b(b2),.m_c(c2),.m_d(d2),.m_e(e2),.m_f(f2),.matte(mt2),
         .o_valid(o_valid),.o_pix(o_pix),.o_ready(o_ready),
         .fetch_req(wreq),.fetch_tx(wtx),.fetch_ty(wty),.fetch_ready(t_rdy),

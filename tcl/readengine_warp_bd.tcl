@@ -6,7 +6,8 @@
 #   axi_gpio_8 ch1 = m_a   ch2 = m_b      (signed Q20.12)
 #   axi_gpio_9 ch1 = m_c   ch2 = m_d
 #   axi_gpio_10 ch1 = m_e  ch2 = m_f
-#   axi_gpio_12 bit0 = mux sel (default 1 = warp; write 0 for VDMA passthrough)
+#   axi_gpio_12 ch1 bit0 = mux sel (default 1 = warp; write 0 for VDMA passthrough)
+#   axi_gpio_12 ch2      = runtime per-geometry prefetch LEAD (20-bit; 0 = build LEAD; def 0x500) @ +0x08
 # Default coeffs = fit-scale 1920x1080 -> 1280x720: a=e=1.5 (0x1800), b=c=d=f=0 -> boots to a scaled frame.
 # matte = constant 0x101010 (runtime matte GPIO deferred).
 
@@ -129,11 +130,17 @@ connect_bd_net [get_bd_pins sl_g_addr/Dout] [get_bd_pins gamma_lut_0/lut_addr]
 connect_bd_net [get_bd_pins sl_g_data/Dout] [get_bd_pins gamma_lut_0/lut_data]
 connect_bd_net [get_bd_pins sl_g_swap/Dout] [get_bd_pins gamma_lut_0/swap]
 
-# ---- mux-sel GPIO (axi_gpio_12 @ M15), default 1 = warp ----
+# ---- mux-sel + LEAD GPIO (axi_gpio_12 @ M15, DUAL), ch1=mux sel (def 1=warp), ch2=lead_cfg (def 0x500) ----
+# DUAL (not a 17th MI): the classic axi_interconnect maxes at 16 master ports and M00..M15 are all used, so
+# the runtime per-geometry LEAD rides axi_gpio_12's second channel instead of a new GPIO. ch1 (0x00)=mux,
+# ch2 (0x08)=lead. lead_cfg=0 -> engine uses build LEAD; default ch2 to a deadlock-safe 0x500 (1280) so a
+# pre-firmware boot can't wedge a gentle geometry. See pg_tilecache_rt2 LEAD note + readengine_warp top comment.
 set_property -dict [list CONFIG.NUM_MI {16}] [get_bd_cells axi_ic_lite]
 create_bd_cell -type ip -vlnv xilinx.com:ip:axi_gpio axi_gpio_12
-set_property -dict [list CONFIG.C_GPIO_WIDTH {32} CONFIG.C_ALL_OUTPUTS {1} \
-    CONFIG.C_IS_DUAL {0} CONFIG.C_INTERRUPT_PRESENT {0} CONFIG.C_DOUT_DEFAULT {0x00000001}] [get_bd_cells axi_gpio_12]
+set_property -dict [list CONFIG.C_GPIO_WIDTH {32} CONFIG.C_GPIO2_WIDTH {32} \
+    CONFIG.C_ALL_OUTPUTS {1} CONFIG.C_ALL_OUTPUTS_2 {1} CONFIG.C_IS_DUAL {1} \
+    CONFIG.C_INTERRUPT_PRESENT {0} CONFIG.C_DOUT_DEFAULT {0x00000001} \
+    CONFIG.C_DOUT_DEFAULT_2 {0x00000500}] [get_bd_cells axi_gpio_12]
 connect_bd_intf_net [get_bd_intf_pins axi_ic_lite/M15_AXI] [get_bd_intf_pins axi_gpio_12/S_AXI]
 connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]          [get_bd_pins axi_ic_lite/M15_ACLK]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn] [get_bd_pins axi_ic_lite/M15_ARESETN]
@@ -141,6 +148,8 @@ connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]          [get_bd_pins axi_gpio_12
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn] [get_bd_pins axi_gpio_12/s_axi_aresetn]
 re_slice sl_sel axi_gpio_12 gpio_io_o 0 0
 connect_bd_net [get_bd_pins sl_sel/Dout] [get_bd_pins re_mux/sel]
+# ch2 = runtime per-geometry prefetch LEAD -> pg_warp_top lead_cfg (full 32-bit; top uses [19:0]).
+connect_bd_net [get_bd_pins axi_gpio_12/gpio2_io_o] [get_bd_pins pg_re_0/lead_cfg]
 
 # BRING-UP DIAG: route the warp engine's activity counters to axi_gpio_2 (firmware readback)
 # instead of predrain_snap. dbg={sts_err,cmd_valid,ovalid_cnt[9:0],fill_cnt[9:0],fetch_cnt[9:0]}.

@@ -921,6 +921,14 @@ static void cp_dispatch_jsonrpc(const char *json)
 #elif defined(XPAR_PHASE_B_BD_AXI_GPIO_10_BASEADDR)
 #  define GEO_C_BASE XPAR_PHASE_B_BD_AXI_GPIO_10_BASEADDR
 #endif
+/* Runtime per-geometry prefetch LEAD = axi_gpio_12 CHANNEL 2 (ch2 data reg @ base+0x08). ch1 is the
+ * mux-sel (INVW_GPIO_BASE). 0 -> engine uses build LEAD. (Rides gpio_12's 2nd channel because the
+ * classic axi_interconnect is maxed at 16 master ports — no room for a 17th GPIO.) */
+#if defined(XPAR_AXI_GPIO_12_BASEADDR)
+#  define LEAD_GPIO_BASE (XPAR_AXI_GPIO_12_BASEADDR + 0x08u)
+#elif defined(XPAR_PHASE_B_BD_AXI_GPIO_12_BASEADDR)
+#  define LEAD_GPIO_BASE (XPAR_PHASE_B_BD_AXI_GPIO_12_BASEADDR + 0x08u)
+#endif
 
 /* ==========================================================================
  * WARP read-engine (pg_warp_top) affine geometry. In the WARP build the SAME
@@ -950,6 +958,27 @@ static int warp_sin(int d) {           /* sin(d deg)*4096, any integer d */
 }
 static int warp_cos(int d) { return warp_sin(d + 90); }
 static int g_warp_deg = 0, g_warp_invx = 4096, g_warp_invy = 4096;  /* Q12 inverse-scale */
+static unsigned g_warp_lead_ovr = 0;        /* UART 'L <n>' manual lead; 0 = auto per-geometry */
+static unsigned g_warp_lead = 0;            /* last lead actually written (for status / 'L' query) */
+
+/* Per-geometry prefetch LEAD (pg_tilecache_rt2 run-ahead bound). The 4-way/512 cache deadlocks if the
+ * prefetch runs far enough ahead to evict an unconsumed tile — too DEEP a lead for a gentle rotation is a
+ * HARD FREEZE (this was the first-bench black screen). Bias SHALLOW for near-1:1 rotation (sim proved
+ * lead<2048 is deadlock-free for ALL rotations) and DEEP only for downscale (concentrated reads don't
+ * evict-deadlock even deep; 1.5x wants ~24576 to not underrun). Validated points (4-way/512,
+ * sim/pg_warp_real_faithful_tb.v): rot20 safe<2048, rot45 ok, shrink1.5@24576, aniso@12288. 'L <n>'
+ * overrides live at the bench. 20-bit. */
+static unsigned warp_calc_lead(int deg, int invx, int invy)
+{
+    unsigned mx = (unsigned)(invx > invy ? invx : invy);
+    if (mx > 4096u) {                         /* downscale -> deep; ~4x the inverse-scale (6144 -> 24576) */
+        unsigned l = mx * 4u;
+        return l > 0x000FFFFFu ? 0x000FFFFFu : l;
+    }
+    int d = deg % 90; if (d < 0) d += 90;     /* near-1:1 rotation -> SHALLOW, deadlock-safe (<2048) */
+    int axis = d < 45 ? d : 90 - d;           /* 0 (axis-aligned) .. 45 (diagonal) */
+    return 1024u + (unsigned)axis * 16u;      /* 1024 .. 1744 */
+}
 
 /* Compute + write the 6 affine coeffs for rotation `deg` with inverse-scale
  * invx/invy (Q12; 4096 = 1.0 source-px per output-px, >4096 = downscale). */
@@ -971,8 +1000,14 @@ static void warp_set_rotation(int deg, int invx, int invy)
     Xil_Out32(GEO_C_BASE + 0x00, (u32)m_e);
     Xil_Out32(GEO_C_BASE + 0x08, (u32)m_f);
     g_warp_deg = deg; g_warp_invx = invx; g_warp_invy = invy;
-    xil_printf("WARP rot=%d invx=%d invy=%d: a=%d b=%d c=%d d=%d e=%d f=%d\r\n",
-               deg, invx, invy, m_a, m_b, m_c, m_d, m_e, m_f);
+    /* set the prefetch LEAD for this geometry (manual override wins). Takes effect at the next sof
+     * (lead_cnt resets there), same vblank the new coeffs latch. */
+#ifdef LEAD_GPIO_BASE
+    g_warp_lead = g_warp_lead_ovr ? g_warp_lead_ovr : warp_calc_lead(deg, invx, invy);
+    Xil_Out32(LEAD_GPIO_BASE, g_warp_lead);
+#endif
+    xil_printf("WARP rot=%d invx=%d invy=%d lead=%u: a=%d b=%d c=%d d=%d e=%d f=%d\r\n",
+               deg, invx, invy, (unsigned)g_warp_lead, m_a, m_b, m_c, m_d, m_e, m_f);
 }
 #endif /* WARP_BUILD */
 
@@ -1221,8 +1256,8 @@ static void uart_dispatch(const char *line)
         /* WARP live rotation: W <deg> [invx_q12] [invy_q12]  (invx/y default 4096=1.0x).
          *   W 30            — rotate 30 deg, 1:1 (centered crop of the master).
          *   W 0 6144 6144   — no rotation, 1.5x downscale (whole master into the raster).
-         *   W               — query current. NOTE: a fixed build LEAD favours a band of
-         *   angles; gentle angles may thrash until runtime-LEAD lands. */
+         *   W               — query current. The prefetch LEAD auto-tracks the geometry
+         *   (warp_calc_lead); use 'L <n>' to override live if an angle thrashes/underruns. */
 #ifdef WARP_BUILD
         int deg; unsigned ivx = 4096, ivy = 4096, t;
         if (parse_int(&p, &deg)) {
@@ -1230,10 +1265,27 @@ static void uart_dispatch(const char *line)
             if (parse_uint(&p, &t) && t >= 256u) ivy = t;
             warp_set_rotation(deg, (int)ivx, (int)ivy);
         } else {
-            xil_printf("WARP rot=%d invx=%d invy=%d\r\n", g_warp_deg, g_warp_invx, g_warp_invy);
+            xil_printf("WARP rot=%d invx=%d invy=%d lead=%u\r\n",
+                       g_warp_deg, g_warp_invx, g_warp_invy, (unsigned)g_warp_lead);
         }
 #else
         xil_printf("UART: 'W' is warp-only; no warp engine in this build\r\n");
+#endif
+    } else if (op == 'L') {
+        /* WARP prefetch LEAD override: L <n> sets a manual lead (0 = auto per-geometry); L = query.
+         * Too DEEP a lead for a gentle rotation HARD-FREEZES (evicts unconsumed tiles); too shallow
+         * underruns. Sweep this live to dial a new geometry in without a rebuild. */
+#if defined(WARP_BUILD) && defined(LEAD_GPIO_BASE)
+        unsigned n;
+        if (parse_uint(&p, &n)) {
+            g_warp_lead_ovr = n & 0x000FFFFFu;            /* 20-bit; 0 = auto */
+            warp_set_rotation(g_warp_deg, g_warp_invx, g_warp_invy);  /* re-apply -> writes lead GPIO */
+            xil_printf("WARP lead %s -> %u\r\n", g_warp_lead_ovr ? "OVERRIDE" : "AUTO", (unsigned)g_warp_lead);
+        } else {
+            xil_printf("WARP lead=%u (%s)\r\n", (unsigned)g_warp_lead, g_warp_lead_ovr ? "override" : "auto");
+        }
+#else
+        xil_printf("UART: 'L' is warp-only; no warp engine in this build\r\n");
 #endif
     } else if (op == 'G') {
         /* Route-B read-engine geometry (additive+mux build):
@@ -2385,13 +2437,14 @@ int main(void)
      * so the read-engine is the output path. re_write_geometry sets the DDA
      * steps (FRAME_W/out_w = 1920/1280, etc.) + mux sel = 1. */
 #ifdef WARP_BUILD
-    /* WARP build: same GPIOs are the 6 affine coeffs (NOT route-B DDA). Boot to a
-     * 45 deg rotation (1:1 scale = centered OUT_RASTERxOUT_RASTER crop of the master,
-     * rotated) — validated clean at the build LEAD. mux already defaults to warp.
-     * Use UART 'W <deg> [invx] [invy]' to change the rotation live. */
+    /* WARP build: same GPIOs are the 6 affine coeffs (NOT route-B DDA). Boot to a 20 deg rotation (1:1
+     * scale = centered OUT_RASTERxOUT_RASTER crop, rotated) — an unmistakable warp on first light AND the
+     * exact geometry that HARD-FROZE the first bench at the old fixed LEAD=4096 (prefetch evicted an
+     * unconsumed tile). warp_set_rotation now writes the per-geometry LEAD GPIO (rot20 -> 1344, proven
+     * deadlock-safe in sim/pg_warp_real_faithful_tb.v). 'W <deg>' to change rotation, 'L <n>' to tune lead. */
     Xil_Out32(INVW_GPIO_BASE, 1u);           /* axi_gpio_12 = mux sel = warp (explicit; def is 1) */
-    warp_set_rotation(0, 4096, 4096);        /* boot IDENTITY (simplest cache case) — UART 'W <deg>' to rotate */
-    xil_printf("WARP engaged: %ux%u master -> %ux%u output, boot IDENTITY (UART 'W <deg>' to rotate)\r\n",
+    warp_set_rotation(20, 4096, 4096);       /* boot rot20 (was the LEAD-deadlock case; now lead-safe) */
+    xil_printf("WARP engaged: %ux%u master -> %ux%u output, boot rot=20 (UART 'W <deg>' / 'L <n>')\r\n",
                FRAME_W, FRAME_H, OUT_RASTER_W, OUT_RASTER_H);
 #else
     g_re_w = OUT_RASTER_W; g_re_h = OUT_RASTER_H; g_re_x = 0; g_re_y = 0;
