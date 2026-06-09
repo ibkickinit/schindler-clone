@@ -1965,8 +1965,8 @@ static void telemetry_loop(UINTPTR vdma_base)
                  * CDC+mux settle, read back) to dump the full tile_dma+cache wedge state in one DIAG. */
 #ifdef LEAD_GPIO_BASE
                 u32 lead_word = (g_warp_lead & 0xFFFFFu);
-                u32 dv[6];
-                for (int sel = 0; sel < 6; sel++) {
+                u32 dv[9];
+                for (int sel = 0; sel < 9; sel++) {
                     Xil_Out32(LEAD_GPIO_BASE, ((u32)sel << 20) | lead_word);
                     for (volatile int d = 0; d < 4000; d++) { }   /* CDC (2FF) + mux settle */
                     dv[sel] = Xil_In32(DIAG_GPIO_BASEADDR + 0x00);
@@ -1989,6 +1989,12 @@ static void telemetry_loop(UINTPTR vdma_base)
                            (unsigned)((dv[5]>>8)&0xFFu),(unsigned)(dv[5]&0xFFu),
                            (unsigned)((f4>>15)&1u),(unsigned)((f4>>14)&1u),(unsigned)((f4>>13)&1u),(unsigned)((f4>>12)&1u),
                            (unsigned)((f4>>11)&1u),(unsigned)((f4>>10)&1u),(unsigned)((f4>>9)&1u),(unsigned)((f4>>8)&1u));
+                /* OUTPUT framing measurement: opix should=921600, eol=720, und=output-starved cycles. */
+                unsigned opix = (unsigned)(((dv[7] & 0xFu) << 16) | (dv[6] & 0xFFFFu));
+                unsigned eol  = (unsigned)((dv[7] >> 4) & 0xFFFu);
+                unsigned und  = (unsigned)(dv[8] & 0xFFFFu);
+                xil_printf("  OUT: opix/frame=%u (exp 921600) eol/frame=%u (exp 720) starved=%u\r\n",
+                           opix, eol, und);
 #endif
 #endif
                 /* DRAIN (2026-06-03): from axis_to_vid_io_0/predrain_snap, routed onto

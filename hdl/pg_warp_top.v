@@ -131,21 +131,56 @@ module pg_warp_top #(
         end
     end
 
-    // ---- output AXIS framing: TUSER=SOF (first pixel), TLAST=EOL (every OUT_W) ----
-    reg [11:0] ocol; reg fr_first;
-    assign m_axis_tdata  = o_pix;
-    assign m_axis_tvalid = o_valid;
-    assign o_ready       = m_axis_tready;
-    assign m_axis_tlast  = (ocol == OUT_W[11:0]-12'd1);
-    assign m_axis_tuser  = fr_first;
+    // ---- output LINE-FIFO + AXIS framing (TUSER=SOF, TLAST=EOL every OUT_W) ----
+    // The engine's o_ready was tied to m_axis_tready, which axis_to_vid_io only opens during active-video /
+    // its bounded blanking-flush. So the engine couldn't RUN AHEAD during vblank and its SOF (pixel 0)
+    // arrived LATE -> axis_to_vid_io anchored it past pixel 0 -> per-line wrap = the diagonal SHEAR
+    // (DIAG showed DRAIN delta_px huge, bflush saturated). FIX: a FIFO with o_ready=!full decouples the
+    // engine from tready so it fills during blanking and delivers the SOF beat EARLY; the SOF tag rides the
+    // FIFO and tlast is regenerated on drain. Engine emits exactly OUT_W*OUT_H/frame (counters verify).
+    localparam integer OFD = 2048;                          // ~1.6 lines @720p; infers BRAM
+    (* ram_style="block" *) reg [24:0] ofifo[0:OFD-1];      // {sof_tag, pix[23:0]}
+    reg [10:0] of_wr, of_rd; reg [11:0] of_cnt;
+    wire of_full  = (of_cnt >= OFD[11:0]-12'd4);
+    wire of_empty = (of_cnt == 12'd0);
+    reg  fr_first;                                          // SOF tag for the next engine pixel
+    wire ow_en = o_valid && !of_full;                      // engine write accepted into the FIFO
+    assign o_ready = !of_full;
+    reg [24:0] of_q; reg of_qv; reg [11:0] dcol;            // 1-deep output holding reg + drain column
+    wire od_rd = !of_empty && (!of_qv || m_axis_tready);   // pop FIFO when the holding reg is free/freeing
+    // effective column of the beat in of_q: a SOF-tagged beat (of_q[24]) is frame pixel 0 -> RE-SYNCs the
+    // per-line counter (so a count drift can't accumulate a shear). dcol/tlast use the REGISTERED of_q tag,
+    // never a combinational BRAM read.
+    wire [11:0] ecol = of_q[24] ? 12'd0 : dcol;
+    assign m_axis_tvalid = of_qv;
+    assign m_axis_tdata  = of_q[23:0];
+    assign m_axis_tuser  = of_qv && of_q[24];              // SOF anchor for axis_to_vid_io
+    assign m_axis_tlast  = of_qv && (ecol == OUT_W[11:0]-12'd1);
     always @(posedge clk) begin
-        if(!rstn) begin ocol<=12'd0; fr_first<=1'b1; end
+        if(!rstn) begin of_wr<=0; of_rd<=0; of_cnt<=0; fr_first<=1'b1; of_qv<=1'b0; dcol<=12'd0; end
         else begin
-            if(sof) begin ocol<=12'd0; fr_first<=1'b1; end
-            else if(o_valid && m_axis_tready) begin
-                fr_first<=1'b0;
-                ocol <= (ocol==OUT_W[11:0]-12'd1) ? 12'd0 : ocol+12'd1;
-            end
+            if(sof) fr_first<=1'b1;
+            if(ow_en) begin ofifo[of_wr] <= {fr_first, o_pix}; of_wr<=of_wr+1'b1; fr_first<=1'b0; end
+            if(of_qv && m_axis_tready) dcol <= (ecol==OUT_W[11:0]-12'd1) ? 12'd0 : ecol+12'd1;  // next col
+            if(of_qv && m_axis_tready) of_qv<=1'b0;
+            if(od_rd) begin of_q <= ofifo[of_rd]; of_rd<=of_rd+1'b1; of_qv<=1'b1; end
+            of_cnt <= of_cnt + (ow_en?12'd1:12'd0) - (od_rd?12'd1:12'd0);
+        end
+    end
+    // ---- per-frame OUTPUT measurement (warp-specific; the DIAG v_emit/v_out_tlast are scaler-based, dead
+    // in the warp build): opix should be OUT_W*OUT_H=921600, eol should be OUT_H=720, und = output-starved
+    // cycles (m_axis_tready & !tvalid). Latched at sof, read via dbg views 6/7/8. ----
+    reg [19:0] opix_cnt, opix_lat, und_cnt, und_lat; reg [11:0] eol_cnt, eol_lat;
+    always @(posedge clk) begin
+        if(!rstn) begin opix_cnt<=0; opix_lat<=0; eol_cnt<=0; eol_lat<=0; und_cnt<=0; und_lat<=0; end
+        else if(sof) begin
+            opix_lat<=opix_cnt; opix_cnt<= ow_en?20'd1:20'd0;
+            eol_lat<=eol_cnt;  eol_cnt<=0;
+            und_lat<=und_cnt;  und_cnt<=0;
+        end else begin
+            if(ow_en) opix_cnt<=opix_cnt+20'd1;
+            if(m_axis_tvalid && m_axis_tready && m_axis_tlast) eol_cnt<=eol_cnt+12'd1;
+            if(m_axis_tready && !m_axis_tvalid) und_cnt<=und_cnt+20'd1;
         end
     end
     // ---- bring-up diagnostic v2: the warp PRODUCES pixels (v1 showed fetch/fill/ovalid all active).
@@ -210,6 +245,9 @@ module pg_warp_top #(
             4'd4: dbg_lo = {u_dma.rx_act, u_dma.iss_act, u_dma.full[1], u_dma.full[0], u_dma.emit_act,
                             tc_fetch_req, tc_pf_full, u_eng.u_tc.c_busy, 8'b0};
             4'd5: dbg_lo = {u_eng.u_tc.fetch_tx[7:0], u_eng.u_tc.fetch_ty[7:0]};
+            4'd6: dbg_lo = opix_lat[15:0];                       // output pixels/frame low (expect 0xE1000)
+            4'd7: dbg_lo = {eol_lat[11:0], opix_lat[19:16]};     // EOL/frame (expect 720) + opix high nibble
+            4'd8: dbg_lo = und_lat[15:0];                        // output-starved cycles/frame
             default: dbg_lo = beat_cnt;
         endcase
     end
