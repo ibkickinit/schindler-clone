@@ -976,10 +976,27 @@ static unsigned warp_calc_lead(int deg, int invx, int invy)
      * 1024..1744 heuristic was the shear/under-production cause. Downscale reads each tile many times -> goes
      * deeper. (Deep lead is fine for identity/gentle; steep-rotation eviction is re-checked on the good
      * timing build — the old "deep-lead deadlock" was the stale failed-timing bitstream.) */
-    (void)deg;
     unsigned mx = (unsigned)(invx > invy ? invx : invy);
-    unsigned lead = 8192u;
-    if (mx > 4096u) { unsigned l = mx * 4u; if (l > lead) lead = l; }   /* downscale 6144 -> 24576 */
+    int dd = deg % 90; if (dd < 0) dd += 90;
+    int axis = (dd < 45) ? dd : (90 - dd);        /* 0 = axis-aligned, 45 = diagonal */
+    unsigned lead;
+    if (mx > 4096u) {
+        lead = mx * 4u;                            /* downscale: deep (heavy tile reuse tolerates it) */
+    } else if (axis <= 2) {
+        /* identity / axis-aligned 1:1: each SOURCE tile is used ONCE -> high unique-fetch rate -> the
+         * prefetch must run DEEP to cover the DMA round-trip (measured: 762k/921600 px @1024, FULL @8192);
+         * sequential access means no eviction, so deep is safe. */
+        lead = 8192u;
+    } else {
+        /* rotation: tiles are REUSED (bilinear 2x2 + rotated overlap) -> lower fetch rate, so SHALLOW lead
+         * sustains; AND deep lead over-runs the 4-way cache set -> eviction WEDGE (catastrophic, needs a
+         * reprogram). The eviction limit DROPS as the angle steepens (rot20 tolerated ~2048, rot45 wedged
+         * @2312), and steep angles reuse tiles MORE so need LESS throughput lead. So go FLAT + shallow:
+         * 1280 is full-frame for rot20 (measured) and wedge-safe for steeper (which short-frame at worst
+         * -> tune live with 'L'). Bias safe: a short frame is mild, a wedge is not. */
+        (void)axis;
+        lead = 1280u;
+    }
     return lead > 0x000FFFFFu ? 0x000FFFFFu : lead;
 }
 
