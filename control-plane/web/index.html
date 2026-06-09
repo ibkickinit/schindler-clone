@@ -149,9 +149,6 @@
       <div style="display:flex;gap:8px;align-items:center;margin:3px 0"><span style="width:64px">Rotation</span>
         <input type="range" id="warp-rot-r" min="-180" max="180" value="0" style="flex:1">
         <input type="number" id="warp-rot-n" min="-180" max="180" value="0" style="width:72px"><span style="opacity:.5">° (warp)</span></div>
-      <div style="display:flex;gap:8px;align-items:center;margin:3px 0"><span style="width:64px">Warp Zoom</span>
-        <input type="range" id="warp-zoom-r" min="100" max="300" value="100" style="flex:1">
-        <input type="number" id="warp-zoom-n" min="100" max="300" value="100" style="width:72px"><span style="opacity:.5">% zoom-in (warp — use instead of Scale)</span></div>
       <label style="display:block;margin:6px 0"><input type="checkbox" id="geo-anchor"> Anchor scale to top-left corner&nbsp;<span style="opacity:.5">(unchecked = scale about center)</span></label>
       <label style="display:block;margin:6px 0">Resample:
         <select id="geo-filt">
@@ -784,20 +781,12 @@
     }
     function debounced(p) { clearTimeout(timer); timer = setTimeout(() => warpSend(p), 180); }
     const rr = document.getElementById("warp-rot-r"),  rn = document.getElementById("warp-rot-n");
-    const zr = document.getElementById("warp-zoom-r"), zn = document.getElementById("warp-zoom-n");
     if (rr && rn) {
       const setRot = (v, now) => { v = Math.max(-180, Math.min(180, Math.round(v))); rr.value = v; rn.value = v;
         (now ? warpSend : debounced)({ deg: v }); };
       rr.addEventListener("input",  () => setRot(+rr.value, false));  // live track, debounced send
       rr.addEventListener("change", () => setRot(+rr.value, true));   // release -> send now
       rn.addEventListener("change", () => setRot(+rn.value, true));
-    }
-    if (zr && zn) {
-      const setZoom = (v, now) => { v = Math.max(100, Math.min(300, Math.round(v))); zr.value = v; zn.value = v;
-        (now ? warpSend : debounced)({ zoom: v }); };
-      zr.addEventListener("input",  () => setZoom(+zr.value, false));
-      zr.addEventListener("change", () => setZoom(+zr.value, true));
-      zn.addEventListener("change", () => setZoom(+zn.value, true));
     }
   })();
   // maintain-aspect toggle: when re-enabled, immediately re-lock Y to X's ratio (fix any stretch)

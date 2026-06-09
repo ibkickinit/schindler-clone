@@ -249,8 +249,12 @@ module pg_warp_real_faithful_tb;
         run_x(45.0, 1.0, 1.0, "rot45    ");
         run_x(0.0,  1.5, 1.5, "shrink1.5");
         run_x(30.0, 1.5, 1.0, "aniso30  ");
+        // run_x(-162.0,1.0,1.0,"rot-162 "); // KNOWN HANG: steep rot -> 1 output row spans ~25 source
+        // tile-rows -> prefetch evicts an unconsumed tile -> consumer miss + lead-gate => deadlock. Fix =
+        // consumer demand-fetch (see docs/build-manifest / memory). Re-enable to validate that fix.
         $finish;
     end
+    // stall probe: periodic dump of prefetch/consumer/DMA state to locate the deadlock
     initial begin #95_000_000; $display("WATCHDOG cn=%0d err=%0d",cn,errors); $finish; end
 
     // heartbeat: see the pipeline come alive (or not)
