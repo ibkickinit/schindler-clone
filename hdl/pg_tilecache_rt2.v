@@ -70,9 +70,6 @@ module pg_tilecache_rt2 #(
     // the die to the prefetch-side tagset (the post-CDC -1.26 ns cone was 62% route: cx_ -> tagset @far).
     reg [WAY*TIDW-1:0] tagset_c[0:NSET-1];
     reg [WAY-1:0]      vldset_c[0:NSET-1];
-    reg [WAY-1:0]      rsvset_c[0:NSET-1];          // consumer-side mirror of rsvset (in-flight). Lets the
-                                                    // consumer tell "absent" (must demand-fetch) from
-                                                    // "in-flight" (just wait) on a gather miss.
     // vld = resident (consumable). rsv = slot reserved for an in-flight fill (not yet consumable).
     // FIFO-by-fetch eviction via a PER-SET victim pointer rr_set[set] (the way to evict next). The
     // prefetch fetches in consumer-future-access order, so within a set the oldest-fetched way is the
@@ -108,21 +105,6 @@ module pg_tilecache_rt2 #(
         end
     endfunction
 
-    // DEMAND victim: like vict() but NEVER evicts one of the consumer's 4 current neighbour tiles (n0..n3,
-    // all still needed) — that ping-pongs (evict sibling -> miss it -> evict the other) and hangs steep
-    // rotations. When the consumer is stalled at most 3 ways hold neighbours, so a free/non-needed way
-    // always exists. Prefer free, then a non-reserved non-needed occupied way.
-    function automatic [WAYW-1:0] vict_dem; input [SETW-1:0] st; input [TIDW-1:0] n0,n1,n2,n3;
-        integer w; reg [WAYW-1:0] v; reg got; reg [WAY-1:0] vw,rw; reg [WAY*TIDW-1:0] tg; reg [TIDW-1:0] tw; reg need; begin
-        vw=vldset[st]; rw=rsvset[st]; tg=tagset[st]; got=1'b0; v=rr_set[st];
-        for(w=WAY-1;w>=0;w=w-1) if(!vw[w[WAYW-1:0]]&&!rw[w[WAYW-1:0]]) begin v=w[WAYW-1:0]; got=1'b1; end
-        if(!got) for(w=WAY-1;w>=0;w=w-1) begin
-            tw=tg[w*TIDW +: TIDW]; need=(tw==n0)||(tw==n1)||(tw==n2)||(tw==n3);
-            if(!rw[w[WAYW-1:0]] && !need) begin v=w[WAYW-1:0]; got=1'b1; end
-        end
-        vict_dem=v; end
-    endfunction
-
     // tile id = {ty,tx} concatenation (unique, NO multiply) — the multiply was on the lookup path
     function [TIDW-1:0] tidf; input [11:0] px,py; tidf={py[11:LTILE], px[11:LTILE]}; endfunction
     // set index = mixing hash (tx*13 + ty*7). Validated worst-set-live<=4 for ALL swept transforms
@@ -156,43 +138,19 @@ module pg_tilecache_rt2 #(
     // INLINED hit detect (direct vldset_c/tagset_c reads in always@* so xsim tracks them — a function
     // form is not sensitive to internal array reads, same gotcha the prefetch availability avoids).
     reg [WAY-1:0] gv00,gv10,gv01,gv11; reg [WAY*TIDW-1:0] gt00,gt10,gt01,gt11;
-    reg [WAY-1:0] gr00,gr10,gr01,gr11;                 // rsvset_c reads (in-flight)
-    reg cif00,cif10,cif01,cif11;                       // neighbour tile is IN-FLIGHT (reserved, filling)
     always @* begin
-        gv00=vldset_c[cs00]; gt00=tagset_c[cs00]; gr00=rsvset_c[cs00];
-        gv10=vldset_c[cs10]; gt10=tagset_c[cs10]; gr10=rsvset_c[cs10];
-        gv01=vldset_c[cs01]; gt01=tagset_c[cs01]; gr01=rsvset_c[cs01];
-        gv11=vldset_c[cs11]; gt11=tagset_c[cs11]; gr11=rsvset_c[cs11];
+        gv00=vldset_c[cs00]; gt00=tagset_c[cs00]; gv10=vldset_c[cs10]; gt10=tagset_c[cs10];
+        gv01=vldset_c[cs01]; gt01=tagset_c[cs01]; gv11=vldset_c[cs11]; gt11=tagset_c[cs11];
         gh00=1'b0; gh10=1'b0; gh01=1'b0; gh11=1'b0;
-        cif00=1'b0; cif10=1'b0; cif01=1'b0; cif11=1'b0;
         gs00={cs00,{WAYW{1'b0}}}; gs10={cs10,{WAYW{1'b0}}}; gs01={cs01,{WAYW{1'b0}}}; gs11={cs11,{WAYW{1'b0}}};
         for(gw=0;gw<WAY;gw=gw+1) begin
             if(gv00[gw[WAYW-1:0]]&&gt00[gw*TIDW +: TIDW]==ct00) begin gh00=1'b1; gs00={cs00,gw[WAYW-1:0]}; end
             if(gv10[gw[WAYW-1:0]]&&gt10[gw*TIDW +: TIDW]==ct10) begin gh10=1'b1; gs10={cs10,gw[WAYW-1:0]}; end
             if(gv01[gw[WAYW-1:0]]&&gt01[gw*TIDW +: TIDW]==ct01) begin gh01=1'b1; gs01={cs01,gw[WAYW-1:0]}; end
             if(gv11[gw[WAYW-1:0]]&&gt11[gw*TIDW +: TIDW]==ct11) begin gh11=1'b1; gs11={cs11,gw[WAYW-1:0]}; end
-            if(gr00[gw[WAYW-1:0]]&&gt00[gw*TIDW +: TIDW]==ct00) cif00=1'b1;
-            if(gr10[gw[WAYW-1:0]]&&gt10[gw*TIDW +: TIDW]==ct10) cif10=1'b1;
-            if(gr01[gw[WAYW-1:0]]&&gt01[gw*TIDW +: TIDW]==ct01) cif01=1'b1;
-            if(gr11[gw[WAYW-1:0]]&&gt11[gw*TIDW +: TIDW]==ct11) cif11=1'b1;
         end
     end
     wire c_all = gh00&gh10&gh01&gh11;
-    // DEMAND-FETCH: a neighbour that is neither resident (gh) nor in-flight (cif) is truly ABSENT — the
-    // prefetch evicted it (or never fetched it) and, being lead-gated, won't. The consumer issues its OWN
-    // fetch for it (mux'd into the issue path below, priority, lead-gate bypassed) so it can ALWAYS make
-    // progress. This breaks the steep-rotation/zoom-out eviction deadlock. Pick the first absent neighbour.
-    wire cab00=!gh00&&!cif00, cab10=!gh10&&!cif10, cab01=!gh01&&!cif01, cab11=!gh11&&!cif11;
-    reg [TIDW-1:0] cd_tid; reg [SETW-1:0] cd_set; reg cd_v;
-    always @* begin
-        cd_v=1'b1;
-        if     (cab00) begin cd_tid=ct00; cd_set=cs00; end
-        else if(cab10) begin cd_tid=ct10; cd_set=cs10; end
-        else if(cab01) begin cd_tid=ct01; cd_set=cs01; end
-        else if(cab11) begin cd_tid=ct11; cd_set=cs11; end
-        else           begin cd_tid=ct00; cd_set=cs00; cd_v=1'b0; end   // all misses are in-flight -> just wait
-    end
-    wire cdemand = c_busy && cin_ && !c_all && cd_v;   // consumer stalled on a TRULY absent tile
     wire op_rdy = !out_valid || out_ready;             // OUT stage can take a gather result
     wire stage_ready = cin_ ? c_all : 1'b1;            // staged coord resident (or matte)?
     assign c_ready = op_rdy && (!c_busy || stage_ready);
@@ -310,34 +268,24 @@ module pg_tilecache_rt2 #(
     // positions of THIS coord sharing the issued tile-id (intra-coord 2x2 overlap) -> resolve together
     wire [3:0] sh3 = {(t3_3==ua_tid),(t3_2==ua_tid),(t3_1==ua_tid),(t3_0==ua_tid)};
 
-    // issue a fetch: the CONSUMER DEMAND (cdemand) has PRIORITY over the prefetch (it blocks the output and
-    // bypasses the lead-gate); otherwise the first unresolved-unavailable prefetch tile. On a demand cycle
-    // the prefetch's stage-3 HOLDS (cur_done3 stays low -> it doesn't advance), so the prefetch isn't lost.
-    wire issue_pf   = s3_v && pin3 && any_eu;
-    wire dem_room   = !(&rsvset[cd_set]);                // a non-reserved way exists -> vict won't evict an
-                                                         // in-flight fill; if the set is FULL of reservations
-                                                         // the demand waits (those fills WILL complete + free).
-    wire issue_dem  = cdemand && dem_room;               // consumer demand-fetch (priority, lead-gate bypassed)
-    wire issue_want = (issue_dem || issue_pf) && !pf_full;
-    wire [TIDW-1:0] iss_tid = issue_dem ? cd_tid : ua_tid;
-    wire [SETW-1:0] iss_set = issue_dem ? cd_set : ua_set;
+    // issue a fetch for the first unresolved-unavailable tile while the FIFO has room.
+    wire issue_want = s3_v && pin3 && any_eu && !pf_full;
     assign fetch_req = issue_want;
-    assign fetch_tx  = iss_tid[HALF-1:0];                // tidf low half = px-tile, high half = py-tile
-    assign fetch_ty  = iss_tid[2*HALF-1:HALF];
+    assign fetch_tx  = ua_tid[HALF-1:0];                 // tidf low half = px-tile, high half = py-tile
+    assign fetch_ty  = ua_tid[2*HALF-1:HALF];
     wire   issue_go  = issue_want && t_ready;            // fetch accepted -> becomes pending
 
     reg [2*HT-1:0] fcw; integer pj;
     wire fill_pop = !pf_empty && fill_valid && fill_last;
-    // demand evicts avoiding the consumer's own neighbours; prefetch uses the plain FIFO victim.
-    wire [WAYW-1:0] ua_way = issue_dem ? vict_dem(iss_set, ct00, ct10, ct01, ct11) : vict(iss_set);
-    wire [SLW-1:0] ua_slot = {iss_set, ua_way};
+    wire [WAYW-1:0] ua_way = vict(ua_set);               // victim way in the unavailable tile's set
+    wire [SLW-1:0] ua_slot = {ua_set, ua_way};
     wire [BAW-1:0] fwa = (pf_slot[pf_rd]<<(2*HT)) | fcw;  // fills route to the pending-FIFO head slot
     wire [SETW-1:0] fl_set = pf_slot[pf_rd][SLW-1:WAYW];  // fill-complete slot -> {set,way} for wide writes
     wire [WAYW-1:0] fl_way = pf_slot[pf_rd][WAYW-1:0];
 
     always @(posedge clk) begin
         if(!rstn) begin s1_v<=0; s2_v<=0; s3_v<=0; done3<=4'b0; fcw<=0; pf_wr<=0; pf_rd<=0; pf_cnt<=0;
-            for(pj=0;pj<NSET;pj=pj+1) begin vldset[pj]<=0; vldset_c[pj]<=0; rsvset[pj]<=0; rsvset_c[pj]<=0; rr_set[pj]<=0; end
+            for(pj=0;pj<NSET;pj=pj+1) begin vldset[pj]<=0; vldset_c[pj]<=0; rsvset[pj]<=0; rr_set[pj]<=0; end
             end
         else begin
             // issue: pick a free (or rr-victim) way; write the NEW tag now (so availability sees the
@@ -348,11 +296,11 @@ module pg_tilecache_rt2 #(
             // reserved, so vldset[ua_set][ua_way] alone distinguishes evict-vs-fill-empty.)
             if(issue_go) begin
                 pf_slot[pf_wr]<=ua_slot; pf_wr<=pf_wr+1'b1;
-                tagset[iss_set][ua_way*TIDW +: TIDW]<=iss_tid;    // write the chosen way's tag slice
-                tagset_c[iss_set][ua_way*TIDW +: TIDW]<=iss_tid;  // mirror to the consumer replica
-                vldset[iss_set][ua_way]<=1'b0; rsvset[iss_set][ua_way]<=1'b1;
-                vldset_c[iss_set][ua_way]<=1'b0; rsvset_c[iss_set][ua_way]<=1'b1;  // mirror rsv to consumer
-                if(vldset[iss_set][ua_way]) rr_set[iss_set]<=rr_set[iss_set]+1'b1;
+                tagset[ua_set][ua_way*TIDW +: TIDW]<=ua_tid;     // write the chosen way's tag slice
+                tagset_c[ua_set][ua_way*TIDW +: TIDW]<=ua_tid;   // mirror to the consumer replica
+                vldset[ua_set][ua_way]<=1'b0; rsvset[ua_set][ua_way]<=1'b1;
+                vldset_c[ua_set][ua_way]<=1'b0;
+                if(vldset[ua_set][ua_way]) rr_set[ua_set]<=rr_set[ua_set]+1'b1;
             end
             // 3-STAGE prefetch pipeline. stage 1 <- skid; stage 2 <- stage-1 feedforward (setf mults);
             // stage 3 <- stage-2 availability SNAPSHOT (av3) + reset the per-position done mask. Stage 2
@@ -370,7 +318,7 @@ module pg_tilecache_rt2 #(
                 t3_0<=pt00; t3_1<=pt10; t3_2<=pt01; t3_3<=pt11;
                 s3_0<=ps00; s3_1<=ps10; s3_2<=ps01; s3_3<=ps11;
                 pin3<=pin2; s3_v<=s2_v; done3<=4'b0;
-            end else if(issue_go && !issue_dem) done3<=done3|sh3;  // prefetch issue only (demand isn't its coord)
+            end else if(issue_go) done3<=done3|sh3;        // mark the issued tile's shared positions resolved
             // DMA fill: one 2x2 block/beat -> all 4 banks at the same within-tile addr (head tile's slot)
             if(!pf_empty && fill_valid) begin
                 b00[fwa]<=fill_blk[23:0];  b10[fwa]<=fill_blk[47:24];
@@ -378,7 +326,7 @@ module pg_tilecache_rt2 #(
                 fcw<=fcw+1'b1;
                 if(fill_last) begin                        // tile complete -> make resident + pop head
                     vldset[fl_set][fl_way]<=1'b1; rsvset[fl_set][fl_way]<=1'b0; // tag already written at issue
-                    vldset_c[fl_set][fl_way]<=1'b1; rsvset_c[fl_set][fl_way]<=1'b0; // mirror to consumer replica
+                    vldset_c[fl_set][fl_way]<=1'b1;                             // mirror to consumer replica
                     pf_rd<=pf_rd+1'b1; fcw<=6'd0;
                 end
             end

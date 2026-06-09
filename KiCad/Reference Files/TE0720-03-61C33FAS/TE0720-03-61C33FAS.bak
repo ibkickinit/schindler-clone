@@ -1,0 +1,2227 @@
+
+(kicad_symbol_lib (version 20211014) (generator kicad_symbol_editor)
+  (symbol "TE0720-03-61C33FAS" (pin_names (offset 1.016)) (in_bom yes) (on_board yes)
+    (property "Reference" "U" (id 0) (at -22.86 84.582 0)
+      (effects (font (size 1.27 1.27)) (justify bottom left))
+    )
+    (property "Value" "TE0720-03-61C33FAS" (id 1) (at -22.86 -86.36 0)
+      (effects (font (size 1.27 1.27)) (justify bottom left))
+    )
+    (property "Footprint" "TE0720-03-61C33FAS:MODULE_TE0720-03-61C33FAS" (id 2) (at 0 0 0)
+      (effects (font (size 1.27 1.27)) (justify bottom) hide)
+    )
+    (property "MF" "Trenz Electronic GmbH" (id 4) (at 0 0 0)
+      (effects (font (size 1.27 1.27)) (justify bottom) hide)
+    )
+    (property "MAXIMUM_PACKAGE_HEIGHT" "8 mm" (id 5) (at 0 0 0)
+      (effects (font (size 1.27 1.27)) (justify bottom) hide)
+    )
+    (property "Package" "None" (id 6) (at 0 0 0)
+      (effects (font (size 1.27 1.27)) (justify bottom) hide)
+    )
+    (property "Price" "None" (id 7) (at 0 0 0)
+      (effects (font (size 1.27 1.27)) (justify bottom) hide)
+    )
+    (property "Check_prices" "https://www.snapeda.com/parts/TE0720-03-61C33FAS/Trenz/view-part/?ref=eda" (id 8) (at 0 0 0)
+      (effects (font (size 1.27 1.27)) (justify bottom) hide)
+    )
+    (property "STANDARD" "Manufacturer Recommendations" (id 9) (at 0 0 0)
+      (effects (font (size 1.27 1.27)) (justify bottom) hide)
+    )
+    (property "SnapEDA_Link" "https://www.snapeda.com/parts/TE0720-03-61C33FAS/Trenz/view-part/?ref=snap" (id 10) (at 0 0 0)
+      (effects (font (size 1.27 1.27)) (justify bottom) hide)
+    )
+    (property "MP" "TE0720-03-61C33FAS" (id 11) (at 0 0 0)
+      (effects (font (size 1.27 1.27)) (justify bottom) hide)
+    )
+    (property "Description" "\n                        \n                            TE0720 Zynq-7000 AP SoC Carrier Starter TE0720, XC7Z020 Zynq®-7000 FPGA + MCU/MPU SoC Embedded Evaluation Board\n                        \n" (id 12) (at 0 0 0)
+      (effects (font (size 1.27 1.27)) (justify bottom) hide)
+    )
+    (property "Availability" "In Stock" (id 13) (at 0 0 0)
+      (effects (font (size 1.27 1.27)) (justify bottom) hide)
+    )
+    (property "MANUFACTURER" "Trenz Electronic GmbH" (id 14) (at 0 0 0)
+      (effects (font (size 1.27 1.27)) (justify bottom) hide)
+    )
+    (symbol "TE0720-03-61C33FAS_1_0"
+      (rectangle (start -22.86 -83.82) (end 22.86 83.82)
+        (stroke (width 0.254)) (fill (type background))
+      )
+      (pin power_in line (at 27.94 81.28 180.0) (length 5.08)
+        (name "JM1_PWR_1_1"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "1"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin power_in line (at 27.94 -45.72 180.0) (length 5.08)
+        (name "JM1_GND_2"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "2"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin power_in line (at 27.94 78.74 180.0) (length 5.08)
+        (name "JM1_PWR_1_3"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "3"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 38.1 0) (length 5.08)
+        (name "JM1_IO_4"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "4"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin power_in line (at 27.94 76.2 180.0) (length 5.08)
+        (name "JM1_PWR_1_5"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "5"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 35.56 0) (length 5.08)
+        (name "JM1_IO_6"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "6"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 45.72 0) (length 5.08)
+        (name "JM1_NOSEQ"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "7"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin power_in line (at 27.94 -48.26 180.0) (length 5.08)
+        (name "JM1_GND_8"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "8"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin power_in line (at 27.94 63.5 180.0) (length 5.08)
+        (name "JM1_VCCIOA_9"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "9"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 33.02 0) (length 5.08)
+        (name "JM1_IO_10"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "10"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin power_in line (at 27.94 60.96 180.0) (length 5.08)
+        (name "JM1_VCCIOA_11"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "11"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 30.48 0) (length 5.08)
+        (name "JM1_IO_12"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "12"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin power_in line (at 27.94 73.66 180.0) (length 5.08)
+        (name "JM1_PWR_2_13"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "13"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin power_in line (at 27.94 58.42 180.0) (length 5.08)
+        (name "JM1_ETH_VCC"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "14"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin power_in line (at 27.94 71.12 180.0) (length 5.08)
+        (name "JM1_PWR_2_15"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "15"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 27.94 0) (length 5.08)
+        (name "JM1_IO_16"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "16"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 25.4 0) (length 5.08)
+        (name "JM1_IO_17"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "17"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 22.86 0) (length 5.08)
+        (name "JM1_IO_18"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "18"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 20.32 0) (length 5.08)
+        (name "JM1_IO_19"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "19"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin power_in line (at 27.94 -50.8 180.0) (length 5.08)
+        (name "JM1_GND_20"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "20"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 17.78 0) (length 5.08)
+        (name "JM1_IO_21"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "21"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 15.24 0) (length 5.08)
+        (name "JM1_IO_22"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "22"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 12.7 0) (length 5.08)
+        (name "JM1_IO_23"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "23"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 10.16 0) (length 5.08)
+        (name "JM1_IO_24"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "24"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 7.62 0) (length 5.08)
+        (name "JM1_IO_25"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "25"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin power_in line (at 27.94 -53.34 180.0) (length 5.08)
+        (name "JM1_GND_26"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "26"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 5.08 0) (length 5.08)
+        (name "JM1_IO_27"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "27"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin input line (at -27.94 53.34 0) (length 5.08)
+        (name "JM1_SC_EN1"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "28"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin power_in line (at 27.94 -55.88 180.0) (length 5.08)
+        (name "JM1_GND_29"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "29"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 50.8 0) (length 5.08)
+        (name "JM1_SC_PGOOD"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "30"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 2.54 0) (length 5.08)
+        (name "JM1_IO_31"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "31"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin input line (at -27.94 48.26 0) (length 5.08)
+        (name "JM1_SC_BOOTMODE"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "32"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 0.0 0) (length 5.08)
+        (name "JM1_IO_33"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "33"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin power_in line (at 27.94 -58.42 180.0) (length 5.08)
+        (name "JM1_GND_34"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "34"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 -2.54 0) (length 5.08)
+        (name "JM1_IO_35"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "35"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 -7.62 0) (length 5.08)
+        (name "JM1_IO_36"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "36"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 -5.08 0) (length 5.08)
+        (name "JM1_IO_37"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "37"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 -10.16 0) (length 5.08)
+        (name "JM1_IO_38"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "38"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin power_in line (at 27.94 68.58 180.0) (length 5.08)
+        (name "JM1_PWR_M2"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "39"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 -12.7 0) (length 5.08)
+        (name "JM1_IO_40"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "40"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 -15.24 0) (length 5.08)
+        (name "JM1_IO_41"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "41"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 -17.78 0) (length 5.08)
+        (name "JM1_IO_42"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "42"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 -20.32 0) (length 5.08)
+        (name "JM1_IO_43"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "43"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin power_in line (at 27.94 -60.96 180.0) (length 5.08)
+        (name "JM1_GND_44"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "44"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 -22.86 0) (length 5.08)
+        (name "JM1_IO_45"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "45"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 -25.4 0) (length 5.08)
+        (name "JM1_IO_46"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "46"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 -27.94 0) (length 5.08)
+        (name "JM1_IO_47"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "47"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 -30.48 0) (length 5.08)
+        (name "JM1_IO_48"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "48"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 -33.02 0) (length 5.08)
+        (name "JM1_IO_49"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "49"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 -35.56 0) (length 5.08)
+        (name "JM1_IO_50"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "50"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 -38.1 0) (length 5.08)
+        (name "JM1_IO_51"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "51"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 -40.64 0) (length 5.08)
+        (name "JM1_IO_52"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "52"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin power_in line (at 27.94 -63.5 180.0) (length 5.08)
+        (name "JM1_GND_53"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "53"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin power_in line (at 27.94 -66.04 180.0) (length 5.08)
+        (name "JM1_GND_54"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "54"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 53.34 180.0) (length 5.08)
+        (name "JM1_IO_55"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "55"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 50.8 180.0) (length 5.08)
+        (name "JM1_IO_56"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "56"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 48.26 180.0) (length 5.08)
+        (name "JM1_IO_57"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "57"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 45.72 180.0) (length 5.08)
+        (name "JM1_IO_58"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "58"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 43.18 180.0) (length 5.08)
+        (name "JM1_IO_59"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "59"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 40.64 180.0) (length 5.08)
+        (name "JM1_IO_60"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "60"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 38.1 180.0) (length 5.08)
+        (name "JM1_IO_61"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "61"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 35.56 180.0) (length 5.08)
+        (name "JM1_IO_62"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "62"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin power_in line (at 27.94 -68.58 180.0) (length 5.08)
+        (name "JM1_GND_63"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "63"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin power_in line (at 27.94 -71.12 180.0) (length 5.08)
+        (name "JM1_GND_64"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "64"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 33.02 180.0) (length 5.08)
+        (name "JM1_IO_65"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "65"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 30.48 180.0) (length 5.08)
+        (name "JM1_IO_66"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "66"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 27.94 180.0) (length 5.08)
+        (name "JM1_IO_67"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "67"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 25.4 180.0) (length 5.08)
+        (name "JM1_IO_68"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "68"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 22.86 180.0) (length 5.08)
+        (name "JM1_IO_69"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "69"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 20.32 180.0) (length 5.08)
+        (name "JM1_IO_70"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "70"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 17.78 180.0) (length 5.08)
+        (name "JM1_IO_71"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "71"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 15.24 180.0) (length 5.08)
+        (name "JM1_IO_72"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "72"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin power_in line (at 27.94 -73.66 180.0) (length 5.08)
+        (name "JM1_GND_73"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "73"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin power_in line (at 27.94 -76.2 180.0) (length 5.08)
+        (name "JM1_GND_74"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "74"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 12.7 180.0) (length 5.08)
+        (name "JM1_IO_75"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "75"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 10.16 180.0) (length 5.08)
+        (name "JM1_IO_76"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "76"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 7.62 180.0) (length 5.08)
+        (name "JM1_IO_77"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "77"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 5.08 180.0) (length 5.08)
+        (name "JM1_IO_78"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "78"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin power_in line (at 27.94 66.04 180.0) (length 5.08)
+        (name "JM1_PWR_VBAT"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "79"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 2.54 180.0) (length 5.08)
+        (name "JM1_IO_80"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "80"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 0.0 180.0) (length 5.08)
+        (name "JM1_IO_81"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "81"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 -2.54 180.0) (length 5.08)
+        (name "JM1_IO_82"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "82"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 -5.08 180.0) (length 5.08)
+        (name "JM1_IO_83"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "83"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin power_in line (at 27.94 -78.74 180.0) (length 5.08)
+        (name "JM1_GND_84"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "84"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 -7.62 180.0) (length 5.08)
+        (name "JM1_IO_85"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "85"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 -10.16 180.0) (length 5.08)
+        (name "JM1_IO_86"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "86"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 -12.7 180.0) (length 5.08)
+        (name "JM1_IO_87"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "87"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 -15.24 180.0) (length 5.08)
+        (name "JM1_IO_88"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "88"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin input line (at -27.94 43.18 0) (length 5.08)
+        (name "JM1_JTAGSEL"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "89"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin power_in line (at 27.94 -81.28 180.0) (length 5.08)
+        (name "JM1_GND_90"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "90"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 -17.78 180.0) (length 5.08)
+        (name "JM1_IO_91"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "91"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 -20.32 180.0) (length 5.08)
+        (name "JM1_IO_92"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "92"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 -22.86 180.0) (length 5.08)
+        (name "JM1_IO_93"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "93"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 -25.4 180.0) (length 5.08)
+        (name "JM1_IO_94"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "94"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 -27.94 180.0) (length 5.08)
+        (name "JM1_IO_95"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "95"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 -30.48 180.0) (length 5.08)
+        (name "JM1_IO_96"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "96"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 -33.02 180.0) (length 5.08)
+        (name "JM1_IO_97"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "97"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 -35.56 180.0) (length 5.08)
+        (name "JM1_IO_98"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "98"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 -38.1 180.0) (length 5.08)
+        (name "JM1_IO_99"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "99"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 -40.64 180.0) (length 5.08)
+        (name "JM1_IO_100"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "100"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+    )
+    (symbol "TE0720-03-61C33FAS_2_0"
+      (rectangle (start -22.86 -86.36) (end 22.86 86.36)
+        (stroke (width 0.254)) (fill (type background))
+      )
+      (pin power_in line (at 27.94 63.5 180.0) (length 5.08)
+        (name "JM2_VCCIOB_1"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "101"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin power_in line (at 27.94 83.82 180.0) (length 5.08)
+        (name "JM2_PWR_1_2"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "102"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin power_in line (at 27.94 60.96 180.0) (length 5.08)
+        (name "JM2_VCCIOB_3"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "103"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin power_in line (at 27.94 81.28 180.0) (length 5.08)
+        (name "JM2_PWR_1_4"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "104"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin power_in line (at 27.94 58.42 180.0) (length 5.08)
+        (name "JM2_VCCIOC"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "105"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin power_in line (at 27.94 78.74 180.0) (length 5.08)
+        (name "JM2_PWR_1_6"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "106"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin power_in line (at 27.94 55.88 180.0) (length 5.08)
+        (name "JM2_VCCIOD_7"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "107"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin power_in line (at 27.94 76.2 180.0) (length 5.08)
+        (name "JM2_PWR_1_8"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "108"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin power_in line (at 27.94 53.34 180.0) (length 5.08)
+        (name "JM2_VCCIOD_9"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "109"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin power_in line (at 27.94 73.66 180.0) (length 5.08)
+        (name "JM2_PWR_M1_10"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "110"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 30.48 0) (length 5.08)
+        (name "JM2_IO_11"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "111"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin power_in line (at 27.94 71.12 180.0) (length 5.08)
+        (name "JM2_PWR_M1_12"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "112"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 27.94 0) (length 5.08)
+        (name "JM2_IO_13"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "113"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 25.4 0) (length 5.08)
+        (name "JM2_IO_14"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "114"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 22.86 0) (length 5.08)
+        (name "JM2_IO_15"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "115"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 20.32 0) (length 5.08)
+        (name "JM2_IO_16"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "116"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 17.78 0) (length 5.08)
+        (name "JM2_IO_17"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "117"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin input line (at -27.94 48.26 0) (length 5.08)
+        (name "JM2_SC_~{RST}"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "118"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin power_in line (at 27.94 68.58 180.0) (length 5.08)
+        (name "JM2_PWR_M3/NC"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "119"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin power_in line (at 27.94 -50.8 180.0) (length 5.08)
+        (name "JM2_GND_20"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "120"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 15.24 0) (length 5.08)
+        (name "JM2_IO_21"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "121"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 12.7 0) (length 5.08)
+        (name "JM2_IO_22"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "122"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 10.16 0) (length 5.08)
+        (name "JM2_IO_23"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "123"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 7.62 0) (length 5.08)
+        (name "JM2_IO_24"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "124"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 5.08 0) (length 5.08)
+        (name "JM2_IO_25"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "125"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 2.54 0) (length 5.08)
+        (name "JM2_IO_26"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "126"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 0.0 0) (length 5.08)
+        (name "JM2_IO_27"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "127"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 -2.54 0) (length 5.08)
+        (name "JM2_IO_28"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "128"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin power_in line (at 27.94 -53.34 180.0) (length 5.08)
+        (name "JM2_GND_29"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "129"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin power_in line (at 27.94 -55.88 180.0) (length 5.08)
+        (name "JM2_GND_30"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "130"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 -5.08 0) (length 5.08)
+        (name "JM2_IO_31"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "131"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 -7.62 0) (length 5.08)
+        (name "JM2_IO_32"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "132"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 -10.16 0) (length 5.08)
+        (name "JM2_IO_33"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "133"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 -12.7 0) (length 5.08)
+        (name "JM2_IO_34"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "134"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 -15.24 0) (length 5.08)
+        (name "JM2_IO_35"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "135"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 -17.78 0) (length 5.08)
+        (name "JM2_IO_36"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "136"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 -20.32 0) (length 5.08)
+        (name "JM2_IO_37"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "137"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 -22.86 0) (length 5.08)
+        (name "JM2_IO_38"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "138"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin power_in line (at 27.94 -58.42 180.0) (length 5.08)
+        (name "JM2_GND_39"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "139"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin power_in line (at 27.94 -60.96 180.0) (length 5.08)
+        (name "JM2_GND_40"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "140"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 -25.4 0) (length 5.08)
+        (name "JM2_IO_41"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "141"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 -27.94 0) (length 5.08)
+        (name "JM2_IO_42"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "142"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 -30.48 0) (length 5.08)
+        (name "JM2_IO_43"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "143"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 -33.02 0) (length 5.08)
+        (name "JM2_IO_44"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "144"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 -35.56 0) (length 5.08)
+        (name "JM2_IO_45"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "145"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 -38.1 0) (length 5.08)
+        (name "JM2_IO_46"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "146"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 -40.64 0) (length 5.08)
+        (name "JM2_IO_47"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "147"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 -43.18 0) (length 5.08)
+        (name "JM2_IO_48"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "148"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin power_in line (at 27.94 -63.5 180.0) (length 5.08)
+        (name "JM2_GND_49"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "149"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin power_in line (at 27.94 -66.04 180.0) (length 5.08)
+        (name "JM2_GND_50"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "150"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 48.26 180.0) (length 5.08)
+        (name "JM2_IO_51"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "151"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 45.72 180.0) (length 5.08)
+        (name "JM2_IO_52"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "152"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 43.18 180.0) (length 5.08)
+        (name "JM2_IO_53"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "153"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 40.64 180.0) (length 5.08)
+        (name "JM2_IO_54"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "154"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 38.1 180.0) (length 5.08)
+        (name "JM2_IO_55"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "155"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 35.56 180.0) (length 5.08)
+        (name "JM2_IO_56"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "156"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 33.02 180.0) (length 5.08)
+        (name "JM2_IO_57"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "157"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 30.48 180.0) (length 5.08)
+        (name "JM2_IO_58"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "158"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin power_in line (at 27.94 -68.58 180.0) (length 5.08)
+        (name "JM2_GND_59"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "159"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin power_in line (at 27.94 -71.12 180.0) (length 5.08)
+        (name "JM2_GND_60"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "160"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 27.94 180.0) (length 5.08)
+        (name "JM2_IO_61"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "161"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 25.4 180.0) (length 5.08)
+        (name "JM2_IO_62"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "162"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 22.86 180.0) (length 5.08)
+        (name "JM2_IO_63"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "163"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 20.32 180.0) (length 5.08)
+        (name "JM2_IO_64"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "164"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 17.78 180.0) (length 5.08)
+        (name "JM2_IO_65"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "165"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 15.24 180.0) (length 5.08)
+        (name "JM2_IO_66"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "166"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 12.7 180.0) (length 5.08)
+        (name "JM2_IO_67"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "167"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 10.16 180.0) (length 5.08)
+        (name "JM2_IO_68"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "168"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin power_in line (at 27.94 -73.66 180.0) (length 5.08)
+        (name "JM2_GND_69"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "169"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin power_in line (at 27.94 -76.2 180.0) (length 5.08)
+        (name "JM2_GND_70"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "170"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 7.62 180.0) (length 5.08)
+        (name "JM2_IO_71"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "171"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 5.08 180.0) (length 5.08)
+        (name "JM2_IO_72"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "172"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 2.54 180.0) (length 5.08)
+        (name "JM2_IO_73"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "173"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 0.0 180.0) (length 5.08)
+        (name "JM2_IO_74"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "174"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 -2.54 180.0) (length 5.08)
+        (name "JM2_IO_75"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "175"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 -5.08 180.0) (length 5.08)
+        (name "JM2_IO_76"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "176"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 -7.62 180.0) (length 5.08)
+        (name "JM2_IO_77"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "177"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 -10.16 180.0) (length 5.08)
+        (name "JM2_IO_78"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "178"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin power_in line (at 27.94 -78.74 180.0) (length 5.08)
+        (name "JM2_GND_79"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "179"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin power_in line (at 27.94 -81.28 180.0) (length 5.08)
+        (name "JM2_GND_80"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "180"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 -12.7 180.0) (length 5.08)
+        (name "JM2_IO_81"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "181"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 -15.24 180.0) (length 5.08)
+        (name "JM2_IO_82"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "182"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 -17.78 180.0) (length 5.08)
+        (name "JM2_IO_83"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "183"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 -20.32 180.0) (length 5.08)
+        (name "JM2_IO_84"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "184"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 -22.86 180.0) (length 5.08)
+        (name "JM2_IO_85"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "185"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 -25.4 180.0) (length 5.08)
+        (name "JM2_IO_86"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "186"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 -27.94 180.0) (length 5.08)
+        (name "JM2_IO_87"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "187"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 -30.48 180.0) (length 5.08)
+        (name "JM2_IO_88"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "188"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 -33.02 180.0) (length 5.08)
+        (name "JM2_IO_89"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "189"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin power_in line (at 27.94 -83.82 180.0) (length 5.08)
+        (name "JM2_GND_90"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "190"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin power_in line (at 27.94 66.04 180.0) (length 5.08)
+        (name "JM2_PWR_JTAG"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "191"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 -35.56 180.0) (length 5.08)
+        (name "JM2_IO_92"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "192"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin input line (at -27.94 43.18 0) (length 5.08)
+        (name "JM2_TMS"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "193"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 -38.1 180.0) (length 5.08)
+        (name "JM2_IO_94"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "194"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin input line (at -27.94 40.64 0) (length 5.08)
+        (name "JM2_TDI"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "195"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 -40.64 180.0) (length 5.08)
+        (name "JM2_IO_96"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "196"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin output line (at -27.94 38.1 0) (length 5.08)
+        (name "JM2_TDO"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "197"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 -43.18 180.0) (length 5.08)
+        (name "JM2_IO_98"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "198"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin input clock (at -27.94 35.56 0) (length 5.08)
+        (name "JM2_TCK"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "199"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 -45.72 180.0) (length 5.08)
+        (name "JM2_IO_100"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "200"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+    )
+    (symbol "TE0720-03-61C33FAS_3_0"
+      (rectangle (start -22.86 -50.8) (end 22.86 50.8)
+        (stroke (width 0.254)) (fill (type background))
+      )
+      (pin bidirectional line (at -27.94 48.26 0) (length 5.08)
+        (name "JM3_IO_1"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "201"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 45.72 0) (length 5.08)
+        (name "JM3_IO_2"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "202"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 43.18 0) (length 5.08)
+        (name "JM3_IO_3"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "203"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 40.64 0) (length 5.08)
+        (name "JM3_IO_4"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "204"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin power_in line (at 27.94 -15.24 180.0) (length 5.08)
+        (name "JM3_GND_5"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "205"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin power_in line (at 27.94 -17.78 180.0) (length 5.08)
+        (name "JM3_GND_6"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "206"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 38.1 0) (length 5.08)
+        (name "JM3_IO_7"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "207"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 35.56 0) (length 5.08)
+        (name "JM3_IO_8"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "208"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 33.02 0) (length 5.08)
+        (name "JM3_IO_9"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "209"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 30.48 0) (length 5.08)
+        (name "JM3_IO_10"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "210"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin power_in line (at 27.94 -20.32 180.0) (length 5.08)
+        (name "JM3_GND_11"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "211"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin power_in line (at 27.94 -22.86 180.0) (length 5.08)
+        (name "JM3_GND_12"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "212"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 27.94 0) (length 5.08)
+        (name "JM3_IO_13"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "213"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 25.4 0) (length 5.08)
+        (name "JM3_IO_14"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "214"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 22.86 0) (length 5.08)
+        (name "JM3_IO_15"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "215"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 20.32 0) (length 5.08)
+        (name "JM3_IO_16"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "216"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin power_in line (at 27.94 -25.4 180.0) (length 5.08)
+        (name "JM3_GND_17"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "217"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin power_in line (at 27.94 -27.94 180.0) (length 5.08)
+        (name "JM3_GND_18"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "218"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 17.78 0) (length 5.08)
+        (name "JM3_IO_19"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "219"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 15.24 0) (length 5.08)
+        (name "JM3_IO_20"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "220"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 12.7 0) (length 5.08)
+        (name "JM3_IO_21"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "221"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 10.16 0) (length 5.08)
+        (name "JM3_IO_22"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "222"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin power_in line (at 27.94 -30.48 180.0) (length 5.08)
+        (name "JM3_GND_23"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "223"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin power_in line (at 27.94 -33.02 180.0) (length 5.08)
+        (name "JM3_GND_24"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "224"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 7.62 0) (length 5.08)
+        (name "JM3_IO_25"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "225"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 5.08 0) (length 5.08)
+        (name "JM3_IO_26"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "226"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 2.54 0) (length 5.08)
+        (name "JM3_IO_27"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "227"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 0.0 0) (length 5.08)
+        (name "JM3_IO_28"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "228"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin power_in line (at 27.94 -35.56 180.0) (length 5.08)
+        (name "JM3_GND_29"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "229"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin power_in line (at 27.94 -38.1 180.0) (length 5.08)
+        (name "JM3_GND_30"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "230"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 -2.54 0) (length 5.08)
+        (name "JM3_IO_31"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "231"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 -5.08 0) (length 5.08)
+        (name "JM3_IO_32"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "232"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 -7.62 0) (length 5.08)
+        (name "JM3_IO_33"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "233"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at -27.94 -10.16 0) (length 5.08)
+        (name "JM3_IO_34"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "234"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin power_in line (at 27.94 -40.64 180.0) (length 5.08)
+        (name "JM3_GND_35"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "235"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin power_in line (at 27.94 -43.18 180.0) (length 5.08)
+        (name "JM3_GND_36"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "236"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 48.26 180.0) (length 5.08)
+        (name "JM3_IO_37"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "237"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 45.72 180.0) (length 5.08)
+        (name "JM3_IO_38"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "238"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 43.18 180.0) (length 5.08)
+        (name "JM3_IO_39"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "239"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 40.64 180.0) (length 5.08)
+        (name "JM3_IO_40"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "240"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 38.1 180.0) (length 5.08)
+        (name "JM3_IO_41"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "241"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 35.56 180.0) (length 5.08)
+        (name "JM3_IO_42"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "242"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 33.02 180.0) (length 5.08)
+        (name "JM3_IO_43"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "243"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 30.48 180.0) (length 5.08)
+        (name "JM3_IO_44"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "244"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin power_in line (at 27.94 -45.72 180.0) (length 5.08)
+        (name "JM3_GND_45"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "245"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin power_in line (at 27.94 -48.26 180.0) (length 5.08)
+        (name "JM3_GND_46"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "246"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 2.54 180.0) (length 5.08)
+        (name "JM3_USB-OTG-D_P"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "247"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 27.94 180.0) (length 5.08)
+        (name "JM3_IO_48"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "248"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 0.0 180.0) (length 5.08)
+        (name "JM3_USB-OTG-D_N"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "249"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 25.4 180.0) (length 5.08)
+        (name "JM3_IO_50"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "250"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 -2.54 180.0) (length 5.08)
+        (name "JM3_USB-OTG-ID"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "251"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 22.86 180.0) (length 5.08)
+        (name "JM3_IO_52"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "252"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 -5.08 180.0) (length 5.08)
+        (name "JM3_USB-VBUS_V_EN"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "253"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 20.32 180.0) (length 5.08)
+        (name "JM3_IO_54"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "254"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 -7.62 180.0) (length 5.08)
+        (name "JM3_USB-USB-VBUS"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "255"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 17.78 180.0) (length 5.08)
+        (name "JM3_IO_56"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "256"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 15.24 180.0) (length 5.08)
+        (name "JM3_IO_57"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "257"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 12.7 180.0) (length 5.08)
+        (name "JM3_IO_58"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "258"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 10.16 180.0) (length 5.08)
+        (name "JM3_IO_59"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "259"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin bidirectional line (at 27.94 7.62 180.0) (length 5.08)
+        (name "JM3_IO_60"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "260"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+    )
+    (symbol "TE0720-03-61C33FAS_4_0"
+      (rectangle (start -10.16 -7.62) (end 10.16 7.62)
+        (stroke (width 0.254)) (fill (type background))
+      )
+      (pin passive line (at -15.24 -5.08 0) (length 5.08)
+        (name "MH"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "M1"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin passive line (at -15.24 -5.08 0) (length 5.08) hide
+        (name "MH"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "M2"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin passive line (at -15.24 -5.08 0) (length 5.08) hide
+        (name "MH"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "M3"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin passive line (at -15.24 -5.08 0) (length 5.08) hide
+        (name "MH"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "M4"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin passive line (at -15.24 5.08 0) (length 5.08)
+        (name "JM1_SHIELD"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "S1"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin passive line (at -15.24 5.08 0) (length 5.08) hide
+        (name "JM1_SHIELD"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "S2"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin passive line (at -15.24 2.54 0) (length 5.08)
+        (name "JM2_SHIELD"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "S3"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin passive line (at -15.24 2.54 0) (length 5.08) hide
+        (name "JM2_SHIELD"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "S4"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin passive line (at -15.24 0.0 0) (length 5.08)
+        (name "JM3_SHIELD"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "S5"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin passive line (at -15.24 0.0 0) (length 5.08) hide
+        (name "JM3_SHIELD"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "S6"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+    )
+  )
+)

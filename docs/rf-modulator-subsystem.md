@@ -1,6 +1,6 @@
 # Schindler 2.0 — RF Modulator Output Subsystem
 
-**Status:** CONFIRMED — banked 2026-05-11. Built into every V1 carrier (no daughter card, no Period SKU tier).
+**Status:** CONFIRMED — banked 2026-05-11. Built into every V1 carrier (no daughter card, no Period SKU tier). **Bench phase 2026-06-07:** modulator chip choice closed (ADL5391), bench parts ordered (DigiKey SO 99663237), Manhattan/copper-clad substrate for the amp/filter/output stages.
 **Tier:** Standard V1 feature on all units (Base and Broadcast).
 
 This doc holds architecture and parts spec for the RF modulated output subsystem. Decision history is in [`01-spec-changelog.md`](01-spec-changelog.md); summary spec entry in [`01-spec.md`](01-spec.md); BOM line items in [`bom-v1.md`](bom-v1.md) section 7.
@@ -35,6 +35,8 @@ The daughter-card pattern (mirroring SDI broadcast tier) was reconsidered and dr
 - Clean product story: every Schindler 2.0 has HDMI + SDI + an analog output that's composite OR component OR RF, selectable.
 
 Result: SKU axis collapses to Base + Broadcast (SDI factory option). RF is universal.
+
+> **Reconsideration (2026-06-07):** a panel-mount *daughter-board* partition was re-explored on modularity/EMI grounds (not the old Period-SKU rationale). The interconnect is clean — one composite coax + an I²C/power/ground header, with the RF Si5351 and all VHF kept on the daughter board so nothing radiates across the connector. Viable but not committed; deferred to the carrier-layout review. See [`rf-modulator-daughter-board-option.md`](rf-modulator-daughter-board-option.md).
 
 ### Why DSB-AM, no VSB filter, no audio modulation
 
@@ -121,6 +123,8 @@ RF Si5351 channels:
 - **ch1:** RF video carrier — 61.25 MHz (Ch3) or 67.25 MHz (Ch4), I²C-programmable from Zynq PS
 - **ch2:** RF audio pilot carrier — 65.75 MHz (Ch3) or 71.75 MHz (Ch4), unmodulated CW
 
+**Carrier coherence (clarification, banked 2026-06-07).** The RF picture carrier does *not* need to phase-lock to the genlock loop, and is *not* reprogrammed when video timing changes. NTSC RF is negative-modulated AM: the CRT tuner recovers the composite envelope, and all frame/line timing lives in that recovered baseband. The carrier is pure transport — it only needs to be frequency-stable and in-channel so the tuner's AFT holds. The one line-rate-coherence requirement is the 3.58 MHz **color subcarrier**, which is internal to the composite encoder (`chroma_gen.v`) and identical whether the output goes to the composite BNC or the modulator. So a fixed, stable RF Si5351 (as specified here) is correct; it stays at the selected channel frequency regardless of frame rate or per-CRT timing tricks. See [`crt-lock-characterization.md`](crt-lock-characterization.md) §10.
+
 ### Output level
 
 ~−40 to −30 dBm at the F-connector. Adjustable via ADL5391 GADJ pot (or Z-input bias trim) + ERA-3 fixed gain. Designed for short-coax-into-CRT use, not broadcast.
@@ -141,11 +145,9 @@ Stays inside FCC Part 15.119 cable-output limits with shielded RF section + band
 
 ### 1. AM modulator (the critical part)
 
-**Primary:** `ADL5391ACPZ-R7` — Analog Devices DC-to-2.0 GHz multiplier, 16-LFCSP, ~$15 single qty (R7 reel cut), ~$18 at qty 100.
+**Committed:** `ADL5391ACPZ-R7` — Analog Devices DC-to-2.0 GHz multiplier, 16-LFCSP, ~$16 single qty (R7 reel cut), ~$18 at qty 100. **Chip choice closed 2026-06-07** — ADL5391 is the V1 modulator. The bare chip + the AD `ADL5391-EVALZ` eval board (~$361; proper 4-layer RF board with SMA I/O, chosen to avoid hand-soldering the 4×4 mm 16-LFCSP) were ordered for bench characterization (DigiKey SO 99663237).
 
-**Fallback:** `AD835ARZ` — 250 MHz 4-quadrant multiplier, 8-SOIC, ~$25 at qty 100.
-
-Order both for prototype bench eval. Discussion of trade-offs and rejection of alternatives (AD834, AD633, ADL5390, ADRF6755, single-chip TV modulators) in the rejected pile — see [`01-spec-changelog.md`](01-spec-changelog.md) 2026-05-11 RF tier entry.
+**AD835 head-to-head dropped 2026-06-07.** The `AD835ARZ` (250 MHz 4-quadrant multiplier, 8-SOIC) was the prototype fallback/comparison candidate; not ordered. If a cheap second-topology comparison is ever wanted on the bench, the `MC1496` balanced modulator (~$1, 14-SOIC, 300 MHz — the classic AM-modulator chip, used in real TV modulators) is the cheap option, not another precision multiplier. Rejected production alternatives (AD834, AD633, ADL5390, ADRF6755, single-chip TV modulators) in the rejected pile — see [`01-spec-changelog.md`](01-spec-changelog.md) 2026-05-11 RF tier entry.
 
 ### 2. RF carrier generation
 
@@ -181,7 +183,7 @@ Order both for prototype bench eval. Discussion of trade-offs and rejection of a
 
 - **Amphenol RF 82-4421** class panel-mount 75 Ω, ~$1.50.
 - **PESD3V3L1BA** TVS for ESD, ~$0.20.
-- **C0G 0.1 µF 50 V** DC block, ~$0.10.
+- **C0G 1 nF 50 V** DC block (`KGM21BCG1H102FT` class), ~$0.10. *(Corrected 2026-06-07 from 0.1 µF — at the 67 MHz output a 0.1 µF cap is past self-resonance and goes inductive; 1 nF C0G is a clean low-impedance block well below its SRF. Applies to all RF-path blocks; 0.1 µF stays only on DC rails.)*
 
 ### 9. Shield can
 
@@ -221,7 +223,7 @@ Panel-area impact: F-connector is ~10 mm cutout. Absorbed in the existing ~179 m
 
 ## Open questions for bench-eval phase
 
-- **Final modulator chip:** ADL5391 vs AD835 — pick after prototype characterization. Order one of each.
+- ~~**Final modulator chip:** ADL5391 vs AD835 — pick after prototype characterization.~~ **RESOLVED 2026-06-07: ADL5391 committed; AD835 head-to-head dropped (not ordered). See §1.**
 - **Output bandpass topology:** Chebyshev (steeper, with ripple) vs Butterworth (flat, gentler) — synthesize after measuring actual harmonic content from the modulator.
 - **Si5351 channel allocation:** confirmed ch1 = video carrier, ch2 = audio pilot, ch0 free. Pin layout TBD at schematic phase.
 - **Channel selection UI surface:** front-panel quick-select button (Ch3/Ch4 toggle) or web-only? Defer to UI spec phase.
@@ -231,7 +233,7 @@ Panel-area impact: F-connector is ~10 mm cutout. Absorbed in the existing ~179 m
 
 ## Bench bring-up checklist
 
-1. Order **EC Buying ADL5391 breakout board** ($15-25 AliExpress) + **ADL5391ACPZ-R7** ($15 DigiKey, authenticity backup) + **AD835ARZ** ($25 DigiKey, fallback) + **ERA-3SM+** (~$4 Mini-Circuits direct) + **43 Ω + 82 Ω 1% resistors** (cents, DigiKey, for the 50→75 Ω MLP) + **F-connector + adapters** (~$10 DigiKey).
+1. ~~Order breakout + chips.~~ **DONE 2026-06-07 (DigiKey SO 99663237):** `ADL5391-EVALZ` eval board (modulator core, SMA I/O — chosen over hand-soldering the 16-LFCSP) + `ADL5391ACPZ-R7` ×2 + `ERA-3SM+` ×5 + bias network (240 Ω/12 V & 39 Ω/5 V bias R; `0805CS-152EKTS` 1.5 µH ceramic choke; `KGM21BCG1H102FT` 1 nF C0G ×50 RF blocks) + `43 Ω + 82 Ω` 0805 1% MLP + `3296W-1` 10 k/1 k trims + `PESD3V3L1BA` + F-connectors. SMA interconnect, cap assortment, RG6, and Si5351 boards already on hand. Amp/filter/output stage to be built Manhattan-style on a copper-clad ground plane — **not** solderless breadboard (parasitics unreliable above ~10–30 MHz; carrier is 67 MHz).
 2. Drive Si5351 at 61.25 MHz (Ch3 video carrier) from existing Adafruit 2045 breakout. Verify clean sinusoid out of LPF.
 3. Feed Zybo Z7-20 composite test pattern output into modulator Y input. Adjust DC bias via Z input for proper AM modulation depth (sync tip → max carrier, peak white → min carrier).
 4. Scope + spectrum analyzer (or Rigol DHO814 with FFT) on modulator output. Verify AM modulation envelope follows video.
