@@ -490,6 +490,7 @@ class Dispatcher:
             "system.metrics":       self._m_system_metrics,
             "debug.dump":           self._m_debug_dump,
             "geom.set":             self._m_geom_set,
+            "warp.set":             self._m_warp_set,
             "blend.set":            self._m_blend_set,
             "operator.set":         self._m_operator_set,
             "arc.set":              self._m_arc_set,
@@ -582,6 +583,17 @@ class Dispatcher:
             "params": {"id": cid, "value": out_val},
         })
         return {"id": cid, "value": out_val}
+
+    async def _m_warp_set(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Warp read-engine rotation. Raw 'W <deg>' firmware command (WARP build only;
+        not a catalog control). deg in -180..180; firmware wraps mod 360 and picks the
+        per-geometry prefetch LEAD automatically (identity deep, rotation shallow)."""
+        deg = int(round(float(params.get("deg", 0))))
+        while deg > 180:  deg -= 360
+        while deg < -180: deg += 360
+        self.uart.send_raw(f"W {deg}")
+        self.bus.publish({"jsonrpc": "2.0", "method": "warp.changed", "params": {"deg": deg}})
+        return {"deg": deg}
 
     async def _m_geom_set(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """Read-engine geometry: scale w×h, SIGNED shift (x,y), anchor mode.
