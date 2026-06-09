@@ -73,9 +73,16 @@
 #define FRAME_W           1280
 #define FRAME_H           720
 #endif
-/* Output raster (VTC + read-engine OUT_W/OUT_H). 720p regardless of master. */
+/* Output raster (VTC + read-engine OUT_W/OUT_H) = the VTC mode. For the SCALER build this is 720p even
+ * with a 1080p master (it scales down). For the WARP build at OUTPUT_MODE=1080p30/60 the engine emits the
+ * FULL 1080p raster, so OUT_RASTER follows OUTPUT_1080P (the VTC), NOT the master. */
+#ifdef OUTPUT_1080P
+#define OUT_RASTER_W      1920
+#define OUT_RASTER_H      1080
+#else
 #define OUT_RASTER_W      1280
 #define OUT_RASTER_H      720
+#endif
 /* AXIS data width on the VDMA is 24-bit (RGB888, one pixel-per-clock with no
  * padding). Memory stride must therefore be 3 bytes/pixel, NOT 4 — using 4
  * was the actual reason v_axi4s_vid_out couldn't lock and S2MM was reporting

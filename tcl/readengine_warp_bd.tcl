@@ -64,7 +64,14 @@ create_bd_cell -type module -reference pg_warp_top pg_re_0
 # downscale) every transform is real-time at a lead where worst-set-live <= 4, so 4-way/NTILE=512 (~96
 # RAMB36) fits. LEAD here is the placeholder default; real-time requires the firmware to set it per
 # geometry (deep for downscale). PD/DREQ=64 (feed depth) is independent of associativity.
-set_property -dict [list CONFIG.IN_W {1920} CONFIG.IN_H {1080} CONFIG.OUT_W {1280} CONFIG.OUT_H {720} \
+# Warp OUTPUT raster follows OUTPUT_MODE: 1080p30/60 -> emit full 1920x1080; else 720p. SOURCE (IN_W/IN_H,
+# SLOT_STRIDE) is always the 1920x1080 DDR master regardless of output mode.
+set WARP_OUT_W 1280; set WARP_OUT_H 720
+if {[info exists OUTPUT_MODE] && ($OUTPUT_MODE eq "1080p30" || $OUTPUT_MODE eq "1080p60" || $OUTPUT_MODE eq "1080p")} {
+    set WARP_OUT_W 1920; set WARP_OUT_H 1080
+}
+puts "BUILD: warp pg_re_0 OUT = ${WARP_OUT_W}x${WARP_OUT_H} (OUTPUT_MODE=[expr {[info exists OUTPUT_MODE]?$OUTPUT_MODE:{unset}}])"
+set_property -dict [list CONFIG.IN_W {1920} CONFIG.IN_H {1080} CONFIG.OUT_W $WARP_OUT_W CONFIG.OUT_H $WARP_OUT_H \
     CONFIG.SLOT_STRIDE {6226560} CONFIG.NUM_FRAMES {7} \
     CONFIG.NTILE {512} CONFIG.WAY {4} CONFIG.PD {64} CONFIG.DREQ {64} CONFIG.LEAD {4096}] [get_bd_cells pg_re_0]
 connect_bd_net $pclk  [get_bd_pins pg_re_0/clk]
