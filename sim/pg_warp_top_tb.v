@@ -22,7 +22,7 @@ module pg_warp_top_tb;
         .m_axis_cmd_tdata(cmd_td),.m_axis_cmd_tvalid(cmd_tv),.m_axis_cmd_tready(cmd_tr),
         .s_axis_dm_tdata(dm_td),.s_axis_dm_tvalid(dm_tv),.s_axis_dm_tready(dm_tr),.s_axis_dm_tlast(dm_tl),
         .s_axis_sts_tdata(8'd0),.s_axis_sts_tkeep(1'b0),.s_axis_sts_tlast(1'b0),.s_axis_sts_tvalid(1'b0),
-        .s_axis_sts_tready());
+        .s_axis_sts_tready(),.dm_aresetn());
     always #5 clk=~clk;
 
     reg [23:0] frame[0:IN_W*IN_H-1];

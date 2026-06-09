@@ -53,6 +53,9 @@ module pg_warp_top #(
     input  wire        s_axis_sts_tlast,
     input  wire        s_axis_sts_tvalid,
     output wire        s_axis_sts_tready,
+    output wire        dm_aresetn,             // DataMover+SmartConnect reset: rstn & ~srst (soft-reset also
+                                               // resets the DataMover so a hung HP1 read is cleared on a
+                                               // geometry change — flushing alone can't clear a hung IP).
     output wire [31:0] dbg                     // bring-up diag (routed to axi_gpio_2 readback)
 );
     assign s_axis_sts_tready = 1'b1;          // drain status FIFO
@@ -94,6 +97,7 @@ module pg_warp_top #(
     // the flush) so HP1 never hangs. This makes a live rotation change clean (no transition wedge).
     (* ASYNC_REG="TRUE" *) reg sr1, srst;
     wire engine_rstn = rstn & ~srst;
+    assign dm_aresetn = rstn & ~srst;          // DataMover/SmartConnect held in reset while soft-reset asserts
     always @(posedge clk) begin
         a1<=m_a;b1<=m_b;c1<=m_c;d1<=m_d;e1<=m_e;f1<=m_f; mt1<=matte_rgb;
         a2<=a1;b2<=b1;c2<=c1;d2<=d1;e2<=e1;f2<=f1; mt2<=mt1;
