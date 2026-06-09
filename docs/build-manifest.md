@@ -1285,3 +1285,26 @@ is a **prefetch-LEAD-too-deep cache eviction in pg_tilecache_rt2**, not a pg_til
 - **Bench validation plan:** boot should show a clean 20° rotation (no black). If any UART `W <deg>` angle
   thrashes/underruns, tune `L <n>` live (raise for underrun, LOWER if it ever freezes). WARP DBG telemetry
   `beat_cnt` should no longer freeze.
+
+### ⚠️ FIRST BENCH OF THE LEAD FIX (2026-06-08 eve) — STILL WEDGES; LEAD fix necessary-but-not-sufficient
+Bitstream = `e555c7a` + post-route `phys_opt_design` (route WNS −0.274 → **+0.002**; baseline was +0.240,
+my LEAD comparator cost the margin). Firmware = warp + per-geometry LEAD. Programmed OK; UART alive (read
+via pyserial, NOT `cat`/`stty` — that read nothing).
+- **lead_rt GPIO path WORKS:** `W` reports `lead=1344`; live `L 8192` makes `beat_cnt` advance, `L 256/1344`
+  freeze it → the axi_gpio_12-ch2 → lead_cfg → CDC wire is good and the engine honours it.
+- **But the warp still wedges:** `o_valid=0` for EVERY geometry (identity/rot10/rot20/rot45) and every lead;
+  `beat_cnt` frozen; `dm_tvalid=0 dm_tready=0 cmd_rdy=1` (same as prior v4). The HW DataMover crawls
+  ~100 beats/s (catastrophically slow — one 96-beat tile ≈ 1 s) → consumer starves ~1 line in.
+- **PERSISTENT:** cache rsv/vld clear only on rstn, so once it wedges ~1 line into frame 1 it stays wedged;
+  no live `W`/`L` recovers it. → the LEAD-eviction bug is real but is NOT the whole HW freeze.
+- **Two suspects:** (1) **TIMING** — WNS +0.002 worst path is the prefetch `done3 → tagset`-WRITE cone, the
+  exact logic whose glitch corrupts a tag → fill mis-routes → consumer can't find its tile → persistent
+  wedge (invisible to the timing-less sim). BUT the wedge is *deterministic* every boot/geometry, which
+  argues somewhat AGAINST a marginal glitch. (2) a real consumer/DMA bug the always-delivering behavioral
+  DataMover hides (scattered HP1 reads / receiver wedge).
+- **NEXT:** one instrumented healthy-margin rebuild — register `pf_gate` (drop the dynamic 20-bit compare my
+  LEAD change added near the failing path) + expand `dbg` to expose cache wedge state (rsv-stuck / pf_cnt /
+  lead_cnt / consumer `c_all` / rx_act / nbits). If the wedge clears with good WNS → timing; if it persists,
+  the new telemetry localizes the stuck stage. Likely also need a firmware engine soft-reset (the engine
+  boots with DEFAULT shrink coeffs before firmware sets rot20; can't start clean today). Justin monitor obs
+  (black vs ~1 line then frozen) would corroborate.
