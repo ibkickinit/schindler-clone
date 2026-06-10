@@ -18,12 +18,14 @@ module pg_raster_to_tile #(
     input  wire        s_tuser,                        // SOF
     input  wire        s_tlast,                        // EOL (unused; row width is counted)
     output reg  [23:0] m_tdata, output reg m_tvalid, input wire m_tready,
+    output reg         m_tuser,                        // SOF — first beat of the frame's first tile
     output reg         m_tlast                         // last beat of a 16x16 tile
 );
     localparam integer TILE=(1<<LTILE), BAND=TILE*IN_W, TILES_X=IN_W/TILE, AW=$clog2(BAND);
     (* ram_style="block" *) reg [23:0] band0[0:BAND-1];
     (* ram_style="block" *) reg [23:0] band1[0:BAND-1];
     reg full0, full1;                                  // per-buffer: filled, waiting to emit
+    reg first0, first1, wfirst;                        // per-buffer "this band is the frame's FIRST band"
 
     // ---- WRITE: raster -> the buffer wsel ----
     reg        wsel; reg [11:0] wrow, wcol;
@@ -36,7 +38,7 @@ module pg_raster_to_tile #(
     wire [AW-1:0] waddr = erow*IN_W + ecol;
 
     // ---- EMIT: the buffer esel -> tiled stream (1-cycle BRAM read pipeline) ----
-    reg        esel; reg e_act; reg [11:0] etx; reg [3:0] er, ec;
+    reg        esel; reg e_act; reg [11:0] etx; reg [3:0] er, ec; reg eo_armed;  // arm SOF on band's 1st out beat
     wire efull = esel ? full1 : full0;
     wire [AW-1:0] eaddr = er*IN_W + (etx*TILE + ec);
     reg  s1_v, s1_last, s1_sel; reg [23:0] eq0, eq1;    // S1: registered read + carried meta
@@ -45,26 +47,32 @@ module pg_raster_to_tile #(
 
     always @(posedge clk) begin
         if(!rstn) begin
-            wsel<=0; wrow<=0; wcol<=0; full0<=0; full1<=0;
-            esel<=0; e_act<=0; etx<=0; er<=0; ec<=0; s1_v<=0; m_tvalid<=0; m_tlast<=0;
+            wsel<=0; wrow<=0; wcol<=0; full0<=0; full1<=0; wfirst<=0; first0<=0; first1<=0;
+            esel<=0; e_act<=0; etx<=0; er<=0; ec<=0; s1_v<=0; m_tvalid<=0; m_tlast<=0; m_tuser<=0; eo_armed<=0;
         end else begin
             // ---------- WRITE (SOF beat = (0,0), then advance) ----------
+            if(sof_beat) wfirst<=1'b1;                          // the band starting now is the frame's first
             if(wbeat) begin
                 if(wsel==0) band0[waddr]<=s_tdata; else band1[waddr]<=s_tdata;
                 if(ecol==IN_W-1) begin wcol<=0;
                     if(erow==TILE-1) begin wrow<=0;
-                        if(wsel==0) full0<=1'b1; else full1<=1'b1; wsel<=~wsel;  // band done -> hand off + swap
+                        if(wsel==0) begin full0<=1'b1; first0<=wfirst||sof_beat; end
+                        else        begin full1<=1'b1; first1<=wfirst||sof_beat; end
+                        wfirst<=1'b0; wsel<=~wsel;              // band done -> hand off + swap; next band not first
                     end else wrow<=erow+1'b1;
                 end else begin wcol<=ecol+1'b1; wrow<=erow; end
             end
 
             // ---------- EMIT (S1 read -> OUT, 1-cycle BRAM-read pipeline) ----------
             if(m_tvalid && m_tready) m_tvalid<=0;
-            if(!e_act && !s1_v && efull) begin e_act<=1'b1; etx<=0; er<=0; ec<=0; end  // start (pipeline drained)
+            if(!e_act && !s1_v && efull) begin e_act<=1'b1; etx<=0; er<=0; ec<=0;
+                eo_armed <= (esel ? first1 : first0); end           // arm SOF if this band is the frame's first
             if(emit_go) begin
                 // OUT: push the read of the addr presented LAST cycle
                 m_tdata  <= s1_sel ? eq1 : eq0;
                 m_tvalid <= s1_v;
+                m_tuser  <= s1_v && eo_armed;                       // SOF on the band's FIRST output beat
+                if(s1_v && eo_armed) eo_armed <= 1'b0;
                 m_tlast  <= s1_last;
                 if(e_act) begin                                    // S1: present this addr + advance
                     eq0 <= band0[eaddr]; eq1 <= band1[eaddr];
