@@ -146,9 +146,13 @@
       <div style="display:flex;gap:8px;align-items:center;margin:3px 0"><span style="width:64px">Shift Y</span>
         <input type="range" id="geo-py-r" min="-720" max="720" value="0" style="flex:1">
         <input type="number" id="geo-py-n" min="-720" max="720" value="0" style="width:72px"><span style="opacity:.5">±px</span></div>
-      <div style="display:flex;gap:8px;align-items:center;margin:3px 0"><span style="width:64px">Rotation</span>
-        <input type="range" id="warp-rot-r" min="-180" max="180" value="0" style="flex:1">
-        <input type="number" id="warp-rot-n" min="-180" max="180" value="0" style="width:72px"><span style="opacity:.5">° (warp)</span></div>
+      <div style="display:flex;gap:8px;align-items:center;margin:3px 0"><span style="width:64px">Orient</span>
+        <div id="orient-btns" style="display:flex;gap:6px;flex:1">
+          <button type="button" class="orient-btn" data-deg="0" style="flex:1;padding:6px 0;cursor:pointer">0°</button>
+          <button type="button" class="orient-btn" data-deg="90" style="flex:1;padding:6px 0;cursor:pointer">90°</button>
+          <button type="button" class="orient-btn" data-deg="180" style="flex:1;padding:6px 0;cursor:pointer">180°</button>
+          <button type="button" class="orient-btn" data-deg="270" style="flex:1;padding:6px 0;cursor:pointer">270°</button>
+        </div><span style="opacity:.5">cardinal</span></div>
       <label style="display:block;margin:6px 0"><input type="checkbox" id="geo-anchor"> Anchor scale to top-left corner&nbsp;<span style="opacity:.5">(unchecked = scale about center)</span></label>
       <label style="display:block;margin:6px 0">Resample:
         <select id="geo-filt">
@@ -742,8 +746,14 @@
         geoPending = false;
         const g = geoCompute();
         syncGeoUI();
-        try { await call("geom.set", g); }
-        catch (e) { log(`geom.set: ${e.message}`, "err"); }
+        // WARP build: the Scale sliders drive the WARP's own zoom (invx/invy), NOT the route-B 'G' command
+        // (which writes the same GPIOs as the warp affine coeffs and would clobber the rotation). The daemon
+        // holds the current rotation, so changing scale preserves it. invx=4096 -> 1:1; <4096 zoom-in.
+        // (Shift/anchor/filt/flip in this section are route-B-only and don't affect the warp.)
+        const invx = Math.max(256, Math.min(0xFFFFF, Math.round(4096 * 1280 / g.w)));
+        const invy = Math.max(256, Math.min(0xFFFFF, Math.round(4096 * 720  / g.h)));
+        try { await call("warp.set", { invx, invy }); }
+        catch (e) { log(`warp.set: ${e.message}`, "err"); }
       }
     } finally { geoInflight = false; }
   }
@@ -780,14 +790,11 @@
       finally { inflight = false; if (pending) { const q = pending; pending = null; warpSend(q); } }
     }
     function debounced(p) { clearTimeout(timer); timer = setTimeout(() => warpSend(p), 180); }
-    const rr = document.getElementById("warp-rot-r"),  rn = document.getElementById("warp-rot-n");
-    if (rr && rn) {
-      const setRot = (v, now) => { v = Math.max(-180, Math.min(180, Math.round(v))); rr.value = v; rn.value = v;
-        (now ? warpSend : debounced)({ deg: v }); };
-      rr.addEventListener("input",  () => setRot(+rr.value, false));  // live track, debounced send
-      rr.addEventListener("change", () => setRot(+rr.value, true));   // release -> send now
-      rn.addEventListener("change", () => setRot(+rn.value, true));
-    }
+    // Cardinal orientation buttons (0/90/180/270) — the production engine is the 4 cardinals, not free rotation.
+    const obtns = document.querySelectorAll("#orient-btns .orient-btn");
+    const markActive = (b) => obtns.forEach(x => { x.style.background = (x === b) ? "#2a6" : ""; x.style.color = (x === b) ? "#fff" : ""; });
+    obtns.forEach(b => b.addEventListener("click", () => { markActive(b); warpSend({ deg: +b.dataset.deg }); }));
+    if (obtns[0]) markActive(obtns[0]);   // boot = 0°
   })();
   // maintain-aspect toggle: when re-enabled, immediately re-lock Y to X's ratio (fix any stretch)
   document.getElementById("geo-aspect").addEventListener("change", (e) => {
