@@ -26,6 +26,7 @@ module pg_warp_engine #(
     // output AXIS-ish
     output wire        o_valid,
     output wire [23:0] o_pix,
+    output wire        o_tlast, o_tuser,            // output-tile framing -> pg_tile_to_raster
     input  wire        o_ready,
     // DMA (2x2-block fill)
     output wire        fetch_req,
@@ -40,15 +41,15 @@ module pg_warp_engine #(
     wire        tc_ready, pf_ready;
 
     // ---- consumer affine -> skid -> cache ----
-    wire        ca_v, ca_in, ca_nr; wire [11:0] ca_col, ca_row, ca_fx, ca_fy; wire ca_sr;
-    wire        cm_v; wire [48:0] cm_d;
-    pg_affine #(.OUT_W(OUT_W),.OUT_H(OUT_H),.IN_W(IN_W),.IN_H(IN_H),.CW(CW),.FB(FB)) u_aff_c (
+    wire        ca_v, ca_in, ca_tl, ca_tu; wire [11:0] ca_col, ca_row, ca_fx, ca_fy; wire ca_sr;
+    wire        cm_v; wire [50:0] cm_d;
+    pg_affine_tile #(.OUT_W(OUT_W),.OUT_H(OUT_H),.IN_W(IN_W),.IN_H(IN_H),.CW(CW),.FB(FB),.LTILE(LTILE)) u_aff_c (
         .clk(clk),.rstn(rstn),.sof(sof),.o_valid(ca_v),.o_ready(ca_sr),
         .m_a(m_a),.m_b(m_b),.m_c(m_c),.m_d(m_d),.m_e(m_e),.m_f(m_f),
         .o_in_window(ca_in),.o_src_col(ca_col),.o_src_row(ca_row),
-        .o_h_frac(ca_fx),.o_v_frac(ca_fy),.o_new_row(ca_nr));
-    pg_skid #(.W(49)) u_skid_c (.clk(clk),.rstn(rstn),
-        .s_valid(ca_v),.s_data({ca_col,ca_row,ca_fx,ca_fy,ca_in}),.s_ready(ca_sr),
+        .o_h_frac(ca_fx),.o_v_frac(ca_fy),.o_tlast(ca_tl),.o_tuser(ca_tu));
+    pg_skid #(.W(51)) u_skid_c (.clk(clk),.rstn(rstn),
+        .s_valid(ca_v),.s_data({ca_tl,ca_tu,ca_col,ca_row,ca_fx,ca_fy,ca_in}),.s_ready(ca_sr),
         .m_valid(cm_v),.m_data(cm_d),.m_ready(tc_ready));
 
     // ---- prefetch affine -> skid -> cache (lead-bounded so eviction only hits consumed tiles) ----
@@ -73,11 +74,11 @@ module pg_warp_engine #(
             lead_cnt <= lead_cnt + (pf_acc_r?20'd1:20'd0) - (c_acc_r?20'd1:20'd0);
         end
     end
-    pg_affine #(.OUT_W(OUT_W),.OUT_H(OUT_H),.IN_W(IN_W),.IN_H(IN_H),.CW(CW),.FB(FB)) u_aff_p (
+    pg_affine_tile #(.OUT_W(OUT_W),.OUT_H(OUT_H),.IN_W(IN_W),.IN_H(IN_H),.CW(CW),.FB(FB),.LTILE(LTILE)) u_aff_p (
         .clk(clk),.rstn(rstn),.sof(sof),.o_valid(pa_v),.o_ready(pa_sr && pf_gate),
         .m_a(m_a),.m_b(m_b),.m_c(m_c),.m_d(m_d),.m_e(m_e),.m_f(m_f),
         .o_in_window(pa_in),.o_src_col(pa_col),.o_src_row(pa_row),
-        .o_h_frac(),.o_v_frac(),.o_new_row());
+        .o_h_frac(),.o_v_frac(),.o_tlast(),.o_tuser());
     pg_skid #(.W(25)) u_skid_p (.clk(clk),.rstn(rstn),
         .s_valid(pa_v && pf_gate),.s_data({pa_col,pa_row,pa_in}),.s_ready(pa_sr),
         .m_valid(pm_v),.m_data(pm_d),.m_ready(pf_ready));
@@ -87,7 +88,7 @@ module pg_warp_engine #(
     pg_tilecache_rt2 #(.IN_W(IN_W),.IN_H(IN_H),.LTILE(LTILE),.NTILE(NTILE),.WAY(WAY),.PD(PD),.SB(4)) u_tc (
         .clk(clk),.rstn(rstn),
         .pf_valid(pm_v),.pf_x(pm_d[24:13]),.pf_y(pm_d[12:1]),.pf_inwin(pm_d[0]),.pf_ready(pf_ready),
-        .c_valid(cm_v),.c_x(cm_d[48:37]),.c_y(cm_d[36:25]),.c_fx(cm_d[24:13]),.c_fy(cm_d[12:1]),.c_inwin(cm_d[0]),.c_sb(4'd0),.c_ready(tc_ready),
+        .c_valid(cm_v),.c_x(cm_d[48:37]),.c_y(cm_d[36:25]),.c_fx(cm_d[24:13]),.c_fy(cm_d[12:1]),.c_inwin(cm_d[0]),.c_sb({2'b0,cm_d[50],cm_d[49]}),.c_ready(tc_ready),
         .out_valid(tc_v),.out_p00(tp00),.out_p10(tp10),.out_p01(tp01),.out_p11(tp11),
         .out_fx(tfx),.out_fy(tfy),.out_inwin(tin),.out_sb(tsb),.out_ready(b_ready),
         .fetch_req(fetch_req),.fetch_tx(fetch_tx),.fetch_ty(fetch_ty),.t_ready(fetch_ready),
@@ -104,19 +105,20 @@ module pg_warp_engine #(
 
     // PIPELINED bilinear: stage H (the two row lerps) -> stage V (the column lerp). Splits the
     // chained 2x lerp24 critical path. Backpressured: cache out_ready = h_ready.
-    reg        h_v, h_in; reg [23:0] h_top, h_bot; reg [7:0] h_wy;
-    reg        ov; reg [23:0] opix;
+    reg        h_v, h_in; reg [23:0] h_top, h_bot; reg [7:0] h_wy; reg [1:0] h_sb;
+    reg        ov; reg [23:0] opix; reg [1:0] o_sb;
     wire       v_ready = !ov || o_ready;
     wire       h_ready = !h_v || v_ready;
     wire       b_ready = h_ready;
     assign o_valid = ov; assign o_pix = opix;
+    assign o_tlast = o_sb[1]; assign o_tuser = o_sb[0];   // framing travels with the pixel through h/v
     always @(posedge clk) begin
         if(!rstn) begin h_v<=1'b0; ov<=1'b0; end
         else begin
             if(ov && o_ready) ov<=1'b0;
-            if(v_ready) begin ov<=h_v; opix <= h_in ? lerp24(h_top,h_bot,h_wy) : matte; end
+            if(v_ready) begin ov<=h_v; opix <= h_in ? lerp24(h_top,h_bot,h_wy) : matte; o_sb<=h_sb; end
             if(h_ready) begin
-                h_v<=tc_v; h_in<=tin; h_wy<=wy;
+                h_v<=tc_v; h_in<=tin; h_wy<=wy; h_sb<=tsb[1:0];
                 h_top<=lerp24(tp00,tp10,wx); h_bot<=lerp24(tp01,tp11,wx);
             end
         end

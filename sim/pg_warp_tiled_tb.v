@@ -10,7 +10,8 @@ module pg_warp_tiled_tb;
     localparam TILES_X=IN_W/TILE;
     reg clk=0, rstn=0, sof=0; always #5 clk=~clk;
     reg signed [CW-1:0] m_a,m_b,m_c,m_d,m_e,m_f; reg [23:0] matte=24'h101010;
-    wire o_valid; wire [23:0] o_pix; reg o_ready=1;
+    wire o_valid; wire [23:0] o_pix; wire o_tl, o_tu; wire o_ready;     // engine outputs tile-order + framing
+    wire [23:0] r_td; wire r_tv, r_tl, r_tu, r_sr; reg r_tr=1;          // raster after pg_tile_to_raster
     wire wreq; wire [11:0] wtx,wty; wire fv; wire [95:0] fblk; wire fl; wire t_ready;
     reg busy=0;                                                  // DataMover streaming a tile
     wire dm_req; wire [31:0] dm_addr; wire [11:0] dm_len; wire dm_ready = !busy;  // ready only when not streaming
@@ -20,9 +21,16 @@ module pg_warp_tiled_tb;
                      .NTILE(512),.WAY(4),.PD(64),.CW(CW),.FB(FB),.LEAD(8192)) dut(
         .clk(clk),.rstn(rstn),.sof(sof),.lead_rt(20'd0),
         .m_a(m_a),.m_b(m_b),.m_c(m_c),.m_d(m_d),.m_e(m_e),.m_f(m_f),.matte(matte),
-        .o_valid(o_valid),.o_pix(o_pix),.o_ready(o_ready),
+        .o_valid(o_valid),.o_pix(o_pix),.o_tlast(o_tl),.o_tuser(o_tu),.o_ready(o_ready),
         .fetch_req(wreq),.fetch_tx(wtx),.fetch_ty(wty),.fetch_ready(t_ready),
         .fill_valid(fv),.fill_blk(fblk),.fill_last(fl));
+    // tile-order engine output -> raster reorder
+    pg_tile_to_raster #(.OUT_W(OUT_W),.LTILE(LTILE)) u_t2r(
+        .clk(clk),.rstn(rstn),
+        .s_axis_tdata(o_pix),.s_axis_tvalid(o_valid),.s_axis_tready(o_ready),
+        .s_axis_tuser(o_tu),.s_axis_tlast(o_tl),
+        .m_axis_tdata(r_td),.m_axis_tvalid(r_tv),.m_axis_tready(r_tr),
+        .m_axis_tuser(r_tu),.m_axis_tlast(r_tl));
     pg_tile_dma #(.IN_W(IN_W),.LTILE(LTILE),.TILED(1),.DREQ(64)) u_dma(
         .clk(clk),.rstn(rstn),.srst(1'b0),.frame_base(32'd0),
         .t_req(wreq),.t_tx(wtx),.t_ty(wty),.t_ready(t_ready),
@@ -66,8 +74,8 @@ module pg_warp_tiled_tb;
             tp=g24(p00,p10,wx); bt=g24(p01,p11,wx); golden=g24(tp,bt,wy); end end endfunction
 
     integer cn,errors,axx,ayy; real PI;
-    always @(posedge clk) if(rstn && o_valid && o_ready) begin
-        if(o_pix!==golden(cn)) begin errors=errors+1; if(errors<6)$display("  ERR idx %0d got %h exp %h",cn,o_pix,golden(cn)); end
+    always @(posedge clk) if(rstn && r_tv && r_tr) begin   // check RASTER out (engine tile-order -> reorder)
+        if(r_td!==golden(cn)) begin errors=errors+1; if(errors<6)$display("  ERR idx %0d got %h exp %h",cn,r_td,golden(cn)); end
         cn=cn+1; end
     task setrot; input real deg; begin : s real th,co,si,cxo,cyo,cxs,cys; th=deg*PI/180.0;co=$cos(th);si=$sin(th);
         cxo=OUT_W/2.0;cyo=OUT_H/2.0;cxs=IN_W/2.0;cys=IN_H/2.0;
