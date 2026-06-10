@@ -23,6 +23,7 @@ module pg_warp_top #(
     parameter integer PD    = 16,
     parameter integer DREQ  = 16,
     parameter integer LTILE = 4,
+    parameter integer TILED = 0,                  // 0=raster DDR source (legacy); 1=TILED DDR (1 burst/tile)
     parameter integer LEAD  = 2048,
     parameter integer CW = 32,
     parameter integer FB = 12
@@ -118,7 +119,7 @@ module pg_warp_top #(
         .fetch_req(wreq),.fetch_tx(wtx),.fetch_ty(wty),.fetch_ready(t_rdy),
         .fill_valid(fv),.fill_blk(fblk),.fill_last(fl));
 
-    pg_tile_dma #(.IN_W(IN_W),.LTILE(LTILE),.DREQ(DREQ)) u_dma (
+    pg_tile_dma #(.IN_W(IN_W),.LTILE(LTILE),.TILED(TILED),.DREQ(DREQ)) u_dma (
         .clk(clk),.rstn(rstn),.srst(srst),.frame_base(frame_base),
         .t_req(wreq),.t_tx(wtx),.t_ty(wty),.t_ready(t_rdy),
         .fill_valid(fv),.fill_blk(fblk),.fill_last(fl),
