@@ -176,3 +176,32 @@ W=sim/.v3; rm -rf $W; mkdir -p $W; cd $W; xvlog --nolog ../../hdl/pg_affine.v ..
   1080p60-final needs the simple direct/band buffer (not yet written; see B.4).
 - **Process:** launch builds as BACKGROUND tasks; the completion notification is what re-invokes the agent.
   Do not answer "status" and stop — nothing drives progress between prompts otherwise.
+
+---
+
+## H. BENCH FINDINGS 2026-06-10 (first tiled-orient build) — READ THIS
+
+First tiled-orient bitstream (warp engine + pg_tile_dma TILED=1 + pg_raster_to_tile, NTILE=256/LEAD=2048
+to fit BRAM) built clean (WNS +0.128) + ran on silicon. Bench results:
+
+- **Tiled path WORKS at partial read:** 0/180 at 1:1 (a 1280x720 CENTER CROP = 3600 tiles) render clean.
+- **Firmware affine had two real bugs (FIXED, firmware-only, committed):**
+  1. NO fit-scale -> 90/270 (transpose) mapped the 1280-wide output across >1080 source rows = OFF-SCREEN.
+     Fix: `warp_set_rotation` now fits the rotated source to the raster (cos==0 detects transpose; robust
+     to the daemon's 270->-90 normalization). User invx/invy = scale ON TOP of fit.
+  2. NO pan input -> Shift was a no-op. Fix: panx/pany param, wired firmware+daemon+GUI.
+- **BUT the fit (full-frame read = 8160 tiles) STARVES the cache -> scrambled/torn output.** Telemetry:
+  `opix/frame=910825 (exp 921600)`, `eol=711 (exp 720)`, **`starved=12107`**. LEAD sweep vs the starved
+  counter: best is LEAD=12288 (starved 12107->7575, still torn); 16384+ FREEZES (eviction). **No LEAD
+  eliminates starvation.** => the BRAM-shrunk associative cache CANNOT sustain the full-frame orient read.
+  The 1:1 crop hid this (3600 vs 8160 tiles).
+
+**CONCLUSION (data-backed): the warp associative cache is the wrong structure for the orient read.** The
+production-final needs the DIRECT/STREAMING buffer: the orient access is SEQUENTIAL (row-major for 0/180,
+column for 90/270), so read tiles in order into a small streaming buffer — no associative tags, no eviction,
+no starvation, and far less BRAM than NTILE=512 (which doesn't even fit alongside r2t). This is THE next
+build. The firmware fit+pan + the tiled capture/DMA all stay; only the cache module is replaced.
+
+Bench tip learned: the daemon venv is `/tmp/schindlerd-venv/bin/python3` (ephemeral!), catalog is
+`control-plane/catalog-v0.2.0.json`, launch from `control-plane/schindlerd/`. UART telemetry has `starved=`
+/`opix/frame=` — tune live via `L <n>` and read the counter, no image needed.
