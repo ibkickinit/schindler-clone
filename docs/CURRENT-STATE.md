@@ -205,3 +205,21 @@ build. The firmware fit+pan + the tiled capture/DMA all stay; only the cache mod
 Bench tip learned: the daemon venv is `/tmp/schindlerd-venv/bin/python3` (ephemeral!), catalog is
 `control-plane/catalog-v0.2.0.json`, launch from `control-plane/schindlerd/`. UART telemetry has `starved=`
 /`opix/frame=` — tune live via `L <n>` and read the counter, no image needed.
+
+---
+
+## I. DIRECT ENGINE = OUTPUT-TILE PROCESSING (2026-06-10, decided)
+
+BRAM is 100% full (140/140 tiles, impl util report). So the fix must REDUCE BRAM, not add. The associative
+cache (44 BRAM @256) can't hold the ~300-tile full-frame working set, and there's no room to grow it.
+
+**Architecture: process the OUTPUT in 16x16 tiles (not raster).** For each output tile, the affine gives the
+source region -> fetch its 1-4 source tiles (tiny working set, ~2 BRAM) -> bilinear-resample -> emit the
+output tile -> a tile->raster band reorders to raster for the VTC. No prefetch race, no eviction, no
+starvation (deterministic per-tile fetch); ~30 BRAM total (output band + a few source tiles) vs the 44+ cache
+-> FREES BRAM. Handles 0/90/180/270 (the in-tile transpose) + scale + pan, and the per-pixel path
+(BRAM-read + bilinear) closes 148.5 MHz (already measured).
+
+Pieces: [P1] pg_tile_to_raster (output band->raster; mirror of validated pg_raster_to_tile) [P2] output-tile
+address-gen + source-tile fetch (reuse pg_affine + pg_tile_dma TILED) [P3] bilinear resample from the few
+fetched tiles [P4] integrate, swap out the warp prefetch/cache/gather. Firmware fit+pan + tiled capture stay.
