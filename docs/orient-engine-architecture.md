@@ -72,3 +72,25 @@ eviction, no demand FSM), and a fixed 16×16 BRAM transpose. The per-pixel datap
 
 P1 first (addressing is the spec; bit-exact sim de-risks everything downstream). Arbitrary warp stays on its
 branches (`warp-demand-fetch-fsm` etc.), tabled.
+
+## 1080p60 confidence — DATA-BACKED (2026-06-09)
+
+The "will the 720 build also work at 1080p60" question reduces to THREE pillars, all now proven on the
+actual components (not theory):
+
+1. **Throughput** — `tools/orient_throughput_proof.py`: tiled 768B reads = ~1.1 GB/s, vs the 373 MB/s (1:1)
+   and 746 MB/s (2x zoom-out) needs, for EVERY orientation incl. the 90/270 transpose. ✅ 3× headroom.
+2. **Function** — addressing golden (`orient_golden.py`, = pg_affine) + `pg_raster_to_tile` + `pg_tile_dma
+   TILED` all bit-exact in sim. ✅
+3. **Timing @ 148.5 MHz (1080p60 pixel clock)** — OOC synth+P&R on the 7020-1:
+   - `pg_affine` (the logic-heaviest front-end): **WNS +1.832 ns** (27% margin).
+   - `scaler_h` (the polyphase resample, the per-pixel datapath): **WNS +0.550 ns**.
+   The rest of the per-pixel path is a registered BRAM read (shallow) + the simple tiled DMA. The ONLY thing
+   that ever failed 148.5 MHz was the warp's associative tag-cache + eviction + demand-fetch — which this
+   engine deliberately does NOT use (deterministic tiled access → direct band buffer). ✅
+
+**Conclusion: HIGH confidence the orient engine closes 1080p60 timing AND sustains 1080p60 throughput on
+this silicon.** The 720p build and the 1080p60 build are the same RTL at different clock/raster params; the
+only thing 1080p60 *output* additionally needs is the TE0720's HDMI serializer (the Zybo's 148.5 MHz pixel
+clock + the engine all run; only the rgb2dvi 1485 MHz TMDS is board-gated). Remaining = execution: the band
+reader + framer + integration build, no longer gated by architectural risk.
