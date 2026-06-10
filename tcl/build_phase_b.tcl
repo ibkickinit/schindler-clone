@@ -1117,7 +1117,7 @@ create_bd_cell -type ip -vlnv xilinx.com:ip:system_ila ila_scaler_out
 set_property -dict [list \
     CONFIG.C_NUM_MONITOR_SLOTS  {1} \
     CONFIG.C_SLOT_0_INTF_TYPE   {xilinx.com:interface:axis_rtl:1.0} \
-    CONFIG.C_DATA_DEPTH         {256} \
+    CONFIG.C_DATA_DEPTH         {1024} \
     CONFIG.C_EN_STRG_QUAL       {1} \
     CONFIG.C_ADV_TRIGGER        {true} \
 ] [get_bd_cells ila_scaler_out]
@@ -1130,7 +1130,7 @@ create_bd_cell -type ip -vlnv xilinx.com:ip:system_ila ila_mm2s_out
 set_property -dict [list \
     CONFIG.C_NUM_MONITOR_SLOTS  {1} \
     CONFIG.C_SLOT_0_INTF_TYPE   {xilinx.com:interface:axis_rtl:1.0} \
-    CONFIG.C_DATA_DEPTH         {256} \
+    CONFIG.C_DATA_DEPTH         {1024} \
     CONFIG.C_EN_STRG_QUAL       {1} \
     CONFIG.C_ADV_TRIGGER        {true} \
 ] [get_bd_cells ila_mm2s_out]
