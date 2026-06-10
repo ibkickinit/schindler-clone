@@ -12,7 +12,8 @@ module pg_warp_tiled_tb;
     reg signed [CW-1:0] m_a,m_b,m_c,m_d,m_e,m_f; reg [23:0] matte=24'h101010;
     wire o_valid; wire [23:0] o_pix; reg o_ready=1;
     wire wreq; wire [11:0] wtx,wty; wire fv; wire [95:0] fblk; wire fl; wire t_ready;
-    wire dm_req; wire [31:0] dm_addr; wire [11:0] dm_len; reg dm_ready=1;
+    reg busy=0;                                                  // DataMover streaming a tile
+    wire dm_req; wire [31:0] dm_addr; wire [11:0] dm_len; wire dm_ready = !busy;  // ready only when not streaming
     reg [63:0] beat=0; reg bvalid=0; wire bready; reg blast=0;
 
     pg_warp_engine #(.OUT_W(OUT_W),.OUT_H(OUT_H),.IN_W(IN_W),.IN_H(IN_H),.LTILE(LTILE),
@@ -33,7 +34,7 @@ module pg_warp_tiled_tb;
     function [23:0] pxf; input integer x,y; pxf=frame[y*IN_W+x]; endfunction
 
     // ---- behavioral TILED DataMover: cmd -> stream the tile's 768 bytes (row-major px) as 64b beats ----
-    reg [7:0] tilebuf[0:767]; integer cidx,ctx,cty,r,c,kk,bb; reg busy=0; reg [11:0] nbeat;
+    reg [7:0] tilebuf[0:767]; integer cidx,ctx,cty,r,c,kk,bb; reg [11:0] nbeat;
     wire cgo = dm_req && dm_ready && !busy;
     always @(posedge clk) begin
         if(!rstn) begin busy<=0; bvalid<=0; bb<=0; end
