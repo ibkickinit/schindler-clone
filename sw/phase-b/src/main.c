@@ -115,6 +115,18 @@ static int vdma_setup_channel(int direction, UINTPTR *frame_addrs)
     cfg.VertSizeInput     = FRAME_H;
     cfg.HoriSizeInput     = STRIDE;
     cfg.Stride            = STRIDE;
+#ifdef ORIENT_TILED
+    /* ORIENT_TILED: the S2MM stores the source TILED (16x16 tiles, tile-row-major) from
+     * pg_raster_to_tile. Each tile = one VDMA "line": 768 B (256 px * 3), tlast per tile,
+     * tuser=SOF per frame. 1920x1080 -> TILES_X=120, full tile-rows = 1080/16 = 67 (the
+     * partial half-row is dropped/overwritten) -> 8040 tiles/frame, contiguous (stride 768).
+     * The read engine (pg_tile_dma TILED=1) fetches tile (tx,ty) at base+(ty*120+tx)*768. */
+    if (direction == XAXIVDMA_WRITE) {
+        cfg.HoriSizeInput = 768;     /* one tile = 16*16*3 bytes */
+        cfg.VertSizeInput = 8040;    /* 67 tile-rows * 120 tiles  */
+        cfg.Stride        = 768;     /* tiles contiguous in DDR    */
+    }
+#endif
 #if defined(READENGINE_FULLMASTER)
     /* DIAGNOSTIC 2026-06-02: in full-master mode S2MM stores the full 1920×1080
      * master, but the output VTC raster is 1280×720. The MM2S (read) leg must

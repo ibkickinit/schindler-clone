@@ -73,7 +73,8 @@ if {[info exists OUTPUT_MODE] && ($OUTPUT_MODE eq "1080p30" || $OUTPUT_MODE eq "
 puts "BUILD: warp pg_re_0 OUT = ${WARP_OUT_W}x${WARP_OUT_H} (OUTPUT_MODE=[expr {[info exists OUTPUT_MODE]?$OUTPUT_MODE:{unset}}])"
 set_property -dict [list CONFIG.IN_W {1920} CONFIG.IN_H {1080} CONFIG.OUT_W $WARP_OUT_W CONFIG.OUT_H $WARP_OUT_H \
     CONFIG.SLOT_STRIDE {6226560} CONFIG.NUM_FRAMES {7} \
-    CONFIG.NTILE {512} CONFIG.WAY {4} CONFIG.PD {64} CONFIG.DREQ {64} CONFIG.LEAD {4096}] [get_bd_cells pg_re_0]
+    CONFIG.NTILE {512} CONFIG.WAY {4} CONFIG.PD {64} CONFIG.DREQ {64} CONFIG.LEAD {4096} \
+    CONFIG.TILED [expr {[info exists ::env(ORIENT_TILED)] ? $::env(ORIENT_TILED) : 0}]] [get_bd_cells pg_re_0]
 connect_bd_net $pclk  [get_bd_pins pg_re_0/clk]
 connect_bd_net $prstn [get_bd_pins pg_re_0/rstn]
 connect_bd_net [get_bd_pins axi_vdma_0/s2mm_frame_ptr_out] [get_bd_pins pg_re_0/frame_ptr]

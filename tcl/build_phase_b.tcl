@@ -374,10 +374,13 @@ puts "BUILD: using SCALER_MODULE=$SCALER_MODULE"
 create_bd_cell -type module -reference $SCALER_MODULE scaler_0
 connect_bd_intf_net [get_bd_intf_pins v_vid_in_axi4s_0/video_out] [get_bd_intf_pins scaler_0/s_axis]
 
-# iter5-bisect-iter4d3: bypass AXIS FIFO — connect scaler directly to S2MM
-# as in iter4d-3 (which shipped visually clean). FIFO is one of three iter4h
-# additions being bisected to isolate the scroll cause.
-connect_bd_intf_net [get_bd_intf_pins scaler_0/m_axis] [get_bd_intf_pins axi_vdma_0/S_AXIS_S2MM]
+# iter5-bisect-iter4d3: bypass AXIS FIFO — connect scaler directly to S2MM.
+# ORIENT_TILED: splice pg_raster_to_tile (raster->tiled DDR) between scaler and S2MM (done below,
+# after the pixel clock/reset are defined). When tiled, the direct connection here is skipped.
+set ORIENT_TILED [expr {[info exists ::env(ORIENT_TILED)] ? $::env(ORIENT_TILED) : 0}]
+if {$ORIENT_TILED eq "0"} {
+    connect_bd_intf_net [get_bd_intf_pins scaler_0/m_axis] [get_bd_intf_pins axi_vdma_0/S_AXIS_S2MM]
+}
 
 # =============================================================================
 # Video Timing Controller — generates output sync timing
@@ -674,6 +677,20 @@ if {$COLOR_PIPELINE ne "bypass"} {
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]        [get_bd_pins v_tc_rx/resetn]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]        [get_bd_pins v_vid_in_axi4s_0/aresetn]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]        [get_bd_pins scaler_0/aresetn]
+
+# ORIENT_TILED: splice pg_raster_to_tile (raster -> tiled DDR) between scaler_0 and the S2MM.
+# Source is captured tiled (16x16, tile-row-major) so the warp/orient read engine fetches any tile
+# as ONE contiguous 768B burst (the 1080p60 throughput proof). Validated bit-exact in sim
+# (pg_warp_tiled_tb). The S2MM geometry is set to the tiled layout in firmware (main.c, ORIENT_TILED).
+if {$ORIENT_TILED ne "0"} {
+    create_bd_cell -type module -reference pg_raster_to_tile r2t_0
+    set_property -dict [list CONFIG.IN_W {1920} CONFIG.LTILE {4}] [get_bd_cells r2t_0]
+    connect_bd_net $pclk_in [get_bd_pins r2t_0/clk]
+    connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn] [get_bd_pins r2t_0/rstn]
+    connect_bd_intf_net [get_bd_intf_pins scaler_0/m_axis] [get_bd_intf_pins r2t_0/s_axis]
+    connect_bd_intf_net [get_bd_intf_pins r2t_0/m_axis]    [get_bd_intf_pins axi_vdma_0/S_AXIS_S2MM]
+    puts "ORIENT_TILED: spliced pg_raster_to_tile (raster->tiled DDR) before S2MM"
+}
 # iter5-bisect-iter4d3: AXIS FIFO removed — reset wire not needed
 
 # =============================================================================
