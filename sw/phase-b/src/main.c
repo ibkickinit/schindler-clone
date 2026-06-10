@@ -977,6 +977,7 @@ static int warp_sin(int d) {           /* sin(d deg)*4096, any integer d */
 }
 static int warp_cos(int d) { return warp_sin(d + 90); }
 static int g_warp_deg = 0, g_warp_invx = 4096, g_warp_invy = 4096;  /* Q12 inverse-scale */
+static int g_warp_panx = 0, g_warp_pany = 0;                        /* output-px pan (shift) */
 static unsigned g_warp_lead_ovr = 0;        /* UART 'L <n>' manual lead; 0 = auto per-geometry */
 static unsigned g_warp_lead = 0;            /* last lead actually written (for status / 'L' query) */
 
@@ -1010,24 +1011,37 @@ static unsigned warp_calc_lead(int deg, int invx, int invy)
 
 /* Compute + write the 6 affine coeffs for rotation `deg` with inverse-scale
  * invx/invy (Q12; 4096 = 1.0 source-px per output-px, >4096 = downscale). */
-static void warp_set_rotation(int deg, int invx, int invy)
+static void warp_set_rotation(int deg, int invx, int invy, int panx, int pany)
 {
     int co = warp_cos(deg), si = warp_sin(deg);          /* Q12 */
     int cxo = OUT_RASTER_W / 2, cyo = OUT_RASTER_H / 2;   /* output center */
     int cxs = FRAME_W / 2,      cys = FRAME_H / 2;        /* source center */
-    int m_a =  (int)(((long long)co * invx) >> 12);
-    int m_b =  (int)(((long long)si * invx) >> 12);
-    int m_d = -(int)(((long long)si * invy) >> 12);
-    int m_e =  (int)(((long long)co * invy) >> 12);
+    /* FIT the (rotated) source into the output raster, keeping aspect. Without this, a 90/270 rotation
+     * of a 1920x1080 source maps the 1280-wide output across 1280 source-ROWS (>1080) -> off-screen.
+     * rw/rh = rotated source dims; fit = source-px per output-px so the whole source fits. The incoming
+     * invx/invy is then the USER scale on top of fit (4096 = 100% = fit-to-screen). */
+    int rw  = (deg == 90 || deg == 270) ? FRAME_H : FRAME_W;
+    int rh  = (deg == 90 || deg == 270) ? FRAME_W : FRAME_H;
+    int fbx = rw * 4096 / OUT_RASTER_W, fby = rh * 4096 / OUT_RASTER_H;
+    int fit = fbx > fby ? fbx : fby;
+    int ix  = (int)(((long long)fit * invx) >> 12);
+    int iy  = (int)(((long long)fit * invy) >> 12);
+    int m_a =  (int)(((long long)co * ix) >> 12);
+    int m_b =  (int)(((long long)si * ix) >> 12);
+    int m_d = -(int)(((long long)si * iy) >> 12);
+    int m_e =  (int)(((long long)co * iy) >> 12);
     int m_c = cxs * 4096 - m_a * cxo - m_b * cyo;
     int m_f = cys * 4096 - m_d * cxo - m_e * cyo;
+    /* pan: shift the image by (panx,pany) output px; matte fills the vacated edge */
+    m_c -= m_a * panx + m_b * pany;
+    m_f -= m_d * panx + m_e * pany;
     Xil_Out32(GEO_A_BASE + 0x00, (u32)m_a);
     Xil_Out32(GEO_A_BASE + 0x08, (u32)m_b);
     Xil_Out32(GEO_B_BASE + 0x00, (u32)m_c);
     Xil_Out32(GEO_B_BASE + 0x08, (u32)m_d);
     Xil_Out32(GEO_C_BASE + 0x00, (u32)m_e);
     Xil_Out32(GEO_C_BASE + 0x08, (u32)m_f);
-    g_warp_deg = deg; g_warp_invx = invx; g_warp_invy = invy;
+    g_warp_deg = deg; g_warp_invx = invx; g_warp_invy = invy; g_warp_panx = panx; g_warp_pany = pany;
     /* set the prefetch LEAD for this geometry (manual override wins). Takes effect at the next sof
      * (lead_cnt resets there), same vblank the new coeffs latch. */
 #ifdef LEAD_GPIO_BASE
@@ -1294,11 +1308,13 @@ static void uart_dispatch(const char *line)
          *   W               — query current. The prefetch LEAD auto-tracks the geometry
          *   (warp_calc_lead); use 'L <n>' to override live if an angle thrashes/underruns. */
 #ifdef WARP_BUILD
-        int deg; unsigned ivx = 4096, ivy = 4096, t;
+        int deg, pnx = 0, pny = 0; unsigned ivx = 4096, ivy = 4096, t;
         if (parse_int(&p, &deg)) {
             if (parse_uint(&p, &t) && t >= 256u) ivx = t;
             if (parse_uint(&p, &t) && t >= 256u) ivy = t;
-            warp_set_rotation(deg, (int)ivx, (int)ivy);
+            parse_int(&p, &pnx);                 /* optional pan X (output px, signed) */
+            parse_int(&p, &pny);                 /* optional pan Y */
+            warp_set_rotation(deg, (int)ivx, (int)ivy, pnx, pny);
         } else {
             xil_printf("WARP rot=%d invx=%d invy=%d lead=%u\r\n",
                        g_warp_deg, g_warp_invx, g_warp_invy, (unsigned)g_warp_lead);
@@ -1314,7 +1330,7 @@ static void uart_dispatch(const char *line)
         unsigned n;
         if (parse_uint(&p, &n)) {
             g_warp_lead_ovr = n & 0x000FFFFFu;            /* 20-bit; 0 = auto */
-            warp_set_rotation(g_warp_deg, g_warp_invx, g_warp_invy);  /* re-apply -> writes lead GPIO */
+            warp_set_rotation(g_warp_deg, g_warp_invx, g_warp_invy, g_warp_panx, g_warp_pany);  /* re-apply -> writes lead GPIO */
             xil_printf("WARP lead %s -> %u\r\n", g_warp_lead_ovr ? "OVERRIDE" : "AUTO", (unsigned)g_warp_lead);
         } else {
             xil_printf("WARP lead=%u (%s)\r\n", (unsigned)g_warp_lead, g_warp_lead_ovr ? "override" : "auto");
@@ -2514,7 +2530,7 @@ int main(void)
      * unconsumed tile). warp_set_rotation now writes the per-geometry LEAD GPIO (rot20 -> 1344, proven
      * deadlock-safe in sim/pg_warp_real_faithful_tb.v). 'W <deg>' to change rotation, 'L <n>' to tune lead. */
     Xil_Out32(INVW_GPIO_BASE, 1u);           /* axi_gpio_12 = mux sel = warp (explicit; def is 1) */
-    warp_set_rotation(0, 4096, 4096);        /* boot IDENTITY — matches BD default coeffs (NO shrink-boot,
+    warp_set_rotation(0, 4096, 4096, 0, 0);  /* boot IDENTITY — matches BD default coeffs (NO shrink-boot,
                                               * NO geometry transition); simplest cache case. 'W <deg>' to rotate */
     xil_printf("WARP engaged: %ux%u master -> %ux%u output, boot IDENTITY (UART 'W <deg>' / 'L <n>')\r\n",
                FRAME_W, FRAME_H, OUT_RASTER_W, OUT_RASTER_H);
