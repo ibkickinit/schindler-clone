@@ -223,3 +223,27 @@ starvation (deterministic per-tile fetch); ~30 BRAM total (output band + a few s
 Pieces: [P1] pg_tile_to_raster (output band->raster; mirror of validated pg_raster_to_tile) [P2] output-tile
 address-gen + source-tile fetch (reuse pg_affine + pg_tile_dma TILED) [P3] bilinear resample from the few
 fetched tiles [P4] integrate, swap out the warp prefetch/cache/gather. Firmware fit+pan + tiled capture stay.
+
+---
+
+## J. BENCH 2026-06-10 PM — tile-order engine: working-set SOLVED, DMA throughput is the wall
+
+Built+ran the tile-order engine (pg_affine_tile + pg_tile_to_raster, NTILE=64, NO_ILA, WNS +0.377).
+- **WIN:** frame now COMPLETES — telemetry opix/frame=921600 (was 910825), eol=720 (was 711). The
+  tile-order walk collapsed the working set so the tiny cache no longer starves on the WORKING SET.
+- **REMAINING:** residual starved=33608 (constant across LEAD 256..3072 -> NOT a lead problem). It's a
+  progressive DMA-THROUGHPUT shortfall: 0deg renders clean ~top-55%, then the DMA falls behind -> line-FIFO
+  empties mid-line -> axis_to_vid_io advances -> line WRAPS (lateral shift) + bottom tears. 90/180/270 far
+  worse (transpose -> source tiles STRIDED in DDR -> DMA even less efficient). Scale-smaller worst (most
+  source area/output tile). Scale-bigger noisy. Pan ~works.
+- ROOT: per-output-tile fetch of ~4-9 source tiles, each a separate 768B DataMover command; horizontal
+  neighbors are CONTIGUOUS in tiled DDR but fetched as separate bursts, and vertical/transpose neighbors
+  page-miss. Effective DMA throughput < the ~800 MB/s the fit demands.
+
+**NEXT (the real fix): DMA read coalescing in pg_tile_dma** — merge a run of consecutive tiles (same ty,
+tx..tx+k contiguous in DDR) into ONE burst (k*768 B) -> far fewer commands + page-opens -> throughput jumps.
+For the transpose (90/270) the tiled-DDR layout strides; a column-major tile copy (or storing BOTH layouts)
+makes those contiguous too. Also worth: bypass the line-FIFO and drive m_axis from pg_tile_to_raster's own
+SOF/EOL (the band already buffers SOF-early) to remove any FIFO-regen contribution to the wrap.
+Engine + reorder + tile-order walk are PROVEN (sim bit-exact, frame completes on silicon); this is the last
+throughput layer.
