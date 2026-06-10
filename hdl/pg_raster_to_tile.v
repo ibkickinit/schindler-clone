@@ -14,12 +14,12 @@ module pg_raster_to_tile #(
     parameter integer LTILE = 4                       // TILE = 16
 ) (
     input  wire        clk, rstn,
-    input  wire [23:0] s_tdata, input wire s_tvalid, output wire s_tready,
-    input  wire        s_tuser,                        // SOF
-    input  wire        s_tlast,                        // EOL (unused; row width is counted)
-    output reg  [23:0] m_tdata, output reg m_tvalid, input wire m_tready,
-    output reg         m_tuser,                        // SOF — first beat of the frame's first tile
-    output reg         m_tlast                         // last beat of a 16x16 tile
+    input  wire [23:0] s_axis_tdata, input wire s_axis_tvalid, output wire s_axis_tready,
+    input  wire        s_axis_tuser,                        // SOF
+    input  wire        s_axis_tlast,                        // EOL (unused; row width is counted)
+    output reg  [23:0] m_axis_tdata, output reg m_axis_tvalid, input wire m_axis_tready,
+    output reg         m_axis_tuser,                        // SOF — first beat of the frame's first tile
+    output reg         m_axis_tlast                         // last beat of a 16x16 tile
 );
     localparam integer TILE=(1<<LTILE), BAND=TILE*IN_W, TILES_X=IN_W/TILE, AW=$clog2(BAND);
     (* ram_style="block" *) reg [23:0] band0[0:BAND-1];
@@ -30,9 +30,9 @@ module pg_raster_to_tile #(
     // ---- WRITE: raster -> the buffer wsel ----
     reg        wsel; reg [11:0] wrow, wcol;
     wire wfree = wsel ? !full1 : !full0;
-    assign s_tready = wfree;
-    wire wbeat = s_tvalid && s_tready;
-    wire        sof_beat = wbeat && s_tuser;            // SOF -> this beat is (row 0, col 0)
+    assign s_axis_tready = wfree;
+    wire wbeat = s_axis_tvalid && s_axis_tready;
+    wire        sof_beat = wbeat && s_axis_tuser;            // SOF -> this beat is (row 0, col 0)
     wire [11:0] erow = sof_beat ? 12'd0 : wrow;
     wire [11:0] ecol = sof_beat ? 12'd0 : wcol;
     wire [AW-1:0] waddr = erow*IN_W + ecol;
@@ -42,18 +42,18 @@ module pg_raster_to_tile #(
     wire efull = esel ? full1 : full0;
     wire [AW-1:0] eaddr = er*IN_W + (etx*TILE + ec);
     reg  s1_v, s1_last, s1_sel; reg [23:0] eq0, eq1;    // S1: registered read + carried meta
-    wire out_ready = !m_tvalid || m_tready;
+    wire out_ready = !m_axis_tvalid || m_axis_tready;
     wire emit_go = out_ready && (e_act || s1_v);        // run while emitting OR flushing the last S1 beat
 
     always @(posedge clk) begin
         if(!rstn) begin
             wsel<=0; wrow<=0; wcol<=0; full0<=0; full1<=0; wfirst<=0; first0<=0; first1<=0;
-            esel<=0; e_act<=0; etx<=0; er<=0; ec<=0; s1_v<=0; m_tvalid<=0; m_tlast<=0; m_tuser<=0; eo_armed<=0;
+            esel<=0; e_act<=0; etx<=0; er<=0; ec<=0; s1_v<=0; m_axis_tvalid<=0; m_axis_tlast<=0; m_axis_tuser<=0; eo_armed<=0;
         end else begin
             // ---------- WRITE (SOF beat = (0,0), then advance) ----------
             if(sof_beat) wfirst<=1'b1;                          // the band starting now is the frame's first
             if(wbeat) begin
-                if(wsel==0) band0[waddr]<=s_tdata; else band1[waddr]<=s_tdata;
+                if(wsel==0) band0[waddr]<=s_axis_tdata; else band1[waddr]<=s_axis_tdata;
                 if(ecol==IN_W-1) begin wcol<=0;
                     if(erow==TILE-1) begin wrow<=0;
                         if(wsel==0) begin full0<=1'b1; first0<=wfirst||sof_beat; end
@@ -64,16 +64,16 @@ module pg_raster_to_tile #(
             end
 
             // ---------- EMIT (S1 read -> OUT, 1-cycle BRAM-read pipeline) ----------
-            if(m_tvalid && m_tready) m_tvalid<=0;
+            if(m_axis_tvalid && m_axis_tready) m_axis_tvalid<=0;
             if(!e_act && !s1_v && efull) begin e_act<=1'b1; etx<=0; er<=0; ec<=0;
                 eo_armed <= (esel ? first1 : first0); end           // arm SOF if this band is the frame's first
             if(emit_go) begin
                 // OUT: push the read of the addr presented LAST cycle
-                m_tdata  <= s1_sel ? eq1 : eq0;
-                m_tvalid <= s1_v;
-                m_tuser  <= s1_v && eo_armed;                       // SOF on the band's FIRST output beat
+                m_axis_tdata  <= s1_sel ? eq1 : eq0;
+                m_axis_tvalid <= s1_v;
+                m_axis_tuser  <= s1_v && eo_armed;                       // SOF on the band's FIRST output beat
                 if(s1_v && eo_armed) eo_armed <= 1'b0;
-                m_tlast  <= s1_last;
+                m_axis_tlast  <= s1_last;
                 if(e_act) begin                                    // S1: present this addr + advance
                     eq0 <= band0[eaddr]; eq1 <= band1[eaddr];
                     s1_v <= 1'b1; s1_sel <= esel; s1_last <= (er==TILE-1) && (ec==TILE-1);  // last beat of tile
