@@ -1020,8 +1020,8 @@ static void warp_set_rotation(int deg, int invx, int invy, int panx, int pany)
      * of a 1920x1080 source maps the 1280-wide output across 1280 source-ROWS (>1080) -> off-screen.
      * rw/rh = rotated source dims; fit = source-px per output-px so the whole source fits. The incoming
      * invx/invy is then the USER scale on top of fit (4096 = 100% = fit-to-screen). */
-    int rw  = (deg == 90 || deg == 270) ? FRAME_H : FRAME_W;
-    int rh  = (deg == 90 || deg == 270) ? FRAME_W : FRAME_H;
+    int rw  = (co == 0) ? FRAME_H : FRAME_W;   /* co==0 -> +/-90/+/-270 (transpose); robust to deg normalization */
+    int rh  = (co == 0) ? FRAME_W : FRAME_H;
     int fbx = rw * 4096 / OUT_RASTER_W, fby = rh * 4096 / OUT_RASTER_H;
     int fit = fbx > fby ? fbx : fby;
     int ix  = (int)(((long long)fit * invx) >> 12);

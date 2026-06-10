@@ -749,10 +749,10 @@
         // WARP build: the Scale sliders drive the WARP's own zoom (invx/invy), NOT the route-B 'G' command
         // (which writes the same GPIOs as the warp affine coeffs and would clobber the rotation). The daemon
         // holds the current rotation, so changing scale preserves it. invx=4096 -> 1:1; <4096 zoom-in.
-        // (Shift/anchor/filt/flip in this section are route-B-only and don't affect the warp.)
+        // Scale -> invx/invy (zoom from fit); Shift -> panx/pany (the warp now has a real pan param).
         const invx = Math.max(256, Math.min(0xFFFFF, Math.round(4096 * 1280 / g.w)));
         const invy = Math.max(256, Math.min(0xFFFFF, Math.round(4096 * 720  / g.h)));
-        try { await call("warp.set", { invx, invy }); }
+        try { await call("warp.set", { invx, invy, panx: g.x, pany: g.y }); }
         catch (e) { log(`warp.set: ${e.message}`, "err"); }
       }
     } finally { geoInflight = false; }

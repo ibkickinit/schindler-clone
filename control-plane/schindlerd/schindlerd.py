@@ -594,6 +594,7 @@ class Dispatcher:
           zoom         : convenience % (100 = 1:1; 200 = 2x zoom-in); maps to invx=invy=4096*100/zoom"""
         if not hasattr(self, "_warp_deg"):
             self._warp_deg, self._warp_invx, self._warp_invy = 0, 4096, 4096
+            self._warp_panx = self._warp_pany = 0
         if "deg" in params:
             d = int(round(float(params["deg"])))
             while d > 180:  d -= 360
@@ -606,8 +607,11 @@ class Dispatcher:
             z = max(25.0, min(400.0, float(params["zoom"])))
             iv = cl(int(round(4096.0 * 100.0 / z)))
             self._warp_invx = self._warp_invy = iv
-        self.uart.send_raw(f"W {self._warp_deg} {self._warp_invx} {self._warp_invy}")
-        out = {"deg": self._warp_deg, "invx": self._warp_invx, "invy": self._warp_invy}
+        if "panx" in params: self._warp_panx = int(round(float(params["panx"])))
+        if "pany" in params: self._warp_pany = int(round(float(params["pany"])))
+        self.uart.send_raw(f"W {self._warp_deg} {self._warp_invx} {self._warp_invy} {self._warp_panx} {self._warp_pany}")
+        out = {"deg": self._warp_deg, "invx": self._warp_invx, "invy": self._warp_invy,
+               "panx": self._warp_panx, "pany": self._warp_pany}
         self.bus.publish({"jsonrpc": "2.0", "method": "warp.changed", "params": out})
         return out
 
