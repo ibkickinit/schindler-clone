@@ -134,6 +134,12 @@ if {[info exists ::env(WARP_ENGINE)] && $::env(WARP_ENGINE) ne "0"} {
     app config -name vdma_init -add define-compiler-symbols READENGINE_FULLMASTER=1
     puts "FW BUILD: added -DWARP_BUILD=1 + -DREADENGINE_FULLMASTER=1 (warp affine geometry)"
 }
+# ORIENT_TILED: source captured TILED (pg_raster_to_tile) -> S2MM writes the tiled geometry
+# (HSIZE=768/VSIZE=8040/STRIDE=768); the read engine fetches tiles as contiguous 768B bursts.
+if {[info exists ::env(ORIENT_TILED)] && $::env(ORIENT_TILED) ne "0"} {
+    app config -name vdma_init -add define-compiler-symbols ORIENT_TILED=1
+    puts "FW BUILD: added -DORIENT_TILED=1 (S2MM tiled write geometry)"
+}
 
 app build -name vdma_init
 
