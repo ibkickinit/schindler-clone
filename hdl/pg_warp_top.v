@@ -106,7 +106,8 @@ module pg_warp_top #(
     // ---- engine + tile DMA ----
     wire        wreq; wire [11:0] wtx, wty;
     wire        fv; wire [95:0] fblk; wire fl;
-    wire        o_valid; wire [23:0] o_pix; wire o_ready;
+    wire        o_valid; wire [23:0] o_pix; wire o_ready; wire o_tl, o_tu;   // engine tile-order + framing
+    wire [23:0] r_td; wire r_tv, r_tl, r_tu;                                 // raster after pg_tile_to_raster
     wire        fetch_req; wire [31:0] fetch_addr; wire [11:0] fetch_len;
     wire        t_rdy;                    // tile_dma can accept a fetch (multi-outstanding handshake)
     wire        cmd_rdy;                  // DataMover command formatter can accept a row command
@@ -115,9 +116,17 @@ module pg_warp_top #(
                      .LTILE(LTILE),.NTILE(NTILE),.WAY(WAY),.PD(PD),.CW(CW),.FB(FB),.LEAD(LEAD)) u_eng (
         .clk(clk),.rstn(engine_rstn),.sof(sof),.lead_rt(lr2),  // engine_rstn includes the soft-reset
         .m_a(a2),.m_b(b2),.m_c(c2),.m_d(d2),.m_e(e2),.m_f(f2),.matte(mt2),
-        .o_valid(o_valid),.o_pix(o_pix),.o_ready(o_ready),
+        .o_valid(o_valid),.o_pix(o_pix),.o_tlast(o_tl),.o_tuser(o_tu),.o_ready(o_ready),
         .fetch_req(wreq),.fetch_tx(wtx),.fetch_ty(wty),.fetch_ready(t_rdy),
         .fill_valid(fv),.fill_blk(fblk),.fill_last(fl));
+
+    // tile-order engine output -> raster (then the line-FIFO below delivers SOF-early to axis_to_vid_io)
+    pg_tile_to_raster #(.OUT_W(OUT_W),.LTILE(LTILE)) u_t2r (
+        .clk(clk),.rstn(engine_rstn),
+        .s_axis_tdata(o_pix),.s_axis_tvalid(o_valid),.s_axis_tready(o_ready),
+        .s_axis_tuser(o_tu),.s_axis_tlast(o_tl),
+        .m_axis_tdata(r_td),.m_axis_tvalid(r_tv),.m_axis_tready(!of_full),
+        .m_axis_tuser(r_tu),.m_axis_tlast(r_tl));
 
     pg_tile_dma #(.IN_W(IN_W),.LTILE(LTILE),.TILED(TILED),.DREQ(DREQ)) u_dma (
         .clk(clk),.rstn(rstn),.srst(srst),.frame_base(frame_base),
@@ -160,8 +169,7 @@ module pg_warp_top #(
     wire of_full  = (of_cnt >= OFD[11:0]-12'd4);
     wire of_empty = (of_cnt == 12'd0);
     reg  fr_first;                                          // SOF tag for the next engine pixel
-    wire ow_en = o_valid && !of_full;                      // engine write accepted into the FIFO
-    assign o_ready = !of_full;
+    wire ow_en = r_tv && !of_full;                         // raster (post tile->raster reorder) into the FIFO
     reg [24:0] of_q; reg of_qv; reg [11:0] dcol;            // 1-deep output holding reg + drain column
     wire od_rd = !of_empty && (!of_qv || m_axis_tready);   // pop FIFO when the holding reg is free/freeing
     // effective column of the beat in of_q: a SOF-tagged beat (of_q[24]) is frame pixel 0 -> RE-SYNCs the
@@ -175,8 +183,8 @@ module pg_warp_top #(
     always @(posedge clk) begin
         if(!rstn || srst) begin of_wr<=0; of_rd<=0; of_cnt<=0; fr_first<=1'b1; of_qv<=1'b0; dcol<=12'd0; end
         else begin
-            if(sof) fr_first<=1'b1;
-            if(ow_en) begin ofifo[of_wr] <= {fr_first, o_pix}; of_wr<=of_wr+1'b1; fr_first<=1'b0; end
+            if(sof) fr_first<=1'b1;                                // (fr_first now unused; SOF tag = r_tu)
+            if(ow_en) begin ofifo[of_wr] <= {r_tu, r_td}; of_wr<=of_wr+1'b1; fr_first<=1'b0; end
             if(of_qv && m_axis_tready) dcol <= (ecol==OUT_W[11:0]-12'd1) ? 12'd0 : ecol+12'd1;  // next col
             if(of_qv && m_axis_tready) of_qv<=1'b0;
             if(od_rd) begin of_q <= ofifo[of_rd]; of_rd<=of_rd+1'b1; of_qv<=1'b1; end

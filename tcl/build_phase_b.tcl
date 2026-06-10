@@ -65,6 +65,8 @@ add_files -norecurse [file join $project_root hdl pg_genlock.v]
 add_files -norecurse [file join $project_root hdl pg_cadence.v]   ;# FRC cadence controller (replaces pg_genlock in pg_read_engine_top)
 add_files -norecurse [file join $project_root hdl pg_linefetch.v]
 add_files -norecurse [file join $project_root hdl pg_raster_to_tile.v]  ;# ORIENT_TILED: raster->tiled DDR writer
+add_files -norecurse [file join $project_root hdl pg_affine_tile.v]    ;# orient: tile-order affine walk
+add_files -norecurse [file join $project_root hdl pg_tile_to_raster.v]  ;# orient: output band->raster
 add_files -norecurse [file join $project_root hdl pg_unpack.v]
 add_files -norecurse [file join $project_root hdl pg_compose.v]
 add_files -norecurse [file join $project_root hdl pg_read_engine_top.v]
