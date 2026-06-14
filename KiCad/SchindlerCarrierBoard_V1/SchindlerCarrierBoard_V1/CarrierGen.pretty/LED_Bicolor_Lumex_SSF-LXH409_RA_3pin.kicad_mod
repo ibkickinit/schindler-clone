@@ -1,0 +1,256 @@
+(footprint "LED_Bicolor_Lumex_SSF-LXH409_RA_3pin"
+	(version 20260206)
+	(generator "pcbnew")
+	(generator_version "10.0")
+	(layer "F.Cu")
+	(descr "Lumex SSF-LXH409SISUGW T-3mm right-angle 3-lead bi-color (R 636nm / G 574nm) common-anode PCB indicator. THT, 3 leads on 2.54mm pitch, one cathode lead offset 1.27mm (polarity key). Pads: 1=K1 (cathode), 2=A (common anode, center), 3=K2 (cathode) per Device:LED_Dual_KAK. VERIFY offset-lead identity/direction, anode/cathode pin order, Lumex recommended hole size, and RA standoff against LUMXD00054-83 drawing.")
+	(tags "LED bicolor right-angle THT Lumex SSF-LXH409 common-anode")
+	(property "Reference" "REF**"
+		(at 0 -3.4 0)
+		(layer "F.SilkS")
+		(uuid "46a8a66c-6237-4a64-8162-4908d25b0e24")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Value" "LED_Bicolor_Lumex_SSF-LXH409_RA_3pin"
+		(at 0 8.5 0)
+		(layer "F.Fab")
+		(uuid "df34175a-9cab-4ae1-9525-a7bac2bb32f2")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Datasheet" "LUMXD00054-83.pdf"
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "43d0e456-11f2-4d97-b917-a08e9324d384")
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+		)
+	)
+	(property "Description" "Lumex SSF-LXH409SISUGW RA bi-color common-anode LED"
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "71e20b92-0e14-492d-9e40-e22ec9b0cd90")
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+		)
+	)
+	(attr through_hole)
+	(duplicate_pad_numbers_are_jumpers no)
+	(fp_line
+		(start -3.6 -2.6)
+		(end -3.6 5.4)
+		(stroke
+			(width 0.12)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(uuid "cb73274b-4d1e-4404-a542-208e33c25317")
+	)
+	(fp_line
+		(start -3.6 -2.6)
+		(end 3.6 -2.6)
+		(stroke
+			(width 0.12)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(uuid "6d3f01ed-c4ee-436c-a6a1-5fc1d87727b7")
+	)
+	(fp_line
+		(start -3.6 5.4)
+		(end 0 7.4)
+		(stroke
+			(width 0.12)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(uuid "0f84c3b8-7103-4603-b126-994466d3d2e8")
+	)
+	(fp_line
+		(start -3.6 5.4)
+		(end 3.6 5.4)
+		(stroke
+			(width 0.12)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(uuid "a0082d0b-d1e6-4ffb-b6c3-9ccc3d3de95e")
+	)
+	(fp_line
+		(start 3.6 -2.6)
+		(end 3.6 5.4)
+		(stroke
+			(width 0.12)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(uuid "43727dec-04b2-4065-9831-f8bfa63187ad")
+	)
+	(fp_line
+		(start 3.6 5.4)
+		(end 0 7.4)
+		(stroke
+			(width 0.12)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(uuid "004c3423-5b94-4209-ab89-49ac73e6d06e")
+	)
+	(fp_circle
+		(center -4.4 -1.27)
+		(end -4.15 -1.27)
+		(stroke
+			(width 0.3)
+			(type solid)
+		)
+		(fill yes)
+		(layer "F.SilkS")
+		(uuid "f75a1dc6-111d-47b9-ad8f-681209cfa7de")
+	)
+	(fp_circle
+		(center 0 7.4)
+		(end 2 7.4)
+		(stroke
+			(width 0.12)
+			(type solid)
+		)
+		(fill no)
+		(layer "F.SilkS")
+		(uuid "ec184f2e-d160-49a2-96ad-d60c6a5fff30")
+	)
+	(fp_rect
+		(start -3.85 -2.85)
+		(end 3.85 5.65)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(fill no)
+		(layer "F.CrtYd")
+		(uuid "f62522fe-68c8-4333-b6f9-6a096bda7476")
+	)
+	(fp_circle
+		(center 0 7.4)
+		(end 2.25 7.4)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(fill no)
+		(layer "F.CrtYd")
+		(uuid "9510e516-0a4a-4c21-8312-5eec9424c18e")
+	)
+	(fp_line
+		(start -3.5 -2.5)
+		(end -3.5 5.3)
+		(stroke
+			(width 0.1)
+			(type solid)
+		)
+		(layer "F.Fab")
+		(uuid "75a7f9f4-f40e-40c1-80e0-cadd75eba4e6")
+	)
+	(fp_line
+		(start -3.5 -2.5)
+		(end 3.5 -2.5)
+		(stroke
+			(width 0.1)
+			(type solid)
+		)
+		(layer "F.Fab")
+		(uuid "72d8a487-2271-42da-9695-3cd5ab1bd965")
+	)
+	(fp_line
+		(start -3.5 5.3)
+		(end 3.5 5.3)
+		(stroke
+			(width 0.1)
+			(type solid)
+		)
+		(layer "F.Fab")
+		(uuid "d66441e8-402a-4bb3-8931-4a4e7997741d")
+	)
+	(fp_line
+		(start 3.5 -2.5)
+		(end 3.5 5.3)
+		(stroke
+			(width 0.1)
+			(type solid)
+		)
+		(layer "F.Fab")
+		(uuid "66ba24a2-f2c4-4028-87b1-e5f1a0d1ff2b")
+	)
+	(fp_circle
+		(center 0 7.4)
+		(end 2 7.4)
+		(stroke
+			(width 0.1)
+			(type solid)
+		)
+		(fill no)
+		(layer "F.Fab")
+		(uuid "5150b796-9c2b-457c-9068-5f8e183a449a")
+	)
+	(fp_text user "A"
+		(at 0 1.6 0)
+		(layer "F.SilkS")
+		(uuid "a4b4790c-fdd4-4650-91b5-c6a039c9c615")
+		(effects
+			(font
+				(size 0.8 0.8)
+				(thickness 0.12)
+			)
+		)
+	)
+	(fp_text user "${REFERENCE}"
+		(at 0 -3.4 0)
+		(layer "F.Fab")
+		(uuid "ab3c0f02-3cbc-4b13-954c-6e8d316e90aa")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(pad "1" thru_hole rect
+		(at -2.54 -1.27)
+		(size 1.7 1.7)
+		(drill 0.8)
+		(layers "*.Cu" "*.Mask")
+		(remove_unused_layers no)
+		(uuid "e883f97d-7cea-4e0d-82ef-b0b4bf6f282b")
+	)
+	(pad "2" thru_hole circle
+		(at 0 0)
+		(size 1.6 1.6)
+		(drill 0.8)
+		(layers "*.Cu" "*.Mask")
+		(remove_unused_layers no)
+		(uuid "00259967-271f-4af0-9213-583e603eaed9")
+	)
+	(pad "3" thru_hole circle
+		(at 2.54 0)
+		(size 1.6 1.6)
+		(drill 0.8)
+		(layers "*.Cu" "*.Mask")
+		(remove_unused_layers no)
+		(uuid "0b172ae3-db03-463e-abba-823e648bb535")
+	)
+	(embedded_fonts no)
+)

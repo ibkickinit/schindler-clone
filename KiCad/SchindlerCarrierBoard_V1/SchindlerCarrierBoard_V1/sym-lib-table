@@ -1,0 +1,5 @@
+(sym_lib_table
+	(version 7)
+	(lib (name "JustinLibrary")(type "KiCad")(uri "/Users/jedgerly/Library/CloudStorage/Dropbox-Personal/_PROJECTS/_KiCad/JustinLibrary.kicad_sym")(options "")(descr "Justin's custom symbols (Schindler 2.0)"))
+	(lib (name "CarrierGen")(type "KiCad")(uri "${KIPRJMOD}/CarrierGen.kicad_sym")(options "")(descr "Carrier-capture generated symbols (e.g. Conn_02x50 for Samtec LSHM-150)"))
+)

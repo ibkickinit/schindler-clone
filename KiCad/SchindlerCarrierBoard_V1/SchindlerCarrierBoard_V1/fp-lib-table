@@ -1,0 +1,4 @@
+(fp_lib_table
+	(version 7)
+	(lib (name "CarrierGen")(type "KiCad")(uri "${KIPRJMOD}/CarrierGen.pretty")(options "")(descr "Carrier-capture generated footprints (e.g. Lumex SSF-LXH409 RA bi-color LED)"))
+)
