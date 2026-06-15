@@ -5,7 +5,7 @@
 	(uuid "13af8f94-2885-4ca8-8345-7b8a7504b26a")
 	(paper "A2")
 	(lib_symbols
-	(symbol "Connector_Generic:Conn_01x10"
+		(symbol "Connector_Generic:Conn_01x10"
 			(pin_names
 				(offset 1.016)
 				(hide yes)
@@ -395,7 +395,293 @@
 			)
 			(embedded_fonts no)
 		)
-	(symbol "JustinLibrary:NHD-1.5-240240AF-CSXP"
+		(symbol "Device:LED_Dual_KAK"
+			(pin_names
+				(offset 0)
+			)
+			(exclude_from_sim no)
+			(in_bom yes)
+			(on_board yes)
+			(in_pos_files yes)
+			(duplicate_pin_numbers_are_jumpers no)
+			(property "Reference" "D"
+				(at 0 5.715 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Value" "LED_Dual_KAK"
+				(at 0 -6.35 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Footprint" ""
+				(at 1.27 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Datasheet" ""
+				(at 1.27 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Description" "Dual LED, common anode on pin 2"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "ki_keywords" "LED diode bicolor dual"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "ki_fp_filters" "LED* LED_SMD:* LED_THT:*"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(symbol "LED_Dual_KAK_0_1"
+				(polyline
+					(pts
+						(xy -4.572 0) (xy -2.54 0)
+					)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(circle
+					(center -2.54 0)
+					(radius 0.2794)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type outline)
+					)
+				)
+				(polyline
+					(pts
+						(xy -1.27 3.81) (xy -1.27 1.27) (xy 1.27 2.54) (xy -1.27 3.81)
+					)
+					(stroke
+						(width 0.254)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(polyline
+					(pts
+						(xy -1.27 -1.27) (xy -1.27 -3.81) (xy 1.27 -2.54) (xy -1.27 -1.27)
+					)
+					(stroke
+						(width 0.254)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(circle
+					(center 0 0)
+					(radius 4.572)
+					(stroke
+						(width 0.254)
+						(type default)
+					)
+					(fill
+						(type background)
+					)
+				)
+				(polyline
+					(pts
+						(xy 1.27 3.81) (xy 1.27 1.27)
+					)
+					(stroke
+						(width 0.254)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(polyline
+					(pts
+						(xy 1.27 -1.27) (xy 1.27 -3.81)
+					)
+					(stroke
+						(width 0.254)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(polyline
+					(pts
+						(xy 2.032 5.08) (xy 3.556 6.604) (xy 2.794 6.604) (xy 3.556 6.604) (xy 3.556 5.842)
+					)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(polyline
+					(pts
+						(xy 2.032 2.54) (xy -2.54 2.54) (xy -2.54 -2.54) (xy 2.032 -2.54)
+					)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(polyline
+					(pts
+						(xy 3.302 4.064) (xy 4.826 5.588) (xy 4.064 5.588) (xy 4.826 5.588) (xy 4.826 4.826)
+					)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(polyline
+					(pts
+						(xy 3.81 2.54) (xy 1.905 2.54)
+					)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(polyline
+					(pts
+						(xy 3.81 -2.54) (xy 1.905 -2.54)
+					)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+			)
+			(symbol "LED_Dual_KAK_1_1"
+				(pin input line
+					(at 7.62 2.54 180)
+					(length 3.81)
+					(name "K1"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "1"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin input line
+					(at -7.62 0 0)
+					(length 3.048)
+					(name "A"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "2"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin input line
+					(at 7.62 -2.54 180)
+					(length 3.81)
+					(name "K2"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "3"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+			)
+			(embedded_fonts no)
+		)
+		(symbol "JustinLibrary:NHD-1.5-240240AF-CSXP"
 			(exclude_from_sim no)
 			(in_bom yes)
 			(on_board yes)
@@ -973,7 +1259,7 @@
 			)
 			(embedded_fonts no)
 		)
-	(symbol "JustinLibrary:TLC59116FIPWR"
+		(symbol "JustinLibrary:TLC59116FIPWR"
 			(pin_names
 				(offset 1.016)
 			)
@@ -1646,316 +1932,1153 @@
 			)
 			(embedded_fonts no)
 		)
-	(symbol "Device:LED_Dual_KAK"
-			(pin_names
-				(offset 0)
+	)
+	(global_label "LCD_CS"
+		(shape input)
+		(at 95.25 36.83 0)
+		(effects
+			(font
+				(size 1.27 1.27)
 			)
-			(exclude_from_sim no)
-			(in_bom yes)
-			(on_board yes)
-			(in_pos_files yes)
-			(duplicate_pin_numbers_are_jumpers no)
-			(property "Reference" "D"
-				(at 0 5.715 0)
-				(show_name no)
-				(do_not_autoplace no)
-				(effects
-					(font
-						(size 1.27 1.27)
-					)
-				)
-			)
-			(property "Value" "LED_Dual_KAK"
-				(at 0 -6.35 0)
-				(show_name no)
-				(do_not_autoplace no)
-				(effects
-					(font
-						(size 1.27 1.27)
-					)
+			(justify left)
+		)
+		(uuid "07d02908-6ad4-497b-b464-82e35bc6ca4b")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 95.25 36.83 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
 				)
 			)
-			(property "Footprint" ""
-				(at 1.27 0 0)
-				(show_name no)
-				(do_not_autoplace no)
-				(hide yes)
-				(effects
-					(font
-						(size 1.27 1.27)
-					)
+		)
+	)
+	(global_label "GND"
+		(shape input)
+		(at 25.4 25.4 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "1047f474-eaef-4124-b516-349ce86730cc")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 25.4 25.4 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
 				)
 			)
-			(property "Datasheet" ""
-				(at 1.27 0 0)
-				(show_name no)
-				(do_not_autoplace no)
-				(hide yes)
-				(effects
-					(font
-						(size 1.27 1.27)
-					)
+		)
+	)
+	(global_label "GND"
+		(shape input)
+		(at 368.3 58.42 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "10ca9c33-2431-43ad-b55c-0279faa56039")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 368.3 58.42 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
 				)
 			)
-			(property "Description" "Dual LED, common anode on pin 2"
-				(at 0 0 0)
-				(show_name no)
-				(do_not_autoplace no)
-				(hide yes)
-				(effects
-					(font
-						(size 1.27 1.27)
-					)
+		)
+	)
+	(global_label "I2C_HK_SCL"
+		(shape input)
+		(at 332.74 20.32 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "1f6113d9-5fda-496c-bc32-817b94a0984c")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 332.74 20.32 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
 				)
 			)
-			(property "ki_keywords" "LED diode bicolor dual"
-				(at 0 0 0)
-				(show_name no)
-				(do_not_autoplace no)
-				(hide yes)
-				(effects
-					(font
-						(size 1.27 1.27)
-					)
+		)
+	)
+	(global_label "PS_ESP_UART_TX"
+		(shape input)
+		(at 25.4 27.94 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "2e0b2b9c-779c-425e-860e-4207bc4aa2bf")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 25.4 27.94 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
 				)
 			)
-			(property "ki_fp_filters" "LED* LED_SMD:* LED_THT:*"
-				(at 0 0 0)
-				(show_name no)
-				(do_not_autoplace no)
-				(hide yes)
-				(effects
-					(font
-						(size 1.27 1.27)
-					)
+		)
+	)
+	(global_label "PS_ESP_UART_RX"
+		(shape input)
+		(at 25.4 30.48 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "300f2fa3-3534-4da4-ace7-d5cdd50700c3")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 25.4 30.48 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
 				)
 			)
-			(symbol "LED_Dual_KAK_0_1"
-				(polyline
-					(pts
-						(xy -4.572 0) (xy -2.54 0)
-					)
-					(stroke
-						(width 0)
-						(type default)
-					)
-					(fill
-						(type none)
-					)
-				)
-				(circle
-					(center -2.54 0)
-					(radius 0.2794)
-					(stroke
-						(width 0)
-						(type default)
-					)
-					(fill
-						(type outline)
-					)
-				)
-				(polyline
-					(pts
-						(xy -1.27 3.81) (xy -1.27 1.27) (xy 1.27 2.54) (xy -1.27 3.81)
-					)
-					(stroke
-						(width 0.254)
-						(type default)
-					)
-					(fill
-						(type none)
-					)
-				)
-				(polyline
-					(pts
-						(xy -1.27 -1.27) (xy -1.27 -3.81) (xy 1.27 -2.54) (xy -1.27 -1.27)
-					)
-					(stroke
-						(width 0.254)
-						(type default)
-					)
-					(fill
-						(type none)
-					)
-				)
-				(circle
-					(center 0 0)
-					(radius 4.572)
-					(stroke
-						(width 0.254)
-						(type default)
-					)
-					(fill
-						(type background)
-					)
-				)
-				(polyline
-					(pts
-						(xy 1.27 3.81) (xy 1.27 1.27)
-					)
-					(stroke
-						(width 0.254)
-						(type default)
-					)
-					(fill
-						(type none)
-					)
-				)
-				(polyline
-					(pts
-						(xy 1.27 -1.27) (xy 1.27 -3.81)
-					)
-					(stroke
-						(width 0.254)
-						(type default)
-					)
-					(fill
-						(type none)
-					)
-				)
-				(polyline
-					(pts
-						(xy 2.032 5.08) (xy 3.556 6.604) (xy 2.794 6.604) (xy 3.556 6.604) (xy 3.556 5.842)
-					)
-					(stroke
-						(width 0)
-						(type default)
-					)
-					(fill
-						(type none)
-					)
-				)
-				(polyline
-					(pts
-						(xy 2.032 2.54) (xy -2.54 2.54) (xy -2.54 -2.54) (xy 2.032 -2.54)
-					)
-					(stroke
-						(width 0)
-						(type default)
-					)
-					(fill
-						(type none)
-					)
-				)
-				(polyline
-					(pts
-						(xy 3.302 4.064) (xy 4.826 5.588) (xy 4.064 5.588) (xy 4.826 5.588) (xy 4.826 4.826)
-					)
-					(stroke
-						(width 0)
-						(type default)
-					)
-					(fill
-						(type none)
-					)
-				)
-				(polyline
-					(pts
-						(xy 3.81 2.54) (xy 1.905 2.54)
-					)
-					(stroke
-						(width 0)
-						(type default)
-					)
-					(fill
-						(type none)
-					)
-				)
-				(polyline
-					(pts
-						(xy 3.81 -2.54) (xy 1.905 -2.54)
-					)
-					(stroke
-						(width 0)
-						(type default)
-					)
-					(fill
-						(type none)
-					)
+		)
+	)
+	(global_label "+3V3"
+		(shape input)
+		(at 25.4 22.86 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "36dc6a9b-3bbc-429a-8081-e597c7a09592")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 25.4 22.86 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
 				)
 			)
-			(symbol "LED_Dual_KAK_1_1"
-				(pin input line
-					(at 7.62 2.54 180)
-					(length 3.81)
-					(name "K1"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-					(number "1"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-				)
-				(pin input line
-					(at -7.62 0 0)
-					(length 3.048)
-					(name "A"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-					(number "2"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-				)
-				(pin input line
-					(at 7.62 -2.54 180)
-					(length 3.81)
-					(name "K2"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-					(number "3"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
+		)
+	)
+	(global_label "LCD_SPI_MOSI"
+		(shape input)
+		(at 95.25 46.99 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "37e131c7-dce4-42e1-898c-ac3a7b6d2717")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 95.25 46.99 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
 				)
 			)
-			(embedded_fonts no)
+		)
+	)
+	(global_label "GND"
+		(shape input)
+		(at 208.28 58.42 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "4e5e979a-5681-436d-bb12-b40d215be736")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 208.28 58.42 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "GND"
+		(shape input)
+		(at 368.3 58.42 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "52d94a95-c598-4117-b695-9c593590eef9")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 368.3 58.42 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "GND"
+		(shape input)
+		(at 208.28 58.42 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "543e8fb0-2cd7-48d9-8fc5-bcd0e80addd6")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 208.28 58.42 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "I2C_HK_SCL"
+		(shape input)
+		(at 252.73 20.32 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "5674cf84-32b4-4921-80fa-6131054b4b17")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 252.73 20.32 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "I2C_HK_SDA"
+		(shape input)
+		(at 172.72 50.8 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "62504934-75a6-4dd8-a144-8fc728929baa")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 172.72 50.8 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "ESP_GPIO0"
+		(shape input)
+		(at 25.4 38.1 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "676f16fe-6b63-47ec-a14d-68864ba42eaf")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 25.4 38.1 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "GND"
+		(shape input)
+		(at 288.29 58.42 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "67c5ff99-5f31-4ec7-80bf-0ae305e9a7d7")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 288.29 58.42 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "GND"
+		(shape input)
+		(at 25.4 43.18 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "6e230d7a-c9f2-4356-9669-28fbcae172f1")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 25.4 43.18 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "+3V3"
+		(shape input)
+		(at 368.3 2.54 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "70881b79-8f88-4147-ac13-187a2673696d")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 368.3 2.54 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "GND"
+		(shape input)
+		(at 95.25 21.59 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "7432fd2c-468e-4931-8ce9-e22119451c08")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 95.25 21.59 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "I2C_HK_SCL"
+		(shape input)
+		(at 172.72 20.32 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "7c74088f-9411-4fe2-9368-228cbf6db93d")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 172.72 20.32 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "GND"
+		(shape input)
+		(at 288.29 58.42 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "7df246bb-7b4e-4ce4-85f6-803713740a06")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 288.29 58.42 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "ESP_EN"
+		(shape input)
+		(at 25.4 35.56 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "919dd089-5966-4e0e-8718-a980a3892042")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 25.4 35.56 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "LCD_SPI_MISO"
+		(shape input)
+		(at 125.73 36.83 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "9b91268f-d38c-4e06-9ed6-95c2fcb12917")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 125.73 36.83 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "+3V3"
+		(shape input)
+		(at 208.28 2.54 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "9f290883-c4f3-47ce-8511-f10a1c823364")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 208.28 2.54 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "GND"
+		(shape input)
+		(at 288.29 58.42 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "a06604ce-2d53-4d9a-b907-19ce991b91fb")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 288.29 58.42 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "GND"
+		(shape input)
+		(at 208.28 58.42 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "b107a202-e359-4f70-ac7f-6d1509c8c38f")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 208.28 58.42 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "I2C_HK_SDA"
+		(shape input)
+		(at 332.74 50.8 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "b44e80fa-4a1d-47c2-932d-9cbd30af9e3c")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 332.74 50.8 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "LCD_SPI_SCK"
+		(shape input)
+		(at 95.25 41.91 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "b588cc64-636e-451f-9069-b51e35e0635f")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 95.25 41.91 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "+3V3"
+		(shape input)
+		(at 95.25 24.13 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "bd90df98-527a-4665-95b2-3445a5659cd7")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 95.25 24.13 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "GND"
+		(shape input)
+		(at 25.4 40.64 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "c87062e5-a5f8-4ccd-ae53-beda17136486")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 25.4 40.64 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "+3V3"
+		(shape input)
+		(at 288.29 2.54 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "d62981cb-ef03-4f3e-8c50-22183dff5f03")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 288.29 2.54 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "I2C_HK_SDA"
+		(shape input)
+		(at 252.73 50.8 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "d95c6f4e-b2d8-4a3c-8322-0c3f07729c12")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 252.73 50.8 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "PWR_BTN_N"
+		(shape input)
+		(at 25.4 33.02 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "dd4da4e0-8e97-49fa-b52f-c0890011dcf0")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 25.4 33.02 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "+5V"
+		(shape input)
+		(at 25.4 20.32 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "ecdd2730-39ca-4fac-8671-b0382f453271")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 25.4 20.32 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "GND"
+		(shape input)
+		(at 368.3 58.42 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "f51db58e-36cb-4a9e-8071-8b47d1620af3")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 368.3 58.42 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
 		)
 	)
 	(symbol
-		(lib_id "Connector_Generic:Conn_01x10")
-		(at 30.48 30.48 0)
+		(lib_id "Device:LED_Dual_KAK")
+		(at 190.5 95.25 0)
 		(unit 1)
+		(body_style 1)
 		(exclude_from_sim no)
 		(in_bom yes)
 		(on_board yes)
 		(in_pos_files yes)
 		(dnp no)
-		(uuid "89bd3cc1-6bb3-456d-95bc-b950082d95a8")
-		(property "Reference" "J1100"
-			(at 36.83 27.94 0)
-			(effects (font (size 1.27 1.27))(justify left)))
-		(property "Value" "Mezzanine FFC->A2 (pwr+UART+PWR_BTN+EN+GPIO0)"
-			(at 36.83 33.02 0)
-			(effects (font (size 1.27 1.27))(justify left)))
-		(property "Footprint" ""
-			(at 30.48 30.48 0)
-			(effects (font (size 1.27 1.27))(hide yes)))
+		(uuid "001511da-521f-4cd4-9554-7341573fa826")
+		(property "Reference" "D1104"
+			(at 196.85 92.71 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "L-3VEGW-CA"
+			(at 196.85 97.79 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "CarrierGen:LED_Bicolor_Lumex_SSF-LXH409_RA_3pin"
+			(at 190.5 95.25 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 190.5 95.25 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 190.5 95.25 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "2"
+			(uuid "f68d95bc-3c2b-44de-adf8-3cb9946a2f19")
+		)
+		(pin "3"
+			(uuid "ee7d2dc3-eb18-404e-bdad-853a4d6f40a4")
+		)
+		(pin "1"
+			(uuid "c70c15fc-3e13-4aaa-af12-e9d820756b49")
+		)
 		(instances
 			(project "SchindlerCarrierBoard_V1"
 				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/a148f08b-d7e9-4324-ad03-18c761da3981"
-					(reference "J1100")
+					(reference "D1104")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:LED_Dual_KAK")
+		(at 30.48 160.02 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "0a000f2d-3985-4946-86fe-4be8677a9b57")
+		(property "Reference" "D1109"
+			(at 36.83 157.48 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "L-3VEGW-CA"
+			(at 36.83 162.56 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "CarrierGen:LED_Bicolor_Lumex_SSF-LXH409_RA_3pin"
+			(at 30.48 160.02 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 30.48 160.02 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 30.48 160.02 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "ca765c06-f927-4269-b767-9c2d13e0f5bd")
+		)
+		(pin "2"
+			(uuid "abe3b685-44e5-44a7-966f-c455e3fa3d32")
+		)
+		(pin "3"
+			(uuid "d8fe692f-0e80-4ef6-a9f4-fdf0a39f7f05")
+		)
+		(instances
+			(project "SchindlerCarrierBoard_V1"
+				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/a148f08b-d7e9-4324-ad03-18c761da3981"
+					(reference "D1109")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:LED_Dual_KAK")
+		(at 30.48 95.25 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "10e9eead-90fb-4e22-85bf-0acac2551f57")
+		(property "Reference" "D1102"
+			(at 36.83 92.71 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "L-3VEGW-CA"
+			(at 36.83 97.79 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "CarrierGen:LED_Bicolor_Lumex_SSF-LXH409_RA_3pin"
+			(at 30.48 95.25 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 30.48 95.25 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 30.48 95.25 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "b7a546eb-5cfa-405e-86a9-29b1c8c484e2")
+		)
+		(pin "2"
+			(uuid "6f85b19a-1d7d-4f59-85d0-88a1a4eb9177")
+		)
+		(pin "3"
+			(uuid "706e6ea4-2a1e-4744-b6ee-0ec783026459")
+		)
+		(instances
+			(project "SchindlerCarrierBoard_V1"
+				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/a148f08b-d7e9-4324-ad03-18c761da3981"
+					(reference "D1102")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "JustinLibrary:TLC59116FIPWR")
+		(at 270.51 30.48 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "202da899-dfdd-4158-ae3b-8dcc4b0882d0")
+		(property "Reference" "U1101"
+			(at 276.86 27.94 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "TLC59116F"
+			(at 276.86 33.02 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" ""
+			(at 270.51 30.48 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 270.51 30.48 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 270.51 30.48 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "2"
+			(uuid "67272ae5-36e7-482d-b760-43b426e4cbfe")
+		)
+		(pin "3"
+			(uuid "21912fd6-d5f8-4e99-b44c-183fcfc03225")
+		)
+		(pin "4"
+			(uuid "8f959ddd-773e-4d38-985a-c5c2a5e7ed65")
+		)
+		(pin "5"
+			(uuid "3ee96a08-0e5e-4f82-b1a0-60868c8f058c")
+		)
+		(pin "6"
+			(uuid "9065af20-28e5-410d-8284-0418ecfe6bb0")
+		)
+		(pin "7"
+			(uuid "eb545d0b-ccf9-4773-b411-d6305dea26cb")
+		)
+		(pin "8"
+			(uuid "80ed69e0-2cb9-4166-afdc-c5ee96fd5d17")
+		)
+		(pin "9"
+			(uuid "fa937112-84e9-4eb6-8494-93e5473fb58a")
+		)
+		(pin "10"
+			(uuid "f5a12171-5da3-4954-9d00-5ab8a7fe8acb")
+		)
+		(pin "11"
+			(uuid "8a00c144-549a-4427-a4e7-e1187370cb1c")
+		)
+		(pin "12"
+			(uuid "e72a3c70-94fe-4af4-92e4-107a0b7a90bc")
+		)
+		(pin "13"
+			(uuid "207da331-6c60-475b-a6e4-5e12edb09407")
+		)
+		(pin "14"
+			(uuid "cbc67a32-7b49-4763-8a21-7f22e21885a9")
+		)
+		(pin "15"
+			(uuid "59b8de44-a9ea-41f3-9a6c-8b69837a002c")
+		)
+		(pin "16"
+			(uuid "7b42d87c-4662-4d9f-b17b-9537ca3cc9f9")
+		)
+		(pin "17"
+			(uuid "0fe1286b-8a11-4779-9d5a-2bf6f96fc723")
+		)
+		(pin "18"
+			(uuid "bc93e890-86ee-43e0-9993-a121bea454fe")
+		)
+		(pin "19"
+			(uuid "664251ed-2314-42e0-ba07-7102dfdc9021")
+		)
+		(pin "20"
+			(uuid "42b9520f-6e60-47db-914d-7d2f4327c211")
+		)
+		(pin "21"
+			(uuid "d5e00ef7-71e6-4c6f-bfa9-49f0066aba78")
+		)
+		(pin "22"
+			(uuid "d4d501e2-a4af-4368-a1df-59c39d05d856")
+		)
+		(pin "23"
+			(uuid "420eb4f4-1689-4268-9bc7-c67a2790b720")
+		)
+		(pin "24"
+			(uuid "a318258a-3604-48a3-8658-073f04e8d620")
+		)
+		(pin "25"
+			(uuid "81c70b59-b8b1-4732-a584-ba5642f9ecc1")
+		)
+		(pin "26"
+			(uuid "945b3bf3-9eca-42ce-8f96-a319b77b4a9c")
+		)
+		(pin "27"
+			(uuid "92e1f429-9487-4599-9aaa-1f9cb8ecf818")
+		)
+		(pin "28"
+			(uuid "39d84269-c134-4e6b-900a-7d806bd87629")
+		)
+		(pin "1"
+			(uuid "9033839a-d923-4863-b8f0-d3eb3cda46ea")
+		)
+		(instances
+			(project "SchindlerCarrierBoard_V1"
+				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/a148f08b-d7e9-4324-ad03-18c761da3981"
+					(reference "U1101")
 					(unit 1)
 				)
 			)
@@ -1965,6 +3088,7 @@
 		(lib_id "JustinLibrary:NHD-1.5-240240AF-CSXP")
 		(at 110.49 30.48 0)
 		(unit 1)
+		(body_style 1)
 		(exclude_from_sim no)
 		(in_bom yes)
 		(on_board yes)
@@ -1973,13 +3097,141 @@
 		(uuid "271c471a-505f-46b7-a50a-6b71d7507a5c")
 		(property "Reference" "J1101"
 			(at 116.84 27.94 0)
-			(effects (font (size 1.27 1.27))(justify left)))
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
 		(property "Value" "NHD-1.5-240240AF-CSXP"
 			(at 116.84 33.02 0)
-			(effects (font (size 1.27 1.27))(justify left)))
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
 		(property "Footprint" ""
 			(at 110.49 30.48 0)
-			(effects (font (size 1.27 1.27))(hide yes)))
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 110.49 30.48 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 110.49 30.48 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "90d6feb9-592b-4a00-b0e8-44cd62663d50")
+		)
+		(pin "2"
+			(uuid "12fe3dbd-37a2-4ca0-9320-cbd3624f733c")
+		)
+		(pin "3"
+			(uuid "debdf2d7-a4fc-49e8-915f-313d53b66b03")
+		)
+		(pin "4"
+			(uuid "4e001634-6557-4ee0-9ac2-ec2b898db4a9")
+		)
+		(pin "5"
+			(uuid "0946e219-adc1-4d12-a3fa-b8748ad127ac")
+		)
+		(pin "6"
+			(uuid "354d2e0f-6017-468b-b4c6-8973dfe6e33d")
+		)
+		(pin "7"
+			(uuid "3a4c5920-c053-4336-bb07-73fa89ba4596")
+		)
+		(pin "8"
+			(uuid "cced9909-e94c-47d7-8fcb-838dcc12160e")
+		)
+		(pin "9"
+			(uuid "4b1c1ce1-6e29-43e4-b61e-e6ccd0223a83")
+		)
+		(pin "10"
+			(uuid "e0bbd742-2e6d-4f30-a843-8ca2ae683919")
+		)
+		(pin "11"
+			(uuid "2ba4564d-cc41-4613-9f42-94546326d03b")
+		)
+		(pin "12"
+			(uuid "4bf3db42-6b28-4ca2-a32e-6bb70047217a")
+		)
+		(pin "13"
+			(uuid "e8141caa-382b-4bdf-b0ef-d77d37999e0c")
+		)
+		(pin "14"
+			(uuid "7ecfc7e3-c59d-44ab-a065-6a69702f3c3a")
+		)
+		(pin "15"
+			(uuid "8c716e6b-684a-45fb-a6b2-ba1db554c413")
+		)
+		(pin "16"
+			(uuid "17ebfd62-7789-44fd-9b31-b669cfd8fa3e")
+		)
+		(pin "17"
+			(uuid "fce2de67-2c55-4304-b8ab-b67462e4703d")
+		)
+		(pin "18"
+			(uuid "45c4a14e-ef90-46fc-a213-342d45c52612")
+		)
+		(pin "19"
+			(uuid "e3c4b1de-fe63-49e2-b68e-62be13a5f4d4")
+		)
+		(pin "20"
+			(uuid "09989886-b3b2-467a-a06c-830991d03c99")
+		)
+		(pin "21"
+			(uuid "bf8a90f2-1304-4487-b17b-a5d71acaa917")
+		)
+		(pin "22"
+			(uuid "33824ead-18d4-4ad4-ad04-d09b79b7c29a")
+		)
+		(pin "23"
+			(uuid "210a5a83-7d17-4516-a1e9-28810647f162")
+		)
+		(pin "24"
+			(uuid "f86c0cef-b15a-42b6-bc3a-cfb06a833f5b")
+		)
+		(pin "25"
+			(uuid "bbce9ca3-1c56-4ba3-b848-1e5a7b33e35b")
+		)
+		(pin "26"
+			(uuid "9ee2a642-ffc6-44cb-a8fc-5be95e6c6cd1")
+		)
+		(pin "27"
+			(uuid "cb47b6f5-6274-43d6-90ba-3a738a716c1c")
+		)
+		(pin "28"
+			(uuid "24fd89d6-730e-4685-9a67-b046387d2142")
+		)
 		(instances
 			(project "SchindlerCarrierBoard_V1"
 				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/a148f08b-d7e9-4324-ad03-18c761da3981"
@@ -1991,64 +3243,9 @@
 	)
 	(symbol
 		(lib_id "JustinLibrary:TLC59116FIPWR")
-		(at 190.5 30.48 0)
-		(unit 1)
-		(exclude_from_sim no)
-		(in_bom yes)
-		(on_board yes)
-		(in_pos_files yes)
-		(dnp no)
-		(uuid "8081a85a-da25-4f9c-9d19-57e7db3e6d2f")
-		(property "Reference" "U1100"
-			(at 196.85 27.94 0)
-			(effects (font (size 1.27 1.27))(justify left)))
-		(property "Value" "TLC59116F"
-			(at 196.85 33.02 0)
-			(effects (font (size 1.27 1.27))(justify left)))
-		(property "Footprint" ""
-			(at 190.5 30.48 0)
-			(effects (font (size 1.27 1.27))(hide yes)))
-		(instances
-			(project "SchindlerCarrierBoard_V1"
-				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/a148f08b-d7e9-4324-ad03-18c761da3981"
-					(reference "U1100")
-					(unit 1)
-				)
-			)
-		)
-	)
-	(symbol
-		(lib_id "JustinLibrary:TLC59116FIPWR")
-		(at 270.51 30.48 0)
-		(unit 1)
-		(exclude_from_sim no)
-		(in_bom yes)
-		(on_board yes)
-		(in_pos_files yes)
-		(dnp no)
-		(uuid "202da899-dfdd-4158-ae3b-8dcc4b0882d0")
-		(property "Reference" "U1101"
-			(at 276.86 27.94 0)
-			(effects (font (size 1.27 1.27))(justify left)))
-		(property "Value" "TLC59116F"
-			(at 276.86 33.02 0)
-			(effects (font (size 1.27 1.27))(justify left)))
-		(property "Footprint" ""
-			(at 270.51 30.48 0)
-			(effects (font (size 1.27 1.27))(hide yes)))
-		(instances
-			(project "SchindlerCarrierBoard_V1"
-				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/a148f08b-d7e9-4324-ad03-18c761da3981"
-					(reference "U1101")
-					(unit 1)
-				)
-			)
-		)
-	)
-	(symbol
-		(lib_id "JustinLibrary:TLC59116FIPWR")
 		(at 350.52 30.48 0)
 		(unit 1)
+		(body_style 1)
 		(exclude_from_sim no)
 		(in_bom yes)
 		(on_board yes)
@@ -2057,13 +3254,141 @@
 		(uuid "2e2e0f54-93d3-4932-9ae5-88082390f35a")
 		(property "Reference" "U1102"
 			(at 356.87 27.94 0)
-			(effects (font (size 1.27 1.27))(justify left)))
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
 		(property "Value" "TLC59116F"
 			(at 356.87 33.02 0)
-			(effects (font (size 1.27 1.27))(justify left)))
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
 		(property "Footprint" ""
 			(at 350.52 30.48 0)
-			(effects (font (size 1.27 1.27))(hide yes)))
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 350.52 30.48 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 350.52 30.48 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "2"
+			(uuid "5d0cf37f-e9ee-430b-a794-6ff36f0f3307")
+		)
+		(pin "3"
+			(uuid "37393d43-8878-45f1-91d5-aa3cbc2cb2dd")
+		)
+		(pin "4"
+			(uuid "1553fff4-f1ef-4ac7-b005-590837ebec22")
+		)
+		(pin "5"
+			(uuid "864bb310-afc6-4f18-837f-36016aa30a43")
+		)
+		(pin "6"
+			(uuid "7c70bf38-10bd-4b21-8d66-dfb224aa8260")
+		)
+		(pin "7"
+			(uuid "0ab8801c-7393-4511-9b89-3ba644f69555")
+		)
+		(pin "8"
+			(uuid "bf330886-5dc9-4f47-8235-8a42945690c3")
+		)
+		(pin "9"
+			(uuid "20c68bea-2007-4f82-ac58-621a822adecd")
+		)
+		(pin "10"
+			(uuid "31911e7b-8add-4607-99d4-de2d56806282")
+		)
+		(pin "11"
+			(uuid "188f8a7e-2857-479f-8e86-ed83c23987b4")
+		)
+		(pin "12"
+			(uuid "d551be47-3d08-445e-8a07-6742ec687884")
+		)
+		(pin "13"
+			(uuid "538a9a13-a5d3-4975-a556-ad41c06902ab")
+		)
+		(pin "14"
+			(uuid "3a0de69d-4ba0-4d02-8c74-b03578311df2")
+		)
+		(pin "15"
+			(uuid "82f50324-f248-42d6-839b-d8437d40bb1d")
+		)
+		(pin "16"
+			(uuid "1e5cba9a-a7a2-479b-9f1f-8a87f8fc3c0a")
+		)
+		(pin "17"
+			(uuid "191225ed-beca-4141-b9ed-b597c29e3b97")
+		)
+		(pin "18"
+			(uuid "f4783663-a03e-442d-9717-7b89a7279a0c")
+		)
+		(pin "19"
+			(uuid "e76d384d-b1a3-47b6-ace7-196e468d601f")
+		)
+		(pin "20"
+			(uuid "0513d06d-9345-4b2a-8803-2be1f4ec522e")
+		)
+		(pin "21"
+			(uuid "4cdce1a6-4645-465a-b8ad-255b70de4fef")
+		)
+		(pin "22"
+			(uuid "fb85d990-7f17-41b4-a243-5ab8bc437dc5")
+		)
+		(pin "23"
+			(uuid "f1dac265-abd6-4605-97c8-6a8ed53343ab")
+		)
+		(pin "24"
+			(uuid "ac0da359-9a33-47b0-8643-bbbb9e123fa8")
+		)
+		(pin "25"
+			(uuid "796edf83-d5e9-40cd-849b-679fb9dd039d")
+		)
+		(pin "26"
+			(uuid "a362a4a8-0ccc-4c8f-a36e-1dacca27e56b")
+		)
+		(pin "27"
+			(uuid "ae56be64-1dcb-4597-86a0-0d990e104f05")
+		)
+		(pin "28"
+			(uuid "1f6fb377-19cb-42a8-a6c1-c5025c18c97a")
+		)
+		(pin "1"
+			(uuid "2d575049-c1b8-48da-b837-befa471767b3")
+		)
 		(instances
 			(project "SchindlerCarrierBoard_V1"
 				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/a148f08b-d7e9-4324-ad03-18c761da3981"
@@ -2077,6 +3402,7 @@
 		(lib_id "Device:LED_Dual_KAK")
 		(at 430.53 30.48 0)
 		(unit 1)
+		(body_style 1)
 		(exclude_from_sim no)
 		(in_bom yes)
 		(on_board yes)
@@ -2085,13 +3411,66 @@
 		(uuid "354c4a94-8e7f-493b-aba1-5affa0f41336")
 		(property "Reference" "D1100"
 			(at 436.88 27.94 0)
-			(effects (font (size 1.27 1.27))(justify left)))
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
 		(property "Value" "L-3VEGW-CA"
 			(at 436.88 33.02 0)
-			(effects (font (size 1.27 1.27))(justify left)))
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
 		(property "Footprint" "CarrierGen:LED_Bicolor_Lumex_SSF-LXH409_RA_3pin"
 			(at 430.53 30.48 0)
-			(effects (font (size 1.27 1.27))(hide yes)))
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 430.53 30.48 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 430.53 30.48 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "4f826463-be02-4d68-86a3-5c390e9a470a")
+		)
+		(pin "2"
+			(uuid "9f88fc2d-603d-428c-a32b-b0ad763d15ae")
+		)
+		(pin "3"
+			(uuid "b59a8d0f-28c9-4b6d-bf63-a92bbc4f1391")
+		)
 		(instances
 			(project "SchindlerCarrierBoard_V1"
 				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/a148f08b-d7e9-4324-ad03-18c761da3981"
@@ -2103,372 +3482,9 @@
 	)
 	(symbol
 		(lib_id "Device:LED_Dual_KAK")
-		(at 510.54 30.48 0)
-		(unit 1)
-		(exclude_from_sim no)
-		(in_bom yes)
-		(on_board yes)
-		(in_pos_files yes)
-		(dnp no)
-		(uuid "d0efea08-3121-4286-baf6-9bc971581c7b")
-		(property "Reference" "D1101"
-			(at 516.89 27.94 0)
-			(effects (font (size 1.27 1.27))(justify left)))
-		(property "Value" "L-3VEGW-CA"
-			(at 516.89 33.02 0)
-			(effects (font (size 1.27 1.27))(justify left)))
-		(property "Footprint" "CarrierGen:LED_Bicolor_Lumex_SSF-LXH409_RA_3pin"
-			(at 510.54 30.48 0)
-			(effects (font (size 1.27 1.27))(hide yes)))
-		(instances
-			(project "SchindlerCarrierBoard_V1"
-				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/a148f08b-d7e9-4324-ad03-18c761da3981"
-					(reference "D1101")
-					(unit 1)
-				)
-			)
-		)
-	)
-	(symbol
-		(lib_id "Device:LED_Dual_KAK")
-		(at 30.48 95.25 0)
-		(unit 1)
-		(exclude_from_sim no)
-		(in_bom yes)
-		(on_board yes)
-		(in_pos_files yes)
-		(dnp no)
-		(uuid "10e9eead-90fb-4e22-85bf-0acac2551f57")
-		(property "Reference" "D1102"
-			(at 36.83 92.71 0)
-			(effects (font (size 1.27 1.27))(justify left)))
-		(property "Value" "L-3VEGW-CA"
-			(at 36.83 97.79 0)
-			(effects (font (size 1.27 1.27))(justify left)))
-		(property "Footprint" "CarrierGen:LED_Bicolor_Lumex_SSF-LXH409_RA_3pin"
-			(at 30.48 95.25 0)
-			(effects (font (size 1.27 1.27))(hide yes)))
-		(instances
-			(project "SchindlerCarrierBoard_V1"
-				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/a148f08b-d7e9-4324-ad03-18c761da3981"
-					(reference "D1102")
-					(unit 1)
-				)
-			)
-		)
-	)
-	(symbol
-		(lib_id "Device:LED_Dual_KAK")
-		(at 110.49 95.25 0)
-		(unit 1)
-		(exclude_from_sim no)
-		(in_bom yes)
-		(on_board yes)
-		(in_pos_files yes)
-		(dnp no)
-		(uuid "c4df9d9d-e92d-459e-8664-4b1d48903aa7")
-		(property "Reference" "D1103"
-			(at 116.84 92.71 0)
-			(effects (font (size 1.27 1.27))(justify left)))
-		(property "Value" "L-3VEGW-CA"
-			(at 116.84 97.79 0)
-			(effects (font (size 1.27 1.27))(justify left)))
-		(property "Footprint" "CarrierGen:LED_Bicolor_Lumex_SSF-LXH409_RA_3pin"
-			(at 110.49 95.25 0)
-			(effects (font (size 1.27 1.27))(hide yes)))
-		(instances
-			(project "SchindlerCarrierBoard_V1"
-				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/a148f08b-d7e9-4324-ad03-18c761da3981"
-					(reference "D1103")
-					(unit 1)
-				)
-			)
-		)
-	)
-	(symbol
-		(lib_id "Device:LED_Dual_KAK")
-		(at 190.5 95.25 0)
-		(unit 1)
-		(exclude_from_sim no)
-		(in_bom yes)
-		(on_board yes)
-		(in_pos_files yes)
-		(dnp no)
-		(uuid "001511da-521f-4cd4-9554-7341573fa826")
-		(property "Reference" "D1104"
-			(at 196.85 92.71 0)
-			(effects (font (size 1.27 1.27))(justify left)))
-		(property "Value" "L-3VEGW-CA"
-			(at 196.85 97.79 0)
-			(effects (font (size 1.27 1.27))(justify left)))
-		(property "Footprint" "CarrierGen:LED_Bicolor_Lumex_SSF-LXH409_RA_3pin"
-			(at 190.5 95.25 0)
-			(effects (font (size 1.27 1.27))(hide yes)))
-		(instances
-			(project "SchindlerCarrierBoard_V1"
-				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/a148f08b-d7e9-4324-ad03-18c761da3981"
-					(reference "D1104")
-					(unit 1)
-				)
-			)
-		)
-	)
-	(symbol
-		(lib_id "Device:LED_Dual_KAK")
-		(at 270.51 95.25 0)
-		(unit 1)
-		(exclude_from_sim no)
-		(in_bom yes)
-		(on_board yes)
-		(in_pos_files yes)
-		(dnp no)
-		(uuid "8567489a-a056-4728-a2d5-bf17e7b88607")
-		(property "Reference" "D1105"
-			(at 276.86 92.71 0)
-			(effects (font (size 1.27 1.27))(justify left)))
-		(property "Value" "L-3VEGW-CA"
-			(at 276.86 97.79 0)
-			(effects (font (size 1.27 1.27))(justify left)))
-		(property "Footprint" "CarrierGen:LED_Bicolor_Lumex_SSF-LXH409_RA_3pin"
-			(at 270.51 95.25 0)
-			(effects (font (size 1.27 1.27))(hide yes)))
-		(instances
-			(project "SchindlerCarrierBoard_V1"
-				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/a148f08b-d7e9-4324-ad03-18c761da3981"
-					(reference "D1105")
-					(unit 1)
-				)
-			)
-		)
-	)
-	(symbol
-		(lib_id "Device:LED_Dual_KAK")
-		(at 350.52 95.25 0)
-		(unit 1)
-		(exclude_from_sim no)
-		(in_bom yes)
-		(on_board yes)
-		(in_pos_files yes)
-		(dnp no)
-		(uuid "8224e2a2-9ebb-4a1b-ba90-5bed0b560205")
-		(property "Reference" "D1106"
-			(at 356.87 92.71 0)
-			(effects (font (size 1.27 1.27))(justify left)))
-		(property "Value" "L-3VEGW-CA"
-			(at 356.87 97.79 0)
-			(effects (font (size 1.27 1.27))(justify left)))
-		(property "Footprint" "CarrierGen:LED_Bicolor_Lumex_SSF-LXH409_RA_3pin"
-			(at 350.52 95.25 0)
-			(effects (font (size 1.27 1.27))(hide yes)))
-		(instances
-			(project "SchindlerCarrierBoard_V1"
-				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/a148f08b-d7e9-4324-ad03-18c761da3981"
-					(reference "D1106")
-					(unit 1)
-				)
-			)
-		)
-	)
-	(symbol
-		(lib_id "Device:LED_Dual_KAK")
-		(at 430.53 95.25 0)
-		(unit 1)
-		(exclude_from_sim no)
-		(in_bom yes)
-		(on_board yes)
-		(in_pos_files yes)
-		(dnp no)
-		(uuid "e05456d7-d26c-4fed-ad82-e458ae2b7b2c")
-		(property "Reference" "D1107"
-			(at 436.88 92.71 0)
-			(effects (font (size 1.27 1.27))(justify left)))
-		(property "Value" "L-3VEGW-CA"
-			(at 436.88 97.79 0)
-			(effects (font (size 1.27 1.27))(justify left)))
-		(property "Footprint" "CarrierGen:LED_Bicolor_Lumex_SSF-LXH409_RA_3pin"
-			(at 430.53 95.25 0)
-			(effects (font (size 1.27 1.27))(hide yes)))
-		(instances
-			(project "SchindlerCarrierBoard_V1"
-				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/a148f08b-d7e9-4324-ad03-18c761da3981"
-					(reference "D1107")
-					(unit 1)
-				)
-			)
-		)
-	)
-	(symbol
-		(lib_id "Device:LED_Dual_KAK")
-		(at 510.54 95.25 0)
-		(unit 1)
-		(exclude_from_sim no)
-		(in_bom yes)
-		(on_board yes)
-		(in_pos_files yes)
-		(dnp no)
-		(uuid "acb43130-64c1-4f73-882a-f90755faf0c3")
-		(property "Reference" "D1108"
-			(at 516.89 92.71 0)
-			(effects (font (size 1.27 1.27))(justify left)))
-		(property "Value" "L-3VEGW-CA"
-			(at 516.89 97.79 0)
-			(effects (font (size 1.27 1.27))(justify left)))
-		(property "Footprint" "CarrierGen:LED_Bicolor_Lumex_SSF-LXH409_RA_3pin"
-			(at 510.54 95.25 0)
-			(effects (font (size 1.27 1.27))(hide yes)))
-		(instances
-			(project "SchindlerCarrierBoard_V1"
-				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/a148f08b-d7e9-4324-ad03-18c761da3981"
-					(reference "D1108")
-					(unit 1)
-				)
-			)
-		)
-	)
-	(symbol
-		(lib_id "Device:LED_Dual_KAK")
-		(at 30.48 160.02 0)
-		(unit 1)
-		(exclude_from_sim no)
-		(in_bom yes)
-		(on_board yes)
-		(in_pos_files yes)
-		(dnp no)
-		(uuid "0a000f2d-3985-4946-86fe-4be8677a9b57")
-		(property "Reference" "D1109"
-			(at 36.83 157.48 0)
-			(effects (font (size 1.27 1.27))(justify left)))
-		(property "Value" "L-3VEGW-CA"
-			(at 36.83 162.56 0)
-			(effects (font (size 1.27 1.27))(justify left)))
-		(property "Footprint" "CarrierGen:LED_Bicolor_Lumex_SSF-LXH409_RA_3pin"
-			(at 30.48 160.02 0)
-			(effects (font (size 1.27 1.27))(hide yes)))
-		(instances
-			(project "SchindlerCarrierBoard_V1"
-				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/a148f08b-d7e9-4324-ad03-18c761da3981"
-					(reference "D1109")
-					(unit 1)
-				)
-			)
-		)
-	)
-	(symbol
-		(lib_id "Device:LED_Dual_KAK")
-		(at 110.49 160.02 0)
-		(unit 1)
-		(exclude_from_sim no)
-		(in_bom yes)
-		(on_board yes)
-		(in_pos_files yes)
-		(dnp no)
-		(uuid "837ab1a1-bea3-4d8f-b95a-1c6626d11206")
-		(property "Reference" "D1110"
-			(at 116.84 157.48 0)
-			(effects (font (size 1.27 1.27))(justify left)))
-		(property "Value" "L-3VEGW-CA"
-			(at 116.84 162.56 0)
-			(effects (font (size 1.27 1.27))(justify left)))
-		(property "Footprint" "CarrierGen:LED_Bicolor_Lumex_SSF-LXH409_RA_3pin"
-			(at 110.49 160.02 0)
-			(effects (font (size 1.27 1.27))(hide yes)))
-		(instances
-			(project "SchindlerCarrierBoard_V1"
-				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/a148f08b-d7e9-4324-ad03-18c761da3981"
-					(reference "D1110")
-					(unit 1)
-				)
-			)
-		)
-	)
-	(symbol
-		(lib_id "Device:LED_Dual_KAK")
-		(at 190.5 160.02 0)
-		(unit 1)
-		(exclude_from_sim no)
-		(in_bom yes)
-		(on_board yes)
-		(in_pos_files yes)
-		(dnp no)
-		(uuid "48e9d33a-9f5c-420d-85a4-f4e4f191e762")
-		(property "Reference" "D1111"
-			(at 196.85 157.48 0)
-			(effects (font (size 1.27 1.27))(justify left)))
-		(property "Value" "L-3VEGW-CA"
-			(at 196.85 162.56 0)
-			(effects (font (size 1.27 1.27))(justify left)))
-		(property "Footprint" "CarrierGen:LED_Bicolor_Lumex_SSF-LXH409_RA_3pin"
-			(at 190.5 160.02 0)
-			(effects (font (size 1.27 1.27))(hide yes)))
-		(instances
-			(project "SchindlerCarrierBoard_V1"
-				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/a148f08b-d7e9-4324-ad03-18c761da3981"
-					(reference "D1111")
-					(unit 1)
-				)
-			)
-		)
-	)
-	(symbol
-		(lib_id "Device:LED_Dual_KAK")
-		(at 270.51 160.02 0)
-		(unit 1)
-		(exclude_from_sim no)
-		(in_bom yes)
-		(on_board yes)
-		(in_pos_files yes)
-		(dnp no)
-		(uuid "ca369b80-be30-4a80-b78e-47544fad22c4")
-		(property "Reference" "D1112"
-			(at 276.86 157.48 0)
-			(effects (font (size 1.27 1.27))(justify left)))
-		(property "Value" "L-3VEGW-CA"
-			(at 276.86 162.56 0)
-			(effects (font (size 1.27 1.27))(justify left)))
-		(property "Footprint" "CarrierGen:LED_Bicolor_Lumex_SSF-LXH409_RA_3pin"
-			(at 270.51 160.02 0)
-			(effects (font (size 1.27 1.27))(hide yes)))
-		(instances
-			(project "SchindlerCarrierBoard_V1"
-				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/a148f08b-d7e9-4324-ad03-18c761da3981"
-					(reference "D1112")
-					(unit 1)
-				)
-			)
-		)
-	)
-	(symbol
-		(lib_id "Device:LED_Dual_KAK")
-		(at 350.52 160.02 0)
-		(unit 1)
-		(exclude_from_sim no)
-		(in_bom yes)
-		(on_board yes)
-		(in_pos_files yes)
-		(dnp no)
-		(uuid "7b17dccb-6efe-4edc-a552-e577556b2a38")
-		(property "Reference" "D1113"
-			(at 356.87 157.48 0)
-			(effects (font (size 1.27 1.27))(justify left)))
-		(property "Value" "L-3VEGW-CA"
-			(at 356.87 162.56 0)
-			(effects (font (size 1.27 1.27))(justify left)))
-		(property "Footprint" "CarrierGen:LED_Bicolor_Lumex_SSF-LXH409_RA_3pin"
-			(at 350.52 160.02 0)
-			(effects (font (size 1.27 1.27))(hide yes)))
-		(instances
-			(project "SchindlerCarrierBoard_V1"
-				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/a148f08b-d7e9-4324-ad03-18c761da3981"
-					(reference "D1113")
-					(unit 1)
-				)
-			)
-		)
-	)
-	(symbol
-		(lib_id "Device:LED_Dual_KAK")
 		(at 430.53 160.02 0)
 		(unit 1)
+		(body_style 1)
 		(exclude_from_sim no)
 		(in_bom yes)
 		(on_board yes)
@@ -2477,13 +3493,66 @@
 		(uuid "3734a254-d7ea-4202-88b2-4fbc9f71d847")
 		(property "Reference" "D1114"
 			(at 436.88 157.48 0)
-			(effects (font (size 1.27 1.27))(justify left)))
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
 		(property "Value" "L-3VEGW-CA"
 			(at 436.88 162.56 0)
-			(effects (font (size 1.27 1.27))(justify left)))
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
 		(property "Footprint" "CarrierGen:LED_Bicolor_Lumex_SSF-LXH409_RA_3pin"
 			(at 430.53 160.02 0)
-			(effects (font (size 1.27 1.27))(hide yes)))
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 430.53 160.02 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 430.53 160.02 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "d99c04ca-79dd-4da5-ad8c-2fb0cbb788d1")
+		)
+		(pin "2"
+			(uuid "0b9cc5d3-f37a-44a7-9d4e-56332a102bd0")
+		)
+		(pin "3"
+			(uuid "cff7457d-91e4-4c78-b4bf-a9d0596435eb")
+		)
 		(instances
 			(project "SchindlerCarrierBoard_V1"
 				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/a148f08b-d7e9-4324-ad03-18c761da3981"
@@ -2497,6 +3566,7 @@
 		(lib_id "Device:LED_Dual_KAK")
 		(at 510.54 160.02 0)
 		(unit 1)
+		(body_style 1)
 		(exclude_from_sim no)
 		(in_bom yes)
 		(on_board yes)
@@ -2505,13 +3575,66 @@
 		(uuid "47b900b9-b233-49e5-84db-c222440bc89c")
 		(property "Reference" "D1115"
 			(at 516.89 157.48 0)
-			(effects (font (size 1.27 1.27))(justify left)))
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
 		(property "Value" "L-3VEGW-CA"
 			(at 516.89 162.56 0)
-			(effects (font (size 1.27 1.27))(justify left)))
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
 		(property "Footprint" "CarrierGen:LED_Bicolor_Lumex_SSF-LXH409_RA_3pin"
 			(at 510.54 160.02 0)
-			(effects (font (size 1.27 1.27))(hide yes)))
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 510.54 160.02 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 510.54 160.02 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "68a80771-6f40-43e4-8d3a-6d351b0731ce")
+		)
+		(pin "2"
+			(uuid "a8f065c7-ea43-47cf-a324-aff452858c3e")
+		)
+		(pin "3"
+			(uuid "e705bf56-1338-438b-8348-fafc214c80b9")
+		)
 		(instances
 			(project "SchindlerCarrierBoard_V1"
 				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/a148f08b-d7e9-4324-ad03-18c761da3981"
@@ -2523,55 +3646,81 @@
 	)
 	(symbol
 		(lib_id "Device:LED_Dual_KAK")
-		(at 30.48 224.79 0)
+		(at 190.5 160.02 0)
 		(unit 1)
+		(body_style 1)
 		(exclude_from_sim no)
 		(in_bom yes)
 		(on_board yes)
 		(in_pos_files yes)
 		(dnp no)
-		(uuid "ded12051-29ae-4a29-9122-2a98d3584457")
-		(property "Reference" "D1116"
-			(at 36.83 222.25 0)
-			(effects (font (size 1.27 1.27))(justify left)))
+		(uuid "48e9d33a-9f5c-420d-85a4-f4e4f191e762")
+		(property "Reference" "D1111"
+			(at 196.85 157.48 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
 		(property "Value" "L-3VEGW-CA"
-			(at 36.83 227.33 0)
-			(effects (font (size 1.27 1.27))(justify left)))
+			(at 196.85 162.56 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
 		(property "Footprint" "CarrierGen:LED_Bicolor_Lumex_SSF-LXH409_RA_3pin"
-			(at 30.48 224.79 0)
-			(effects (font (size 1.27 1.27))(hide yes)))
-		(instances
-			(project "SchindlerCarrierBoard_V1"
-				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/a148f08b-d7e9-4324-ad03-18c761da3981"
-					(reference "D1116")
-					(unit 1)
+			(at 190.5 160.02 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
 				)
 			)
 		)
-	)
-	(symbol
-		(lib_id "Device:LED_Dual_KAK")
-		(at 110.49 224.79 0)
-		(unit 1)
-		(exclude_from_sim no)
-		(in_bom yes)
-		(on_board yes)
-		(in_pos_files yes)
-		(dnp no)
-		(uuid "e7673c87-9c32-42e1-a93c-369bc731ea85")
-		(property "Reference" "D1117"
-			(at 116.84 222.25 0)
-			(effects (font (size 1.27 1.27))(justify left)))
-		(property "Value" "L-3VEGW-CA"
-			(at 116.84 227.33 0)
-			(effects (font (size 1.27 1.27))(justify left)))
-		(property "Footprint" "CarrierGen:LED_Bicolor_Lumex_SSF-LXH409_RA_3pin"
-			(at 110.49 224.79 0)
-			(effects (font (size 1.27 1.27))(hide yes)))
+		(property "Datasheet" ""
+			(at 190.5 160.02 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 190.5 160.02 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "d19ef332-1d0a-4deb-bbab-0d28720a3b65")
+		)
+		(pin "2"
+			(uuid "eeec874e-a2f5-4509-b1e5-601278ea1016")
+		)
+		(pin "3"
+			(uuid "b0cecdb6-1204-41c6-8a64-899f86aa7c43")
+		)
 		(instances
 			(project "SchindlerCarrierBoard_V1"
 				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/a148f08b-d7e9-4324-ad03-18c761da3981"
-					(reference "D1117")
+					(reference "D1111")
 					(unit 1)
 				)
 			)
@@ -2581,6 +3730,7 @@
 		(lib_id "Device:LED_Dual_KAK")
 		(at 190.5 224.79 0)
 		(unit 1)
+		(body_style 1)
 		(exclude_from_sim no)
 		(in_bom yes)
 		(on_board yes)
@@ -2589,13 +3739,66 @@
 		(uuid "4e04612d-f7de-4185-be14-b1b024670b05")
 		(property "Reference" "D1118"
 			(at 196.85 222.25 0)
-			(effects (font (size 1.27 1.27))(justify left)))
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
 		(property "Value" "L-3VEGW-CA"
 			(at 196.85 227.33 0)
-			(effects (font (size 1.27 1.27))(justify left)))
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
 		(property "Footprint" "CarrierGen:LED_Bicolor_Lumex_SSF-LXH409_RA_3pin"
 			(at 190.5 224.79 0)
-			(effects (font (size 1.27 1.27))(hide yes)))
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 190.5 224.79 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 190.5 224.79 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "2ebcc42a-66d9-4df6-96e5-e953a41a0f96")
+		)
+		(pin "2"
+			(uuid "a36726c8-eb60-41aa-8a20-347ba588631c")
+		)
+		(pin "3"
+			(uuid "5804a2cc-9726-4876-b20b-6808a84de57b")
+		)
 		(instances
 			(project "SchindlerCarrierBoard_V1"
 				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/a148f08b-d7e9-4324-ad03-18c761da3981"
@@ -2607,8 +3810,91 @@
 	)
 	(symbol
 		(lib_id "Device:LED_Dual_KAK")
+		(at 350.52 224.79 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "58bb2bfa-5a47-47fb-b1f4-50a8ed02a290")
+		(property "Reference" "D1120"
+			(at 356.87 222.25 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "L-3VEGW-CA"
+			(at 356.87 227.33 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "CarrierGen:LED_Bicolor_Lumex_SSF-LXH409_RA_3pin"
+			(at 350.52 224.79 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 350.52 224.79 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 350.52 224.79 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "b6b9afb2-fce9-4099-8b2e-c95be687627e")
+		)
+		(pin "2"
+			(uuid "ffb39a8e-171f-4ba9-a835-065f0c50ea2d")
+		)
+		(pin "3"
+			(uuid "4c7a1a1d-9c94-4c83-ac38-765dd43b3103")
+		)
+		(instances
+			(project "SchindlerCarrierBoard_V1"
+				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/a148f08b-d7e9-4324-ad03-18c761da3981"
+					(reference "D1120")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:LED_Dual_KAK")
 		(at 270.51 224.79 0)
 		(unit 1)
+		(body_style 1)
 		(exclude_from_sim no)
 		(in_bom yes)
 		(on_board yes)
@@ -2617,13 +3903,66 @@
 		(uuid "66874105-f2f3-4420-a704-0b1240943ec4")
 		(property "Reference" "D1119"
 			(at 276.86 222.25 0)
-			(effects (font (size 1.27 1.27))(justify left)))
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
 		(property "Value" "L-3VEGW-CA"
 			(at 276.86 227.33 0)
-			(effects (font (size 1.27 1.27))(justify left)))
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
 		(property "Footprint" "CarrierGen:LED_Bicolor_Lumex_SSF-LXH409_RA_3pin"
 			(at 270.51 224.79 0)
-			(effects (font (size 1.27 1.27))(hide yes)))
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 270.51 224.79 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 270.51 224.79 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "19a00152-bfcb-43f3-b174-506886e2d66f")
+		)
+		(pin "2"
+			(uuid "0b3ada56-88f3-4a10-8254-c7815a5d4da6")
+		)
+		(pin "3"
+			(uuid "99e81e18-f251-499f-9674-aab29d43e70f")
+		)
 		(instances
 			(project "SchindlerCarrierBoard_V1"
 				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/a148f08b-d7e9-4324-ad03-18c761da3981"
@@ -2635,206 +3974,1169 @@
 	)
 	(symbol
 		(lib_id "Device:LED_Dual_KAK")
-		(at 350.52 224.79 0)
+		(at 350.52 160.02 0)
 		(unit 1)
+		(body_style 1)
 		(exclude_from_sim no)
 		(in_bom yes)
 		(on_board yes)
 		(in_pos_files yes)
 		(dnp no)
-		(uuid "58bb2bfa-5a47-47fb-b1f4-50a8ed02a290")
-		(property "Reference" "D1120"
-			(at 356.87 222.25 0)
-			(effects (font (size 1.27 1.27))(justify left)))
+		(uuid "7b17dccb-6efe-4edc-a552-e577556b2a38")
+		(property "Reference" "D1113"
+			(at 356.87 157.48 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
 		(property "Value" "L-3VEGW-CA"
-			(at 356.87 227.33 0)
-			(effects (font (size 1.27 1.27))(justify left)))
+			(at 356.87 162.56 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
 		(property "Footprint" "CarrierGen:LED_Bicolor_Lumex_SSF-LXH409_RA_3pin"
-			(at 350.52 224.79 0)
-			(effects (font (size 1.27 1.27))(hide yes)))
+			(at 350.52 160.02 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 350.52 160.02 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 350.52 160.02 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "a15d0787-b3c6-4bbe-b48a-82aab11c80ff")
+		)
+		(pin "2"
+			(uuid "80dcbc4b-f0b7-4a5c-be22-b3e62623eeca")
+		)
+		(pin "3"
+			(uuid "804e79ff-b88c-415b-8111-15b28ccb991e")
+		)
 		(instances
 			(project "SchindlerCarrierBoard_V1"
 				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/a148f08b-d7e9-4324-ad03-18c761da3981"
-					(reference "D1120")
+					(reference "D1113")
 					(unit 1)
 				)
 			)
 		)
 	)
-	(global_label "+5V"
-		(shape input)
-		(at 25.4 20.32 0)
-		(effects (font (size 1.27 1.27))(justify left))
-		(uuid "ecdd2730-39ca-4fac-8671-b0382f453271"))
-	(global_label "+3V3"
-		(shape input)
-		(at 25.4 22.86 0)
-		(effects (font (size 1.27 1.27))(justify left))
-		(uuid "36dc6a9b-3bbc-429a-8081-e597c7a09592"))
-	(global_label "GND"
-		(shape input)
-		(at 25.4 25.4 0)
-		(effects (font (size 1.27 1.27))(justify left))
-		(uuid "1047f474-eaef-4124-b516-349ce86730cc"))
-	(global_label "PS_ESP_UART_TX"
-		(shape input)
-		(at 25.4 27.94 0)
-		(effects (font (size 1.27 1.27))(justify left))
-		(uuid "2e0b2b9c-779c-425e-860e-4207bc4aa2bf"))
-	(global_label "PS_ESP_UART_RX"
-		(shape input)
-		(at 25.4 30.48 0)
-		(effects (font (size 1.27 1.27))(justify left))
-		(uuid "300f2fa3-3534-4da4-ace7-d5cdd50700c3"))
-	(global_label "PWR_BTN_N"
-		(shape input)
-		(at 25.4 33.02 0)
-		(effects (font (size 1.27 1.27))(justify left))
-		(uuid "dd4da4e0-8e97-49fa-b52f-c0890011dcf0"))
-	(global_label "ESP_EN"
-		(shape input)
-		(at 25.4 35.56 0)
-		(effects (font (size 1.27 1.27))(justify left))
-		(uuid "919dd089-5966-4e0e-8718-a980a3892042"))
-	(global_label "ESP_GPIO0"
-		(shape input)
-		(at 25.4 38.1 0)
-		(effects (font (size 1.27 1.27))(justify left))
-		(uuid "676f16fe-6b63-47ec-a14d-68864ba42eaf"))
-	(global_label "GND"
-		(shape input)
-		(at 25.4 40.64 0)
-		(effects (font (size 1.27 1.27))(justify left))
-		(uuid "c87062e5-a5f8-4ccd-ae53-beda17136486"))
-	(global_label "GND"
-		(shape input)
-		(at 25.4 43.18 0)
-		(effects (font (size 1.27 1.27))(justify left))
-		(uuid "6e230d7a-c9f2-4356-9669-28fbcae172f1"))
-	(global_label "GND"
-		(shape input)
-		(at 95.25 21.59 0)
-		(effects (font (size 1.27 1.27))(justify left))
-		(uuid "7432fd2c-468e-4931-8ce9-e22119451c08"))
-	(global_label "+3V3"
-		(shape input)
-		(at 95.25 24.13 0)
-		(effects (font (size 1.27 1.27))(justify left))
-		(uuid "bd90df98-527a-4665-95b2-3445a5659cd7"))
-	(global_label "LCD_CS"
-		(shape input)
-		(at 95.25 36.83 0)
-		(effects (font (size 1.27 1.27))(justify left))
-		(uuid "07d02908-6ad4-497b-b464-82e35bc6ca4b"))
-	(global_label "LCD_SPI_SCK"
-		(shape input)
-		(at 95.25 41.91 0)
-		(effects (font (size 1.27 1.27))(justify left))
-		(uuid "b588cc64-636e-451f-9069-b51e35e0635f"))
-	(global_label "LCD_SPI_MOSI"
-		(shape input)
-		(at 95.25 46.99 0)
-		(effects (font (size 1.27 1.27))(justify left))
-		(uuid "37e131c7-dce4-42e1-898c-ac3a7b6d2717"))
-	(global_label "LCD_SPI_MISO"
-		(shape input)
-		(at 125.73 36.83 0)
-		(effects (font (size 1.27 1.27))(justify left))
-		(uuid "9b91268f-d38c-4e06-9ed6-95c2fcb12917"))
-	(global_label "GND"
-		(shape input)
-		(at 208.28 58.42 0)
-		(effects (font (size 1.27 1.27))(justify left))
-		(uuid "4e5e979a-5681-436d-bb12-b40d215be736"))
-	(global_label "GND"
-		(shape input)
-		(at 208.28 58.42 0)
-		(effects (font (size 1.27 1.27))(justify left))
-		(uuid "b107a202-e359-4f70-ac7f-6d1509c8c38f"))
-	(global_label "GND"
-		(shape input)
-		(at 208.28 58.42 0)
-		(effects (font (size 1.27 1.27))(justify left))
-		(uuid "543e8fb0-2cd7-48d9-8fc5-bcd0e80addd6"))
-	(global_label "I2C_HK_SCL"
-		(shape input)
-		(at 172.72 20.32 0)
-		(effects (font (size 1.27 1.27))(justify left))
-		(uuid "7c74088f-9411-4fe2-9368-228cbf6db93d"))
-	(global_label "I2C_HK_SDA"
-		(shape input)
-		(at 172.72 50.8 0)
-		(effects (font (size 1.27 1.27))(justify left))
-		(uuid "62504934-75a6-4dd8-a144-8fc728929baa"))
-	(global_label "+3V3"
-		(shape input)
-		(at 208.28 2.54 0)
-		(effects (font (size 1.27 1.27))(justify left))
-		(uuid "9f290883-c4f3-47ce-8511-f10a1c823364"))
-	(global_label "GND"
-		(shape input)
-		(at 288.29 58.42 0)
-		(effects (font (size 1.27 1.27))(justify left))
-		(uuid "a06604ce-2d53-4d9a-b907-19ce991b91fb"))
-	(global_label "GND"
-		(shape input)
-		(at 288.29 58.42 0)
-		(effects (font (size 1.27 1.27))(justify left))
-		(uuid "67c5ff99-5f31-4ec7-80bf-0ae305e9a7d7"))
-	(global_label "GND"
-		(shape input)
-		(at 288.29 58.42 0)
-		(effects (font (size 1.27 1.27))(justify left))
-		(uuid "7df246bb-7b4e-4ce4-85f6-803713740a06"))
-	(global_label "I2C_HK_SCL"
-		(shape input)
-		(at 252.73 20.32 0)
-		(effects (font (size 1.27 1.27))(justify left))
-		(uuid "5674cf84-32b4-4921-80fa-6131054b4b17"))
-	(global_label "I2C_HK_SDA"
-		(shape input)
-		(at 252.73 50.8 0)
-		(effects (font (size 1.27 1.27))(justify left))
-		(uuid "d95c6f4e-b2d8-4a3c-8322-0c3f07729c12"))
-	(global_label "+3V3"
-		(shape input)
-		(at 288.29 2.54 0)
-		(effects (font (size 1.27 1.27))(justify left))
-		(uuid "d62981cb-ef03-4f3e-8c50-22183dff5f03"))
-	(global_label "GND"
-		(shape input)
-		(at 368.3 58.42 0)
-		(effects (font (size 1.27 1.27))(justify left))
-		(uuid "10ca9c33-2431-43ad-b55c-0279faa56039"))
-	(global_label "GND"
-		(shape input)
-		(at 368.3 58.42 0)
-		(effects (font (size 1.27 1.27))(justify left))
-		(uuid "f51db58e-36cb-4a9e-8071-8b47d1620af3"))
-	(global_label "GND"
-		(shape input)
-		(at 368.3 58.42 0)
-		(effects (font (size 1.27 1.27))(justify left))
-		(uuid "52d94a95-c598-4117-b695-9c593590eef9"))
-	(global_label "I2C_HK_SCL"
-		(shape input)
-		(at 332.74 20.32 0)
-		(effects (font (size 1.27 1.27))(justify left))
-		(uuid "1f6113d9-5fda-496c-bc32-817b94a0984c"))
-	(global_label "I2C_HK_SDA"
-		(shape input)
-		(at 332.74 50.8 0)
-		(effects (font (size 1.27 1.27))(justify left))
-		(uuid "b44e80fa-4a1d-47c2-932d-9cbd30af9e3c"))
-	(global_label "+3V3"
-		(shape input)
-		(at 368.3 2.54 0)
-		(effects (font (size 1.27 1.27))(justify left))
-		(uuid "70881b79-8f88-4147-ac13-187a2673696d"))
+	(symbol
+		(lib_id "JustinLibrary:TLC59116FIPWR")
+		(at 190.5 30.48 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "8081a85a-da25-4f9c-9d19-57e7db3e6d2f")
+		(property "Reference" "U1100"
+			(at 196.85 27.94 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "TLC59116F"
+			(at 196.85 33.02 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" ""
+			(at 190.5 30.48 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 190.5 30.48 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 190.5 30.48 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "11"
+			(uuid "71b7a842-147e-49ea-bc15-b6fac3652cb7")
+		)
+		(pin "12"
+			(uuid "8b1a36d0-b619-4d62-aca6-3e7ea3c7a906")
+		)
+		(pin "13"
+			(uuid "8e2db749-ef42-411f-9362-3c891cc15ba1")
+		)
+		(pin "14"
+			(uuid "3a19def8-f861-4ee2-be88-1f43b4688c96")
+		)
+		(pin "15"
+			(uuid "895d3e6a-86e6-447d-81ef-f89d8eb9d40b")
+		)
+		(pin "16"
+			(uuid "7fb175c7-3d9e-44a7-b4ee-dc69d11c8531")
+		)
+		(pin "17"
+			(uuid "c08e0b5a-6395-4dcb-89c0-c1dda6ce130d")
+		)
+		(pin "18"
+			(uuid "d70bda40-7884-404d-aa75-e8b935dd8cb6")
+		)
+		(pin "19"
+			(uuid "2e84aae4-5c1b-461e-b1fb-68a2f7bc2f0c")
+		)
+		(pin "20"
+			(uuid "e9cc6c9d-3ba5-4e32-9355-1dc8160ffa61")
+		)
+		(pin "21"
+			(uuid "4cb3d78f-72ee-49ca-8ce6-12273b242163")
+		)
+		(pin "22"
+			(uuid "69b510f9-bb4c-4331-9cf7-5596ab41fb6c")
+		)
+		(pin "23"
+			(uuid "33c355c2-7a25-4357-82a0-6c456a6c6bda")
+		)
+		(pin "24"
+			(uuid "0afc024a-4b4f-42e9-91e2-ea2f75fd782c")
+		)
+		(pin "25"
+			(uuid "ce9cf87c-4972-4cfa-b8b5-595a44e97676")
+		)
+		(pin "26"
+			(uuid "a5420986-bdf4-4b44-8b88-9585e51eaf83")
+		)
+		(pin "27"
+			(uuid "24542d5e-ef86-4857-9a91-8e15650e6ad5")
+		)
+		(pin "28"
+			(uuid "7c376dac-cbbd-4701-a602-d211c97ecd88")
+		)
+		(pin "1"
+			(uuid "c12c63d6-5e06-43ec-b82b-d9def9b1385e")
+		)
+		(pin "2"
+			(uuid "16b353c1-6257-449e-b317-93abc5f9c0e2")
+		)
+		(pin "3"
+			(uuid "c50218f4-55ac-4e2f-9636-d72747db164a")
+		)
+		(pin "4"
+			(uuid "706b2642-d6b4-488b-b3a6-3bbd8c3c3bbf")
+		)
+		(pin "5"
+			(uuid "3e0dc9c7-baaa-4a0e-96f4-f7cf080d41b4")
+		)
+		(pin "6"
+			(uuid "8378ffea-990b-4e2e-a70d-ac04221bbc67")
+		)
+		(pin "7"
+			(uuid "38fcfdcb-4935-487c-a6aa-7da735b02403")
+		)
+		(pin "8"
+			(uuid "982eef4f-57e6-4b1f-8c7d-68144d94d6e8")
+		)
+		(pin "9"
+			(uuid "429a3d59-f3e9-4bcb-8b46-44335c69df24")
+		)
+		(pin "10"
+			(uuid "97714814-5c69-4fa4-92f6-49f91719f8ec")
+		)
+		(instances
+			(project "SchindlerCarrierBoard_V1"
+				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/a148f08b-d7e9-4324-ad03-18c761da3981"
+					(reference "U1100")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:LED_Dual_KAK")
+		(at 350.52 95.25 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "8224e2a2-9ebb-4a1b-ba90-5bed0b560205")
+		(property "Reference" "D1106"
+			(at 356.87 92.71 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "L-3VEGW-CA"
+			(at 356.87 97.79 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "CarrierGen:LED_Bicolor_Lumex_SSF-LXH409_RA_3pin"
+			(at 350.52 95.25 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 350.52 95.25 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 350.52 95.25 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "559c519e-61d2-4cb5-b7fb-d0a1a4319dc8")
+		)
+		(pin "2"
+			(uuid "0cfcb4d5-77fb-432a-a99a-64040b75e4d7")
+		)
+		(pin "3"
+			(uuid "7d47d1cc-23a2-4eeb-b195-8a1cd74036fa")
+		)
+		(instances
+			(project "SchindlerCarrierBoard_V1"
+				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/a148f08b-d7e9-4324-ad03-18c761da3981"
+					(reference "D1106")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:LED_Dual_KAK")
+		(at 110.49 160.02 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "837ab1a1-bea3-4d8f-b95a-1c6626d11206")
+		(property "Reference" "D1110"
+			(at 116.84 157.48 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "L-3VEGW-CA"
+			(at 116.84 162.56 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "CarrierGen:LED_Bicolor_Lumex_SSF-LXH409_RA_3pin"
+			(at 110.49 160.02 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 110.49 160.02 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 110.49 160.02 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "c5466c6b-a226-4bce-8844-68903d636af1")
+		)
+		(pin "2"
+			(uuid "9562e917-b406-4628-aeb2-ab0019a186a5")
+		)
+		(pin "3"
+			(uuid "5fded13f-ef1c-4493-bdb1-8310836f8b10")
+		)
+		(instances
+			(project "SchindlerCarrierBoard_V1"
+				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/a148f08b-d7e9-4324-ad03-18c761da3981"
+					(reference "D1110")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:LED_Dual_KAK")
+		(at 270.51 95.25 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "8567489a-a056-4728-a2d5-bf17e7b88607")
+		(property "Reference" "D1105"
+			(at 276.86 92.71 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "L-3VEGW-CA"
+			(at 276.86 97.79 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "CarrierGen:LED_Bicolor_Lumex_SSF-LXH409_RA_3pin"
+			(at 270.51 95.25 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 270.51 95.25 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 270.51 95.25 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "c0496987-bc73-4aff-a770-e6e6c253b371")
+		)
+		(pin "2"
+			(uuid "1a7704f9-b0e3-4436-9f16-94123d607101")
+		)
+		(pin "3"
+			(uuid "ec3849fc-f569-43c1-847b-5e32f804e01d")
+		)
+		(instances
+			(project "SchindlerCarrierBoard_V1"
+				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/a148f08b-d7e9-4324-ad03-18c761da3981"
+					(reference "D1105")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Connector_Generic:Conn_01x10")
+		(at 30.48 30.48 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "89bd3cc1-6bb3-456d-95bc-b950082d95a8")
+		(property "Reference" "J1100"
+			(at 36.83 27.94 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "Mezzanine FFC->A2 (pwr+UART+PWR_BTN+EN+GPIO0)"
+			(at 36.83 33.02 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" ""
+			(at 30.48 30.48 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 30.48 30.48 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 30.48 30.48 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "07721f93-c768-455b-acba-8caa46eefc57")
+		)
+		(pin "2"
+			(uuid "6cde936a-1de6-4696-92b1-32f935382a63")
+		)
+		(pin "3"
+			(uuid "b2648626-9672-4c84-b1cf-94ea06948def")
+		)
+		(pin "4"
+			(uuid "5da24ad0-e7a3-47de-aa75-dabd937e6a5e")
+		)
+		(pin "5"
+			(uuid "8ec1f99e-84b5-442d-a80f-44b61d7bd0f5")
+		)
+		(pin "6"
+			(uuid "1381df33-9ce5-4e77-ae14-044ea90254fe")
+		)
+		(pin "7"
+			(uuid "2e3788f6-b2c1-4257-aa05-6134452e44a9")
+		)
+		(pin "8"
+			(uuid "ea99982e-c23a-4466-a8d9-7e88eb5bc177")
+		)
+		(pin "9"
+			(uuid "3d3e17a4-caad-49b3-a9bc-9f3d51416d1a")
+		)
+		(pin "10"
+			(uuid "d4c4620b-76b7-4a63-b6f9-0990715d28c6")
+		)
+		(instances
+			(project "SchindlerCarrierBoard_V1"
+				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/a148f08b-d7e9-4324-ad03-18c761da3981"
+					(reference "J1100")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:LED_Dual_KAK")
+		(at 510.54 95.25 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "acb43130-64c1-4f73-882a-f90755faf0c3")
+		(property "Reference" "D1108"
+			(at 516.89 92.71 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "L-3VEGW-CA"
+			(at 516.89 97.79 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "CarrierGen:LED_Bicolor_Lumex_SSF-LXH409_RA_3pin"
+			(at 510.54 95.25 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 510.54 95.25 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 510.54 95.25 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "54d45700-3fe4-4556-aaad-f90d4454b6d6")
+		)
+		(pin "2"
+			(uuid "0c6894f4-a21a-4da2-bc64-635b99910e9c")
+		)
+		(pin "3"
+			(uuid "47df85c5-85f5-48f0-aa69-7b4c088457dc")
+		)
+		(instances
+			(project "SchindlerCarrierBoard_V1"
+				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/a148f08b-d7e9-4324-ad03-18c761da3981"
+					(reference "D1108")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:LED_Dual_KAK")
+		(at 110.49 95.25 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "c4df9d9d-e92d-459e-8664-4b1d48903aa7")
+		(property "Reference" "D1103"
+			(at 116.84 92.71 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "L-3VEGW-CA"
+			(at 116.84 97.79 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "CarrierGen:LED_Bicolor_Lumex_SSF-LXH409_RA_3pin"
+			(at 110.49 95.25 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 110.49 95.25 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 110.49 95.25 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "0d899d28-ae80-4cf2-9735-bc3c9f91c113")
+		)
+		(pin "2"
+			(uuid "54f8a42e-d8a2-4cb0-b564-e35fa16a24f8")
+		)
+		(pin "3"
+			(uuid "1ee24ca4-9909-489e-ab90-c3c261908ed9")
+		)
+		(instances
+			(project "SchindlerCarrierBoard_V1"
+				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/a148f08b-d7e9-4324-ad03-18c761da3981"
+					(reference "D1103")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:LED_Dual_KAK")
+		(at 270.51 160.02 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "ca369b80-be30-4a80-b78e-47544fad22c4")
+		(property "Reference" "D1112"
+			(at 276.86 157.48 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "L-3VEGW-CA"
+			(at 276.86 162.56 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "CarrierGen:LED_Bicolor_Lumex_SSF-LXH409_RA_3pin"
+			(at 270.51 160.02 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 270.51 160.02 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 270.51 160.02 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "d1ac962d-1ea3-4eda-bf84-295b9c12fb36")
+		)
+		(pin "2"
+			(uuid "7b735189-3da6-4129-9943-498a060482d9")
+		)
+		(pin "3"
+			(uuid "a2e5705d-53a5-418d-bc55-c91b856505dd")
+		)
+		(instances
+			(project "SchindlerCarrierBoard_V1"
+				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/a148f08b-d7e9-4324-ad03-18c761da3981"
+					(reference "D1112")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:LED_Dual_KAK")
+		(at 510.54 30.48 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "d0efea08-3121-4286-baf6-9bc971581c7b")
+		(property "Reference" "D1101"
+			(at 516.89 27.94 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "L-3VEGW-CA"
+			(at 516.89 33.02 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "CarrierGen:LED_Bicolor_Lumex_SSF-LXH409_RA_3pin"
+			(at 510.54 30.48 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 510.54 30.48 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 510.54 30.48 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "ac6e1825-cf7c-4b1f-a362-e6977f1bebb0")
+		)
+		(pin "2"
+			(uuid "b6737291-893b-4cd5-aaeb-03aadf322778")
+		)
+		(pin "3"
+			(uuid "66ebc3ea-c949-4370-ad73-751134a1bd08")
+		)
+		(instances
+			(project "SchindlerCarrierBoard_V1"
+				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/a148f08b-d7e9-4324-ad03-18c761da3981"
+					(reference "D1101")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:LED_Dual_KAK")
+		(at 30.48 224.79 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "ded12051-29ae-4a29-9122-2a98d3584457")
+		(property "Reference" "D1116"
+			(at 36.83 222.25 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "L-3VEGW-CA"
+			(at 36.83 227.33 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "CarrierGen:LED_Bicolor_Lumex_SSF-LXH409_RA_3pin"
+			(at 30.48 224.79 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 30.48 224.79 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 30.48 224.79 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "db9fbb8c-8f79-4b5d-b49c-c1dd22cf59f8")
+		)
+		(pin "2"
+			(uuid "a2c23f68-b578-469c-b72c-ecc5aac19eaa")
+		)
+		(pin "3"
+			(uuid "9d3af177-0c91-4440-a185-ec049bfd24be")
+		)
+		(instances
+			(project "SchindlerCarrierBoard_V1"
+				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/a148f08b-d7e9-4324-ad03-18c761da3981"
+					(reference "D1116")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:LED_Dual_KAK")
+		(at 430.53 95.25 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "e05456d7-d26c-4fed-ad82-e458ae2b7b2c")
+		(property "Reference" "D1107"
+			(at 436.88 92.71 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "L-3VEGW-CA"
+			(at 436.88 97.79 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "CarrierGen:LED_Bicolor_Lumex_SSF-LXH409_RA_3pin"
+			(at 430.53 95.25 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 430.53 95.25 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 430.53 95.25 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "e019a038-0187-44e6-bee6-3e5d30f4eade")
+		)
+		(pin "2"
+			(uuid "2f85be29-1a93-47ce-85ea-51c3e517c317")
+		)
+		(pin "3"
+			(uuid "004b6d6d-2619-40e7-ab76-36e6c498d368")
+		)
+		(instances
+			(project "SchindlerCarrierBoard_V1"
+				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/a148f08b-d7e9-4324-ad03-18c761da3981"
+					(reference "D1107")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:LED_Dual_KAK")
+		(at 110.49 224.79 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "e7673c87-9c32-42e1-a93c-369bc731ea85")
+		(property "Reference" "D1117"
+			(at 116.84 222.25 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "L-3VEGW-CA"
+			(at 116.84 227.33 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "CarrierGen:LED_Bicolor_Lumex_SSF-LXH409_RA_3pin"
+			(at 110.49 224.79 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 110.49 224.79 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 110.49 224.79 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "1c8ff82a-7a62-4578-a151-e9a8e2eeda61")
+		)
+		(pin "2"
+			(uuid "15d86cb8-b6b5-4ade-92a6-29bd75f985e0")
+		)
+		(pin "3"
+			(uuid "2930d3be-343a-4260-98f8-f353b13ab495")
+		)
+		(instances
+			(project "SchindlerCarrierBoard_V1"
+				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/a148f08b-d7e9-4324-ad03-18c761da3981"
+					(reference "D1117")
+					(unit 1)
+				)
+			)
+		)
+	)
 	(sheet_instances
 		(path "/"
 			(page "1")
 		)
 	)
-	(embedded_fonts no)
 )

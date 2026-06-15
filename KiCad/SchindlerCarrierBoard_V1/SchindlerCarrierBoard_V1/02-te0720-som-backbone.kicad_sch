@@ -5,7 +5,7 @@
 	(uuid "739fd6e1-746b-44b2-9a66-cfd9fa46cb4a")
 	(paper "A2")
 	(lib_symbols
-	(symbol "CarrierGen:Conn_02x50_Odd_Even"
+		(symbol "CarrierGen:Conn_02x50_Odd_Even"
 			(pin_names
 				(offset 1.016)
 				(hide yes)
@@ -1883,7 +1883,130 @@
 			)
 			(embedded_fonts no)
 		)
-	(symbol "Connector_Generic:Conn_02x30_Odd_Even"
+		(symbol "Connector:TestPoint"
+			(pin_numbers
+				(hide yes)
+			)
+			(pin_names
+				(offset 0.762)
+				(hide yes)
+			)
+			(exclude_from_sim no)
+			(in_bom yes)
+			(on_board yes)
+			(in_pos_files yes)
+			(duplicate_pin_numbers_are_jumpers no)
+			(property "Reference" "TP"
+				(at 0 6.858 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Value" "TestPoint"
+				(at 0 5.08 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Footprint" ""
+				(at 5.08 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Datasheet" ""
+				(at 5.08 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Description" "test point"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "ki_keywords" "test point tp"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "ki_fp_filters" "Pin* Test*"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(symbol "TestPoint_0_1"
+				(circle
+					(center 0 3.302)
+					(radius 0.762)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+			)
+			(symbol "TestPoint_1_1"
+				(pin passive line
+					(at 0 0 90)
+					(length 2.54)
+					(name "1"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "1"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+			)
+			(embedded_fonts no)
+		)
+		(symbol "Connector_Generic:Conn_02x30_Odd_Even"
 			(pin_names
 				(offset 1.016)
 				(hide yes)
@@ -3723,182 +3846,399 @@
 			)
 			(embedded_fonts no)
 		)
-	(symbol "Connector:TestPoint"
-			(pin_numbers
-				(hide yes)
-			)
-			(pin_names
-				(offset 0.762)
-				(hide yes)
-			)
-			(exclude_from_sim no)
-			(in_bom yes)
-			(on_board yes)
-			(in_pos_files yes)
-			(duplicate_pin_numbers_are_jumpers no)
-			(property "Reference" "TP"
-				(at 0 6.858 0)
-				(show_name no)
-				(do_not_autoplace no)
-				(effects
-					(font
-						(size 1.27 1.27)
-					)
-				)
-			)
-			(property "Value" "TestPoint"
-				(at 0 5.08 0)
-				(show_name no)
-				(do_not_autoplace no)
-				(effects
-					(font
-						(size 1.27 1.27)
-					)
-				)
-			)
-			(property "Footprint" ""
-				(at 5.08 0 0)
-				(show_name no)
-				(do_not_autoplace no)
-				(hide yes)
-				(effects
-					(font
-						(size 1.27 1.27)
-					)
-				)
-			)
-			(property "Datasheet" ""
-				(at 5.08 0 0)
-				(show_name no)
-				(do_not_autoplace no)
-				(hide yes)
-				(effects
-					(font
-						(size 1.27 1.27)
-					)
-				)
-			)
-			(property "Description" "test point"
-				(at 0 0 0)
-				(show_name no)
-				(do_not_autoplace no)
-				(hide yes)
-				(effects
-					(font
-						(size 1.27 1.27)
-					)
-				)
-			)
-			(property "ki_keywords" "test point tp"
-				(at 0 0 0)
-				(show_name no)
-				(do_not_autoplace no)
-				(hide yes)
-				(effects
-					(font
-						(size 1.27 1.27)
-					)
-				)
-			)
-			(property "ki_fp_filters" "Pin* Test*"
-				(at 0 0 0)
-				(show_name no)
-				(do_not_autoplace no)
-				(hide yes)
-				(effects
-					(font
-						(size 1.27 1.27)
-					)
-				)
-			)
-			(symbol "TestPoint_0_1"
-				(circle
-					(center 0 3.302)
-					(radius 0.762)
-					(stroke
-						(width 0)
-						(type default)
-					)
-					(fill
-						(type none)
-					)
-				)
-			)
-			(symbol "TestPoint_1_1"
-				(pin passive line
-					(at 0 0 90)
-					(length 2.54)
-					(name "1"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-					(number "1"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-				)
-			)
-			(embedded_fonts no)
-		)
 	)
-	(symbol
-		(lib_id "CarrierGen:Conn_02x50_Odd_Even")
-		(at 30.48 30.48 0)
-		(unit 1)
-		(exclude_from_sim no)
-		(in_bom yes)
-		(on_board yes)
-		(in_pos_files yes)
-		(dnp no)
-		(uuid "16d41538-13e3-47b0-9226-d320972d48ee")
-		(property "Reference" "J200"
-			(at 36.83 27.94 0)
-			(effects (font (size 1.27 1.27))(justify left)))
-		(property "Value" "Samtec LSHM-150 (JM1)"
-			(at 36.83 33.02 0)
-			(effects (font (size 1.27 1.27))(justify left)))
-		(property "Footprint" ""
-			(at 30.48 30.48 0)
-			(effects (font (size 1.27 1.27))(hide yes)))
-		(instances
-			(project "SchindlerCarrierBoard_V1"
-				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/92b9dde2-2d03-49b7-a129-48688c63f09d"
-					(reference "J200")
-					(unit 1)
+	(global_label "+3V3"
+		(shape input)
+		(at 102.87 -21.59 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "0b27841b-7064-4ce6-b552-4b6485dabc50")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 102.87 -21.59 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
 				)
 			)
 		)
 	)
-	(symbol
-		(lib_id "CarrierGen:Conn_02x50_Odd_Even")
-		(at 110.49 30.48 0)
-		(unit 1)
-		(exclude_from_sim no)
-		(in_bom yes)
-		(on_board yes)
-		(in_pos_files yes)
-		(dnp no)
-		(uuid "a9ebc347-4628-4272-8620-01b5a353e720")
-		(property "Reference" "J201"
-			(at 116.84 27.94 0)
-			(effects (font (size 1.27 1.27))(justify left)))
-		(property "Value" "Samtec LSHM-150 (JM2)"
-			(at 116.84 33.02 0)
-			(effects (font (size 1.27 1.27))(justify left)))
-		(property "Footprint" ""
-			(at 110.49 30.48 0)
-			(effects (font (size 1.27 1.27))(hide yes)))
-		(instances
-			(project "SchindlerCarrierBoard_V1"
-				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/92b9dde2-2d03-49b7-a129-48688c63f09d"
-					(reference "J201")
-					(unit 1)
+	(global_label "+1V8_D"
+		(shape input)
+		(at 102.87 -31.75 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "0e25afdf-367e-46a5-a05b-8ed5b39b4477")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 102.87 -31.75 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "+5V"
+		(shape input)
+		(at 22.86 -29.21 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "16fc0406-d899-4cc4-9784-028b63a5cc97")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 22.86 -29.21 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "+3V3"
+		(shape input)
+		(at 102.87 -24.13 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "19e98773-ff76-449f-8857-98306548ab8c")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 102.87 -24.13 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "+3V3"
+		(shape input)
+		(at 22.86 -19.05 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "22dca0c9-e91f-450f-867f-fe8ddbca9de7")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 22.86 -19.05 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "+1V8_D"
+		(shape input)
+		(at 102.87 -26.67 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "7e1db403-70f3-4322-9a6a-e6341dd87f79")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 102.87 -26.67 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "+5V"
+		(shape input)
+		(at 22.86 -31.75 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "84c33681-6766-46ec-be73-1590f3748ef1")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 22.86 -31.75 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "+5V"
+		(shape input)
+		(at 118.11 -24.13 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "86c82633-3949-4889-89a9-7bd655ab1206")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 118.11 -24.13 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "+3V3"
+		(shape input)
+		(at 22.86 -21.59 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "870efed7-c921-4e08-8b7e-77dfee14f0bf")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 22.86 -21.59 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "+3V3"
+		(shape input)
+		(at 102.87 82.55 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "8c341d75-cd2f-4eb2-a778-7d23a6a3829f")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 102.87 82.55 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "+5V"
+		(shape input)
+		(at 118.11 -29.21 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "9d085fc7-a9d4-44f6-86a8-39a5c5909238")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 118.11 -29.21 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "+3V3"
+		(shape input)
+		(at 22.86 -24.13 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "a1e0d6b9-e054-4c08-b4d8-61bb27682eff")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 22.86 -24.13 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "+3V3"
+		(shape input)
+		(at 22.86 -13.97 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "b004fb10-c8ac-4629-a13e-83b5b60c467f")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 22.86 -13.97 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "+1V8_D"
+		(shape input)
+		(at 102.87 -29.21 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "c0f4ee96-3305-4d8e-920d-c1480e769650")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 102.87 -29.21 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "+5V"
+		(shape input)
+		(at 118.11 -26.67 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "c218c4df-db4a-46c7-a029-0343116e6729")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 118.11 -26.67 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "+5V"
+		(shape input)
+		(at 118.11 -31.75 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "d3b57f86-7c8a-4568-91a8-e5f36455c903")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 118.11 -31.75 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "+5V"
+		(shape input)
+		(at 22.86 -26.67 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "de663a89-63aa-4326-b8f2-f6c500ec4dab")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 22.86 -26.67 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "+3V3"
+		(shape input)
+		(at 22.86 -16.51 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "f2af3f6b-92b6-4ed8-a9f4-0b8f659b769b")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 22.86 -16.51 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
 				)
 			)
 		)
@@ -3907,6 +4247,7 @@
 		(lib_id "Connector_Generic:Conn_02x30_Odd_Even")
 		(at 190.5 30.48 0)
 		(unit 1)
+		(body_style 1)
 		(exclude_from_sim no)
 		(in_bom yes)
 		(on_board yes)
@@ -3915,13 +4256,237 @@
 		(uuid "132299e0-00f1-4436-b51a-44099ce10456")
 		(property "Reference" "J202"
 			(at 196.85 27.94 0)
-			(effects (font (size 1.27 1.27))(justify left)))
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
 		(property "Value" "Samtec LSHM-130 (JM3)"
 			(at 196.85 33.02 0)
-			(effects (font (size 1.27 1.27))(justify left)))
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
 		(property "Footprint" ""
 			(at 190.5 30.48 0)
-			(effects (font (size 1.27 1.27))(hide yes)))
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 190.5 30.48 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 190.5 30.48 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "ec9ccec9-9229-40eb-a5ea-d8b3ae9df10c")
+		)
+		(pin "2"
+			(uuid "a582e8ef-e17c-4926-a568-1812d2e96cf4")
+		)
+		(pin "3"
+			(uuid "b7fc93ab-f475-44aa-b75c-e35027d48fc0")
+		)
+		(pin "4"
+			(uuid "d52b7980-a5e9-48ee-bc34-082cf40268fc")
+		)
+		(pin "5"
+			(uuid "528a195e-67cf-4f70-b152-c6feb2352cd1")
+		)
+		(pin "6"
+			(uuid "2255a61a-9af5-4f48-a75a-918724ef5193")
+		)
+		(pin "7"
+			(uuid "3670f386-a7e2-4009-a6c9-673ed485ca33")
+		)
+		(pin "8"
+			(uuid "132fc3ce-fa30-48bc-a0db-2173392b7022")
+		)
+		(pin "9"
+			(uuid "1f226764-41b1-4ac0-9473-461a0c1d61ea")
+		)
+		(pin "10"
+			(uuid "cbdfd5f2-2fbb-4fae-80cd-8fb65a9cb868")
+		)
+		(pin "11"
+			(uuid "708f314e-b8cb-48a9-a530-f14eeee1643c")
+		)
+		(pin "12"
+			(uuid "253a5910-c3a5-440e-b61e-113b85efeac1")
+		)
+		(pin "13"
+			(uuid "e182608f-954c-43e0-9be0-725cd6ea6c68")
+		)
+		(pin "14"
+			(uuid "df42403c-4d72-4029-9712-a0473c0e6499")
+		)
+		(pin "15"
+			(uuid "b0a4ea35-a288-4eb3-964c-80b53ebc0f7c")
+		)
+		(pin "16"
+			(uuid "760117df-4801-4add-b58d-e6d9490fe2e7")
+		)
+		(pin "17"
+			(uuid "4928379b-c6f4-4108-8617-9d65846a69a9")
+		)
+		(pin "18"
+			(uuid "ed3e178e-0c3f-4a2d-bd1e-e45b99e6078e")
+		)
+		(pin "19"
+			(uuid "b0541825-a578-4eb7-b72a-548f54f25d23")
+		)
+		(pin "20"
+			(uuid "5d726561-ea59-436f-8f80-23be848dd6d7")
+		)
+		(pin "21"
+			(uuid "1dce0c22-3d66-448d-8e06-723a92ef9390")
+		)
+		(pin "22"
+			(uuid "a6c01a82-7c84-4112-81bf-21724f1827bd")
+		)
+		(pin "23"
+			(uuid "feb9fb62-06d1-40d4-b9d4-eee148ade0d3")
+		)
+		(pin "24"
+			(uuid "0328a3d4-b43d-4aa6-bf41-8d80e2a8d69a")
+		)
+		(pin "25"
+			(uuid "99f38b14-aba2-4eaa-a7cd-77c6edcd9d21")
+		)
+		(pin "26"
+			(uuid "b4c840a5-63e9-4310-8126-da881fbb87c7")
+		)
+		(pin "27"
+			(uuid "bc18fa48-349c-448a-8b81-72441aab6ac8")
+		)
+		(pin "28"
+			(uuid "fe0804aa-790e-4e12-9252-5b8649d268a0")
+		)
+		(pin "29"
+			(uuid "cd5ad0bc-bb21-4e44-b09c-8ac4e8f64f34")
+		)
+		(pin "30"
+			(uuid "112a4a7b-6fc4-4cb9-a634-decc4ab82058")
+		)
+		(pin "31"
+			(uuid "ed553ddd-fb46-494f-ac34-878cf6ca9a4b")
+		)
+		(pin "32"
+			(uuid "3285a15c-6cf1-40f1-9290-a1712917dc49")
+		)
+		(pin "33"
+			(uuid "85f18ba7-69b8-4c29-9c4a-e785af55a076")
+		)
+		(pin "34"
+			(uuid "278dcbdf-1be2-4951-8e90-c4716a72402e")
+		)
+		(pin "35"
+			(uuid "cbe6b342-5345-4e00-a3ef-e0d3d2c8609d")
+		)
+		(pin "36"
+			(uuid "94882a98-4843-472d-b30b-d2ac7658e511")
+		)
+		(pin "37"
+			(uuid "96051faa-1caf-454a-81dc-a33e93b74e7b")
+		)
+		(pin "38"
+			(uuid "de858a47-5221-4238-a07b-1400d141b09b")
+		)
+		(pin "39"
+			(uuid "b3fd0c85-814e-4fd6-be5e-7f7be72713b3")
+		)
+		(pin "40"
+			(uuid "fde237e6-b8df-45e2-a9f0-97fcf2d3af7d")
+		)
+		(pin "41"
+			(uuid "26a8828c-7bd2-4c09-a488-9eee639ca7c1")
+		)
+		(pin "42"
+			(uuid "48954573-5e5b-4f6a-a6b0-3af9daef3489")
+		)
+		(pin "43"
+			(uuid "49463852-b0e1-4b3f-9d04-ef68ba4c4190")
+		)
+		(pin "44"
+			(uuid "4214f6a9-61c0-4ff6-86a6-ee91111a0ede")
+		)
+		(pin "45"
+			(uuid "c22f19a6-067e-4340-b1fe-9caff640b8b1")
+		)
+		(pin "46"
+			(uuid "add78acb-fc3b-49f0-a4ff-59182ff43f95")
+		)
+		(pin "47"
+			(uuid "29bb0fc8-9499-4f5e-8c86-a0f4b249fb02")
+		)
+		(pin "48"
+			(uuid "1e365d88-09a0-4098-ac1a-bce01aa41fd1")
+		)
+		(pin "49"
+			(uuid "43685048-d94b-4c2a-889c-a980f17b6813")
+		)
+		(pin "50"
+			(uuid "06344503-1c45-4042-ab6f-ff00b681a876")
+		)
+		(pin "51"
+			(uuid "1f554709-f788-49ac-8c4b-423d85d8ce3b")
+		)
+		(pin "52"
+			(uuid "3f769b09-64e8-4b42-87da-01964cf07809")
+		)
+		(pin "53"
+			(uuid "896769b8-b71b-4cbb-be17-fa17dd2d941e")
+		)
+		(pin "54"
+			(uuid "a836792f-4bac-4aa5-acb7-f9239c8f84d4")
+		)
+		(pin "55"
+			(uuid "06eba754-0361-4872-8fb6-d7020257cb1d")
+		)
+		(pin "56"
+			(uuid "fc28168d-ac3f-43ac-91bd-77df651f9c96")
+		)
+		(pin "57"
+			(uuid "97a356c6-c5c6-4f6c-83a8-84803a5abf00")
+		)
+		(pin "58"
+			(uuid "810a7ce4-0828-4639-af1a-67f8960515a4")
+		)
+		(pin "59"
+			(uuid "58321f79-850a-438e-8c51-0eaf55733e53")
+		)
+		(pin "60"
+			(uuid "cc53689f-b7fd-47b2-abe7-a92493f7f82d")
+		)
 		(instances
 			(project "SchindlerCarrierBoard_V1"
 				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/92b9dde2-2d03-49b7-a129-48688c63f09d"
@@ -3932,28 +4497,373 @@
 		)
 	)
 	(symbol
-		(lib_id "Connector:TestPoint")
-		(at 270.51 30.48 0)
+		(lib_id "CarrierGen:Conn_02x50_Odd_Even")
+		(at 30.48 30.48 0)
 		(unit 1)
+		(body_style 1)
 		(exclude_from_sim no)
 		(in_bom yes)
 		(on_board yes)
 		(in_pos_files yes)
 		(dnp no)
-		(uuid "a2050402-f97f-4515-aa12-14865521c69a")
-		(property "Reference" "TP201"
-			(at 276.86 27.94 0)
-			(effects (font (size 1.27 1.27))(justify left)))
-		(property "Value" "TestPoint"
-			(at 276.86 33.02 0)
-			(effects (font (size 1.27 1.27))(justify left)))
+		(uuid "16d41538-13e3-47b0-9226-d320972d48ee")
+		(property "Reference" "J200"
+			(at 36.83 27.94 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "Samtec LSHM-150 (JM1)"
+			(at 36.83 33.02 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
 		(property "Footprint" ""
-			(at 270.51 30.48 0)
-			(effects (font (size 1.27 1.27))(hide yes)))
+			(at 30.48 30.48 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 30.48 30.48 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 30.48 30.48 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "78"
+			(uuid "1d7f25a4-1e42-4e09-92e9-aeeb3c50d3da")
+		)
+		(pin "79"
+			(uuid "cd13e659-17cd-4904-b812-3866ce4e5d1e")
+		)
+		(pin "80"
+			(uuid "953dd677-4e80-4224-968f-ae5cdadc076a")
+		)
+		(pin "81"
+			(uuid "b2312aae-4555-4f3d-ac82-775b4377330a")
+		)
+		(pin "82"
+			(uuid "32800128-3dc0-421d-ac84-26e5f63fdb61")
+		)
+		(pin "83"
+			(uuid "b60cc959-b2c4-4918-b027-2fadf8e2ec86")
+		)
+		(pin "84"
+			(uuid "e3f43a69-dbc3-4894-b53e-5fc87fd845fc")
+		)
+		(pin "85"
+			(uuid "0439f08c-3256-4c9d-bcd4-204f14369ed1")
+		)
+		(pin "86"
+			(uuid "2f2caf32-9de1-4009-8447-64fba71a94bd")
+		)
+		(pin "87"
+			(uuid "9efea33d-fab8-44cb-8b20-598f53738658")
+		)
+		(pin "88"
+			(uuid "deb938ac-91c9-4d7c-b13c-cdc6820c0491")
+		)
+		(pin "89"
+			(uuid "4bea511b-f378-44f4-aedd-833eb78aac10")
+		)
+		(pin "90"
+			(uuid "206c36c6-e830-4a3a-bc6e-0a4751d0373b")
+		)
+		(pin "91"
+			(uuid "aac971e8-306d-4459-b663-091e075012dd")
+		)
+		(pin "92"
+			(uuid "cb672a3c-6a44-4ffc-a84c-bcd7e7e9630d")
+		)
+		(pin "93"
+			(uuid "51c185e4-6d9e-4019-b2e7-639eca4c03a5")
+		)
+		(pin "94"
+			(uuid "ae7bf1d6-33f3-4a51-b79d-d6959733d1ac")
+		)
+		(pin "95"
+			(uuid "25c7fc6c-6f72-4f9d-a554-33153c11d0a2")
+		)
+		(pin "96"
+			(uuid "94fb1e87-8956-4e55-885c-943f8c8e9b2a")
+		)
+		(pin "97"
+			(uuid "d1688084-d914-460a-b421-a703a42d2780")
+		)
+		(pin "98"
+			(uuid "5aff27b8-e1c2-47d5-be7f-a78097c69fb2")
+		)
+		(pin "99"
+			(uuid "7ab71ded-1638-4dee-8517-3f577d7e18b4")
+		)
+		(pin "100"
+			(uuid "6ecd4f42-a151-4e04-8e37-24270c10d52f")
+		)
+		(pin "53"
+			(uuid "d7ccd1e3-e9df-4bfb-a8db-ec58bfdb6fd7")
+		)
+		(pin "54"
+			(uuid "5105b776-be8e-4257-b638-0ebc98bac404")
+		)
+		(pin "55"
+			(uuid "1c5c4019-1717-44c5-8015-10f7cfaeca23")
+		)
+		(pin "56"
+			(uuid "10122cc3-d65d-4c35-8170-2f5e00ea8348")
+		)
+		(pin "57"
+			(uuid "6f29a52e-d6be-4061-b939-7f9296ea6cd3")
+		)
+		(pin "58"
+			(uuid "10f5b4e8-f738-40f1-858d-636f64f6f046")
+		)
+		(pin "59"
+			(uuid "f8e5d726-8292-4b09-bde0-70fd9ca3487d")
+		)
+		(pin "60"
+			(uuid "47b10e4a-3a90-4859-b081-b0f27b3f6e0e")
+		)
+		(pin "61"
+			(uuid "24f5dd47-3378-4db4-a724-2c044398b107")
+		)
+		(pin "62"
+			(uuid "c77a29fb-7155-4f4e-bd7a-01d67645e54b")
+		)
+		(pin "63"
+			(uuid "1aeb738f-5c02-417f-8f63-d6dc49521df9")
+		)
+		(pin "64"
+			(uuid "3c40d060-bf45-45d8-8fa9-6ef1d9441cfd")
+		)
+		(pin "65"
+			(uuid "9b056c90-5f65-4dd2-8771-ddb4cca43675")
+		)
+		(pin "66"
+			(uuid "ef55ab92-d0c9-4fda-a519-9e9afd190c65")
+		)
+		(pin "67"
+			(uuid "1c25a72c-06a6-49ab-b1ee-b3c8b184aeaa")
+		)
+		(pin "68"
+			(uuid "2e34f6f6-2c56-4f50-b98d-2360e885e4b9")
+		)
+		(pin "69"
+			(uuid "8742bd86-3e76-4b56-b130-13ce9a4fce61")
+		)
+		(pin "70"
+			(uuid "7b7149bc-14fb-4ccc-839b-92309a9bb4c8")
+		)
+		(pin "71"
+			(uuid "11514766-55de-492a-8a97-822297ccd51e")
+		)
+		(pin "72"
+			(uuid "39788f06-84b9-4c05-ab72-d11e23d5e186")
+		)
+		(pin "73"
+			(uuid "f11401d3-64eb-4896-b6e2-cb320a6e13b9")
+		)
+		(pin "74"
+			(uuid "fb920606-7479-4760-9bab-b4652fc89636")
+		)
+		(pin "75"
+			(uuid "3acc8370-7520-4e05-b896-564e91cf87ef")
+		)
+		(pin "76"
+			(uuid "cca9309f-0807-464f-885f-508b21c0cd82")
+		)
+		(pin "77"
+			(uuid "641672e8-84a9-46a3-b1ec-dd9d322bbcaf")
+		)
+		(pin "3"
+			(uuid "1a8a10ee-6577-4a2b-8262-0a46d9d62d32")
+		)
+		(pin "4"
+			(uuid "800f2bdc-92cf-4d04-87c8-168a48127e4b")
+		)
+		(pin "5"
+			(uuid "4e938da0-733a-4c4a-91b5-5bd6061baf11")
+		)
+		(pin "6"
+			(uuid "1de9f9ab-d9f0-464d-b9da-052b7f2da0e2")
+		)
+		(pin "7"
+			(uuid "61d063ab-eccf-4c9f-b4cd-80e4048ec865")
+		)
+		(pin "8"
+			(uuid "8a2abfab-f9e3-41e4-b3b6-ff7a069c7d61")
+		)
+		(pin "9"
+			(uuid "e8ed0900-ac81-4bc8-aa8c-99dc18b0a6d2")
+		)
+		(pin "10"
+			(uuid "823172f6-93a0-44db-8eaf-203266b62a86")
+		)
+		(pin "11"
+			(uuid "bc9505f8-503b-4bea-8f0e-eb85c884782f")
+		)
+		(pin "12"
+			(uuid "b2d173a1-2f8c-4c2e-900c-59139733486a")
+		)
+		(pin "13"
+			(uuid "09e53217-b3bb-4820-8a6c-891b2649a248")
+		)
+		(pin "14"
+			(uuid "da22b0b1-96c1-463b-8818-915ad24ca6e4")
+		)
+		(pin "15"
+			(uuid "0fab2244-3a66-4d22-8cfd-f058d6cfad0d")
+		)
+		(pin "16"
+			(uuid "8b78bc03-e8dc-49d5-8340-f7aa25b56aed")
+		)
+		(pin "17"
+			(uuid "253527ba-a105-4f2a-952a-94c40550d222")
+		)
+		(pin "18"
+			(uuid "51894b4f-66a1-451e-80e2-e16471ec71ca")
+		)
+		(pin "19"
+			(uuid "a54093f3-fa09-46ad-bef4-5c12285b04ed")
+		)
+		(pin "20"
+			(uuid "56c3c44d-4ab5-429b-8159-d234893c7e1e")
+		)
+		(pin "21"
+			(uuid "10d3eb17-fc46-4c68-83f4-7a91ee4061ec")
+		)
+		(pin "22"
+			(uuid "f406c35b-4710-4e29-af97-4f66f0c27e34")
+		)
+		(pin "23"
+			(uuid "1f755ce9-af98-4923-9cb7-5a4329d66c94")
+		)
+		(pin "24"
+			(uuid "e4f275a4-3e5b-4f59-bb85-f200aec3a4e1")
+		)
+		(pin "25"
+			(uuid "413486be-50f1-4b99-bbc9-728cc7d576d6")
+		)
+		(pin "26"
+			(uuid "81080d74-25bd-474e-939e-88815574cee9")
+		)
+		(pin "27"
+			(uuid "c354dd9a-719c-4453-9ffc-93b7b39f46fe")
+		)
+		(pin "28"
+			(uuid "58460c30-9955-4bb5-93ca-971ffb02eb35")
+		)
+		(pin "29"
+			(uuid "4b910158-06e0-440d-8315-d4d9849d0d49")
+		)
+		(pin "30"
+			(uuid "2d954307-ec3f-4014-afeb-59964af7ddaa")
+		)
+		(pin "31"
+			(uuid "43d86ad4-9ca3-4698-9ffb-4365b397fea4")
+		)
+		(pin "32"
+			(uuid "a4e577bf-57bb-4e23-93f4-b8892b399dc8")
+		)
+		(pin "33"
+			(uuid "0cc07d00-eb64-4a2e-90b1-a292e29efca1")
+		)
+		(pin "34"
+			(uuid "4212b549-40cd-4bba-82c2-3d64c1a58f9a")
+		)
+		(pin "35"
+			(uuid "56133c2b-6b63-40ab-acb6-edb2c2d6dedb")
+		)
+		(pin "36"
+			(uuid "8996b115-ae9e-4bf9-95e3-c688556be179")
+		)
+		(pin "37"
+			(uuid "3bfbff1b-94bd-4d4d-ae3f-4827deaf981d")
+		)
+		(pin "38"
+			(uuid "0b65fa12-e7e5-4515-9d78-eddf579b88ca")
+		)
+		(pin "39"
+			(uuid "5bd234ec-896d-471a-b041-4fd69c272b33")
+		)
+		(pin "40"
+			(uuid "db9e0892-d978-41b9-b3c0-0b17f58b85fd")
+		)
+		(pin "41"
+			(uuid "217dbb4a-e0ed-4690-87e9-1dff4027cb8f")
+		)
+		(pin "42"
+			(uuid "e684b5c5-05c0-4ee1-b7ad-9eb0d779b39c")
+		)
+		(pin "43"
+			(uuid "e64fea61-8a3d-4f5a-a362-78357aa56791")
+		)
+		(pin "44"
+			(uuid "3af5084d-eec5-46ec-a1fd-8e53790b3573")
+		)
+		(pin "45"
+			(uuid "518fcd3b-bf5b-43e6-9cb2-5638ec89ab04")
+		)
+		(pin "46"
+			(uuid "cb11f9ad-d5fd-479d-b334-36d0193216f4")
+		)
+		(pin "47"
+			(uuid "8d2b1fef-66e6-44b1-8ed9-70ede2c6ab0d")
+		)
+		(pin "48"
+			(uuid "7caeeac1-20f6-4ff7-a7da-d133d94c8fc1")
+		)
+		(pin "49"
+			(uuid "7326ae9b-fa71-4c7f-9da5-1fd7cdf7e209")
+		)
+		(pin "50"
+			(uuid "a057a50e-f996-4574-ab3c-5de1c95407f5")
+		)
+		(pin "51"
+			(uuid "aadd4cd2-9456-4e54-a593-38decbbf1fd2")
+		)
+		(pin "52"
+			(uuid "5fa37dbe-60e0-4156-9210-6c2efddf5cb2")
+		)
+		(pin "1"
+			(uuid "25b59d04-f6d5-43f1-8795-6708d41a2c29")
+		)
+		(pin "2"
+			(uuid "6e3ceec8-4a4d-4400-9c9b-d88c90c190a7")
+		)
 		(instances
 			(project "SchindlerCarrierBoard_V1"
 				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/92b9dde2-2d03-49b7-a129-48688c63f09d"
-					(reference "TP201")
+					(reference "J200")
 					(unit 1)
 				)
 			)
@@ -3961,27 +4871,151 @@
 	)
 	(symbol
 		(lib_id "Connector:TestPoint")
-		(at 350.52 30.48 0)
+		(at 270.51 95.25 0)
 		(unit 1)
+		(body_style 1)
 		(exclude_from_sim no)
 		(in_bom yes)
 		(on_board yes)
 		(in_pos_files yes)
 		(dnp no)
-		(uuid "884b3c67-b7bb-45f8-acc0-ce56edd10216")
-		(property "Reference" "TP202"
-			(at 356.87 27.94 0)
-			(effects (font (size 1.27 1.27))(justify left)))
+		(uuid "18d4988b-9bb5-4071-bd36-7c9a60061be8")
+		(property "Reference" "TP208"
+			(at 276.86 92.71 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
 		(property "Value" "TestPoint"
-			(at 356.87 33.02 0)
-			(effects (font (size 1.27 1.27))(justify left)))
+			(at 276.86 97.79 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
 		(property "Footprint" ""
-			(at 350.52 30.48 0)
-			(effects (font (size 1.27 1.27))(hide yes)))
+			(at 270.51 95.25 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 270.51 95.25 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 270.51 95.25 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "07722c46-544d-453e-865b-a2a0996e5be8")
+		)
 		(instances
 			(project "SchindlerCarrierBoard_V1"
 				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/92b9dde2-2d03-49b7-a129-48688c63f09d"
-					(reference "TP202")
+					(reference "TP208")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Connector:TestPoint")
+		(at 430.53 95.25 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "249b6bc4-9596-4cd4-8f79-e9c156f3e0fa")
+		(property "Reference" "TP210"
+			(at 436.88 92.71 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "TestPoint"
+			(at 436.88 97.79 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" ""
+			(at 430.53 95.25 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 430.53 95.25 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 430.53 95.25 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "1b77fc8c-a250-4b7f-b2b5-87f4bb3163c5")
+		)
+		(instances
+			(project "SchindlerCarrierBoard_V1"
+				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/92b9dde2-2d03-49b7-a129-48688c63f09d"
+					(reference "TP210")
 					(unit 1)
 				)
 			)
@@ -3991,6 +5025,7 @@
 		(lib_id "Connector:TestPoint")
 		(at 430.53 30.48 0)
 		(unit 1)
+		(body_style 1)
 		(exclude_from_sim no)
 		(in_bom yes)
 		(on_board yes)
@@ -3999,13 +5034,60 @@
 		(uuid "378a86e1-e542-4366-bd87-7ed5d18ddbe8")
 		(property "Reference" "TP203"
 			(at 436.88 27.94 0)
-			(effects (font (size 1.27 1.27))(justify left)))
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
 		(property "Value" "TestPoint"
 			(at 436.88 33.02 0)
-			(effects (font (size 1.27 1.27))(justify left)))
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
 		(property "Footprint" ""
 			(at 430.53 30.48 0)
-			(effects (font (size 1.27 1.27))(hide yes)))
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 430.53 30.48 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 430.53 30.48 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "f456aa0c-e627-4b53-b52c-77557adbfbe2")
+		)
 		(instances
 			(project "SchindlerCarrierBoard_V1"
 				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/92b9dde2-2d03-49b7-a129-48688c63f09d"
@@ -4017,27 +5099,676 @@
 	)
 	(symbol
 		(lib_id "Connector:TestPoint")
-		(at 510.54 30.48 0)
+		(at 190.5 95.25 0)
 		(unit 1)
+		(body_style 1)
 		(exclude_from_sim no)
 		(in_bom yes)
 		(on_board yes)
 		(in_pos_files yes)
 		(dnp no)
-		(uuid "f35df5c5-3232-4f8f-8ca0-ccc0437f5b88")
-		(property "Reference" "TP204"
-			(at 516.89 27.94 0)
-			(effects (font (size 1.27 1.27))(justify left)))
+		(uuid "73861c77-1695-442d-b680-452148a393a7")
+		(property "Reference" "TP207"
+			(at 196.85 92.71 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
 		(property "Value" "TestPoint"
-			(at 516.89 33.02 0)
-			(effects (font (size 1.27 1.27))(justify left)))
+			(at 196.85 97.79 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
 		(property "Footprint" ""
-			(at 510.54 30.48 0)
-			(effects (font (size 1.27 1.27))(hide yes)))
+			(at 190.5 95.25 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 190.5 95.25 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 190.5 95.25 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "90e0056d-d725-4c7e-b93b-ec56b7ae9933")
+		)
 		(instances
 			(project "SchindlerCarrierBoard_V1"
 				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/92b9dde2-2d03-49b7-a129-48688c63f09d"
-					(reference "TP204")
+					(reference "TP207")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Connector:TestPoint")
+		(at 350.52 30.48 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "884b3c67-b7bb-45f8-acc0-ce56edd10216")
+		(property "Reference" "TP202"
+			(at 356.87 27.94 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "TestPoint"
+			(at 356.87 33.02 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" ""
+			(at 350.52 30.48 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 350.52 30.48 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 350.52 30.48 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "6f91e05a-8708-4144-ac2f-9e270ca40cd1")
+		)
+		(instances
+			(project "SchindlerCarrierBoard_V1"
+				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/92b9dde2-2d03-49b7-a129-48688c63f09d"
+					(reference "TP202")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Connector:TestPoint")
+		(at 270.51 30.48 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "a2050402-f97f-4515-aa12-14865521c69a")
+		(property "Reference" "TP201"
+			(at 276.86 27.94 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "TestPoint"
+			(at 276.86 33.02 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" ""
+			(at 270.51 30.48 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 270.51 30.48 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 270.51 30.48 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "f04a95a5-c3c4-4c1f-b82c-86fc76269b37")
+		)
+		(instances
+			(project "SchindlerCarrierBoard_V1"
+				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/92b9dde2-2d03-49b7-a129-48688c63f09d"
+					(reference "TP201")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Connector:TestPoint")
+		(at 350.52 95.25 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "a583d9ff-9900-4625-a722-7daf66c869fa")
+		(property "Reference" "TP209"
+			(at 356.87 92.71 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "TestPoint"
+			(at 356.87 97.79 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" ""
+			(at 350.52 95.25 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 350.52 95.25 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 350.52 95.25 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "e95f3726-8a62-408d-82b5-6283e638d45c")
+		)
+		(instances
+			(project "SchindlerCarrierBoard_V1"
+				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/92b9dde2-2d03-49b7-a129-48688c63f09d"
+					(reference "TP209")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "CarrierGen:Conn_02x50_Odd_Even")
+		(at 110.49 30.48 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "a9ebc347-4628-4272-8620-01b5a353e720")
+		(property "Reference" "J201"
+			(at 116.84 27.94 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "Samtec LSHM-150 (JM2)"
+			(at 116.84 33.02 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" ""
+			(at 110.49 30.48 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 110.49 30.48 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 110.49 30.48 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "90"
+			(uuid "9d122aae-0495-4e22-93c4-aa3e10531b95")
+		)
+		(pin "91"
+			(uuid "8d122e48-3baf-48f8-a85c-d8f21a934d19")
+		)
+		(pin "92"
+			(uuid "1ab844e2-f7e1-4c8c-aacf-f71075ebe3d3")
+		)
+		(pin "93"
+			(uuid "bb1ba7c4-25cc-418a-b5d4-f91fb9ffcca8")
+		)
+		(pin "94"
+			(uuid "afbdc24b-dcda-497f-83de-3a0ac276564f")
+		)
+		(pin "95"
+			(uuid "1af3b13a-4077-483c-8bf8-cc3953dedd60")
+		)
+		(pin "96"
+			(uuid "0e71a6ae-a378-456a-afcc-ac669bf92202")
+		)
+		(pin "97"
+			(uuid "e305d12b-916b-4064-a02b-d2d672770203")
+		)
+		(pin "98"
+			(uuid "696676de-d0d4-44cd-8eec-ec28c4e4d12f")
+		)
+		(pin "99"
+			(uuid "1f78dee0-90c5-4fa2-98cf-98a9d2892ab4")
+		)
+		(pin "100"
+			(uuid "0e4efec5-52f3-45fd-b04a-107b549ddce9")
+		)
+		(pin "15"
+			(uuid "1234a9eb-84e1-41d7-84f9-dd0de6c4fb23")
+		)
+		(pin "16"
+			(uuid "62870f34-34c1-4ecd-9d45-02a60724f76c")
+		)
+		(pin "17"
+			(uuid "8d758ca8-5adb-42dc-aedf-80ec7bd1201a")
+		)
+		(pin "18"
+			(uuid "2b600391-1dc2-4526-b705-24d563854c7c")
+		)
+		(pin "19"
+			(uuid "3c1ab5aa-dcb8-4c01-a0e1-a9dfc8c06a0a")
+		)
+		(pin "20"
+			(uuid "bfe1f21e-d9ea-4829-bf49-078dc872bcd8")
+		)
+		(pin "21"
+			(uuid "2f9a8054-03b2-4bf2-8a3c-b066d1c0c5d5")
+		)
+		(pin "22"
+			(uuid "4b87c0ce-30b7-4ade-a32b-3a576855de82")
+		)
+		(pin "23"
+			(uuid "ee21a6b8-7ec2-40d1-a150-defd1fa48823")
+		)
+		(pin "24"
+			(uuid "01dd3810-c47d-47a0-a2c5-b49199f8d721")
+		)
+		(pin "25"
+			(uuid "27b7ddb7-a83a-4c6f-b6e4-c71cd6f1bcfb")
+		)
+		(pin "26"
+			(uuid "5ba83926-5937-4c4d-b118-62069b280054")
+		)
+		(pin "27"
+			(uuid "ba1af72b-f301-43ea-9d22-6ae6937acc40")
+		)
+		(pin "28"
+			(uuid "d25150ee-de34-4a2b-a4cf-24633d0f68b7")
+		)
+		(pin "29"
+			(uuid "3d8e3766-e8bf-46d8-8ee0-e617ca10932d")
+		)
+		(pin "30"
+			(uuid "f078c02b-ff5a-4ccb-bc1e-c9ed4ec43e94")
+		)
+		(pin "31"
+			(uuid "cf7fa930-7e99-453d-ba54-fd433de4a566")
+		)
+		(pin "32"
+			(uuid "b589bf20-a362-4e51-85fe-4f63b4223a62")
+		)
+		(pin "33"
+			(uuid "dff77eaf-c3c9-4ec1-91b6-8a5ae41799c0")
+		)
+		(pin "34"
+			(uuid "e8a699c2-b41c-47e6-b810-d4863e1508db")
+		)
+		(pin "35"
+			(uuid "776bcac5-95b6-41e9-8e52-840a5e89926b")
+		)
+		(pin "36"
+			(uuid "53e8708e-84a7-4fee-9504-46d3a3de61a4")
+		)
+		(pin "37"
+			(uuid "cded4537-e087-4877-8a70-7ea977079dbc")
+		)
+		(pin "38"
+			(uuid "386426d6-6261-41e1-8a01-a2ab4c2d46cc")
+		)
+		(pin "39"
+			(uuid "575fef92-9398-4882-8bab-9f92a476cef1")
+		)
+		(pin "1"
+			(uuid "1062c458-cfc5-4860-947d-24418a52fe80")
+		)
+		(pin "2"
+			(uuid "8523d55b-8998-498d-bf11-3eb9d5b47a98")
+		)
+		(pin "3"
+			(uuid "9a03f02e-2956-4343-8f28-a00205751296")
+		)
+		(pin "4"
+			(uuid "bcd10df3-00ff-4e6f-b796-b4910847a50c")
+		)
+		(pin "5"
+			(uuid "a2357f87-c899-4477-8e8d-e494b269e9c4")
+		)
+		(pin "6"
+			(uuid "e55c5195-f632-464a-b293-de7883eedbd1")
+		)
+		(pin "7"
+			(uuid "c25fca9f-5199-4fae-969e-04db4668b577")
+		)
+		(pin "8"
+			(uuid "5f73b4ba-3d59-4b68-b250-5f996ba313e0")
+		)
+		(pin "9"
+			(uuid "c79c3174-5e44-4cda-ac30-aa61e949b96c")
+		)
+		(pin "10"
+			(uuid "134ea89e-572b-4a8f-a834-fee64f811950")
+		)
+		(pin "11"
+			(uuid "99861c89-efa9-42a4-b0bf-e15dd6b42b67")
+		)
+		(pin "12"
+			(uuid "b6197d8a-fb88-475b-a489-439acedb42d8")
+		)
+		(pin "13"
+			(uuid "700b9b78-e686-4e27-8639-fd5514e70c32")
+		)
+		(pin "40"
+			(uuid "06e97bf2-7a14-44b4-84e1-1295387e99db")
+		)
+		(pin "41"
+			(uuid "36ea146a-b125-4ce7-9a8c-c40611cc12ef")
+		)
+		(pin "42"
+			(uuid "35cef3ac-cacd-4d88-a83c-72350833fe3a")
+		)
+		(pin "43"
+			(uuid "d1e042aa-4f0d-4c6a-856b-615be57dac29")
+		)
+		(pin "44"
+			(uuid "68d6a915-273f-4cb5-8131-095dc260fd64")
+		)
+		(pin "45"
+			(uuid "1a7e30b9-d851-4e0c-8989-6038a53936c7")
+		)
+		(pin "46"
+			(uuid "049afcad-b03c-4c35-ab5c-3dd093b2d9d7")
+		)
+		(pin "47"
+			(uuid "117779a1-ed18-491b-b58e-5cc205783f30")
+		)
+		(pin "48"
+			(uuid "80e17941-afcb-4fd5-bc0a-e67db5f3b93b")
+		)
+		(pin "49"
+			(uuid "fddcf7eb-ba27-4455-9d20-b4aaf5d4e99b")
+		)
+		(pin "50"
+			(uuid "e8eea448-1328-4869-9cb4-2ad2d828d595")
+		)
+		(pin "51"
+			(uuid "04402220-a796-48be-90aa-3546129446eb")
+		)
+		(pin "52"
+			(uuid "5bb588d1-8801-49e6-bce3-8469ae35f59e")
+		)
+		(pin "53"
+			(uuid "ac071115-3347-4315-8e2a-3ad25a010662")
+		)
+		(pin "54"
+			(uuid "91d81e2c-d821-42e9-9937-0cda29299974")
+		)
+		(pin "55"
+			(uuid "1853e8ed-dfd2-4562-9515-2411a47f1827")
+		)
+		(pin "56"
+			(uuid "86c421ef-92b4-46e1-86e9-ca7750d8ffe8")
+		)
+		(pin "57"
+			(uuid "13d219b6-543f-4096-9d8c-7e4ead404d19")
+		)
+		(pin "58"
+			(uuid "80d635ce-e995-4247-bf8f-247782e6b597")
+		)
+		(pin "59"
+			(uuid "aa673a59-13ec-46d6-a82c-e7a5baec73b9")
+		)
+		(pin "60"
+			(uuid "69140e0f-33e3-47a8-8aef-05693a915eea")
+		)
+		(pin "61"
+			(uuid "0ffb978e-782f-46f7-a509-8b031f0aabd4")
+		)
+		(pin "62"
+			(uuid "47ae3d94-5d90-46f7-b6a6-83e324f52e17")
+		)
+		(pin "63"
+			(uuid "c41d5c2c-1ca9-41a8-bfb3-6c7fe4b9a46e")
+		)
+		(pin "64"
+			(uuid "69d3918e-183f-47a2-877c-474e650f6de6")
+		)
+		(pin "14"
+			(uuid "3a0a6ef1-8bba-4ed6-b761-66dba5d969ec")
+		)
+		(pin "65"
+			(uuid "c307b88b-8c8d-4239-aefd-e4c94c2fa385")
+		)
+		(pin "66"
+			(uuid "f9f56a52-7792-4fe7-978a-8bdc6cea9544")
+		)
+		(pin "67"
+			(uuid "547cc057-12d8-4935-82f5-9a0b6a73dc41")
+		)
+		(pin "68"
+			(uuid "3b7f1688-8f6d-4cef-936d-5c7913e6c5fd")
+		)
+		(pin "69"
+			(uuid "cdb1fcf8-240b-4cc0-a8b1-8b4739374932")
+		)
+		(pin "70"
+			(uuid "0abff10c-b95a-4ff4-a4d7-ca4d823cb147")
+		)
+		(pin "71"
+			(uuid "f10862cd-c642-4af0-b416-f8949cd0a1d4")
+		)
+		(pin "72"
+			(uuid "f410b3c3-895c-496d-8a1d-cbb5957608a1")
+		)
+		(pin "73"
+			(uuid "53e2ff15-252a-4860-a99a-59e0f3d2a68f")
+		)
+		(pin "74"
+			(uuid "9395c5ab-db69-44bc-8dad-07fa3bbdf3ce")
+		)
+		(pin "75"
+			(uuid "6bc7e14a-1beb-4d03-9622-3c689cddd1b5")
+		)
+		(pin "76"
+			(uuid "bb45af26-d83c-4a70-bc09-1acace86a270")
+		)
+		(pin "77"
+			(uuid "66ea98c5-c822-48a3-9ce2-df7520dde884")
+		)
+		(pin "78"
+			(uuid "6abca60c-7176-4e62-8f5a-41f3cd2d72b9")
+		)
+		(pin "79"
+			(uuid "f8e0fb5c-9c15-4bd1-a1d1-8a56dc690c99")
+		)
+		(pin "80"
+			(uuid "fae43e8a-b53a-4b58-94e5-6d80f987de6c")
+		)
+		(pin "81"
+			(uuid "a73fc571-bde8-4c33-8480-3e2f40644a20")
+		)
+		(pin "82"
+			(uuid "06a19faa-a92b-4bfb-abf6-082e3d978426")
+		)
+		(pin "83"
+			(uuid "bc5c0a0f-a846-4326-b9b8-3621bae02223")
+		)
+		(pin "84"
+			(uuid "6857e12c-6eb6-4e4e-be08-5291d87af515")
+		)
+		(pin "85"
+			(uuid "b89e97f9-8cdb-4142-80d2-fa83d45f3fad")
+		)
+		(pin "86"
+			(uuid "b8953ce9-6255-4411-9ec5-3280b0cfb238")
+		)
+		(pin "87"
+			(uuid "0c2e0e9a-357a-4100-b7b9-1a7c67c6d3ce")
+		)
+		(pin "88"
+			(uuid "a58f3ba6-650d-46b0-8ae0-be50dae5b989")
+		)
+		(pin "89"
+			(uuid "1e485e2e-8b56-4d5b-a519-5ba3fc30d458")
+		)
+		(instances
+			(project "SchindlerCarrierBoard_V1"
+				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/92b9dde2-2d03-49b7-a129-48688c63f09d"
+					(reference "J201")
 					(unit 1)
 				)
 			)
@@ -4047,6 +5778,7 @@
 		(lib_id "Connector:TestPoint")
 		(at 30.48 95.25 0)
 		(unit 1)
+		(body_style 1)
 		(exclude_from_sim no)
 		(in_bom yes)
 		(on_board yes)
@@ -4055,13 +5787,60 @@
 		(uuid "b4503f55-a6d9-4a7b-8a20-bf8381c1d11f")
 		(property "Reference" "TP205"
 			(at 36.83 92.71 0)
-			(effects (font (size 1.27 1.27))(justify left)))
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
 		(property "Value" "TestPoint"
 			(at 36.83 97.79 0)
-			(effects (font (size 1.27 1.27))(justify left)))
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
 		(property "Footprint" ""
 			(at 30.48 95.25 0)
-			(effects (font (size 1.27 1.27))(hide yes)))
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 30.48 95.25 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 30.48 95.25 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "23b35951-5c3a-4d69-9a49-1d11ca3c85a4")
+		)
 		(instances
 			(project "SchindlerCarrierBoard_V1"
 				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/92b9dde2-2d03-49b7-a129-48688c63f09d"
@@ -4075,6 +5854,7 @@
 		(lib_id "Connector:TestPoint")
 		(at 110.49 95.25 0)
 		(unit 1)
+		(body_style 1)
 		(exclude_from_sim no)
 		(in_bom yes)
 		(on_board yes)
@@ -4083,13 +5863,60 @@
 		(uuid "dd720a83-e9cc-4b7b-a947-2c79a87645a7")
 		(property "Reference" "TP206"
 			(at 116.84 92.71 0)
-			(effects (font (size 1.27 1.27))(justify left)))
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
 		(property "Value" "TestPoint"
 			(at 116.84 97.79 0)
-			(effects (font (size 1.27 1.27))(justify left)))
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
 		(property "Footprint" ""
 			(at 110.49 95.25 0)
-			(effects (font (size 1.27 1.27))(hide yes)))
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 110.49 95.25 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 110.49 95.25 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "d475c123-57b3-499b-a457-06f48e3406e8")
+		)
 		(instances
 			(project "SchindlerCarrierBoard_V1"
 				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/92b9dde2-2d03-49b7-a129-48688c63f09d"
@@ -4101,210 +5928,83 @@
 	)
 	(symbol
 		(lib_id "Connector:TestPoint")
-		(at 190.5 95.25 0)
+		(at 510.54 30.48 0)
 		(unit 1)
+		(body_style 1)
 		(exclude_from_sim no)
 		(in_bom yes)
 		(on_board yes)
 		(in_pos_files yes)
 		(dnp no)
-		(uuid "73861c77-1695-442d-b680-452148a393a7")
-		(property "Reference" "TP207"
-			(at 196.85 92.71 0)
-			(effects (font (size 1.27 1.27))(justify left)))
+		(uuid "f35df5c5-3232-4f8f-8ca0-ccc0437f5b88")
+		(property "Reference" "TP204"
+			(at 516.89 27.94 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
 		(property "Value" "TestPoint"
-			(at 196.85 97.79 0)
-			(effects (font (size 1.27 1.27))(justify left)))
+			(at 516.89 33.02 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
 		(property "Footprint" ""
-			(at 190.5 95.25 0)
-			(effects (font (size 1.27 1.27))(hide yes)))
+			(at 510.54 30.48 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 510.54 30.48 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 510.54 30.48 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "e598a757-5358-48d5-80fa-7cd75078d733")
+		)
 		(instances
 			(project "SchindlerCarrierBoard_V1"
 				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/92b9dde2-2d03-49b7-a129-48688c63f09d"
-					(reference "TP207")
+					(reference "TP204")
 					(unit 1)
 				)
 			)
 		)
 	)
-	(symbol
-		(lib_id "Connector:TestPoint")
-		(at 270.51 95.25 0)
-		(unit 1)
-		(exclude_from_sim no)
-		(in_bom yes)
-		(on_board yes)
-		(in_pos_files yes)
-		(dnp no)
-		(uuid "18d4988b-9bb5-4071-bd36-7c9a60061be8")
-		(property "Reference" "TP208"
-			(at 276.86 92.71 0)
-			(effects (font (size 1.27 1.27))(justify left)))
-		(property "Value" "TestPoint"
-			(at 276.86 97.79 0)
-			(effects (font (size 1.27 1.27))(justify left)))
-		(property "Footprint" ""
-			(at 270.51 95.25 0)
-			(effects (font (size 1.27 1.27))(hide yes)))
-		(instances
-			(project "SchindlerCarrierBoard_V1"
-				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/92b9dde2-2d03-49b7-a129-48688c63f09d"
-					(reference "TP208")
-					(unit 1)
-				)
-			)
-		)
-	)
-	(symbol
-		(lib_id "Connector:TestPoint")
-		(at 350.52 95.25 0)
-		(unit 1)
-		(exclude_from_sim no)
-		(in_bom yes)
-		(on_board yes)
-		(in_pos_files yes)
-		(dnp no)
-		(uuid "a583d9ff-9900-4625-a722-7daf66c869fa")
-		(property "Reference" "TP209"
-			(at 356.87 92.71 0)
-			(effects (font (size 1.27 1.27))(justify left)))
-		(property "Value" "TestPoint"
-			(at 356.87 97.79 0)
-			(effects (font (size 1.27 1.27))(justify left)))
-		(property "Footprint" ""
-			(at 350.52 95.25 0)
-			(effects (font (size 1.27 1.27))(hide yes)))
-		(instances
-			(project "SchindlerCarrierBoard_V1"
-				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/92b9dde2-2d03-49b7-a129-48688c63f09d"
-					(reference "TP209")
-					(unit 1)
-				)
-			)
-		)
-	)
-	(symbol
-		(lib_id "Connector:TestPoint")
-		(at 430.53 95.25 0)
-		(unit 1)
-		(exclude_from_sim no)
-		(in_bom yes)
-		(on_board yes)
-		(in_pos_files yes)
-		(dnp no)
-		(uuid "249b6bc4-9596-4cd4-8f79-e9c156f3e0fa")
-		(property "Reference" "TP210"
-			(at 436.88 92.71 0)
-			(effects (font (size 1.27 1.27))(justify left)))
-		(property "Value" "TestPoint"
-			(at 436.88 97.79 0)
-			(effects (font (size 1.27 1.27))(justify left)))
-		(property "Footprint" ""
-			(at 430.53 95.25 0)
-			(effects (font (size 1.27 1.27))(hide yes)))
-		(instances
-			(project "SchindlerCarrierBoard_V1"
-				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/92b9dde2-2d03-49b7-a129-48688c63f09d"
-					(reference "TP210")
-					(unit 1)
-				)
-			)
-		)
-	)
-	(global_label "+5V"
-		(shape input)
-		(at 22.86 -31.75 0)
-		(effects (font (size 1.27 1.27))(justify left))
-		(uuid "84c33681-6766-46ec-be73-1590f3748ef1"))
-	(global_label "+5V"
-		(shape input)
-		(at 22.86 -29.21 0)
-		(effects (font (size 1.27 1.27))(justify left))
-		(uuid "16fc0406-d899-4cc4-9784-028b63a5cc97"))
-	(global_label "+5V"
-		(shape input)
-		(at 22.86 -26.67 0)
-		(effects (font (size 1.27 1.27))(justify left))
-		(uuid "de663a89-63aa-4326-b8f2-f6c500ec4dab"))
-	(global_label "+3V3"
-		(shape input)
-		(at 22.86 -16.51 0)
-		(effects (font (size 1.27 1.27))(justify left))
-		(uuid "f2af3f6b-92b6-4ed8-a9f4-0b8f659b769b"))
-	(global_label "+3V3"
-		(shape input)
-		(at 22.86 -13.97 0)
-		(effects (font (size 1.27 1.27))(justify left))
-		(uuid "b004fb10-c8ac-4629-a13e-83b5b60c467f"))
-	(global_label "+3V3"
-		(shape input)
-		(at 22.86 -21.59 0)
-		(effects (font (size 1.27 1.27))(justify left))
-		(uuid "870efed7-c921-4e08-8b7e-77dfee14f0bf"))
-	(global_label "+3V3"
-		(shape input)
-		(at 22.86 -19.05 0)
-		(effects (font (size 1.27 1.27))(justify left))
-		(uuid "22dca0c9-e91f-450f-867f-fe8ddbca9de7"))
-	(global_label "+3V3"
-		(shape input)
-		(at 22.86 -24.13 0)
-		(effects (font (size 1.27 1.27))(justify left))
-		(uuid "a1e0d6b9-e054-4c08-b4d8-61bb27682eff"))
-	(global_label "+5V"
-		(shape input)
-		(at 118.11 -31.75 0)
-		(effects (font (size 1.27 1.27))(justify left))
-		(uuid "d3b57f86-7c8a-4568-91a8-e5f36455c903"))
-	(global_label "+5V"
-		(shape input)
-		(at 118.11 -29.21 0)
-		(effects (font (size 1.27 1.27))(justify left))
-		(uuid "9d085fc7-a9d4-44f6-86a8-39a5c5909238"))
-	(global_label "+5V"
-		(shape input)
-		(at 118.11 -26.67 0)
-		(effects (font (size 1.27 1.27))(justify left))
-		(uuid "c218c4df-db4a-46c7-a029-0343116e6729"))
-	(global_label "+5V"
-		(shape input)
-		(at 118.11 -24.13 0)
-		(effects (font (size 1.27 1.27))(justify left))
-		(uuid "86c82633-3949-4889-89a9-7bd655ab1206"))
-	(global_label "+3V3"
-		(shape input)
-		(at 102.87 82.55 0)
-		(effects (font (size 1.27 1.27))(justify left))
-		(uuid "8c341d75-cd2f-4eb2-a778-7d23a6a3829f"))
-	(global_label "+3V3"
-		(shape input)
-		(at 102.87 -24.13 0)
-		(effects (font (size 1.27 1.27))(justify left))
-		(uuid "19e98773-ff76-449f-8857-98306548ab8c"))
-	(global_label "+3V3"
-		(shape input)
-		(at 102.87 -21.59 0)
-		(effects (font (size 1.27 1.27))(justify left))
-		(uuid "0b27841b-7064-4ce6-b552-4b6485dabc50"))
-	(global_label "+1V8_D"
-		(shape input)
-		(at 102.87 -26.67 0)
-		(effects (font (size 1.27 1.27))(justify left))
-		(uuid "7e1db403-70f3-4322-9a6a-e6341dd87f79"))
-	(global_label "+1V8_D"
-		(shape input)
-		(at 102.87 -31.75 0)
-		(effects (font (size 1.27 1.27))(justify left))
-		(uuid "0e25afdf-367e-46a5-a05b-8ed5b39b4477"))
-	(global_label "+1V8_D"
-		(shape input)
-		(at 102.87 -29.21 0)
-		(effects (font (size 1.27 1.27))(justify left))
-		(uuid "c0f4ee96-3305-4d8e-920d-c1480e769650"))
 	(sheet_instances
 		(path "/"
 			(page "1")
 		)
 	)
-	(embedded_fonts no)
 )

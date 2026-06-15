@@ -5,7 +5,193 @@
 	(uuid "eed04238-a8b9-4588-9b87-7d1dc50b8e20")
 	(paper "A2")
 	(lib_symbols
-	(symbol "Connector:RJ45"
+		(symbol "Connector:Conn_Coaxial"
+			(pin_names
+				(offset 1.016)
+				(hide yes)
+			)
+			(exclude_from_sim no)
+			(in_bom yes)
+			(on_board yes)
+			(in_pos_files yes)
+			(duplicate_pin_numbers_are_jumpers no)
+			(property "Reference" "J"
+				(at 0.254 3.048 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Value" "Conn_Coaxial"
+				(at 2.921 0 90)
+				(show_name no)
+				(do_not_autoplace no)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Footprint" ""
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Datasheet" ""
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Description" "coaxial connector (BNC, SMA, SMB, SMC, Cinch/RCA, LEMO, ...)"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "ki_keywords" "BNC SMA SMB SMC LEMO coaxial connector CINCH RCA MCX MMCX U.FL UMRF"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "ki_fp_filters" "*BNC* *SMA* *SMB* *SMC* *Cinch* *LEMO* *UMRF* *MCX* *U.FL*"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(symbol "Conn_Coaxial_0_1"
+				(polyline
+					(pts
+						(xy -2.54 0) (xy -0.508 0)
+					)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(arc
+					(start 1.778 0)
+					(mid 0.222 -1.8079)
+					(end -1.778 -0.508)
+					(stroke
+						(width 0.254)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(arc
+					(start -1.778 0.508)
+					(mid 0.2221 1.8084)
+					(end 1.778 0)
+					(stroke
+						(width 0.254)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(circle
+					(center 0 0)
+					(radius 0.508)
+					(stroke
+						(width 0.2032)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(polyline
+					(pts
+						(xy 0 -2.54) (xy 0 -1.778)
+					)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+			)
+			(symbol "Conn_Coaxial_1_1"
+				(pin passive line
+					(at -5.08 0 0)
+					(length 2.54)
+					(name "In"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "1"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin passive line
+					(at 0 -5.08 90)
+					(length 2.54)
+					(name "Ext"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "2"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+			)
+			(embedded_fonts no)
+		)
+		(symbol "Connector:RJ45"
 			(pin_names
 				(offset 1.016)
 			)
@@ -362,7 +548,7 @@
 			)
 			(embedded_fonts no)
 		)
-	(symbol "Connector:USB_C_Receptacle_USB2.0_16P"
+		(symbol "Connector:USB_C_Receptacle_USB2.0_16P"
 			(pin_names
 				(offset 1.016)
 			)
@@ -1075,7 +1261,7 @@
 			)
 			(embedded_fonts no)
 		)
-	(symbol "Power_Protection:TPD4S014"
+		(symbol "Power_Protection:TPD4S014"
 			(exclude_from_sim no)
 			(in_bom yes)
 			(on_board yes)
@@ -1373,245 +1559,223 @@
 			)
 			(embedded_fonts no)
 		)
-	(symbol "Connector:Conn_Coaxial"
-			(pin_names
-				(offset 1.016)
-				(hide yes)
-			)
-			(exclude_from_sim no)
-			(in_bom yes)
-			(on_board yes)
-			(in_pos_files yes)
-			(duplicate_pin_numbers_are_jumpers no)
-			(property "Reference" "J"
-				(at 0.254 3.048 0)
-				(show_name no)
-				(do_not_autoplace no)
-				(effects
-					(font
-						(size 1.27 1.27)
-					)
-				)
-			)
-			(property "Value" "Conn_Coaxial"
-				(at 2.921 0 90)
-				(show_name no)
-				(do_not_autoplace no)
-				(effects
-					(font
-						(size 1.27 1.27)
-					)
-				)
-			)
-			(property "Footprint" ""
-				(at 0 0 0)
-				(show_name no)
-				(do_not_autoplace no)
-				(hide yes)
-				(effects
-					(font
-						(size 1.27 1.27)
-					)
-				)
-			)
-			(property "Datasheet" ""
-				(at 0 0 0)
-				(show_name no)
-				(do_not_autoplace no)
-				(hide yes)
-				(effects
-					(font
-						(size 1.27 1.27)
-					)
-				)
-			)
-			(property "Description" "coaxial connector (BNC, SMA, SMB, SMC, Cinch/RCA, LEMO, ...)"
-				(at 0 0 0)
-				(show_name no)
-				(do_not_autoplace no)
-				(hide yes)
-				(effects
-					(font
-						(size 1.27 1.27)
-					)
-				)
-			)
-			(property "ki_keywords" "BNC SMA SMB SMC LEMO coaxial connector CINCH RCA MCX MMCX U.FL UMRF"
-				(at 0 0 0)
-				(show_name no)
-				(do_not_autoplace no)
-				(hide yes)
-				(effects
-					(font
-						(size 1.27 1.27)
-					)
-				)
-			)
-			(property "ki_fp_filters" "*BNC* *SMA* *SMB* *SMC* *Cinch* *LEMO* *UMRF* *MCX* *U.FL*"
-				(at 0 0 0)
-				(show_name no)
-				(do_not_autoplace no)
-				(hide yes)
-				(effects
-					(font
-						(size 1.27 1.27)
-					)
-				)
-			)
-			(symbol "Conn_Coaxial_0_1"
-				(polyline
-					(pts
-						(xy -2.54 0) (xy -0.508 0)
-					)
-					(stroke
-						(width 0)
-						(type default)
-					)
-					(fill
-						(type none)
-					)
-				)
-				(arc
-					(start 1.778 0)
-					(mid 0.222 -1.8079)
-					(end -1.778 -0.508)
-					(stroke
-						(width 0.254)
-						(type default)
-					)
-					(fill
-						(type none)
-					)
-				)
-				(arc
-					(start -1.778 0.508)
-					(mid 0.2221 1.8084)
-					(end 1.778 0)
-					(stroke
-						(width 0.254)
-						(type default)
-					)
-					(fill
-						(type none)
-					)
-				)
-				(circle
-					(center 0 0)
-					(radius 0.508)
-					(stroke
-						(width 0.2032)
-						(type default)
-					)
-					(fill
-						(type none)
-					)
-				)
-				(polyline
-					(pts
-						(xy 0 -2.54) (xy 0 -1.778)
-					)
-					(stroke
-						(width 0)
-						(type default)
-					)
-					(fill
-						(type none)
-					)
-				)
-			)
-			(symbol "Conn_Coaxial_1_1"
-				(pin passive line
-					(at -5.08 0 0)
-					(length 2.54)
-					(name "In"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-					(number "1"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-				)
-				(pin passive line
-					(at 0 -5.08 90)
-					(length 2.54)
-					(name "Ext"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-					(number "2"
-						(effects
-							(font
-								(size 1.27 1.27)
-							)
-						)
-					)
-				)
-			)
-			(embedded_fonts no)
-		)
 	)
-	(symbol
-		(lib_id "Connector:RJ45")
-		(at 30.48 30.48 0)
-		(unit 1)
-		(exclude_from_sim no)
-		(in_bom yes)
-		(on_board yes)
-		(in_pos_files yes)
-		(dnp no)
-		(uuid "cdeed094-1eeb-45ff-8e6d-e81e58078d86")
-		(property "Reference" "J1000"
-			(at 36.83 27.94 0)
-			(effects (font (size 1.27 1.27))(justify left)))
-		(property "Value" "JXD1-0001NL"
-			(at 36.83 33.02 0)
-			(effects (font (size 1.27 1.27))(justify left)))
-		(property "Footprint" ""
-			(at 30.48 30.48 0)
-			(effects (font (size 1.27 1.27))(hide yes)))
-		(instances
-			(project "SchindlerCarrierBoard_V1"
-				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/4620c5f3-58d0-4a28-8c02-98db084872c5"
-					(reference "J1000")
-					(unit 1)
+	(global_label "+5V"
+		(shape input)
+		(at 177.8 22.86 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "0a8590ad-1809-47a9-9c8b-89c804094f37")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 177.8 22.86 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
 				)
 			)
 		)
 	)
-	(symbol
-		(lib_id "Connector:USB_C_Receptacle_USB2.0_16P")
-		(at 110.49 30.48 0)
-		(unit 1)
-		(exclude_from_sim no)
-		(in_bom yes)
-		(on_board yes)
-		(in_pos_files yes)
-		(dnp no)
-		(uuid "59b1baed-7cc2-438a-aba8-7d5ff4e5e9bc")
-		(property "Reference" "J1001"
-			(at 116.84 27.94 0)
-			(effects (font (size 1.27 1.27))(justify left)))
-		(property "Value" "USB4085-GF-A"
-			(at 116.84 33.02 0)
-			(effects (font (size 1.27 1.27))(justify left)))
-		(property "Footprint" ""
-			(at 110.49 30.48 0)
-			(effects (font (size 1.27 1.27))(hide yes)))
-		(instances
-			(project "SchindlerCarrierBoard_V1"
-				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/4620c5f3-58d0-4a28-8c02-98db084872c5"
-					(reference "J1001")
-					(unit 1)
+	(global_label "GND"
+		(shape input)
+		(at 110.49 53.34 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "2bc14d90-a469-4d48-a8cf-4fc6dc6215d3")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 110.49 53.34 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "GND"
+		(shape input)
+		(at 190.5 43.18 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "2f3fddd0-b1ee-4bb5-82b7-5af21f9d92f7")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 190.5 43.18 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "GND"
+		(shape input)
+		(at 110.49 53.34 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "44f02c29-107d-4ba5-ad56-e1a21f9d37c4")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 110.49 53.34 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "GND"
+		(shape input)
+		(at 110.49 53.34 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "46b8b2f9-e022-4e18-8081-b34771c2c880")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 110.49 53.34 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "ESP_ANT"
+		(shape input)
+		(at 265.43 30.48 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "733e6511-3557-4d75-901e-82b33640ce81")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 265.43 30.48 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "+5V"
+		(shape input)
+		(at 177.8 22.86 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "7624b4a7-0f41-4e25-a4c8-7ae045715e89")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 177.8 22.86 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "GND"
+		(shape input)
+		(at 110.49 53.34 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "a4e48c1d-a322-4653-a133-6e2834bc5765")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 110.49 53.34 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "GND"
+		(shape input)
+		(at 270.51 35.56 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "b6ef37cd-e1d6-4c87-a84f-9e24f808f01f")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 270.51 35.56 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "GND"
+		(shape input)
+		(at 193.04 43.18 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "cdc0cc88-1100-4c2a-bb7c-4b5918af27b9")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 193.04 43.18 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
 				)
 			)
 		)
@@ -1620,6 +1784,7 @@
 		(lib_id "Power_Protection:TPD4S014")
 		(at 190.5 30.48 0)
 		(unit 1)
+		(body_style 1)
 		(exclude_from_sim no)
 		(in_bom yes)
 		(on_board yes)
@@ -1628,13 +1793,90 @@
 		(uuid "44d66329-2c87-40b2-a0ba-45266b270372")
 		(property "Reference" "U1001"
 			(at 196.85 27.94 0)
-			(effects (font (size 1.27 1.27))(justify left)))
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
 		(property "Value" "TPD4S014DBVR"
 			(at 196.85 33.02 0)
-			(effects (font (size 1.27 1.27))(justify left)))
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
 		(property "Footprint" ""
 			(at 190.5 30.48 0)
-			(effects (font (size 1.27 1.27))(hide yes)))
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 190.5 30.48 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 190.5 30.48 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "1984d77f-7939-46a1-ae75-2940fe71bf75")
+		)
+		(pin "2"
+			(uuid "f505dd32-d339-4b0d-b3fe-ab8bb762e6d1")
+		)
+		(pin "3"
+			(uuid "8cef31ac-784e-4d5e-bc30-2b769d022c43")
+		)
+		(pin "4"
+			(uuid "d2552eac-8ee1-453c-b139-9e0d14ccb714")
+		)
+		(pin "5"
+			(uuid "d3b86a60-446e-4ea0-ac28-df78ac4fae95")
+		)
+		(pin "6"
+			(uuid "e7fb17f1-f9a2-468b-82aa-6976df499432")
+		)
+		(pin "7"
+			(uuid "c8aa3e58-dd69-4720-91d3-f82f7b8118a3")
+		)
+		(pin "8"
+			(uuid "2a4efba6-25a7-446e-8078-de9fbae76bd5")
+		)
+		(pin "9"
+			(uuid "1d58bc78-c456-4666-97a9-891c3ec912d4")
+		)
+		(pin "10"
+			(uuid "0ef05d6c-f244-41cb-98dd-5f8525d65db6")
+		)
+		(pin "11"
+			(uuid "51a76939-2241-40ea-89e8-dfdb9f13d611")
+		)
 		(instances
 			(project "SchindlerCarrierBoard_V1"
 				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/4620c5f3-58d0-4a28-8c02-98db084872c5"
@@ -1645,9 +1887,134 @@
 		)
 	)
 	(symbol
+		(lib_id "Connector:USB_C_Receptacle_USB2.0_16P")
+		(at 110.49 30.48 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "59b1baed-7cc2-438a-aba8-7d5ff4e5e9bc")
+		(property "Reference" "J1001"
+			(at 116.84 27.94 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "USB4085-GF-A"
+			(at 116.84 33.02 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" ""
+			(at 110.49 30.48 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 110.49 30.48 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 110.49 30.48 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "A1"
+			(uuid "9f7a7e3d-3336-4c7c-8da2-0c562b254a16")
+		)
+		(pin "A4"
+			(uuid "24d9d565-86ab-44d9-934e-8276fa2d8791")
+		)
+		(pin "A5"
+			(uuid "2fb42c72-8a2a-42be-a946-90d4199f1a84")
+		)
+		(pin "A6"
+			(uuid "beea68af-2faf-4a04-b842-22cdd0d00084")
+		)
+		(pin "A7"
+			(uuid "b9eb1403-36f7-457b-a6e5-fb7b5634a2bd")
+		)
+		(pin "A8"
+			(uuid "4e5caff7-ee38-4c1a-81e7-efcda2320152")
+		)
+		(pin "A9"
+			(uuid "e339f911-9a86-4fe2-865e-acd42b7f7c13")
+		)
+		(pin "A12"
+			(uuid "73152201-a41f-417c-b23b-089b54410ebb")
+		)
+		(pin "B1"
+			(uuid "dda2a497-91f8-4f79-8cc5-f593e0512c99")
+		)
+		(pin "B4"
+			(uuid "d15def52-4d1a-433f-9282-57b019895c1d")
+		)
+		(pin "B5"
+			(uuid "2cd41c67-106d-424f-9fa9-354663d27b07")
+		)
+		(pin "B6"
+			(uuid "74721af7-4923-471b-96f2-050b067fab2e")
+		)
+		(pin "B7"
+			(uuid "e8e6a780-99b0-42f3-9932-b6da688dbfd7")
+		)
+		(pin "B8"
+			(uuid "3db31f0e-5831-40c1-8068-a00a29ec606b")
+		)
+		(pin "B12"
+			(uuid "a5833e35-6dd1-4ad1-bad6-65f7bf0f0dd3")
+		)
+		(pin "SH"
+			(uuid "f595a936-2bca-4ec3-ab40-e19f2325c11a")
+		)
+		(pin "B9"
+			(uuid "f7d6e3a2-a15b-4476-b879-c6c45ada96c5")
+		)
+		(instances
+			(project "SchindlerCarrierBoard_V1"
+				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/4620c5f3-58d0-4a28-8c02-98db084872c5"
+					(reference "J1001")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
 		(lib_id "Connector:Conn_Coaxial")
 		(at 270.51 30.48 0)
 		(unit 1)
+		(body_style 1)
 		(exclude_from_sim no)
 		(in_bom yes)
 		(on_board yes)
@@ -1656,13 +2023,63 @@
 		(uuid "9dc0648c-519e-4962-b837-193dcb4b3bf0")
 		(property "Reference" "J1002"
 			(at 276.86 27.94 0)
-			(effects (font (size 1.27 1.27))(justify left)))
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
 		(property "Value" "CONREVSMA001 RP-SMA (ESP32-S3 WiFi ant: A2 U.FL->coax->J1002)"
 			(at 276.86 33.02 0)
-			(effects (font (size 1.27 1.27))(justify left)))
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
 		(property "Footprint" ""
 			(at 270.51 30.48 0)
-			(effects (font (size 1.27 1.27))(hide yes)))
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 270.51 30.48 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 270.51 30.48 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "e2381e89-7b40-43d0-8ff2-5b71f46ec5f8")
+		)
+		(pin "2"
+			(uuid "93b00b26-93c4-4b9f-92ab-b03b8a586a68")
+		)
 		(instances
 			(project "SchindlerCarrierBoard_V1"
 				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/4620c5f3-58d0-4a28-8c02-98db084872c5"
@@ -1672,60 +2089,106 @@
 			)
 		)
 	)
-	(global_label "GND"
-		(shape input)
-		(at 110.49 53.34 0)
-		(effects (font (size 1.27 1.27))(justify left))
-		(uuid "46b8b2f9-e022-4e18-8081-b34771c2c880"))
-	(global_label "GND"
-		(shape input)
-		(at 110.49 53.34 0)
-		(effects (font (size 1.27 1.27))(justify left))
-		(uuid "44f02c29-107d-4ba5-ad56-e1a21f9d37c4"))
-	(global_label "GND"
-		(shape input)
-		(at 110.49 53.34 0)
-		(effects (font (size 1.27 1.27))(justify left))
-		(uuid "2bc14d90-a469-4d48-a8cf-4fc6dc6215d3"))
-	(global_label "GND"
-		(shape input)
-		(at 110.49 53.34 0)
-		(effects (font (size 1.27 1.27))(justify left))
-		(uuid "a4e48c1d-a322-4653-a133-6e2834bc5765"))
-	(global_label "GND"
-		(shape input)
-		(at 190.5 43.18 0)
-		(effects (font (size 1.27 1.27))(justify left))
-		(uuid "2f3fddd0-b1ee-4bb5-82b7-5af21f9d92f7"))
-	(global_label "+5V"
-		(shape input)
-		(at 177.8 22.86 0)
-		(effects (font (size 1.27 1.27))(justify left))
-		(uuid "0a8590ad-1809-47a9-9c8b-89c804094f37"))
-	(global_label "+5V"
-		(shape input)
-		(at 177.8 22.86 0)
-		(effects (font (size 1.27 1.27))(justify left))
-		(uuid "7624b4a7-0f41-4e25-a4c8-7ae045715e89"))
-	(global_label "GND"
-		(shape input)
-		(at 193.04 43.18 0)
-		(effects (font (size 1.27 1.27))(justify left))
-		(uuid "cdc0cc88-1100-4c2a-bb7c-4b5918af27b9"))
-	(global_label "GND"
-		(shape input)
-		(at 270.51 35.56 0)
-		(effects (font (size 1.27 1.27))(justify left))
-		(uuid "b6ef37cd-e1d6-4c87-a84f-9e24f808f01f"))
-	(global_label "ESP_ANT"
-		(shape input)
-		(at 265.43 30.48 0)
-		(effects (font (size 1.27 1.27))(justify left))
-		(uuid "733e6511-3557-4d75-901e-82b33640ce81"))
+	(symbol
+		(lib_id "Connector:RJ45")
+		(at 30.48 30.48 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "cdeed094-1eeb-45ff-8e6d-e81e58078d86")
+		(property "Reference" "J1000"
+			(at 36.83 27.94 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "JXD1-0001NL"
+			(at 36.83 33.02 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" ""
+			(at 30.48 30.48 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 30.48 30.48 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 30.48 30.48 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "84c619c7-9b05-4b37-8354-1179cd4a5141")
+		)
+		(pin "2"
+			(uuid "f205a299-f67b-456e-9249-0612cdbdc4c1")
+		)
+		(pin "3"
+			(uuid "843a692b-203d-4992-8c91-5d1c8530816d")
+		)
+		(pin "4"
+			(uuid "cb874bb6-f4cd-4472-8b96-f5065fe13aea")
+		)
+		(pin "5"
+			(uuid "8bf71b2f-e401-46e6-a1e5-3da26004cdae")
+		)
+		(pin "6"
+			(uuid "93de05aa-e414-44c4-9a5d-ab38a749442d")
+		)
+		(pin "7"
+			(uuid "c06a40c2-3dd8-45ed-9861-f908554eff5e")
+		)
+		(pin "8"
+			(uuid "84712bfd-2490-4e1d-94be-ffff7e2be74b")
+		)
+		(instances
+			(project "SchindlerCarrierBoard_V1"
+				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/4620c5f3-58d0-4a28-8c02-98db084872c5"
+					(reference "J1000")
+					(unit 1)
+				)
+			)
+		)
+	)
 	(sheet_instances
 		(path "/"
 			(page "1")
 		)
 	)
-	(embedded_fonts no)
 )
