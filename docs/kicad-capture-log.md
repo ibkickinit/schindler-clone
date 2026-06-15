@@ -552,3 +552,21 @@ Per the GS2962 datasheet the series element in each TX return-loss leg is a **5.
 - Loop-driver (LMH0302, U702) output network **unchanged** (5.6 Ω + 75 Ω + 10 nF) per instruction; DDO_VDD/+1V2_A/+3V3_A/GND_A partition, Y700 (9 pF-CL, ±100 ppm, ≤50 Ω ESR), 10-bit straps all confirmed and untouched.
 - **MPN (flag):** L700/L701 = 2× 5.6 nH RF/wideband 0402, SRF>3G — suggested **Murata LQW15AN5N6G00D**; higher-SRF alt **Coilcraft 0402HP-5N6XJTW**. ⚠ confirm.
 - ERC: netlist exit 0; Sheet-7 profile unchanged (107 pin_not_connected deferred PL/control + 2 pin_not_driven + 2 power_pin_not_driven ferrite-rail flags); 0 real errors. Project: 44 comps on Sheet 7. bom-v1 + refdes-map reconciled.
+
+---
+
+## 26. Sheet 4 — C406 0.1 µF added to TPD12S016 VCC5V (direct KiCad-file edit) — 2026-06-14
+
+Justin hand-wired sheet 4 in the KiCad GUI (229 wires); the net-label builder must NOT be re-run on it (see memory). Added the datasheet-required VCC5V HF decoupling **by direct .kicad_sch edit**, not the builder:
+- **C406 = 0.1 µF X7R** placed at (487.68, 233.68), pins joined to **+5V** (pin 1) and **GND** (pin 2) via global labels at the pin endpoints — parallel to existing C405 (1 µF bulk) on TPD12S016 VCC5V (U401 pin 11).
+- **VCCA (pin 24)** already had its 0.1 µF (**C403**) — not duplicated.
+- Existing wiring untouched: wires 229→229, junctions 77→77. Netlist: C406.1=+5V, C406.2=GND, exit 0.
+
+---
+
+## 27. Sheet 4 — LT8619C (U402) decoupling spec (BOM sync; Justin places in KiCad) — 2026-06-14
+
+LT8619C had no decoupling. Spec'd standard multi-supply HDMI-RX decoupling (datasheet has no exhaustive per-pin table). Justin adds the caps directly in KiCad; BOM/log synced here. Rails verified against the wired sheet-4 netlist.
+- **14× 0.1 µF X7R 0402, one per supply pin → GND:** C407/C408 (VCCA18 p1/p13, +1V8_A); C409 (PVCC18 PLL p59, +1V8_A); C410/C411/C412 (VDD18 p25/p58/p67, +1V8_D); C413 (VCCA33 p7), C414/C415 (VCC33 p20/p64), C416/C417 (VCC33_TTL p36/p57), C418 (VCCA33_XTAL clock p62), C419/C420 (VTERM p4/p10) — all +3V3.
+- **3× 10 µF bulk → GND:** C421 (+1V8_A), C422 (+1V8_D), C423 (+3V3).
+- **Optional ferrite isolation:** FB400 (+1V8_A→+1V8_A_PLL, C409), FB401 (+3V3→+3V3_XTAL, C418) for the jitter-sensitive PLL/XTAL supplies.

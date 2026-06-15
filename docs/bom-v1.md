@@ -167,6 +167,11 @@ Committed 2026-06-11. VIN fed from the 5 V rail; Vccint 1.0 V / 1.8 V / DDR3L 1.
 - **ADV7280 crystal** — 28.63636 MHz + 18 pF loads (Y500) — generic — 📋 (required by the decoder; was missing from the parts list).
 - **PCA9555** I²C GPIO expander (on I2C_HK) — drives the switchable 75 Ω termination ground-leg switches (REF/SDI loop-through inputs) — NXP/TI — ~$1 — 📋.
 - HDMI: 2.2 kΩ DDC/I²C pull-ups, CT_HPD + supply decoupling (TPD12S016) — generic — 📋.
+  - **TPD12S016 (U401, HDMI OUT) supply decoupling (2026-06-14):** VCC5V (pin 11) = **C405 1 µF bulk + C406 0.1 µF X7R** (C406 added directly in the wired sheet 4); VCCA (pin 24) = **C403 0.1 µF X7R** (already present). All X7R, to GND — generic — 📋.
+  - **LT8619C (U402, HDMI RX) decoupling — added 2026-06-14, standard multi-supply HDMI-RX practice (no exhaustive per-pin table in datasheet):**
+    - **14× 0.1 µF X7R 0402** — one per supply pin to GND: **C407/C408** (VCCA18 p1/p13 → +1V8_A), **C409** (PVCC18 PLL p59 → +1V8_A), **C410/C411/C412** (VDD18 p25/p58/p67 → +1V8_D), **C413** (VCCA33 p7), **C414/C415** (VCC33 p20/p64), **C416/C417** (VCC33_TTL p36/p57), **C418** (VCCA33_XTAL clock p62), **C419/C420** (VTERM TMDS-term p4/p10) — all → +3V3.
+    - **3× 10 µF X7R/X5R 0805 bulk** — one per rail near chip: **C421** (+1V8_A), **C422** (+1V8_D), **C423** (+3V3).
+    - **Optional PLL/clock ferrite isolation (jitter):** **FB400** (+1V8_A→+1V8_A_PLL, C409 moves there), **FB401** (+3V3→+3V3_XTAL, C418 moves there) — generic — 📋.
 - Output stage (ADV7393 low-drive): 300 Ω DAC loads, 4.12 kΩ RSET, ×2 buffer gain resistors, 75 Ω back-term, **220 µF AC-couple** at BNC — generic — 📋.
 
 ## 4. UX / Panel I/O
