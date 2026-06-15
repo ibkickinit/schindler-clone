@@ -3,6 +3,29 @@
 **Status:** Draft 2026-05-31
 **Scope:** how operator-facing surfaces (web UI, front panel, future remote control) drive HDL state on the FPGA. Defines the protocol stack, schema, persistence model, and versioning.
 
+> ## ⚠️ Direction update — 2026-06-13 (supersedes the PS-hosted-UI model below)
+>
+> **Committed:** the operator UI is **unified across ALL SKUs** and **hosted on a standalone off-SoM MCU** — not on the Zynq PS. One UI firmware drives **both** the front-panel TFT **and** the web UI, Mini and Pro alike. **Head = ESP32-S3 (locked 2026-06-13).**
+>
+> **Why:** the Mini can't host PetaLinux the way the Pro can, so a PS/PetaLinux-hosted UI (and a PS-served web app) can't be the universal solution. Rather than fork the UI (Pro = RP2040 panel + PS web; Mini = PS-direct OLED), all SKUs share one off-SoM UI head. This **kills the control-plane fork.**
+>
+> **What this changes vs. the model documented below:**
+> - The **UI authority moves off the PS to the MCU** — catalog + profiles + panel rendering + web serving all live on the MCU.
+> - **Control path = ESP32 ↔ UART ↔ PS thin agent ↔ AXI (FINALIZED 2026-06-13).** Both SKUs keep a TE0720, so both have a Zynq PS — the PS stays the register authority (`schindlerd`), as in the original plan. The ESP32 holds UI + catalog + profiles + web and sends operator-intent to the PS over the mezzanine UART; the PS writes the PL's AXI registers. On the **Pro** the agent runs under full PetaLinux (alongside the heavy pipeline + storage); on the **Mini** (a lighter-memory 0720 that won't host full PetaLinux) it runs as a thin/bare-metal agent — same UART contract. *(The earlier 'PS-independent FPGA-fabric AXI-Lite bridge' idea is dropped — it was insurance for a no-PS Mini we're not building. Staying on the 0720 makes the PS path simpler and reuses the original `schindlerd`.)*
+> - The **catalog, JSON-RPC/COBS protocol, profile schema, and versioning rules below all still apply** — catalog + profiles + web server + panel UI run on the ESP32; it speaks the protocol to the PS agent over UART, and the PS writes the registers. The protocol shape is unchanged from the original doc.
+> - The **web UI is served by the ESP32**, not a PS Node.js server.
+> - **Front-panel interconnect (Pro):** the ESP32-S3 sits on the front-panel/mezzanine board with the BT817Q EVE, NHD-2.9 TFT, both EC11 encoders, buttons, and the LED column — all timing-sensitive UI I/O stays local (EVE↔TFT 24-bit parallel RGB never leaves the panel board; ESP32→EVE SPI is on-board; encoders/buttons on ESP32 GPIO). The mezzanine↔carrier link is a single **FFC** (~10-pin) carrying **power + GND + the ESP32↔PS UART (2) + the power-button line + the 2 ESP32 flash-control lines (EN, GPIO0/BOOT) for PS-driven recovery** (see *Firmware / update paths*). UART is cable-trivial, keeping the only fast signal (EVE SPI) on-board. The NHD-2.9's own FFC tail is the panel-board↔glass connection. **Mini:** same ESP32-S3 on the main board, driving the mono OLED directly (I²C) + buttons (GPIO) — identical firmware, EVE/TFT path disabled by SKU gating. WiFi: U.FL ESP32-S3 module → short coax → panel-mount antenna (keep off the front metal — layout item).
+>
+> **DECIDED 2026-06-13:** head = **ESP32-S3** (integrated WiFi; one chip drives the EVE + serves HTTP/WebSocket + reads encoders/buttons). Control transport = **ESP32 ↔ UART ↔ PS thin agent ↔ AXI** (PS is the register authority). **Mini = a lighter-memory TE0720** (has a PS, runs the thin agent; not full PetaLinux). The **Mini-silicon scope question is closed**: never below a 0720, so §0's one-carrier / same-SoM premise holds — no packaging rewrite for different silicon. **LWB5+ WiFi dropped** — the ESP32 provides WiFi (saves ~$30 + the SDIO routing).
+>
+> **Firmware / update paths (proposed 2026-06-13):**
+> - **PS + FPGA bitstream + PS rootfs:** rear **USB-C → PS** (Zynq USB0, recovery / console / ethernet-gadget) + GbE/WiFi OTA + the §19 JTAG header; boot media = module QSPI/eMMC. The rear USB stays on the carrier/PS — the PS is what most needs a wired recovery path if the network is down.
+> - **ESP32-S3 (UI/web/catalog/profiles):** primary = **OTA over its own WiFi** via the web UI it serves (add a firmware page). Recovery = **the PS reflashes it over the mezzanine UART** (ESP32 ROM serial bootloader), driving **EN + GPIO0(BOOT)** across the FFC — so the single rear USB-C is a whole-box recovery path and a bad ESP32 OTA isn't a brick. No dedicated ESP32 USB connector; its native USB → internal test pad only.
+> - **Genlock RP2040 (U900):** rarely updated — add a small **SWD or BOOTSEL service header** near U900 (open-box service update), or a resident UART bootloader the PS can drive. Low frequency, not field-critical.
+> - **Profiles / catalog data** (not firmware): on ESP32 flash, import/export via the web UI (§8).
+>
+> **Cascading / propagation (now unblocked):** GbE kept (Pro dev/OTA + Mini network). Into `refdes-map.md` Sheet 10/11 + A2 + BOM: drop the **LWB5+ (U1000)**; A2 mezzanine MCU → **ESP32-S3** (was RP2040); `J1100` FFC pin-count ~6 → ~10 (power + UART + PWR_BTN + EN + GPIO0); add the RP2040 service header. Spec §14/§15/§17 + `packaging-skus.md` get the rewrite to the ESP32-UI + PS-thin-agent model. Sheet 10/11 rework is now small.
+
 ## Why this doc exists
 
 Today (bench): an ad-hoc UART command parser in `sw/phase-b/src/main.c` does direct AXI-GPIO writes. `s 100`, `m 50`, `b 0 0 0`, `w 255 255 255`, `a 8000` — one-char dispatch, no schema, no versioning, no introspection.

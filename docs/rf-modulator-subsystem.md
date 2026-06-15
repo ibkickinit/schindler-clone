@@ -1,7 +1,7 @@
 # Schindler 2.0 — RF Modulator Output Subsystem
 
-**Status:** CONFIRMED — banked 2026-05-11. Built into every V1 carrier (no daughter card, no Period SKU tier). **Bench phase 2026-06-07:** modulator chip choice closed (ADL5391), bench parts ordered (DigiKey SO 99663237), Manhattan/copper-clad substrate for the amp/filter/output stages.
-**Tier:** Standard V1 feature on all units (Base and Broadcast).
+**Status:** CONFIRMED — RF chain banked 2026-05-11; modulator choice closed (ADL5391) + bench parts ordered 2026-06-07 (DigiKey SO 99663237). **Partition committed 2026-06-11: RF now lives on a standalone shielded daughter board**, not on the carrier — see [`rf-modulator-daughter-board-option.md`](rf-modulator-daughter-board-option.md) for the partition + physical-build spec (interconnect, shield can, feedthrough, 4-layer stackup). The RF *chain* architecture and parts below are unchanged; they relocate from the carrier onto the daughter board.
+**Tier:** **Truly optional fitted module — never standard, never default-populated** (decided 2026-06-12). It's a genuine standalone board: a unit ships with RF only when ordered. Clean populate/omit with no carrier respin — the carrier (common to both SKUs) always carries the u.FL pad + 6-pin header (~$1.70), unpopulated when RF is absent. Positioned as a Pro-tier option; **whether it's also offered on Mini is an open product/commercial call** (technically fittable on any carrier — the carrier and its composite buffer are common to both SKUs). The earlier "universal / populated on every unit" framing (2026-05-11 bake-in) is dead.
 
 This doc holds architecture and parts spec for the RF modulated output subsystem. Decision history is in [`01-spec-changelog.md`](01-spec-changelog.md); summary spec entry in [`01-spec.md`](01-spec.md); BOM line items in [`bom-v1.md`](bom-v1.md) section 7.
 
@@ -16,10 +16,10 @@ Rides on the existing ADV7393 composite encoding — the RF subsystem is a paral
 | Mode | Live connectors | ADV7393 state | RF chain |
 |---|---|---|---|
 | **Composite** | composite BNC | composite mode | disabled |
-| **RF (Ch3 or Ch4)** | F-connector | composite mode | enabled, Si5351 ch1 programmed for selected channel |
+| **RF (Ch3 or Ch4)** | F-connector (+ composite BNC stays live — same signal) | composite mode | enabled, Si5351 ch1 programmed for selected channel |
 | **Component** | 3× component BNC (YPbPr) | component mode | disabled |
 
-Composite mode and RF mode share the same ADV7393 composite encoding; they differ only in which output path is gated live. Mode-mux logic on the carrier handles the gating.
+Composite mode and RF mode share the same ADV7393 composite encoding; RF mode simply **additionally** enables the RF chain — the composite BNC stays live throughout (no gating). Only the RF amp is gated. Mode-mux logic on the carrier handles that single gate.
 
 ---
 
@@ -34,9 +34,9 @@ The daughter-card pattern (mirroring SDI broadcast tier) was reconsidered and dr
 - FCC scope already covers every unit (WiFi/BT certification is required regardless). Adding RF to the cert is incremental, not bifurcating.
 - Clean product story: every Schindler 2.0 has HDMI + SDI + an analog output that's composite OR component OR RF, selectable.
 
-Result: SKU axis collapses to Base + Broadcast (SDI factory option). RF is universal.
+Result: SKU axis collapses to Base + Broadcast (SDI factory option). RF is universal. *(Superseded — see banner immediately below; RF is now truly optional, not universal.)*
 
-> **Reconsideration (2026-06-07):** a panel-mount *daughter-board* partition was re-explored on modularity/EMI grounds (not the old Period-SKU rationale). The interconnect is clean — one composite coax + an I²C/power/ground header, with the RF Si5351 and all VHF kept on the daughter board so nothing radiates across the connector. Viable but not committed; deferred to the carrier-layout review. See [`rf-modulator-daughter-board-option.md`](rf-modulator-daughter-board-option.md).
+> **SUPERSEDED 2026-06-11 — daughter board committed.** The bake-in reasoning below is retained for history, but the decision was reversed: RF is now a standalone shielded daughter board on modularity/EMI grounds (not the old Period-SKU rationale). The interconnect is clean — one u.FL coax (baseband composite) + a 6-pin header (DC/I²C), with the RF Si5351 and all VHF kept on the daughter board so nothing radiates across the connector. **As of 2026-06-12, RF is truly optional** — never default-populated, fitted only when ordered, a clean populate/omit with no carrier respin (the "universal / every unit" conclusion above is dead). Full partition + build spec: [`rf-modulator-daughter-board-option.md`](rf-modulator-daughter-board-option.md).
 
 ### Why DSB-AM, no VSB filter, no audio modulation
 
@@ -61,8 +61,8 @@ Result: SKU axis collapses to Base + Broadcast (SDI factory option). RF is unive
               │                                                  │
               ▼                                                  ▼
        [composite BNC OUT]                          [Y input — ADL5391]
-       gated by ADG419 SPST switch                  multiplier core
-       (mode-mux: open in RF mode)
+       always live (no switch)                      multiplier core
+       (RF chain taps same signal)
                                                      [Z input — DC bias]
                                                      for AM modulation depth
 
@@ -105,11 +105,11 @@ Same composite signal that drives the composite BNC, taken from the existing LMH
 
 ### Mode-mux logic
 
-- **Composite BNC enable:** ADG419 (or equivalent SPST analog switch IC) in series with the BNC output, gated by Zynq PS GPIO. Open in RF mode + component mode; closed in composite mode.
-- **RF amp enable:** ERA-3SM+ bias supply gated by FET switch, controlled by separate Zynq PS GPIO. Active in RF mode; off otherwise.
-- **ADV7393 mode:** I²C-switched between composite mode (serves composite + RF) and component mode (serves 3× component BNC, kills composite signal path).
+- **Composite BNC:** always live — no series switch. **The ADG419 was dropped 2026-06-11:** a ~25 Ω analog switch in series with a 75 Ω video line degrades return loss and output level, and gating the BNC is unnecessary — the RF chain simply taps the same buffered composite signal. In RF mode the composite BNC stays live (harmless); in component mode the ADV7393 is in component mode, so no composite signal is present anyway.
+- **RF amp enable:** ERA-3SM+ bias supply gated by a FET switch, controlled by a Zynq PS GPIO. Active in RF mode; off otherwise — the only active gate in the RF path.
+- **ADV7393 mode:** I²C-switched between composite mode (serves composite BNC + RF) and component mode (serves 3× component BNC).
 
-Total mode-mux silicon: ADG419 ($1.50) + bias-switch FET ($0.30) + 2 GPIO pins from Zynq PS. ~$2.
+Total mode-mux silicon: bias-switch FET ($0.30) + 1 GPIO pin from Zynq PS. ~$0.30.
 
 ### Si5351 dedicated to RF subsystem
 
@@ -175,9 +175,8 @@ Stays inside FCC Part 15.119 cable-output limits with shielded RF section + band
 
 ### 7. Mode-mux silicon
 
-- **ADG419BRZ** (SPST analog switch) on composite BNC output, ~$1.50.
-- **FET switch** on ERA-3 bias supply for RF amp gate, ~$0.30.
-- 2× Zynq PS GPIO pins (free).
+- **FET switch** on ERA-3 bias supply for RF amp gate, ~$0.30. (ADG419 composite-BNC switch dropped 2026-06-11 — see Mode-mux logic.)
+- 1× Zynq PS GPIO pin (free).
 
 ### 8. F-connector + protection
 
@@ -187,7 +186,7 @@ Stays inside FCC Part 15.119 cable-output limits with shielded RF section + band
 
 ### 9. Shield can
 
-**Wurth WE-SHC** or Laird small-format (~25×25 mm) with frame, over modulator + amp + Si5351 + bandpass filter section. ~$2.50.
+**Masach `MS643-10F-NS` frame + `MS643-10C-NS` cover** — nickel-silver, two-piece, 64.3 × 20.3 × 6.7 mm, over the whole RF section (modulator + amp + dedicated Si5351 + bandpass filter). Two-piece so the cover lifts off for bench RF tuning. Long-narrow footprint suits the linear chain (low-level end → ERA-3 output end = natural I/O isolation). ~$3.50. Full shield/feedthrough/line-entry detail (continuous ground ring, buried-stripline entry under the can wall, NFM feedthrough caps, 4-layer stackup) is in [`rf-modulator-daughter-board-option.md`](rf-modulator-daughter-board-option.md). *(Was Wurth WE-SHC ~25×25 mm when carrier-resident; replaced 2026-06-11 with the long-narrow MS643 for the daughter-board layout.)*
 
 ### 10. Bypass / decoupling
 
@@ -203,13 +202,13 @@ Generic 0.1 µF + 10 µF per power rail. ~$1.
 | 50→75 Ω MLP (2 resistors) | $0.10 |
 | Output bandpass filter (LC passives) | $1.50 |
 | Audio combiner passives | $0.50 |
-| Mode-mux (ADG419 + FET) | $1.80 |
+| Mode-mux (FET only) | $0.30 |
 | F-connector + ESD + DC block | $1.80 |
-| Shield can + frame | $2.50 |
+| Shield can + cover (MS643 NS, two-piece) | $3.50 |
 | Bypass / decoupling passives | $1 |
-| **RF subsystem total** | **~$32 per unit** |
+| **RF chain total (parts only)** | **~$32** |
 
-Built into every V1 unit (Base + Broadcast). No daughter card, no mezzanine, no PCB extension.
+These are the RF *chain* parts only. Built as a standalone daughter-board assembly (add shield-can feedthrough caps, u.FL + 6-pin interconnect, 4-layer daughter PCB, panel hardware, production trims → **~$38 per populated assembly**; carrier side adds ~$1.70 for the u.FL jack + 6-pin header + cable). Full daughter-board BOM in [`rf-modulator-daughter-board-option.md`](rf-modulator-daughter-board-option.md) and [`bom-v1.md`](bom-v1.md) §7.
 
 ---
 

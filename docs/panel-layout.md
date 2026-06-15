@@ -9,12 +9,15 @@ This doc holds the spatial arrangement. The connector inventory and electrical s
 
 ## Organising principles
 
-1. **IN on the left, OUT on the right.** Signal flow runs left to right, matching every Tek / AJA / Evertz / BMD reference unit in the market.
-2. **Sync zone follows the IN/OUT discipline.** Sync IN BNCs live inside the input section; SYNC OUT BNCs live inside the output section. No standalone "sync island" — the sync zone is partitioned by direction like the rest of the panel.
-3. **Power + control cluster on the far left.** AC mains entry, USB service, network, wireless antennas — grouped at the corner farthest from the analog signal path.
-4. **Rear status LCD in the centre.** Read-only status display for at-rack patching from behind. Visible from any working angle.
-5. **Per-connector LED next to each connector.** R/A/G status, ~10 % default brightness, drives off the same I/O state the rear LCD reads.
-6. **Spare panel area on the far right.** Reserved for V1.x expansion (XLR LTC return, 10 MHz reference, future I/O).
+> **Revised 2026-06-13** — backplane order reworked, the old "sync follows IN/OUT direction" rule retired (see #2), and the sync zone relabeled **SYNC** (was REF). The ASCII sketch below was **redrawn 2026-06-13** to match this order + the backplane render. *(Naming note: `01-spec.md` §3.7 + refdes-map + BOM still carry the genlock inputs as `REF IN` / `REF LOOP`; the panel/silkscreen uses SYNC throughout — propagate to those docs on request.)*
+
+1. **Left-to-right backplane order:** `PWR → WiFi / Net / USB → Display (LCD) → INPUTS → OUTPUTS → SYNC (all 4 sync BNCs) → RF (far-right, isolated)`. Signal flow still runs input-before-output; the change is that the sync BNCs are now a single grouped zone to the right of the outputs rather than split by direction.
+2. **SYNC is one grouped zone, not split by direction (replaces the old rule).** The prior principle — "sync IN lives in the input section, SYNC OUT in the output section" — is **retired**. All four sync BNCs (SYNC IN, SYNC LOOP, SYNC OUT 1, SYNC OUT 2) now sit together in a dedicated SYNC zone between OUTPUTS and RF. Rationale: keeps the genlock front-end interconnect short and grouped, and isolates it from the RF connector.
+3. **Analog-top / digital-bottom row rule (two-row BNC stacks).** **Row 2 (top) = analog** (composite + component, in & out); **Row 1 (bottom) = digital** (SDI + HDMI). The top analog rows are the SI-tolerant lines that ride the **riser** sub-board; the bottom digital rows stay carrier-rooted. Within the SYNC zone: SYNC IN/LOOP on the top row, both SYNC OUT on the bottom row. (SYNC IN/LOOP reach the carrier front-end by Option-A pigtail → u.FL regardless of which board the BNC mounts on — see `01-spec.md` §3.7.)
+4. **Power + control cluster on the far left.** AC mains entry, USB service, network, wireless antennas — grouped at the corner farthest from the analog signal path.
+5. **Rear status LCD left-of-inputs.** Moved from centre (old sketch) to sit just right of the PWR/Net/USB cluster, ahead of the INPUTS zone, per the new order. Read-only status display for at-rack patching from behind.
+6. **Per-connector LED next to each connector.** R/A/G status, ~10 % default brightness, drives off the same I/O state the rear LCD reads. **Part (banked 2026-06-13c): Lumex SSF-LXH409SISUGW** — one-piece 3 mm **right-angle** bi-color CBI (common-anode), emits parallel to the board so it faces the rear panel with no holder or light pipe. Sits low at the carrier's rear edge, dome at panel-hole height, beside each connector at ~BNC-center height. Balance R/G in TLC59116 PWM (red 350 mcd is brighter than green 130 mcd at equal current).
+7. **RF + spare on the far right.** The RF daughter-board F-connector occupies the isolated far-right edge; any remaining spare panel width (V1.x expansion: XLR LTC return, 10 MHz reference, future I/O) sits adjacent.
 
 ---
 
@@ -27,22 +30,51 @@ This doc holds the spatial arrangement. The connector inventory and electrical s
 | Power + control | RJ45 | 1 | GbE on TE0720 PHY |
 | Power + control | SMA | 2 | RP-SMA WiFi antennas |
 | Video IN | HDMI | 1 | Via LT8619C HDMI RX |
-| Video IN | BNC SDI | 1 | Via Semtech GS3470 |
+| Video IN | BNC SDI | 2 | IN + IN LOOP (reclocked loop-through), via Semtech GS3470 |
 | Video IN | BNC composite | 1 | CVBS, ADV7280 decoder |
 | Video IN | BNC component | 3 | Y / Pb / Pr, ADV7280 decoder |
-| Sync IN | BNC | 2 | REF IN + REF LOOP (passive loop-through) |
+| Sync IN | BNC | 2 | SYNC IN + SYNC LOOP (passive loop-through; genlock reference input). **Option A interconnect:** panel BNC → 75 Ω pigtail → U.FL-R-SMT-1 on carrier (no riser hop on phase-critical sync). |
 | Status | **Newhaven NHD-1.5-240240AF-CSXP** LCD | 1 | 1.5" 240×240 IPS square, ST7789VI, 8-bit 8080-II parallel OR 3/4-wire SPI. Module outline 32.52 × 35.32 mm; active-area cutout **~28 × 28 mm**; recessed pocket ~33 × 36 × ~3 mm. Rear-only, read-only, paginated summary view. |
 | Sync OUT | BNC | 2 | SYNC OUT 1 + SYNC OUT 2, format-selectable |
 | Video OUT | BNC component | 3 | Y / Pb / Pr, ADV7393 DAC |
 | Video OUT | BNC composite | 1 | CVBS, ADV7393 DAC |
-| Video OUT | BNC SDI | 1 | Via Semtech GS2962 (broadcast tier — populated or unpopulated per SKU) |
+| Video OUT | BNC SDI | 2 | OUT + **OUT MIRROR** (GS2962 C10/D10, buffered duplicate), broadcast tier — populated/unpopulated per SKU |
 | Video OUT | HDMI | 1 | Direct FPGA TX |
 
-**Totals:** 1× IEC, 1× USB-C, 1× RJ45, 2× SMA, 2× HDMI, 2× SDI BNC, 12× video/sync BNC, 1× LCD, plus per-connector LEDs (~21 LEDs × R+G).
+**Totals:** 1× IEC, 1× USB-C, 1× RJ45, 2× SMA, 2× HDMI, 4× SDI BNC, 12× video/sync BNC, 1× LCD, plus per-connector LEDs (~21 LEDs × R+G). *(SDI **IN LOOP** + **OUT MIRROR** both added 2026-06-13 → **16** video/sync+SDI BNC total; both extra SDI BNCs are carrier-mounted / Row 1, next to the GS3470/GS2962.)*
 
 ---
 
 ## ASCII rear-panel sketch
+
+Glyphs: `◯` BNC 75 Ω · `▭` HDMI Type A · `◎` F-connector (RF) · `◦` RP-SMA · `●` per-connector tricolor R/A/G status LED (Lumex SSF-LXH409SISUGW right-angle CBI; silkscreen position beside each connector — see Open questions).
+
+```
+REAR PANEL — 1RU full-rack 19"  (432 mm × 44 mm)        — redrawn 2026-06-13 to match the backplane render
+
+Zone order (L→R):   PWR / CTRL  │  LCD  │  INPUTS  │  OUTPUTS  │  SYNC  │  RF
+Row rule:           TOP row = analog (composite + component)      BOTTOM row = digital (SDI + HDMI)
+
+              ┌─ INPUTS ────────────┐      ┌─ OUTPUTS ──────────┐      ┌─ SYNC ──────┐
+TOP   ►       COMPOSITE  Y In  Pb In  Pr In    COMPOSITE  Y Out Pb Out Pr Out    SYNC IN   SYNC LOOP
+(analog)       IN ◯●    ◯●    ◯●    ◯●          OUT ◯●    ◯●    ◯●    ◯●          ◯●        ◯●
+
+BOT   ►       SDI IN  SDI LOOP  HDMI IN        SDI OUT 1  SDI OUT 2  HDMI OUT     SYNC OUT 1  SYNC OUT 2
+(digital)      ◯●     ◯●        ▭●              ◯●         ◯●         ▭●           ◯●          ◯●
+
+PWR / CTRL (far left):   [IEC C14]    ◦ SMA1  ◦ SMA2  (top)    [RJ45]  [USB-C]  (bottom)
+LCD:                     NHD-1.5 240×240 rear-status square, between the control cluster and INPUTS
+RF (far right):          ◎ RF OUT — F-connector on the RF daughter-board's own panel edge, isolated
+
+Approx panel budget:  PWR/CTRL ~89 + LCD ~38 + INPUTS ~94 + OUTPUTS ~94 + SYNC ~50 + RF ~25
+                      ≈ 390 mm of 432 mm → ~42 mm slack for spacing, mounting screws, LED gaps.
+
+BNC count: 8 analog video (4 in / 4 out) + 4 SDI (IN/LOOP/OUT1/OUT2) + 4 SYNC (IN/LOOP/OUT1/OUT2)
+           = 16 BNC.  Plus 1 RF F-connector, 2 HDMI, RJ45, USB-C, 2 SMA, IEC, rear LCD.
+```
+
+<details>
+<summary>Prior boxed sketch (pre-2026-06-13 — superseded by the layout above)</summary>
 
 Each character cell ≈ 5 mm wide for spatial reference. `●` denotes a per-connector R/A/G status LED.
 
@@ -68,6 +100,8 @@ Two-row BNC stacking:
   sync IN BNCs              — 2 BNCs vertical stack, ~18 mm column width
   sync OUT BNCs             — 2 BNCs vertical stack, ~18 mm column width
 ```
+
+</details>
 
 ---
 
@@ -149,7 +183,7 @@ FRONT PANEL — 1RU full-rack 19"   (432 mm × 44 mm)
 **Rear panel:**
 - **LCD horizontal position:** centred between IN and OUT zones (current sketch) vs offset right (closer to where the operator usually stands when patching). Default = centred; revisit if there's a strong ergonomic preference.
 - **Spare panel area allocation:** ~67 mm at the right reserved for future expansion. Candidates: XLR LTC IN/OUT return (52 mm — close to filling it), 10 MHz reference IN/OUT (2× BNC = 18 mm — leaves slack), or simply a vented airflow grille. No commitment for V1.
-- **Per-connector LED placement:** above-right of each connector (current convention in most pro gear), above-left, or directly below. Decide during mechanical design — affects screen-print layout and PCB LED placement only.
+- **Per-connector LED placement:** part **resolved 2026-06-13c → Lumex SSF-LXH409SISUGW** one-piece right-angle CBI (common-anode, faces the rear panel, no holder/light-pipe). Remaining detail is only the silkscreen/PCB position relative to each connector — above-right (most pro gear), above-left, or directly below; decide at mechanical design (screen-print + PCB placement only, not the part).
 - **Power button on rear:** none in current design. Front-panel soft power button is the only switch; rear has IEC inlet only. Some gear adds a hard rocker switch behind the IEC for service. **Pending Justin's call** — common pattern, ~$2 BOM.
 
 **Front panel:**

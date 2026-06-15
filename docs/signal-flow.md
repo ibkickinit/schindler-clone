@@ -94,7 +94,7 @@ flowchart TB
 
     subgraph OUT[Output chips + rear panel connectors]
         ADV7393[Output DAC<br/>composite/S-Video OR component<br/>I2C runtime mode select<br/>ADI ADV7393BCPZ-REEL]:::out
-        OPAMPS[Output buffer op-amps<br/>OPA2350 SDTV + LMH6643 HD<br/>TI]:::out
+        OPAMPS[Output buffers<br/>2x LMH6643 dual<br/>HD-capable per DAC output<br/>TI]:::out
         GS2962[SDI TX serializer<br/>3G-SDI<br/>Semtech GS2962<br/>broadcast tier only]:::sdi
         TPD_OUT[ESD plus level shift<br/>TI TPD12S016PWR]:::out
         CVBS_OUT[Composite OUT BNC<br/>75 ohm]:::out
@@ -196,10 +196,11 @@ flowchart TB
     end
 
     subgraph SYNCOUT[Dual SYNC OUT generation]
-        ACC[Per-OUT phase accumulators 1 + 2<br/>independent format + rate]:::digital
-        WAVE[Waveform gen per OUT<br/>BB / tri-level / LTC<br/>HW-ready for DARS / WC]:::digital
-        DAC[12-bit DAC per OUT]:::analog
-        DRV[75 ohm cable driver per OUT]:::analog
+        ACC1[SYNC1 phase accumulator<br/>BB / tri-level / LTC<br/>HW-ready for DARS / WC]:::digital
+        WAVE1[SYNC1 waveform gen<br/>multi-level samples]:::digital
+        DAC1[AD9742 12-bit DAC<br/>210 MSPS - SYNC1 only]:::analog
+        ACC2[SYNC2 biphase-mark gen<br/>LTC only - 1-bit - no DAC]:::digital
+        DRV[LMH6643 dual 75 ohm driver<br/>chA = SYNC1 I-to-V<br/>chB = SYNC2 slew-limited]:::analog
         OUT1[SYNC OUT 1 BNC]:::out
         OUT2[SYNC OUT 2 BNC]:::out
     end
@@ -235,11 +236,12 @@ flowchart TB
     RP2040 <--> ZYNQ_PS
     UIMCU <-->|UART or SPI<br/>state sync| ZYNQ_PS
     ZYNQ_PS -->|source override| REF_MUX
-    ZYNQ_PS -->|format + rate per OUT| ACC
+    ZYNQ_PS -->|format + rate - SYNC1| ACC1
     ZYNQ_PS --> STATUS
 
     %% Sync OUT path
-    FPGA_MASTER --> ACC --> WAVE --> DAC --> DRV
+    FPGA_MASTER --> ACC1 --> WAVE1 --> DAC1 --> DRV
+    FPGA_MASTER --> ACC2 --> DRV
     DRV --> OUT1
     DRV --> OUT2
 
@@ -265,7 +267,7 @@ flowchart TB
   - Per-OUT format selection (BB / tri-level / LTC; DARS / WC hardware-ready)
   - Per-OUT frame rate selection (24 / 23.976 / 25 / 29.97 / 30, drop-frame TC modes)
   - Lock state + quality readout (real-time, on TFT and web UI)
-- **Dual SYNC OUT design** — each OUT has its own FPGA phase accumulator ticking at the rate needed for its selected format and frame rate; both phase-locked to the master clock via rational ratios. Both can target independent rates simultaneously (V1.5 sync conversion absorbed into V1). Si5351 ch1/ch2 stay reserved (future GPSDO 10 MHz distribution).
+- **Dual SYNC OUT design** — **SYNC OUT 1** runs a full phase accumulator + waveform gen → **AD9742** 12-bit DAC (BB / tri-level / LTC, any rate, locked to master via rational ratios). **SYNC OUT 2** is LTC-only: a 1-bit biphase-mark generator, **no DAC**. Both share one **LMH6643** dual cable driver (chA = SYNC1 I-to-V, chB = SYNC2 slew-limited). Cross-rate sync conversion (V1.5) absorbed into V1. Si5351 ch1/ch2 stay reserved (future GPSDO 10 MHz distribution).
 - **DARS / Word Clock readiness** — waveform gen + driver chain support both as firmware-only future formats. Driver bandwidth DC to ~10 MHz, output swing ≥2 Vpp into 75 Ω. Word Clock at 1–2 Vpp, not vintage 5 Vpp CMOS — accepted by all modern WC inputs.
 - **XLR balanced LTC IN/OUT dropped from V1**; LTC routes through the autosense BNC input or via OUT format selection.
 

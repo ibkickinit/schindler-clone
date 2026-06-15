@@ -53,10 +53,12 @@ Hierarchical sheet symbols only. Mechanical: `MP101–MP108` mounting holes, `FI
 | J200, J201 | Samtec LSHM-150-… (2×) | PL banks B35/B13/B34/B33 + PS MIO/DDR carry |
 | J202 | Samtec LSHM-130-… | balance of PL + PS |
 | HS201 | Trenz 33337 heatsink | mech |
-| C200–C239 | SoM rail decoupling (0.1 µF/1 µF/10 µF bank) | VCCIO 3.3 V, 1.8 V, VIN |
+| ~~C200–C239~~ ⚠ | **NOT PRESENT — phantom bank (corrected 2026-06-15).** The decoupling audit found sheet 2 has **zero caps captured** — only J200/J201/J202 + a fiducial + 10 test points. Carrier-side SoM decoupling (bulk on the +5V/+3V3/+1V8_D feeds + distributed 0.1 µF across the connector supply pins) is **PROPOSED, not yet placed** — see [`decoupling-audit.md`](decoupling-audit.md) §Sheet 2 (~12 caps; ⚠ confirm count/bulk values against the **Trenz TE0720 carrier reference design** before placing — the module's main +5V input wants more bulk than generic scaffolding). Block C200+ reserved. | +5V / +3V3 / +1V8_D SoM feeds |
 | TP201–TP210 | PL_DONE, PS_BOOT, rail probes | status |
 
 JTAG/boot/reset live on sheet 12 (debug). The 152 PL pins fan from J200–J202 to sheets 4–9 by bank.
+
+> **⚠ Decoupling caveat (2026-06-15):** the per-sheet `Cxxx` decoupling on this map reflected *intent*, not captured reality. The audit (`decoupling-audit.md`) found most signal/sync chips bare or near-bare of local bypass and sheet 2 fully bare. Treat any `Cxxx` decoupling range on this map as **proposed** until reconciled against KiCad's exported BOM post-placement. Sheet 3 regulator caps are the exception — those are real.
 
 ### Sheet 3 — Power tree (300s)
 
@@ -210,9 +212,9 @@ Separate schematic/PCB; refdes restart at 1. Connects to carrier via `A1:J1100`.
 
 | Refdes | MPN | Notes |
 |---|---|---|
-| U1 | **ESP32-S3** (was RP2040) — UI MCU | SPI → BT817Q; UART → carrier PS; WiFi OTA; EN/IO0 ← PS via J1100 (recovery) |
-| U2 | Winbond W25Q128JVSIQ | U1 flash |
-| Y1 | 12 MHz crystal | U1 |
+| U1 | **ESP32-S3-WROOM-1U-N8R2** (module — production; **N16R8** in hand for bench) — UI MCU | SPI → BT817Q; UART → carrier PS; WiFi OTA; EN/IO0 ← PS via J1100 (recovery); U.FL → panel RP-SMA (J1002). Module = pre-certified, integrates ESP32-S3 + flash + PSRAM + 40 MHz xtal + RF + antenna connector. |
+| ~~U2~~ | ~~Winbond W25Q128JVSIQ~~ — **REMOVED 2026-06-14** (8 MB flash is integral to the WROOM-1U module) | — |
+| ~~Y1~~ | ~~12 MHz crystal~~ — **REMOVED 2026-06-14** (40 MHz reference integral to the module) | — |
 | U3 | BridgeTek BT817Q (EVE 4) | drives NHD-2.9 over 24-bit RGB |
 | U4 | TI TPS61040 (6.0 V backlight boost) | NHD-2.9 backlight |
 | J1 | header → carrier (UART + power) | mates A1:J1100 |

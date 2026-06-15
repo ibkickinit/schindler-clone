@@ -181,7 +181,7 @@ Separate mezzanine behind the front-panel aluminium, UART + power to the carrier
 - **Front TFT:** Newhaven **NHD-2.9-376960AF-ASXP** — 2.9" 376×960 IPS (mounted landscape, 960×376), ST7701SN, 24-bit parallel RGB, 1050 cd/m² — ~$30 — 📋 (bezel cutout 69×28 mm)
 - **Graphics controller:** BridgeTek **BT817Q** EVE 4 — drives NHD-2.9 over 24-bit RGB, 1 MB RAM_G, command-list rendering from RP2040 over SPI — ~$10–13 — 📋
 - **TFT backlight boost:** TI **TPS61040** class 6.0 V boost on mezzanine — ~$0.50 — 📋
-- **UI MCU:** **RP2040** (bare QFN-56, mezzanine; separate from the genlock RP2040) + **W25Q128JVSIQ** flash + 12 MHz xtal — reads encoders/buttons, streams EVE command lists over SPI, syncs to Zynq PS over UART — ~$1.50 — 📋
+- **UI MCU:** **ESP32-S3-WROOM-1U-N8R2** (module — **production target**) — UI MCU on A2: reads encoders/buttons, streams EVE command lists to the BT817Q over SPI, syncs to Zynq PS over UART, WiFi OTA. **The module integrates the ESP32-S3 + 8 MB flash + 2 MB PSRAM + 40 MHz xtal + RF front-end + U.FL antenna connector**, so the separate W25Q128 flash + 12 MHz crystal A2 carried for a bare chip are **deleted** (integral to the module). **`-1U` = external antenna** (U.FL → coax → panel RP-SMA J1002). **R2 (2 MB PSRAM) keeps the full −40~85 °C** range (R8 caps at 65 °C); 2 MB is sufficient because the **BT817Q EVE owns the framebuffer** — the ESP32 only streams display lists, never holds a frame buffer. **Pre-certified (FCC/IC modular approval)** — the radio needs no intentional-radiator cert on our end (only whole-box Part 15B), a major cert simplification vs a bare chip. ~$3.50 — 📋. **Bench part in hand: ESP32-S3-WROOM-1U-N16R8** (16 MB / 8 MB PSRAM, −40~65 °C) — over-provisioned for bring-up (won't hit a memory ceiling while developing); N8R2 is ~2 months out but fine for the production timeline. *(Caveat: don't treat the N16R8's R8 65 °C ceiling as representative — the production R2 is rated to 85 °C; validate thermal against that.)*
 - **Encoders:** 2× Alps **EC11E18244AU** — 36 detents / 18 PPR, integrated push switch, -40 to +85°C industrial — ~$3 ea — ✅ (5 on order)
 - **Encoder alternates for UX testing:** **3315Y-025-016L** ×2, **EC111012010H** ×1 — ✅
 - **Knob options for evaluation:** CP34501, FC7229NML, CL178883, FC1611, 1202CY (production knob selection deferred) — ✅
@@ -211,7 +211,7 @@ Separate mezzanine behind the front-panel aluminium, UART + power to the carrier
 |---|---:|
 | Front TFT (NHD-2.9) | ~$30 |
 | BT817Q EVE + 6 V boost | ~$13 |
-| Mezzanine RP2040 | ~$1 |
+| Mezzanine ESP32-S3-WROOM-1U module (N8R2; was bare RP2040+flash+xtal) | ~$3.50 |
 | 2× Alps EC11 encoder | $6 |
 | 4 tactile + 3 quick-select buttons | ~$3 |
 | Power button (lighted soft) | ~$3 |
