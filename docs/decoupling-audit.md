@@ -276,13 +276,17 @@ GS2962 power balls: CORE_VDD ×4 (+1V2), PLL_VDD ×2 / VCO_VDD ×1 (+1V2_A), IO_
 \* U500 has VREFP/VREFN reference caps but zero supply-pin bypass.
 
 ### Open ⚠-verify items (datasheet confirmation before placing)
-1. TE0720 carrier decoupling spec (Trenz reference) — count/value of SoM-feed caps.
-2. ADV7511 separate 3.3 V digital-I/O supply? PVDD ferrite value.
+1. ~~TE0720 carrier decoupling spec~~ **RESOLVED (2026-06-18, per TE0720 TRM v.108 + 4×5 SoM Integration Guide).** Module takes only **VIN + 3.3VIN** as power inputs and generates 1.0/1.5/1.8/3.3 V + DDR VTT on-module (each on-module buck carries 22 µF input bulk). Carrier provides bulk reservoir + per-pin 0.1 µF on three feeds:
+   - **VIN (+5V), 7 pins** (JM1.1/3/5 + JM2.2/4/6/8): rec. 3.15–5.25 V (abs max 6 V) → +5V in-spec. ~47 µF + 10 µF **≥16 V** X5R + ~4× 0.1 µF.
+   - **+3V3, 6 pins** = 3.3VIN (JM1.13/15) + VCCIO35/B35 (JM1.9/11) + VCCIO13/B13 (JM2.7/9): ~22 µF + 10 µF (≥10 V) + ~4× 0.1 µF.
+   - **+1V8_D, 3 pins** = VCCIO34/B34 (JM2.1/3) + VCCIO33/B33 (JM2.5): 10 µF + 0.1 µF per pin (3×). **VCCIO34 min 1.425 V and MUST be powered or the SoM won't boot.**
+   ≈13–14 caps. LSHM rated 2.0 A/pin so the 7-pin VIN carries the module draw easily. Full pin map, voltage spec, power-up sequence + control-pin requirements → **te0720-carrier-integration.md**.
+2. ~~ADV7511 separate 3.3 V digital-I/O supply?~~ **RESOLVED (2026-06-17):** ADV7511 video/audio inputs **accept 1.8–3.3 V logic** (datasheet feature list) — the pixel-bus I/O is level-flexible, so no dedicated I/O-supply match is needed and the bus is flex bank-placement at pin-lock. *Residual (minor): confirm U403's full supply-pin set all received bypass at placement (symbol-vs-datasheet match).* PVDD ferrite (FB402) value tracked with the held PLL-isolation branch.
 3. AD9204 REFT/REFB pin existence + differential 1 µF.
 4. ADV7393 COMP cap value + EXT_LF loop-filter requirement.
 5. RP2040 clock source / Y900 crystal + loads.
 6. Si5351 Y901 crystal + load caps (not found).
-7. AD9742 full AVDD pin count.
+7. ~~AD9742 full AVDD pin count.~~ **RESOLVED (2026-06-17):** U903 is drawn as **28-pin TSSOP → 1 AVDD pin** (the 32-pin LFCSP would have 2). The symbol's single AVDD is correct; existing 1× 0.1 µF AVDD bypass stands — no change.
 8. GS3470/GS2962 per-ball value (0.1 µF vs 0.01+0.1 pairs) + consolidation at layout.
 9. ADP7142 ADJ feed-forward + TPS7A2018 NR/SS pin caps.
 10. ADV7280 PWRDWN* pin tie (currently floating).

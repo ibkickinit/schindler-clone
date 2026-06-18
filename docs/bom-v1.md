@@ -81,7 +81,8 @@ Per `signal-flow.md` diagram 2 — genlock + dual SYNC OUT.
 - **Chip 1:** `LTC6912CGN-2#PBF` — 2-channel programmable gain amplifier; AGC loop driven by classifier — Analog Devices (Linear Tech) — ~$8 — ✅
 - **Chip 2:** `AD9204BCPZ-20` — dual 10-bit 20 MSPS ADC; pin-compatible upgrade path to AD9231/9251/9258/9268 for 12/14/14/16-bit if future need — Analog Devices — ~$16 — ✅
 - **Eval boards:** **MIKROE-2555** ×2 (LTC6912 GainAMP click, ~$25 ea) + **AD9204-80EBZ** (AD9204 eval, ~$278, 80 MSPS bench variant) — 🔬
-- **Connectors:** 2× BNC 75 Ω — Molex **73101-0120** (REF IN + REF LOOP) — 📋
+- **Connectors (carrier PCB):** 2× **Hirose U.FL-R-SMT-1** (REF IN + REF LOOP carrier landing = **J802/J803**) — 📋. *(Carrier-schematic J800/J801 removed 2026-06-18.)*
+- **Connectors (chassis/panel BOM — NOT carrier PCB):** 2× BNC 75 Ω **Molex 73101-0120** (REF/SYNC IN + LOOP, panel) **+ 2× 75 Ω U.FL↔BNC pigtail** (Option A: panel BNC → pigtail → carrier U.FL, no riser hop on phase-critical sync) — 📋
 - **REF carrier interconnect (Option A, banked 2026-06-13):** 2× **Hirose U.FL-R-SMT-1** carrier-side receptacles (50 Ω / 6 GHz, ~$0.65–1.30 ea) + 2× 75 Ω coax pigtails (panel BNC → u.FL) — 📋. Keeps continuous coax across the riser gap on the phase-critical sync lines; the few-cm 50 Ω u.FL segment is negligible at sync edge rates. **Upgrade path** (impedance-exact + serviceable): 75 Ω MMCX PCB jack, ~$3–6 ea. A 75 Ω blind-mate float-bullet was rejected — effectively custom (float catalogs are 50 Ω).
 - **Passives:** clamp = BAV99 + TVS, switchable 75 Ω term (TS5A23159), AC-coupling, switchable analog LPF — values at schematic — 📋
 
@@ -167,6 +168,7 @@ Committed 2026-06-11. VIN fed from the 5 V rail; Vccint 1.0 V / 1.8 V / DDR3L 1.
 - **ADV7280 crystal** — 28.63636 MHz + 18 pF loads (Y500) — generic — 📋 (required by the decoder; was missing from the parts list).
 - **PCA9555** I²C GPIO expander (on I2C_HK) — drives the switchable 75 Ω termination ground-leg switches (REF/SDI loop-through inputs) — NXP/TI — ~$1 — 📋.
 - HDMI: 2.2 kΩ DDC/I²C pull-ups, CT_HPD + supply decoupling (TPD12S016) — generic — 📋.
+- **ADV7511 (U403) R_EXT + AVDD fix (2026-06-18):** **R406 887 Ω 1%** from pin 28 (R_EXT) → GND (bias reference, was floating); pin 29 (AVDD) wired → +1V8_A (was floating — 1 of 3 AVDD pins unpowered). Symbol mislabels (28='EXT', 29='R_EXT') — relabel pending, wired by pin number. — generic — 📋.
   - **TPD12S016 (U401, HDMI OUT) supply decoupling (2026-06-14):** VCC5V (pin 11) = **C405 1 µF bulk + C406 0.1 µF X7R** (C406 added directly in the wired sheet 4); VCCA (pin 24) = **C403 0.1 µF X7R** (already present). All X7R, to GND — generic — 📋.
   - **LT8619C (U402, HDMI RX) decoupling — added 2026-06-14, standard multi-supply HDMI-RX practice (no exhaustive per-pin table in datasheet):**
     - **14× 0.1 µF X7R 0402** — one per supply pin to GND: **C407/C408** (VCCA18 p1/p13 → +1V8_A), **C409** (PVCC18 PLL p59 → +1V8_A), **C410/C411/C412** (VDD18 p25/p58/p67 → +1V8_D), **C413** (VCCA33 p7), **C414/C415** (VCC33 p20/p64), **C416/C417** (VCC33_TTL p36/p57), **C418** (VCCA33_XTAL clock p62), **C419/C420** (VTERM TMDS-term p4/p10) — all → +3V3.
@@ -441,3 +443,55 @@ Standalone shielded daughter board — a **Pro feature** (fitted on Pro, omitted
 - **Production knob** — post-UX-eval aesthetic pick (5 eval knobs in hand); shaft-mount, no netlist impact.
 - **Front/rear panel** — Front Panel Express fab deliverables from `panel-layout.md`, not catalog MPNs.
 - **Procurement-final suffixes** — exact orderable suffixes (BNC packaging, E-Switch PV6 color/voltage) picked at order time.
+
+---
+
+## Decoupling + functional-fix sweep (PLACED 2026-06-15, carrier schematic)
+
+Wired into the carrier `.kicad_sch` per `decoupling-audit.md`. Caps are `<value> (<Uxxx> rail/pin)`, pad1→rail, pad2→GND, X7R unless noted. **Not yet pushed** (Justin's gate).
+
+**Placed (83 parts):**
+- **Sheet 2 (TE0720 SoM):** C200/C201 47 µF (+5V bulk ⚠), C202/C203 22 µF (+3V3 bulk ⚠), C204 10 µF (+1V8_D bulk ⚠), C205–C207 0.1 µF (+5V), C208–C211 0.1 µF (+3V3), C212 0.1 µF (+1V8_D). ⚠ bulk magnitude/count to confirm vs Trenz TE0720 carrier reference (+5V main input likely wants more).
+- **Sheet 2 (TE0720 control-pin straps — wired 2026-06-18, boot-critical fix):** R213 10 kΩ + C213 1 µF (J200.28 **EN1** pull-up → +3V3 + soft-start to GND); R214 0 Ω (J200.7 **NOSEQ** → GND — removed the prior hard +3V3 mis-tie); R215 10 kΩ (J200.30 **PGOOD** pull-up, net `SOM_PGOOD`); R216 10 kΩ (J200.32 **MODE** pull-up, net `BOOT_MODE_SEL` → SW1200 boot DIP); R217 10 kΩ (J200.89 **JTAGMODE** pull-down → GND); R218 10 kΩ (J201.18 **RESIN** pull-up, net `SOM_RESET_N` → SW1201 reset switch). Resolves 5 floating + 1 mis-tied SoM control pins. — generic — 📋.
+- **Sheet 4 (U403 ADV7511):** C424–C428 0.1 µF (DVDD), C429/C430 0.1 µF (AVDD), C433 10 µF (bulk) — all +1V8_A.
+- **Sheet 5 (U500 ADV7280):** C512 0.1 µF (DVDDIO/+3V3), C513/C514 0.1 µF (DVDD/+1V8_D), C515 0.1 µF (AVDD), C516 0.1 µF (PVDD), C517 10 µF (bulk) — AVDD on AVDD_DEC. **R508 10 kΩ PWRDWN\* pull-up → +3V3** (functional fix).
+- **Sheet 6 (U600 ADV7393):** C606/C607 0.1 µF (VDD_IO/+3V3), C608 0.1 µF (VDD/+1V8_D), C610 0.1 µF (VAA), C611 10 µF (VAA bulk) — VAA on +3V3_A. **C612 0.1 µF COMP→GND** (functional fix). Note: EXT_LF left floating (internal LF).
+- **Sheet 7 (GS3470/GS2962):** C723–C751 0.1 µF per-ball (Justin extended batch to C751: U700 ×20, U701 ×9) on +1V2 / +1V2_A / +1V8_D / SDI_DDO_VDD / +3V3_A / +3V3_SDIDRV. **Layout-trimmable.** See Sheet-7 reconciliation note (2026-06-17) below for current coverage + open gaps.
+- **Sheet 8 (U801 AD9204 + U800):** C809–C815 0.1 µF (AVDD ×7, AVDD_GENADC), C816–C818 0.1 µF (DRVDD ×3, +1V8_D), C819 10 µF (AVDD bulk). C820 1 µF (U800 LTC6912 V+/+5V_PGA). *(REFT/REFB speculative caps dropped — part has no external REFT/REFB.)*
+- **Sheet 9 (RP2040/flash/Si5351/AD9742):** C907–C912 0.1 µF (U900 IOVDD), C913 1 µF (U900 VREG_VOUT, functional), C914/C916 0.1 µF (U900 DVDD), C917 0.1 µF (USB_VDD), C918 4.7 µF (IOVDD bulk); C919 0.1 µF (U901 VCC); C920 0.1 µF (U902 VDD), C921 1 µF (U902 VDD bulk), C922 0.1 µF (U902 VDDO); C923 0.1 µF (U903 AVDD), C924 0.1 µF (U903 DVDD), C925 10 µF (U903 bulk). Note: Si5351 uses internal XTAL_CL (no external load caps).
+
+**⚠ DNP / placeholder (awaiting confirmation):**
+- **C905/C906** — Y900 12 MHz load caps, **placed DNP @ 15 pF** on GENLK_XI/XO. Value pending Y900 MPN/CL (C_load ≈ 2·(CL − 3 pF)).
+
+**HELD — ferrite PLL/clock isolation (NOT placed; require cutting the shared supply-wire bus in KiCad by hand):**
+- **FB402 + C431/C432/C434** — U403 PVDD (pins 24,25) → +1V8_A_TXPLL.
+- **FB600 + C609** — U600 PVDD (pin 23) → +1V8_A_DACPLL.
+- **FB900 + C915** — U900 ADC_AVDD (pin 43) → RP2040_ADCVDD.
+- Ferrite value 600 Ω @ 100 MHz. Each needs the chip pin moved off the shared +1V8_A/+3V3 bus onto the post-ferrite net.
+
+**⚠ Verify-before-final:** U403 possible separate 3.3 V I/O supply (symbol vs datasheet); AD9742 AVDD pin count (symbol may under-represent); ADV7280 PWRDWN\* host-GPIO control vs pull-up only; GS per-ball count (layout-trim).
+
+---
+
+## Sheet 7 (SDI) decoupling reconciliation — 2026-06-17
+
+Authoritative tally from the schematic netlist (post C703 deletion).
+
+**C703 DELETED** — was `4.7uF (~DDO AC-gnd)`, vestigial (pad1 isolated stub, pad2→GND) after the GS3470 DDO became a differential pair into U702/LMH0302. Removed from schematic, BOM, refdes-map.
+
+**Current sheet-7 passives (60):** 47 caps (C700–C751 less C703), 8 resistors (R704/705/720/722/723/725/726/727), 2 inductors (L700/L701, 5.6 nH ∥75), 3 ferrites (FB700/701/702). *(R721/R724 do not exist — reclassed to L700/L701 earlier.)*
+
+**Per-ball 0.1 µF coverage vs datasheet balls:**
+- ✅ U700: CORE_VDD 4/6, PLL_VDD 3/3, VCO_VDD 2/2, DDI1_VDD 2/3, IO_VDD **4/4** (watch-item OK). U701: PLL_VDD 2/2, VCO_VDD 1/1, IO_VDD **2/2** (watch-item OK), A_VDD 1/1, CD_VDD 1/1.
+- ⚠ **Per-ball gaps (flag, not auto-added — rails are otherwise well-bypassed; may be intentional layout trims):** U700 DDI0_VDD 1 cap/2 balls, U700 DDO_VDD 1 cap/2 balls, U701 CORE_VDD 2 caps/4 balls.
+
+**⚠ Open issues for review (NOT fixed — edit scope was C703-only):**
+- **C730 (U700 DDO_VDD) pad2 is FLOATING** — pad1=SDI_DDO_VDD, pad2 never tied to GND (`unconnected-(C730-Pad2)`). Pre-existing, unrelated to C703. Fix = re-tie C730 pad2→GND. Until then DDO_VDD has only C715 (1 µF bulk), no working 0.1 µF.
+- **+1V2 core local bulk MISSING** — the only non-0.1 µF cap on +1V2 is C334 (at TLV62568 regulator, sheet 3). No local ≈10 µF + 1 µF near U700/U701 on the core rail. Recommend adding per-chip core bulk.
+- **+1V2_A analog bulk intact** ✅ — C708–C711 (4× 1 µF) plus the per-ball 0.1 µF bank.
+
+---
+
+## PL bus wiring (2026-06-18) — no new parts
+
+The FPGA PL data/clock buses were wired PHY→SoM-connector per `pin-lock-assignment.md` (116 nets across J200/J201/J202). This is nets/labels only — **no BOM change**. 71 stale no-connect flags removed from the now-wired pins. ⚠ ADV7511 VSYNC mapped to pin 2 ('SYNC' in symbol) — verify; XDC bit order vs RTL — verify.

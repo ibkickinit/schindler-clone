@@ -53,10 +53,11 @@ Hierarchical sheet symbols only. Mechanical: `MP101–MP108` mounting holes, `FI
 | J200, J201 | Samtec LSHM-150-… (2×) | PL banks B35/B13/B34/B33 + PS MIO/DDR carry |
 | J202 | Samtec LSHM-130-… | balance of PL + PS |
 | HS201 | Trenz 33337 heatsink | mech |
-| ~~C200–C239~~ ⚠ | **NOT PRESENT — phantom bank (corrected 2026-06-15).** The decoupling audit found sheet 2 has **zero caps captured** — only J200/J201/J202 + a fiducial + 10 test points. Carrier-side SoM decoupling (bulk on the +5V/+3V3/+1V8_D feeds + distributed 0.1 µF across the connector supply pins) is **PROPOSED, not yet placed** — see [`decoupling-audit.md`](decoupling-audit.md) §Sheet 2 (~12 caps; ⚠ confirm count/bulk values against the **Trenz TE0720 carrier reference design** before placing — the module's main +5V input wants more bulk than generic scaffolding). Block C200+ reserved. | +5V / +3V3 / +1V8_D SoM feeds |
+| C200–C212 (13) ✓ | **Carrier-side SoM decoupling — placed 2026-06-15 sweep; bulk confirmed 2026-06-18 vs TE0720 TRM v.108.** Per-pin 0.1 µF + bulk reservoir on the three SoM feeds: **VIN/+5V** (7 pins JM1.1/3/5+JM2.2/4/6/8, bulk **≥16 V** — rec. 3.15–5.25 V so +5V in-spec, abs max 6 V), **+3V3** (6 pins = 3.3VIN JM1.13/15 + VCCIO35 JM1.9/11 + VCCIO13 JM2.7/9), **+1V8_D** (3 pins = VCCIO34 JM2.1/3 + VCCIO33 JM2.5; **VCCIO34 ≥1.425 V & MUST be powered or the SoM won't boot**). At layout, distribute the 0.1 µF to cover all 16 supply pins. Full pin map / power-up sequence / control-pin requirements → [`te0720-carrier-integration.md`](te0720-carrier-integration.md). | +5V / +3V3 / +1V8_D SoM feeds |
 | TP201–TP210 | PL_DONE, PS_BOOT, rail probes | status |
+| R213–R218, C213 (7) ✓ | **SoM control-pin straps — wired 2026-06-18 (boot-critical fix).** R213 10 k + C213 1 µF (EN1 J200.28 pull-up + soft-start); R214 0 Ω (NOSEQ J200.7→GND, removed prior +3V3 mis-tie); R215 10 k (PGOOD J200.30); R216 10 k (MODE J200.32 → SW1200); R217 10 k (JTAGMODE J200.89→GND); R218 10 k (RESIN J201.18 → SW1201). | SOM_EN1 / SOM_NOSEQ / SOM_PGOOD / SOM_JTAGMODE + **BOOT_MODE_SEL** / **SOM_RESET_N** (global → SW1200/SW1201, sheet 12) |
 
-JTAG/boot/reset live on sheet 12 (debug). The 152 PL pins fan from J200–J202 to sheets 4–9 by bank.
+JTAG/boot/reset live on sheet 12 (debug). The 152 PL pins fan from J200–J202 to sheets 4–9 by bank. **BOOT_MODE_SEL → SW1200** (boot DIP, closes to GND = SD) and **SOM_RESET_N → SW1201** (momentary → GND, manual SoC reset) wired 2026-06-18.
 
 > **⚠ Decoupling caveat (2026-06-15):** the per-sheet `Cxxx` decoupling on this map reflected *intent*, not captured reality. The audit (`decoupling-audit.md`) found most signal/sync chips bare or near-bare of local bypass and sheet 2 fully bare. Treat any `Cxxx` decoupling range on this map as **proposed** until reconciled against KiCad's exported BOM post-placement. Sheet 3 regulator caps are the exception — those are real.
 
@@ -93,6 +94,7 @@ JTAG/boot/reset live on sheet 12 (debug). The 152 PL pins fan from J200–J202 t
 | U402 | Lontium LT8619C (HDMI RX) | → B35, HDMI_IN[15:0]+CLK+SYNC (20) |
 | U403 | ADI ADV7511KSTZ (HDMI TX) | ← B13, HDMI_OUT[15:0]+CLK+HS/VS/DE (20) |
 | R4xx/C4xx | I²C pulls, TMDS term, decoupling | I²C0 |
+| R406 | 887 Ω 1% (ADV7511 R_EXT bias, pin 28→GND) | **+ pin 29 AVDD→+1V8_A** — both were floating; fixed 2026-06-18. ⚠ symbol mislabels pins 28/29 (relabel pending) |
 
 ### Sheet 5 — Analog video in (500s)
 
@@ -131,21 +133,20 @@ JTAG/boot/reset live on sheet 12 (debug). The 152 PL pins fan from J200–J202 t
 | U702 | LMH0302-class 3G-SDI cable driver (GS3470 loop-out) | GS3470 DDO → driver → return-loss → J702; pwr +3V3_SDIDRV |
 | Y700 | 27 MHz **9 pF-CL** crystal (GS3470 ref, XTAL/~XTAL) + 8 pF loads | ⚠ confirm ppm |
 | L700/L701 | 2× 5.6 nH RF inductor (GS2962 TX return-loss, **∥ 75 Ω**; SDO/~SDO legs) | ⚠ refdes class R→L (was R721/R724); MPN Murata LQW15AN5N6 / Coilcraft 0402HP-5N6, confirm SRF>3G |
-| R7xx/C7xx/D7xx/FB700-702 | 4.7 µF SDI AC-couple; **<0.3 pF SDI ESD** (J700–703); **TX return-loss** (RSET 75→CD_VDD, 5.6 Ω, 75 Ω+10 nF per leg); **+1V2_A** (FB701) for PLL/VCO/DDI-equalizer, **GND_A** partition (FB702), GS3470 DDO on FB700 1.8 V branch; 10-bit straps. **No external term** (GS3470 internal 75 Ω). | — |
+| R7xx/C7xx/D7xx/FB700-702 | 4.7 µF SDI AC-couple; **<0.3 pF SDI ESD** (J700–703); **TX return-loss** (RSET 75→CD_VDD, 5.6 Ω, 75 Ω+10 nF per leg); **+1V2_A** (FB701) for PLL/VCO/DDI-equalizer, **GND_A** partition (FB702), GS3470 DDO on FB700 1.8 V branch; 10-bit straps. **No external term** (GS3470 internal 75 Ω). C703 deleted 2026-06-17 (vestigial). Per-ball 0.1 µF bank C723–C751. | — |
 
 ### Sheet 8 — Genlock front-end (800s)
 
 | Refdes | MPN | Net group |
 |---|---|---|
-| J800 | Molex 73101-0120 (REF IN) | — |
-| J801 | Molex 73101-0120 (REF LOOP) | passive loop-through |
-| J802, J803 | Hirose U.FL-R-SMT-1 (REF IN / REF LOOP carrier-side) | **Option A interconnect (2026-06-13):** panel BNC → 75 Ω pigtail → these u.FL receptacles; no riser hop on phase-critical sync. Upgrade = 75 Ω MMCX. |
+| ~~J800 / J801~~ | Molex 73101-0120 (REF IN / LOOP panel BNC) | **REMOVED from carrier schematic 2026-06-18** — panel BNC + 75 Ω pigtail are **chassis/panel BOM**, not carrier PCB (Option A). Carrier landing = J802/J803. |
+| J802, J803 | Hirose U.FL-R-SMT-1 (REF IN / REF LOOP — **the carrier-side sync-in connectors**) | **Option A interconnect:** panel BNC → 75 Ω pigtail → these U.FL receptacles; no riser hop on phase-critical sync. REF_BUS = J802/J803 + R800 term + C800 AC-couple + D801/D802 ESD. Upgrade = 75 Ω MMCX. |
 | U800 | ADI LTC6912CGN-2 (PGA) | ← B33 SPI (3) |
 | U801 | ADI AD9204BCPZ-20 (ADC) | → B33, dual-10-bit + DCO (11) |
 | U802 | TI TS5A23159 (REF term switch; **CarrierGen symbol, TI pinout**) | switchable 75 Ω term via PCA9555 |
 | U803 | PCA9555 I²C GPIO expander (I2C_HK) | drives REF (and spare) term-enable; 0x?? addr |
 | D800 | **BAV99S 2-rail clamp** (PGA in → +5V_PGA / GND) | — |
-| D801, D802 | **<3 pF video TVS** at J800 / J801 | panel ESD |
+| D801, D802 | **<3 pF video TVS** on REF_BUS (at carrier U.FL J802/J803 input) | sync-in ESD |
 | R8xx/C8xx | term, AC-couple (0.1 µF), anti-alias LPF, ADC ref (VREF 470 nF, RBIAS) | — |
 
 ### Sheet 9 — Clock + sync gen (900s)
@@ -252,5 +253,34 @@ Separate 4-layer schematic/PCB; refdes restart at 1. Connects via `A1:J1200` (u.
 
 1. Capture each sheet; annotate with **sheet#×100** numbering → refdes match this map.
 2. Put the **MPN** in each symbol's field (Value or a `MPN` field) from the BOM.
-3. Export KiCad BOM (refdes + MPN) and **diff against `bom-v1.md` pooled quantities** — counts must reconcile (e.g. 16× `J*` carrying 73101-0120 across sheets 5/6/7/8/9 = the BOM's "BNC ×16" after the 2026-06-13 SDI IN-LOOP + OUT-MIRROR adds; the U.FL-R-SMT-1 REF interconnect jacks J802/J803 are a separate line, not 73101-0120).
+3. Export KiCad BOM (refdes + MPN) and **diff against `bom-v1.md` pooled quantities** — counts must reconcile. Carrier-PCB 73101-0120 BNCs = **14** across sheets 5/6/7/9 (was 16; **J800/J801 removed from sheet 8 on 2026-06-18** — those 2 panel BNCs + 2 pigtails are now a **chassis/panel BOM** line, not carrier). The U.FL-R-SMT-1 REF jacks J802/J803 are a separate carrier line, not 73101-0120.
 4. Anything that doesn't reconcile is drift — fix in KiCad, never here.
+
+
+## Decoupling + functional sweep (placed 2026-06-15)
+
+| Sheet | New refdes | Notes |
+|---|---|---|
+| 2 TE0720 SoM | **C200–C212** (13) | per-pin +5V/+3V3/+1V8_D bypass + bulk; **bulk confirmed vs TE0720 TRM 2026-06-18** (VIN ≥16 V; exact pin map + sequencing in `te0720-carrier-integration.md`) |
+| 4 ADV7511 | C424–C430, C433 (8) | DVDD/AVDD 0.1 µF + bulk on +1V8_A; PVDD held for FB402 |
+| 5 ADV7280 | C512–C517 (6), **R508** (PWRDWN\* 10k pull-up) | DVDDIO/DVDD/AVDD/PVDD + bulk |
+| 6 ADV7393 | C606–C608, C610–C612 (6) | VDD_IO/VDD/VAA + COMP fix C612; PVDD held for FB600; EXT_LF note |
+| 7 GS3470/GS2962 | C723–C751 (29) | per-ball 0.1 µF (Justin extended to C751), layout-trimmable; **C703 deleted** (vestigial ~DDO AC-gnd); ⚠ C730 pad2 floating + +1V2 core bulk missing (see bom-v1 note) |
+| 8 AD9204/LTC6912 | C809–C820 (12) | AVDD/DRVDD per-pin + bulk; C820 LTC6912 V+ 1 µF |
+| 9 RP2040/Si5351/AD9742/flash | C905–C925 (20; C915 held) | incl. C913 VREG_VOUT 1µF, C905/C906 Y900 loads DNP |
+| HELD ferrites | FB402, FB600, FB900 + C431/C432/C434/C609/C915 | PLL/clock isolation — manual re-net in KiCad |
+
+## PL pin-lock WIRED — 2026-06-18
+
+The PL data/clock buses are now wired from each PHY to the SoM connectors per [`pin-lock-assignment.md`](pin-lock-assignment.md) (116 nets, functional names). The earlier "deferred PL bus / pin-lock pending" flags are **lifted** for these pins. No new components (nets/labels only) — BOM unchanged.
+
+| Bank | Conn | Nets | PHY pins → JM |
+|------|------|------|---------------|
+| B35 | J200 (JM1) | 42 | ADV7280 P0–7+LLC, LT8619C D0–15/DE/HS/VS/PCLK, AD9742 DB0–11/CLK |
+| B13 | J201 (JM2) | 40 | ADV7511 D0–15/DE/HS/VS/PCLK, ADV7393 P0–15/HS/VS/SFL/CLKIN |
+| B34 | J202 (JM3) | 22 | GS3470 DOUT0–9/PCLK, GS2962 DIN0–9/PCLK (10-bit DDR; [19:10] stay NC) |
+| B33 | J201 (JM2) | 12 | AD9204 D0A–D9A(chA)/DCOA, SYNC2_BIPHASE→R906 |
+
+**Symbol resolutions (folded in):** LT8619C 16-bit YCbCr = D0–D15 (pins 52→37, D16–23 TMDS unused); ADV7511 D0–D15 = pins 96→81, **VSYNC = pin 2 (symbol labels it "SYNC" — ⚠ verify it's VSYNC)**; AD9742 DB0–DB11 = pins 12→1; AD9204 = **channel A** (D0A–D9A, matches VIN+A); GS3470/GS2962 wired DOUT/DIN[9:0] only, upper bits + audio/JTAG left NC. 71 stale no-connect (×) flags removed from the now-wired pins.
+
+⚠ **Open:** confirm `schindler_plio.xdc` bit order vs final RTL (bits are bank-fungible — pairing is RTL-defined). ADV7511 VSYNC pin-2 confirm.

@@ -3967,6 +3967,17 @@
 			(embedded_fonts no)
 		)
 	)
+	(text "Si5351 (U902): no external XTAL load caps; firmware sets XTAL_CL to match Y901."
+		(exclude_from_sim no)
+		(at 40 300 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "ac742592-85c9-4158-971c-9ed67641d0be")
+	)
 	(junction
 		(at 185.42 133.35)
 		(diameter 0)
@@ -4233,6 +4244,16 @@
 		)
 		(uuid "2ac83472-d9e9-4bf6-bfd5-4630f46b5a62")
 	)
+	(label "RP2040_VCORE"
+		(at 440.69 358.14 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "2e47ab6f-e4f0-4a97-bfab-174ea0b4b7bc")
+	)
 	(label "SYNC2_BNC"
 		(at 546.1 203.2 0)
 		(effects
@@ -4242,6 +4263,16 @@
 			(justify left)
 		)
 		(uuid "362f991f-aba7-4456-a6f9-d7b520960b12")
+	)
+	(label "GENLK_XO"
+		(at 311.15 356.87 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "37aa1436-37cb-47ad-80d0-ba31ff1478df")
 	)
 	(label "SYNC1_BT"
 		(at 543.56 127 0)
@@ -4363,6 +4394,26 @@
 		)
 		(uuid "570bf18b-ffac-4142-9ad7-ea3e84e7faf2")
 	)
+	(label "GENLK_XI"
+		(at 311.15 320.04 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "5a6e9e7f-f6a4-44d1-9195-92a6c6961ef6")
+	)
+	(label "RP2040_VCORE"
+		(at 311.15 337.82 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "5c99cfce-43f5-426a-b266-b09bcd043e18")
+	)
 	(label "SYNC1_BNC"
 		(at 529.59 99.06 0)
 		(effects
@@ -4372,6 +4423,16 @@
 			(justify left)
 		)
 		(uuid "5d9af9ae-31f4-409e-bd3e-35e45a178d65")
+	)
+	(label "RP2040_VCORE"
+		(at 440.69 323.85 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "5dd617ac-a8d4-4dca-9637-388ef76a9bd7")
 	)
 	(label "IOUTB_LD"
 		(at 336.55 158.75 0)
@@ -4585,6 +4646,72 @@
 	)
 	(global_label "GND"
 		(shape input)
+		(at 311.15 382.27 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "0000bf5d-d08a-4554-a2b1-a2a721e0c738")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 311.15 382.27 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "GND"
+		(shape input)
+		(at 411.48 347.98 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "03766339-b7d4-4428-823d-5f885817dc26")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 411.48 347.98 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "+3V3"
+		(shape input)
+		(at 381 339.09 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "05e7b637-d0f2-44ca-b9fc-74c424ea8cd9")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 381 339.09 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "GND"
+		(shape input)
 		(at 356.87 146.05 0)
 		(effects
 			(font
@@ -4595,6 +4722,94 @@
 		(uuid "072fd946-c24f-498e-be3a-29abdd43d828")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
 			(at 356.87 146.05 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "+3V3"
+		(shape input)
+		(at 440.69 341.63 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "07a5b42e-c9fc-4985-bae3-785efee22f4a")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 440.69 341.63 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "+3V3"
+		(shape input)
+		(at 440.69 375.92 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "0bd6f618-44c9-44dd-bf75-592b6d491ee6")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 440.69 375.92 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "+3V3"
+		(shape input)
+		(at 350.52 374.65 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "0bebe9bf-a23c-42f9-87bf-9b51bfca3969")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 350.52 374.65 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "+3V3"
+		(shape input)
+		(at 350.52 320.04 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "0cec3b31-723d-4f21-93f3-ea8dd33d7558")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 350.52 320.04 90)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -4671,6 +4886,50 @@
 			)
 		)
 	)
+	(global_label "+3V3"
+		(shape input)
+		(at 350.52 337.82 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "1c37d95c-9867-4ecb-925b-0b97eb5317d1")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 350.52 337.82 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "GND"
+		(shape input)
+		(at 440.69 365.76 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "1c4c07d8-8746-4438-a1eb-d4f9cbb6885f")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 440.69 365.76 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
 	(global_label "GND"
 		(shape input)
 		(at 359.41 180.34 0)
@@ -4683,6 +4942,72 @@
 		(uuid "2026508d-16aa-4fae-a3de-d63bff5d4418")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
 			(at 359.41 180.34 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "GND"
+		(shape input)
+		(at 311.15 327.66 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "224fec11-6cf0-4ef6-b663-99bca4233b6a")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 311.15 327.66 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "GND"
+		(shape input)
+		(at 379.73 365.76 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "26f2982d-45a5-41f3-a8b4-7695a82b3cf0")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 379.73 365.76 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "+3V3"
+		(shape input)
+		(at 410.21 375.92 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "2b2c762d-6ebc-4551-a25c-bb75e5a39e60")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 410.21 375.92 90)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -4783,7 +5108,7 @@
 	)
 	(global_label "GND"
 		(shape input)
-		(at 392.43 328.93 0)
+		(at 541.02 349.25 0)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -4792,7 +5117,7 @@
 		)
 		(uuid "35a9210f-388f-4aaa-aa7f-a5951f43728c")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 392.43 328.93 0)
+			(at 541.02 349.25 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -4815,6 +5140,50 @@
 		(uuid "3f298d7a-8abe-4725-afee-d550fd299e64")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
 			(at 295.91 156.21 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "GND"
+		(shape input)
+		(at 381 346.71 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "3f911d09-3cd6-4fc0-b86f-d99ae1d3fbe3")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 381 346.71 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "GND"
+		(shape input)
+		(at 440.69 331.47 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "40158fc5-cb3c-4aa3-85db-211fc6a0e010")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 440.69 331.47 90)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -4937,7 +5306,7 @@
 	)
 	(global_label "+5V"
 		(shape input)
-		(at 392.43 321.31 0)
+		(at 541.02 341.63 0)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -4946,7 +5315,29 @@
 		)
 		(uuid "481ea837-78ef-4f08-b97a-3593cf38ffa3")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 392.43 321.31 0)
+			(at 541.02 341.63 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "+3V3"
+		(shape input)
+		(at 411.48 322.58 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "48d1efc0-1a33-45cc-832c-8ada605dbef9")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 411.48 322.58 90)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -5003,6 +5394,28 @@
 	)
 	(global_label "GND"
 		(shape input)
+		(at 350.52 364.49 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "57de006a-aae8-4680-9dab-306672d50cb2")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 350.52 364.49 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "GND"
+		(shape input)
 		(at 558.8 222.25 0)
 		(effects
 			(font
@@ -5013,6 +5426,50 @@
 		(uuid "5e1c34b3-236e-43bb-97f3-c1fe5c3c1b4d")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
 			(at 558.8 222.25 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "GND"
+		(shape input)
+		(at 410.21 365.76 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "631d9f73-e049-4ac8-be17-adbe3036ac6e")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 410.21 365.76 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "+3V3"
+		(shape input)
+		(at 379.73 358.14 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "6618a145-c92a-4508-82cd-88e648617a1a")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 379.73 358.14 90)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -5035,6 +5492,72 @@
 		(uuid "67f77f49-00e9-47cd-8fa7-c540373e4c9c")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
 			(at 116.84 224.79 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "GND"
+		(shape input)
+		(at 411.48 330.2 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "6d03e07a-29a6-4af4-97dd-8bc13049b9f2")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 411.48 330.2 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "+3V3"
+		(shape input)
+		(at 410.21 358.14 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "715030b7-6b6a-42a0-b29c-d9cb4115be90")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 410.21 358.14 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "GND"
+		(shape input)
+		(at 350.52 382.27 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "754154d6-fb2e-4f09-80ad-d6954d6db7ac")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 350.52 382.27 90)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -5133,6 +5656,28 @@
 			)
 		)
 	)
+	(global_label "GND"
+		(shape input)
+		(at 311.15 345.44 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "94cfa617-7ea9-4364-9e2f-5658ccc239d9")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 311.15 345.44 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
 	(global_label "I2C_GENLK_SDA"
 		(shape input)
 		(at 248.92 300.99 180)
@@ -5145,6 +5690,28 @@
 		(uuid "998eac5a-06cf-4fcb-be30-c87f981a0c25")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
 			(at 248.92 300.99 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "GND"
+		(shape input)
+		(at 440.69 383.54 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "a0ff4118-d514-4906-af12-091ab244a7cc")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 440.69 383.54 90)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -5189,6 +5756,72 @@
 		(uuid "a4c9c63e-e5e4-4570-bc9b-2149ab9555ae")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
 			(at 160.02 140.97 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "GND"
+		(shape input)
+		(at 311.15 364.49 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "a6395489-2911-4bbb-a567-d4f6bee40acf")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 311.15 364.49 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "GND"
+		(shape input)
+		(at 381 328.93 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "a84ba623-9825-4e39-9080-c7325bb71cbe")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 381 328.93 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "GND"
+		(shape input)
+		(at 350.52 345.44 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "a8ba16c6-af7b-47a3-838a-2a8bad9afc93")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 350.52 345.44 90)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -5245,6 +5878,28 @@
 	)
 	(global_label "GND"
 		(shape input)
+		(at 410.21 383.54 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "b6637ccf-db45-452c-9664-006d890a4e06")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 410.21 383.54 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "GND"
+		(shape input)
 		(at 295.91 194.31 180)
 		(effects
 			(font
@@ -5289,6 +5944,28 @@
 	)
 	(global_label "GND"
 		(shape input)
+		(at 350.52 327.66 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "bd7e5013-3c79-4958-aee1-bdbf96fc916c")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 350.52 327.66 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "GND"
+		(shape input)
 		(at 469.9 266.7 0)
 		(effects
 			(font
@@ -5311,6 +5988,28 @@
 	)
 	(global_label "GND"
 		(shape input)
+		(at 440.69 349.25 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "c9844976-a1ca-43bc-80da-f79811cbafd3")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 440.69 349.25 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "GND"
+		(shape input)
 		(at 295.91 212.09 180)
 		(effects
 			(font
@@ -5321,6 +6020,28 @@
 		(uuid "d24eb392-920f-4844-8c72-35c6d03b647f")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
 			(at 295.91 212.09 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "+3V3"
+		(shape input)
+		(at 350.52 356.87 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "d7dded25-a284-4d6e-91bf-86234869122a")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 350.52 356.87 90)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -5419,6 +6140,50 @@
 			)
 		)
 	)
+	(global_label "+3V3"
+		(shape input)
+		(at 379.73 375.92 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "ea0563c2-0b50-4aca-abdd-2fd296d199b3")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 379.73 375.92 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "+3V3"
+		(shape input)
+		(at 381 321.31 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "f3f8e5d0-11c5-40da-be47-235f279483db")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 381 321.31 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
 	(global_label "GND"
 		(shape input)
 		(at 356.87 163.83 0)
@@ -5453,6 +6218,72 @@
 		(uuid "f8f276e4-def1-4354-890f-658ddcf05847")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
 			(at 295.91 153.67 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "GND"
+		(shape input)
+		(at 379.73 383.54 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "f9877883-76a5-48e9-b1e8-8c4990bd2cd4")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 379.73 383.54 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "+3V3"
+		(shape input)
+		(at 311.15 374.65 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "fbbb553c-cbe4-41ad-b681-9792f64f2eb7")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 311.15 374.65 90)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "+3V3"
+		(shape input)
+		(at 411.48 340.36 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "fd82c084-0592-452e-8ea9-19b1b863122a")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 411.48 340.36 90)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -5623,6 +6454,164 @@
 	)
 	(symbol
 		(lib_id "Device:C")
+		(at 440.69 345.44 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "1579d3ef-2dd6-4a33-930a-1d5cac7248b7")
+		(property "Reference" "C925"
+			(at 444.5 344.17 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "10uF (U903 AVDD/DVDD bulk)"
+			(at 444.5 346.71 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" ""
+			(at 440.69 345.44 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 440.69 345.44 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 440.69 345.44 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "683db9b4-0044-4ddd-90fa-f51ccf430f3e")
+		)
+		(pin "2"
+			(uuid "ef53e067-0484-49ea-8bf9-a8adf053267a")
+		)
+		(instances
+			(project "SchindlerCarrierBoard_V1"
+				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/99f3b04e-7a51-45fa-8986-181becb0a5e2"
+					(reference "C925")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:C")
+		(at 381 342.9 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "16966c47-dd9b-411c-bec1-1dbbc2c8eda1")
+		(property "Reference" "C921"
+			(at 384.81 341.63 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "1uF (U902 VDD bulk)"
+			(at 384.81 344.17 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" ""
+			(at 381 342.9 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 381 342.9 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 381 342.9 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "4287ac03-e7f6-476c-842c-169739fc212a")
+		)
+		(pin "2"
+			(uuid "ccb6b70a-6f58-41fd-a3bb-d15aeda325e3")
+		)
+		(instances
+			(project "SchindlerCarrierBoard_V1"
+				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/99f3b04e-7a51-45fa-8986-181becb0a5e2"
+					(reference "C921")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:C")
 		(at 543.56 130.81 0)
 		(unit 1)
 		(body_style 1)
@@ -5695,6 +6684,85 @@
 			(project "SchindlerCarrierBoard_V1"
 				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/99f3b04e-7a51-45fa-8986-181becb0a5e2"
 					(reference "C900")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:C")
+		(at 381 325.12 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "194ad969-17dc-44fa-b52d-fc135129e80a")
+		(property "Reference" "C910"
+			(at 384.81 323.85 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "0.1uF (U900 IOVDD)"
+			(at 384.81 326.39 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" ""
+			(at 381 325.12 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 381 325.12 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 381 325.12 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "5beede62-abeb-4b75-80ba-f609ec66a3ea")
+		)
+		(pin "2"
+			(uuid "110553de-d7cd-42d1-a0c3-55eddb5ef3a5")
+		)
+		(instances
+			(project "SchindlerCarrierBoard_V1"
+				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/99f3b04e-7a51-45fa-8986-181becb0a5e2"
+					(reference "C910")
 					(unit 1)
 				)
 			)
@@ -5853,6 +6921,85 @@
 			(project "SchindlerCarrierBoard_V1"
 				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/99f3b04e-7a51-45fa-8986-181becb0a5e2"
 					(reference "R904")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:C")
+		(at 311.15 360.68 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp yes)
+		(uuid "28f1686a-e09b-4db5-9f54-da6f5dd2bb05")
+		(property "Reference" "C906"
+			(at 314.96 359.41 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "15pF (Y900 XOUT load, DNP-verify CL)"
+			(at 314.96 361.95 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" ""
+			(at 311.15 360.68 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 311.15 360.68 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 311.15 360.68 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "0127a501-8064-47ad-89b3-2d803b396c10")
+		)
+		(pin "2"
+			(uuid "f4227f53-5f02-4acc-8620-478b0a5c548a")
+		)
+		(instances
+			(project "SchindlerCarrierBoard_V1"
+				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/99f3b04e-7a51-45fa-8986-181becb0a5e2"
+					(reference "C906")
 					(unit 1)
 				)
 			)
@@ -6183,6 +7330,85 @@
 	)
 	(symbol
 		(lib_id "Device:C")
+		(at 440.69 379.73 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "461e9313-fc9c-4ad9-b183-49788a868d6f")
+		(property "Reference" "C924"
+			(at 444.5 378.46 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "0.1uF (U903 DVDD)"
+			(at 444.5 381 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" ""
+			(at 440.69 379.73 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 440.69 379.73 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 440.69 379.73 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "aba36f0d-d9fe-422d-bb54-b94382b1dde5")
+		)
+		(pin "2"
+			(uuid "a3cf1505-9af1-4a65-ad43-ce2674401c75")
+		)
+		(instances
+			(project "SchindlerCarrierBoard_V1"
+				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/99f3b04e-7a51-45fa-8986-181becb0a5e2"
+					(reference "C924")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:C")
 		(at 447.04 203.2 0)
 		(unit 1)
 		(body_style 1)
@@ -6438,6 +7664,164 @@
 	)
 	(symbol
 		(lib_id "Device:C")
+		(at 311.15 323.85 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp yes)
+		(uuid "6b53000f-f48e-49bc-a5b8-3889172f679a")
+		(property "Reference" "C905"
+			(at 314.96 322.58 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "15pF (Y900 XIN load, DNP-verify CL)"
+			(at 314.96 325.12 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" ""
+			(at 311.15 323.85 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 311.15 323.85 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 311.15 323.85 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "ddc230d4-3df7-4cd6-bbc8-29d685afc9aa")
+		)
+		(pin "2"
+			(uuid "6f1441cd-b50d-47e1-badf-86a2087e8255")
+		)
+		(instances
+			(project "SchindlerCarrierBoard_V1"
+				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/99f3b04e-7a51-45fa-8986-181becb0a5e2"
+					(reference "C905")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:C")
+		(at 350.52 378.46 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "6c925853-f678-464f-b1d8-cd3dda778371")
+		(property "Reference" "C919"
+			(at 354.33 377.19 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "0.1uF (U901 VCC)"
+			(at 354.33 379.73 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" ""
+			(at 350.52 378.46 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 350.52 378.46 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 350.52 378.46 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "bb27a54c-af32-4c9c-93ed-8fc36b9905e5")
+		)
+		(pin "2"
+			(uuid "91ffa9e4-19c2-4559-8b68-7ba9bd325ac7")
+		)
+		(instances
+			(project "SchindlerCarrierBoard_V1"
+				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/99f3b04e-7a51-45fa-8986-181becb0a5e2"
+					(reference "C919")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:C")
 		(at 547.37 184.15 0)
 		(unit 1)
 		(body_style 1)
@@ -6510,6 +7894,85 @@
 			(project "SchindlerCarrierBoard_V1"
 				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/99f3b04e-7a51-45fa-8986-181becb0a5e2"
 					(reference "C903")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:C")
+		(at 350.52 360.68 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "7fb33de6-c4cf-45a1-815b-8e20c4ad8b14")
+		(property "Reference" "C908"
+			(at 354.33 359.41 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "0.1uF (U900 IOVDD)"
+			(at 354.33 361.95 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" ""
+			(at 350.52 360.68 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 350.52 360.68 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 350.52 360.68 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "3f7e9547-58a5-49c6-94bf-6e27eadfc1ac")
+		)
+		(pin "2"
+			(uuid "b74e8d46-4c4b-4a3f-b4d3-b9f6cf5a33a0")
+		)
+		(instances
+			(project "SchindlerCarrierBoard_V1"
+				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/99f3b04e-7a51-45fa-8986-181becb0a5e2"
+					(reference "C908")
 					(unit 1)
 				)
 			)
@@ -6620,7 +8083,7 @@
 	)
 	(symbol
 		(lib_id "Device:C")
-		(at 392.43 325.12 0)
+		(at 541.02 345.44 0)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -6630,7 +8093,7 @@
 		(dnp no)
 		(uuid "8819fc85-642c-4962-8707-3ed147747d9e")
 		(property "Reference" "C904"
-			(at 398.78 322.58 0)
+			(at 547.37 342.9 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -6641,7 +8104,7 @@
 			)
 		)
 		(property "Value" "0.1uF (U904 V+)"
-			(at 398.78 327.66 0)
+			(at 547.37 347.98 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -6652,7 +8115,7 @@
 			)
 		)
 		(property "Footprint" "Capacitor_SMD:C_0805_2012Metric"
-			(at 392.43 325.12 0)
+			(at 541.02 345.44 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -6663,7 +8126,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 392.43 325.12 0)
+			(at 541.02 345.44 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -6673,7 +8136,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 392.43 325.12 0)
+			(at 541.02 345.44 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -6941,6 +8404,322 @@
 			(project "SchindlerCarrierBoard_V1"
 				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/99f3b04e-7a51-45fa-8986-181becb0a5e2"
 					(reference "Y901")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:C")
+		(at 379.73 379.73 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "9e923048-d5f8-41c0-b2af-df8a55da4b59")
+		(property "Reference" "C920"
+			(at 383.54 378.46 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "0.1uF (U902 VDD)"
+			(at 383.54 381 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" ""
+			(at 379.73 379.73 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 379.73 379.73 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 379.73 379.73 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "f28b2c9a-c673-4dd9-a2df-489fcbaf5615")
+		)
+		(pin "2"
+			(uuid "97d7ae32-685e-4999-8885-7b35619957ac")
+		)
+		(instances
+			(project "SchindlerCarrierBoard_V1"
+				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/99f3b04e-7a51-45fa-8986-181becb0a5e2"
+					(reference "C920")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:C")
+		(at 410.21 361.95 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "a201e6b8-2e2a-4a1d-90bd-ef8cda01bf74")
+		(property "Reference" "C911"
+			(at 414.02 360.68 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "0.1uF (U900 IOVDD)"
+			(at 414.02 363.22 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" ""
+			(at 410.21 361.95 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 410.21 361.95 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 410.21 361.95 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "5e45e9c9-650a-4084-bd3f-45ef7a3a317f")
+		)
+		(pin "2"
+			(uuid "481045e0-6676-488d-8e8a-e8077c0c2cce")
+		)
+		(instances
+			(project "SchindlerCarrierBoard_V1"
+				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/99f3b04e-7a51-45fa-8986-181becb0a5e2"
+					(reference "C911")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:C")
+		(at 440.69 327.66 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "a5990100-47d3-497e-b348-c10d1a9133ff")
+		(property "Reference" "C914"
+			(at 444.5 326.39 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "0.1uF (U900 DVDD)"
+			(at 444.5 328.93 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" ""
+			(at 440.69 327.66 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 440.69 327.66 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 440.69 327.66 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "7a0b24f5-206c-406b-909b-0bb605d6a4d6")
+		)
+		(pin "2"
+			(uuid "907af0ff-0b77-4519-8203-b9d89ab00bc9")
+		)
+		(instances
+			(project "SchindlerCarrierBoard_V1"
+				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/99f3b04e-7a51-45fa-8986-181becb0a5e2"
+					(reference "C914")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:C")
+		(at 350.52 323.85 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "a76ef896-9777-4866-a2d7-a45b368d689a")
+		(property "Reference" "C907"
+			(at 354.33 322.58 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "0.1uF (U900 IOVDD)"
+			(at 354.33 325.12 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" ""
+			(at 350.52 323.85 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 350.52 323.85 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 350.52 323.85 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "49b1419f-0491-4073-ae31-80e478e36eeb")
+		)
+		(pin "2"
+			(uuid "59fb99b0-6d61-42be-8414-3daec54f4a83")
+		)
+		(instances
+			(project "SchindlerCarrierBoard_V1"
+				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/99f3b04e-7a51-45fa-8986-181becb0a5e2"
+					(reference "C907")
 					(unit 1)
 				)
 			)
@@ -7366,6 +9145,85 @@
 		)
 	)
 	(symbol
+		(lib_id "Device:C")
+		(at 350.52 341.63 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "b390f462-3ab4-447d-b7ab-ae319f51da2f")
+		(property "Reference" "C918"
+			(at 354.33 340.36 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "4.7uF (U900 IOVDD bulk)"
+			(at 354.33 342.9 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" ""
+			(at 350.52 341.63 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 350.52 341.63 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 350.52 341.63 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "b28bcc56-0646-48a9-8ad8-51f71524a9ff")
+		)
+		(pin "2"
+			(uuid "fe13923b-a8fc-4f2a-82f3-410362ed6733")
+		)
+		(instances
+			(project "SchindlerCarrierBoard_V1"
+				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/99f3b04e-7a51-45fa-8986-181becb0a5e2"
+					(reference "C918")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
 		(lib_id "Device:R")
 		(at 359.41 176.53 0)
 		(unit 1)
@@ -7597,6 +9455,243 @@
 			(project "SchindlerCarrierBoard_V1"
 				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/99f3b04e-7a51-45fa-8986-181becb0a5e2"
 					(reference "R903")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:C")
+		(at 311.15 341.63 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "c468e0e8-157d-4f42-9140-ecfb28e09cc8")
+		(property "Reference" "C916"
+			(at 314.96 340.36 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "0.1uF (U900 DVDD)"
+			(at 314.96 342.9 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" ""
+			(at 311.15 341.63 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 311.15 341.63 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 311.15 341.63 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "2c668596-6331-4895-846c-b07e0fab4163")
+		)
+		(pin "2"
+			(uuid "f5dfb3b5-ff9d-4154-a06f-264542ec2d8b")
+		)
+		(instances
+			(project "SchindlerCarrierBoard_V1"
+				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/99f3b04e-7a51-45fa-8986-181becb0a5e2"
+					(reference "C916")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:C")
+		(at 411.48 344.17 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "d512d3d7-66e0-40bf-850b-af87d25e6ec4")
+		(property "Reference" "C923"
+			(at 415.29 342.9 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "0.1uF (U903 AVDD)"
+			(at 415.29 345.44 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" ""
+			(at 411.48 344.17 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 411.48 344.17 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 411.48 344.17 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "72699a71-e7d7-462a-8525-632b41d1930c")
+		)
+		(pin "2"
+			(uuid "56bbd3d8-3f30-4720-8634-7fe8de6f7168")
+		)
+		(instances
+			(project "SchindlerCarrierBoard_V1"
+				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/99f3b04e-7a51-45fa-8986-181becb0a5e2"
+					(reference "C923")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:C")
+		(at 379.73 361.95 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "e548b233-d40c-4ecd-8097-9aa52e0c50b6")
+		(property "Reference" "C909"
+			(at 383.54 360.68 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "0.1uF (U900 IOVDD)"
+			(at 383.54 363.22 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" ""
+			(at 379.73 361.95 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 379.73 361.95 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 379.73 361.95 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "cdbe99e9-18d8-4b7a-8223-108cd8e1c6cb")
+		)
+		(pin "2"
+			(uuid "789024ca-0278-49b5-b85c-4921759636a8")
+		)
+		(instances
+			(project "SchindlerCarrierBoard_V1"
+				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/99f3b04e-7a51-45fa-8986-181becb0a5e2"
+					(reference "C909")
 					(unit 1)
 				)
 			)
@@ -7839,6 +9934,243 @@
 		)
 	)
 	(symbol
+		(lib_id "Device:C")
+		(at 311.15 378.46 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "ee2565ea-26d2-4fe8-a261-b7c651383965")
+		(property "Reference" "C917"
+			(at 314.96 377.19 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "0.1uF (U900 USB_VDD)"
+			(at 314.96 379.73 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" ""
+			(at 311.15 378.46 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 311.15 378.46 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 311.15 378.46 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "cda47001-d866-4143-bd68-16a9f692fbfa")
+		)
+		(pin "2"
+			(uuid "c076b9a0-e1e7-44a2-aa82-ed6f04ce2d95")
+		)
+		(instances
+			(project "SchindlerCarrierBoard_V1"
+				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/99f3b04e-7a51-45fa-8986-181becb0a5e2"
+					(reference "C917")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:C")
+		(at 440.69 361.95 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "f4fbbbc2-6b21-4c28-ac22-4f5aa469d16f")
+		(property "Reference" "C913"
+			(at 444.5 360.68 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "1uF (U900 VREG_VOUT)"
+			(at 444.5 363.22 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" ""
+			(at 440.69 361.95 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 440.69 361.95 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 440.69 361.95 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "1dcae41e-5bcf-4d9c-a517-7a7cd040d05e")
+		)
+		(pin "2"
+			(uuid "38a42fb2-0ddf-438a-95b1-4493554c27b2")
+		)
+		(instances
+			(project "SchindlerCarrierBoard_V1"
+				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/99f3b04e-7a51-45fa-8986-181becb0a5e2"
+					(reference "C913")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:C")
+		(at 410.21 379.73 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "f526a2d7-a6b8-4a7e-8d02-eabdd0c9aaa1")
+		(property "Reference" "C922"
+			(at 414.02 378.46 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "0.1uF (U902 VDDO)"
+			(at 414.02 381 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" ""
+			(at 410.21 379.73 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 410.21 379.73 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 410.21 379.73 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "f8f72d47-6d3a-47bb-b658-3b075df94a8b")
+		)
+		(pin "2"
+			(uuid "5baeaab2-63e0-43f7-a72d-1a52170c6ba1")
+		)
+		(instances
+			(project "SchindlerCarrierBoard_V1"
+				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/99f3b04e-7a51-45fa-8986-181becb0a5e2"
+					(reference "C922")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
 		(lib_id "Device:D_TVS")
 		(at 554.99 222.25 0)
 		(unit 1)
@@ -7917,6 +10249,211 @@
 			)
 		)
 	)
+	(symbol
+		(lib_id "Device:C")
+		(at 411.48 326.39 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "f836f831-1b96-44ac-ba5a-6b5ec6984119")
+		(property "Reference" "C912"
+			(at 415.29 325.12 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "0.1uF (U900 IOVDD)"
+			(at 415.29 327.66 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" ""
+			(at 411.48 326.39 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 411.48 326.39 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 411.48 326.39 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "6ad825a4-7846-467f-b4d5-00e3e505a4da")
+		)
+		(pin "2"
+			(uuid "bd415a86-27e5-4406-8e74-5722bcf25b9d")
+		)
+		(instances
+			(project "SchindlerCarrierBoard_V1"
+				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/99f3b04e-7a51-45fa-8986-181becb0a5e2"
+					(reference "C912")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(global_label "SYNC1_DAC_CLK"
+		(shape input)
+		(at 295.91 199.39 0)
+		(effects (font (size 1.27 1.27)) (justify left))
+		(uuid "6bd659a6-ce28-4006-872b-2634f0d0d595")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 295.91 199.39 0)
+			(hide yes)(show_name no)(do_not_autoplace no)
+			(effects (font (size 1.27 1.27)))))
+	(global_label "SYNC1_DAC_DB0"
+		(shape input)
+		(at 295.91 161.29 0)
+		(effects (font (size 1.27 1.27)) (justify left))
+		(uuid "a65a40fc-bdcc-412b-8352-1368544a2e6a")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 295.91 161.29 0)
+			(hide yes)(show_name no)(do_not_autoplace no)
+			(effects (font (size 1.27 1.27)))))
+	(global_label "SYNC1_DAC_DB1"
+		(shape input)
+		(at 295.91 163.83 0)
+		(effects (font (size 1.27 1.27)) (justify left))
+		(uuid "99599786-6b59-40f9-835d-abe761e92c68")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 295.91 163.83 0)
+			(hide yes)(show_name no)(do_not_autoplace no)
+			(effects (font (size 1.27 1.27)))))
+	(global_label "SYNC1_DAC_DB2"
+		(shape input)
+		(at 295.91 166.37 0)
+		(effects (font (size 1.27 1.27)) (justify left))
+		(uuid "9481abde-fec7-4c4a-8640-948cc7f43d50")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 295.91 166.37 0)
+			(hide yes)(show_name no)(do_not_autoplace no)
+			(effects (font (size 1.27 1.27)))))
+	(global_label "SYNC1_DAC_DB3"
+		(shape input)
+		(at 295.91 168.91 0)
+		(effects (font (size 1.27 1.27)) (justify left))
+		(uuid "a53ab8b9-0fae-4ae1-8a83-8213dd0cc2b7")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 295.91 168.91 0)
+			(hide yes)(show_name no)(do_not_autoplace no)
+			(effects (font (size 1.27 1.27)))))
+	(global_label "SYNC1_DAC_DB4"
+		(shape input)
+		(at 295.91 173.99 0)
+		(effects (font (size 1.27 1.27)) (justify left))
+		(uuid "b9a9dd98-01b3-4f45-9870-5186a209d4df")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 295.91 173.99 0)
+			(hide yes)(show_name no)(do_not_autoplace no)
+			(effects (font (size 1.27 1.27)))))
+	(global_label "SYNC1_DAC_DB5"
+		(shape input)
+		(at 295.91 171.45 0)
+		(effects (font (size 1.27 1.27)) (justify left))
+		(uuid "975740d3-a66a-4ea8-b179-c016e99cce75")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 295.91 171.45 0)
+			(hide yes)(show_name no)(do_not_autoplace no)
+			(effects (font (size 1.27 1.27)))))
+	(global_label "SYNC1_DAC_DB6"
+		(shape input)
+		(at 295.91 176.53 0)
+		(effects (font (size 1.27 1.27)) (justify left))
+		(uuid "17b54250-1a8a-4624-99a5-ff53fb473145")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 295.91 176.53 0)
+			(hide yes)(show_name no)(do_not_autoplace no)
+			(effects (font (size 1.27 1.27)))))
+	(global_label "SYNC1_DAC_DB7"
+		(shape input)
+		(at 295.91 179.07 0)
+		(effects (font (size 1.27 1.27)) (justify left))
+		(uuid "af5771b2-f553-4a08-965d-9052cbb99e2f")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 295.91 179.07 0)
+			(hide yes)(show_name no)(do_not_autoplace no)
+			(effects (font (size 1.27 1.27)))))
+	(global_label "SYNC1_DAC_DB8"
+		(shape input)
+		(at 295.91 181.61 0)
+		(effects (font (size 1.27 1.27)) (justify left))
+		(uuid "f2d85a3e-4e09-4b2b-9804-8e0bbb020600")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 295.91 181.61 0)
+			(hide yes)(show_name no)(do_not_autoplace no)
+			(effects (font (size 1.27 1.27)))))
+	(global_label "SYNC1_DAC_DB9"
+		(shape input)
+		(at 295.91 184.15 0)
+		(effects (font (size 1.27 1.27)) (justify left))
+		(uuid "93375178-06b9-457b-a9a8-347f0a757869")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 295.91 184.15 0)
+			(hide yes)(show_name no)(do_not_autoplace no)
+			(effects (font (size 1.27 1.27)))))
+	(global_label "SYNC1_DAC_DB10"
+		(shape input)
+		(at 295.91 186.69 0)
+		(effects (font (size 1.27 1.27)) (justify left))
+		(uuid "e8d782f3-9b68-4597-b3d5-711687847f38")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 295.91 186.69 0)
+			(hide yes)(show_name no)(do_not_autoplace no)
+			(effects (font (size 1.27 1.27)))))
+	(global_label "SYNC1_DAC_DB11"
+		(shape input)
+		(at 295.91 189.23 0)
+		(effects (font (size 1.27 1.27)) (justify left))
+		(uuid "3480853f-cfc4-4804-8ba9-da0f40423ffd")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 295.91 189.23 0)
+			(hide yes)(show_name no)(do_not_autoplace no)
+			(effects (font (size 1.27 1.27)))))
+	(global_label "SYNC2_BIPHASE"
+		(shape input)
+		(at 447.04 215.9 0)
+		(effects (font (size 1.27 1.27)) (justify left))
+		(uuid "0c559cfe-f3c6-4b7b-bf1c-8c72f32c010f")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 447.04 215.9 0)
+			(hide yes)(show_name no)(do_not_autoplace no)
+			(effects (font (size 1.27 1.27)))))
 	(sheet_instances
 		(path "/"
 			(page "1")

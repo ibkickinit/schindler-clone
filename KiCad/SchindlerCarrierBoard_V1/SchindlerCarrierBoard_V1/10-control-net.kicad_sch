@@ -1562,16 +1562,16 @@
 	)
 	(global_label "+5V"
 		(shape input)
-		(at 177.8 22.86 0)
+		(at 349.25 213.36 180)
 		(effects
 			(font
 				(size 1.27 1.27)
 			)
-			(justify left)
+			(justify right)
 		)
 		(uuid "0a8590ad-1809-47a9-9c8b-89c804094f37")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 177.8 22.86 0)
+			(at 349.25 213.36 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -1584,16 +1584,16 @@
 	)
 	(global_label "GND"
 		(shape input)
-		(at 110.49 53.34 0)
+		(at 281.94 243.84 270)
 		(effects
 			(font
 				(size 1.27 1.27)
 			)
-			(justify left)
+			(justify right)
 		)
 		(uuid "2bc14d90-a469-4d48-a8cf-4fc6dc6215d3")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 110.49 53.34 0)
+			(at 281.94 243.84 90)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -1606,60 +1606,16 @@
 	)
 	(global_label "GND"
 		(shape input)
-		(at 190.5 43.18 0)
+		(at 361.95 233.68 270)
 		(effects
 			(font
 				(size 1.27 1.27)
 			)
-			(justify left)
+			(justify right)
 		)
 		(uuid "2f3fddd0-b1ee-4bb5-82b7-5af21f9d92f7")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 190.5 43.18 0)
-			(hide yes)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-	)
-	(global_label "GND"
-		(shape input)
-		(at 110.49 53.34 0)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify left)
-		)
-		(uuid "44f02c29-107d-4ba5-ad56-e1a21f9d37c4")
-		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 110.49 53.34 0)
-			(hide yes)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-	)
-	(global_label "GND"
-		(shape input)
-		(at 110.49 53.34 0)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify left)
-		)
-		(uuid "46b8b2f9-e022-4e18-8081-b34771c2c880")
-		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 110.49 53.34 0)
+			(at 361.95 233.68 90)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -1672,38 +1628,16 @@
 	)
 	(global_label "ESP_ANT"
 		(shape input)
-		(at 265.43 30.48 0)
+		(at 436.88 220.98 180)
 		(effects
 			(font
 				(size 1.27 1.27)
 			)
-			(justify left)
+			(justify right)
 		)
 		(uuid "733e6511-3557-4d75-901e-82b33640ce81")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 265.43 30.48 0)
-			(hide yes)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-	)
-	(global_label "+5V"
-		(shape input)
-		(at 177.8 22.86 0)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify left)
-		)
-		(uuid "7624b4a7-0f41-4e25-a4c8-7ae045715e89")
-		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 177.8 22.86 0)
+			(at 436.88 220.98 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -1716,38 +1650,16 @@
 	)
 	(global_label "GND"
 		(shape input)
-		(at 110.49 53.34 0)
+		(at 441.96 226.06 270)
 		(effects
 			(font
 				(size 1.27 1.27)
 			)
-			(justify left)
-		)
-		(uuid "a4e48c1d-a322-4653-a133-6e2834bc5765")
-		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 110.49 53.34 0)
-			(hide yes)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-	)
-	(global_label "GND"
-		(shape input)
-		(at 270.51 35.56 0)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify left)
+			(justify right)
 		)
 		(uuid "b6ef37cd-e1d6-4c87-a84f-9e24f808f01f")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 270.51 35.56 0)
+			(at 441.96 226.06 90)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -1760,16 +1672,16 @@
 	)
 	(global_label "GND"
 		(shape input)
-		(at 193.04 43.18 0)
+		(at 364.49 233.68 270)
 		(effects
 			(font
 				(size 1.27 1.27)
 			)
-			(justify left)
+			(justify right)
 		)
 		(uuid "cdc0cc88-1100-4c2a-bb7c-4b5918af27b9")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 193.04 43.18 0)
+			(at 364.49 233.68 90)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -1782,7 +1694,7 @@
 	)
 	(symbol
 		(lib_id "Power_Protection:TPD4S014")
-		(at 190.5 30.48 0)
+		(at 361.95 220.98 0)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -1792,7 +1704,7 @@
 		(dnp no)
 		(uuid "44d66329-2c87-40b2-a0ba-45266b270372")
 		(property "Reference" "U1001"
-			(at 196.85 27.94 0)
+			(at 359.664 209.296 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -1803,7 +1715,7 @@
 			)
 		)
 		(property "Value" "TPD4S014DBVR"
-			(at 196.85 33.02 0)
+			(at 366.268 232.918 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -1814,7 +1726,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 190.5 30.48 0)
+			(at 361.95 220.98 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -1825,7 +1737,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 190.5 30.48 0)
+			(at 361.95 220.98 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -1835,7 +1747,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 190.5 30.48 0)
+			(at 361.95 220.98 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -1888,7 +1800,7 @@
 	)
 	(symbol
 		(lib_id "Connector:USB_C_Receptacle_USB2.0_16P")
-		(at 110.49 30.48 0)
+		(at 281.94 220.98 0)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -1898,7 +1810,7 @@
 		(dnp no)
 		(uuid "59b1baed-7cc2-438a-aba8-7d5ff4e5e9bc")
 		(property "Reference" "J1001"
-			(at 116.84 27.94 0)
+			(at 279.654 201.93 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -1909,7 +1821,7 @@
 			)
 		)
 		(property "Value" "USB4085-GF-A"
-			(at 116.84 33.02 0)
+			(at 285.242 240.538 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -1920,7 +1832,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 110.49 30.48 0)
+			(at 281.94 220.98 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -1931,7 +1843,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 110.49 30.48 0)
+			(at 281.94 220.98 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -1941,7 +1853,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 110.49 30.48 0)
+			(at 281.94 220.98 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -2012,7 +1924,7 @@
 	)
 	(symbol
 		(lib_id "Connector:Conn_Coaxial")
-		(at 270.51 30.48 0)
+		(at 441.96 220.98 0)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -2022,7 +1934,7 @@
 		(dnp no)
 		(uuid "9dc0648c-519e-4962-b837-193dcb4b3bf0")
 		(property "Reference" "J1002"
-			(at 276.86 27.94 0)
+			(at 448.31 218.44 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -2033,7 +1945,7 @@
 			)
 		)
 		(property "Value" "CONREVSMA001 RP-SMA (ESP32-S3 WiFi ant: A2 U.FL->coax->J1002)"
-			(at 276.86 33.02 0)
+			(at 448.31 223.52 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -2044,7 +1956,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 270.51 30.48 0)
+			(at 441.96 220.98 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -2055,7 +1967,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 270.51 30.48 0)
+			(at 441.96 220.98 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -2065,7 +1977,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 270.51 30.48 0)
+			(at 441.96 220.98 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -2091,7 +2003,7 @@
 	)
 	(symbol
 		(lib_id "Connector:RJ45")
-		(at 30.48 30.48 0)
+		(at 201.93 220.98 0)
 		(unit 1)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -2101,7 +2013,7 @@
 		(dnp no)
 		(uuid "cdeed094-1eeb-45ff-8e6d-e81e58078d86")
 		(property "Reference" "J1000"
-			(at 36.83 27.94 0)
+			(at 199.644 207.01 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -2112,7 +2024,7 @@
 			)
 		)
 		(property "Value" "JXD1-0001NL"
-			(at 36.83 33.02 0)
+			(at 195.072 232.918 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -2123,7 +2035,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 30.48 30.48 0)
+			(at 201.93 220.98 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -2134,7 +2046,7 @@
 			)
 		)
 		(property "Datasheet" ""
-			(at 30.48 30.48 0)
+			(at 201.93 220.98 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -2144,7 +2056,7 @@
 			)
 		)
 		(property "Description" ""
-			(at 30.48 30.48 0)
+			(at 201.93 220.98 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects

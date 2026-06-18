@@ -1836,6 +1836,17 @@
 			(embedded_fonts no)
 		)
 	)
+	(text "EXT_LF (p22) floating = internal loop filter; firmware must NOT select external-LF mode."
+		(exclude_from_sim no)
+		(at 40 300 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "eaebcbf9-f110-48d4-b583-7b84a7eaba34")
+	)
 	(label "U602B_OUT"
 		(at 115.57 215.9 0)
 		(effects
@@ -1945,6 +1956,16 @@
 			(justify left)
 		)
 		(uuid "19a8e7f3-66f4-4c3d-bede-071b9d7ea58d")
+	)
+	(label "U600_COMP"
+		(at 102.87 300.99 90)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "1e307868-0fd2-4b42-b1b3-a7ced5b92ca0")
 	)
 	(label "J603_OUT"
 		(at 415.29 223.52 0)
@@ -2346,6 +2367,16 @@
 		)
 		(uuid "d8dcd651-03b3-478c-bd6a-9e576e16c4d6")
 	)
+	(label "U600_COMP"
+		(at 90.17 69.85 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "e2b46ddb-95ff-48d7-9f69-41cc9cfdca72")
+	)
 	(label "U601B_FB"
 		(at 97.79 41.91 0)
 		(effects
@@ -2418,6 +2449,28 @@
 			)
 		)
 	)
+	(global_label "+3V3_A"
+		(shape input)
+		(at 90.17 300.99 90)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "03ac10de-3869-46f1-aad4-a655cffb551f")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 90.17 300.99 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
 	(global_label "GND"
 		(shape input)
 		(at 119.38 279.4 0)
@@ -2430,6 +2483,50 @@
 		(uuid "03c10ae9-2958-4cbd-9e7c-896f3e5fde1b")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
 			(at 119.38 279.4 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "+1V8_D"
+		(shape input)
+		(at 64.77 300.99 90)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "049cfce9-f6ce-47a2-a19a-0f8f47ffbf4e")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 64.77 300.99 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "GND"
+		(shape input)
+		(at 77.47 308.61 90)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "06f9e6d5-c81a-4e34-b7bb-25a8bdc219b4")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 77.47 308.61 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -2660,6 +2757,28 @@
 			)
 		)
 	)
+	(global_label "GND"
+		(shape input)
+		(at 90.17 308.61 90)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "480e91b1-94f0-4082-bd2d-1a720f8fa38f")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 90.17 308.61 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
 	(global_label "I2C_VID_SDA"
 		(shape input)
 		(at 39.37 69.85 0)
@@ -2738,6 +2857,50 @@
 		(uuid "62394d5f-0c9e-4785-a7b0-dbe6c779577a")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
 			(at 90.17 52.07 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "GND"
+		(shape input)
+		(at 102.87 308.61 90)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "678ef222-bbcd-4282-be97-e9cddce2ca4e")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 102.87 308.61 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "+3V3"
+		(shape input)
+		(at 39.37 300.99 90)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "69345827-ea91-401d-b81a-402073ca1fbc")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 39.37 300.99 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -2990,6 +3153,50 @@
 			)
 		)
 	)
+	(global_label "+3V3"
+		(shape input)
+		(at 52.07 300.99 90)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "ad0b854e-71e6-48bd-9a17-dbc0f457843e")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 52.07 300.99 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "GND"
+		(shape input)
+		(at 52.07 308.61 90)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "b570495f-183c-4768-9397-bd462b665afc")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 52.07 308.61 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
 	(global_label "GND"
 		(shape input)
 		(at 265.43 104.14 0)
@@ -3168,6 +3375,28 @@
 	)
 	(global_label "GND"
 		(shape input)
+		(at 64.77 308.61 90)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "deeb9076-090d-4ca2-9172-775e96216783")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 64.77 308.61 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "GND"
+		(shape input)
 		(at 340.36 44.45 0)
 		(effects
 			(font
@@ -3200,6 +3429,50 @@
 		(uuid "e15d35a1-e212-4f97-979f-ad29cf0e18d5")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
 			(at 39.37 72.39 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "GND"
+		(shape input)
+		(at 39.37 308.61 90)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "ed141495-6664-4add-8627-2db0a41e0422")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 39.37 308.61 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+	)
+	(global_label "+3V3_A"
+		(shape input)
+		(at 77.47 300.99 90)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "f21d36d2-cb6f-4cb8-984b-4e6dfc0b705e")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 77.47 300.99 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -3571,6 +3844,85 @@
 		)
 	)
 	(symbol
+		(lib_id "Device:C")
+		(at 102.87 304.8 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "3a0f733d-32fd-4183-94ac-48d3a2c763a7")
+		(property "Reference" "C612"
+			(at 106.68 303.53 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "0.1uF (U600 COMP)"
+			(at 106.68 306.07 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "Capacitor_SMD:C_0805_2012Metric"
+			(at 102.87 304.8 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 102.87 304.8 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 102.87 304.8 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "9bdf7256-0e0a-4c96-a273-faee3129232d")
+		)
+		(pin "2"
+			(uuid "3398f7de-6111-4ba0-8dfc-fa6bb0550c94")
+		)
+		(instances
+			(project "SchindlerCarrierBoard_V1"
+				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/77097bce-1658-4973-ba76-71cc7f3af873"
+					(reference "C612")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
 		(lib_id "Connector:Conn_Coaxial")
 		(at 265.43 39.37 0)
 		(unit 1)
@@ -3881,6 +4233,85 @@
 			(project "SchindlerCarrierBoard_V1"
 				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/77097bce-1658-4973-ba76-71cc7f3af873"
 					(reference "J603")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:C")
+		(at 64.77 304.8 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "469480fd-676b-4505-bac7-258a6801f727")
+		(property "Reference" "C608"
+			(at 68.58 303.53 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "0.1uF (U600 VDD)"
+			(at 68.58 306.07 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "Capacitor_SMD:C_0805_2012Metric"
+			(at 64.77 304.8 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 64.77 304.8 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 64.77 304.8 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "ff7bca6e-145e-4802-8553-549138948106")
+		)
+		(pin "2"
+			(uuid "58dd7cf3-0520-4978-a55a-e16d7a342b15")
+		)
+		(instances
+			(project "SchindlerCarrierBoard_V1"
+				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/77097bce-1658-4973-ba76-71cc7f3af873"
+					(reference "C608")
 					(unit 1)
 				)
 			)
@@ -4361,6 +4792,85 @@
 		)
 	)
 	(symbol
+		(lib_id "Device:C")
+		(at 39.37 304.8 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "7794e55e-81fb-41de-bf2b-070b224ba8b6")
+		(property "Reference" "C606"
+			(at 43.18 303.53 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "0.1uF (U600 VDD_IO)"
+			(at 43.18 306.07 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "Capacitor_SMD:C_0805_2012Metric"
+			(at 39.37 304.8 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 39.37 304.8 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 39.37 304.8 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "24db479c-e44f-4fa9-9fdd-5c86caa68aaf")
+		)
+		(pin "2"
+			(uuid "bb27a2de-690e-406e-b81b-6f104215807f")
+		)
+		(instances
+			(project "SchindlerCarrierBoard_V1"
+				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/77097bce-1658-4973-ba76-71cc7f3af873"
+					(reference "C606")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
 		(lib_id "Device:R")
 		(at 39.37 160.02 0)
 		(unit 1)
@@ -4434,6 +4944,85 @@
 			(project "SchindlerCarrierBoard_V1"
 				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/77097bce-1658-4973-ba76-71cc7f3af873"
 					(reference "R607")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:C")
+		(at 77.47 304.8 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "84bffebb-4e15-48fd-8496-a43361ff934d")
+		(property "Reference" "C610"
+			(at 81.28 303.53 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "0.1uF (U600 VAA)"
+			(at 81.28 306.07 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "Capacitor_SMD:C_0805_2012Metric"
+			(at 77.47 304.8 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 77.47 304.8 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 77.47 304.8 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "e7906f3d-9e68-4412-a5a2-81680058a9b8")
+		)
+		(pin "2"
+			(uuid "22c1ba15-0379-4878-a117-b593b1fcaf78")
+		)
+		(instances
+			(project "SchindlerCarrierBoard_V1"
+				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/77097bce-1658-4973-ba76-71cc7f3af873"
+					(reference "C610")
 					(unit 1)
 				)
 			)
@@ -5779,6 +6368,85 @@
 	)
 	(symbol
 		(lib_id "Device:C")
+		(at 52.07 304.8 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "f23e3067-a695-4d6d-b33e-1f83d3faa237")
+		(property "Reference" "C607"
+			(at 55.88 303.53 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "0.1uF (U600 VDD_IO)"
+			(at 55.88 306.07 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "Capacitor_SMD:C_0805_2012Metric"
+			(at 52.07 304.8 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 52.07 304.8 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 52.07 304.8 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "cf3e8a7e-6e95-4add-943f-b0a9b0e0af5a")
+		)
+		(pin "2"
+			(uuid "1b60aec6-43b1-424a-9a58-8a5d708a554f")
+		)
+		(instances
+			(project "SchindlerCarrierBoard_V1"
+				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/77097bce-1658-4973-ba76-71cc7f3af873"
+					(reference "C607")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:C")
 		(at 340.36 219.71 0)
 		(unit 1)
 		(body_style 1)
@@ -6014,6 +6682,265 @@
 			)
 		)
 	)
+	(symbol
+		(lib_id "Device:C")
+		(at 90.17 304.8 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "ff49085a-d6e8-4b7f-8aa4-9e0e16e11dff")
+		(property "Reference" "C611"
+			(at 93.98 303.53 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "10uF (U600 VAA bulk)"
+			(at 93.98 306.07 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "Capacitor_SMD:C_0805_2012Metric"
+			(at 90.17 304.8 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 90.17 304.8 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 90.17 304.8 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "14a0f14b-8c40-49c6-95dd-5caa0e9e7909")
+		)
+		(pin "2"
+			(uuid "934938eb-0168-4870-8074-d399c7260edf")
+		)
+		(instances
+			(project "SchindlerCarrierBoard_V1"
+				(path "/7e9730cc-2bca-4eda-a2f0-602013c0f3d9/77097bce-1658-4973-ba76-71cc7f3af873"
+					(reference "C611")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(global_label "VIDOUT_CLKIN"
+		(shape input)
+		(at 39.37 85.09 0)
+		(effects (font (size 1.27 1.27)) (justify left))
+		(uuid "cf8a33d3-4421-453b-ae44-a665d0fe2c51")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 39.37 85.09 0)
+			(hide yes)(show_name no)(do_not_autoplace no)
+			(effects (font (size 1.27 1.27)))))
+	(global_label "VIDOUT_P0"
+		(shape input)
+		(at 90.17 57.15 0)
+		(effects (font (size 1.27 1.27)) (justify left))
+		(uuid "a74fe009-a5d2-4fdb-b1b4-06a5eadb552c")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 90.17 57.15 0)
+			(hide yes)(show_name no)(do_not_autoplace no)
+			(effects (font (size 1.27 1.27)))))
+	(global_label "VIDOUT_P1"
+		(shape input)
+		(at 90.17 49.53 0)
+		(effects (font (size 1.27 1.27)) (justify left))
+		(uuid "afbb421e-c0e6-45ce-9a09-024fad8cd2be")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 90.17 49.53 0)
+			(hide yes)(show_name no)(do_not_autoplace no)
+			(effects (font (size 1.27 1.27)))))
+	(global_label "VIDOUT_P2"
+		(shape input)
+		(at 90.17 46.99 0)
+		(effects (font (size 1.27 1.27)) (justify left))
+		(uuid "ee7585db-6c2d-4b9d-a7b0-f0491fc9f101")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 90.17 46.99 0)
+			(hide yes)(show_name no)(do_not_autoplace no)
+			(effects (font (size 1.27 1.27)))))
+	(global_label "VIDOUT_P3"
+		(shape input)
+		(at 90.17 44.45 0)
+		(effects (font (size 1.27 1.27)) (justify left))
+		(uuid "35fe27ef-c71a-4f56-8506-08ad139134c2")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 90.17 44.45 0)
+			(hide yes)(show_name no)(do_not_autoplace no)
+			(effects (font (size 1.27 1.27)))))
+	(global_label "VIDOUT_P4"
+		(shape input)
+		(at 39.37 41.91 0)
+		(effects (font (size 1.27 1.27)) (justify left))
+		(uuid "b33a1126-4491-4adc-9210-6bf17cc17e5d")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 39.37 41.91 0)
+			(hide yes)(show_name no)(do_not_autoplace no)
+			(effects (font (size 1.27 1.27)))))
+	(global_label "VIDOUT_P5"
+		(shape input)
+		(at 39.37 44.45 0)
+		(effects (font (size 1.27 1.27)) (justify left))
+		(uuid "2c0862bf-c2db-43c6-85dc-8bfab67e814e")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 39.37 44.45 0)
+			(hide yes)(show_name no)(do_not_autoplace no)
+			(effects (font (size 1.27 1.27)))))
+	(global_label "VIDOUT_P6"
+		(shape input)
+		(at 39.37 46.99 0)
+		(effects (font (size 1.27 1.27)) (justify left))
+		(uuid "716fc84b-ae26-4144-84c6-589bc1f4fff1")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 39.37 46.99 0)
+			(hide yes)(show_name no)(do_not_autoplace no)
+			(effects (font (size 1.27 1.27)))))
+	(global_label "VIDOUT_P7"
+		(shape input)
+		(at 39.37 49.53 0)
+		(effects (font (size 1.27 1.27)) (justify left))
+		(uuid "20674eed-12ed-496a-944c-81a71847f3bd")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 39.37 49.53 0)
+			(hide yes)(show_name no)(do_not_autoplace no)
+			(effects (font (size 1.27 1.27)))))
+	(global_label "VIDOUT_P8"
+		(shape input)
+		(at 39.37 57.15 0)
+		(effects (font (size 1.27 1.27)) (justify left))
+		(uuid "279b6ea4-75c4-4b2d-a1c9-50cd7b559a84")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 39.37 57.15 0)
+			(hide yes)(show_name no)(do_not_autoplace no)
+			(effects (font (size 1.27 1.27)))))
+	(global_label "VIDOUT_P9"
+		(shape input)
+		(at 39.37 59.69 0)
+		(effects (font (size 1.27 1.27)) (justify left))
+		(uuid "3a36b812-d2b3-4ef6-9b1f-42622d473493")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 39.37 59.69 0)
+			(hide yes)(show_name no)(do_not_autoplace no)
+			(effects (font (size 1.27 1.27)))))
+	(global_label "VIDOUT_P10"
+		(shape input)
+		(at 39.37 62.23 0)
+		(effects (font (size 1.27 1.27)) (justify left))
+		(uuid "2c360b0c-0f7b-4bf9-b43c-3e8939d7bba3")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 39.37 62.23 0)
+			(hide yes)(show_name no)(do_not_autoplace no)
+			(effects (font (size 1.27 1.27)))))
+	(global_label "VIDOUT_P11"
+		(shape input)
+		(at 39.37 64.77 0)
+		(effects (font (size 1.27 1.27)) (justify left))
+		(uuid "2bd635b0-ffb6-47f4-85ff-8f38784b783b")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 39.37 64.77 0)
+			(hide yes)(show_name no)(do_not_autoplace no)
+			(effects (font (size 1.27 1.27)))))
+	(global_label "VIDOUT_P12"
+		(shape input)
+		(at 39.37 74.93 0)
+		(effects (font (size 1.27 1.27)) (justify left))
+		(uuid "62b3be2f-0056-4541-b0d7-821d78a6aa62")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 39.37 74.93 0)
+			(hide yes)(show_name no)(do_not_autoplace no)
+			(effects (font (size 1.27 1.27)))))
+	(global_label "VIDOUT_P13"
+		(shape input)
+		(at 39.37 77.47 0)
+		(effects (font (size 1.27 1.27)) (justify left))
+		(uuid "5046c9ba-c747-40bd-9eef-30f6e5e0ccfd")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 39.37 77.47 0)
+			(hide yes)(show_name no)(do_not_autoplace no)
+			(effects (font (size 1.27 1.27)))))
+	(global_label "VIDOUT_P14"
+		(shape input)
+		(at 39.37 80.01 0)
+		(effects (font (size 1.27 1.27)) (justify left))
+		(uuid "3583d059-b484-4e35-bae4-7b7e764c2012")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 39.37 80.01 0)
+			(hide yes)(show_name no)(do_not_autoplace no)
+			(effects (font (size 1.27 1.27)))))
+	(global_label "VIDOUT_P15"
+		(shape input)
+		(at 39.37 82.55 0)
+		(effects (font (size 1.27 1.27)) (justify left))
+		(uuid "87829ac4-2df0-4815-bb69-5638967614bf")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 39.37 82.55 0)
+			(hide yes)(show_name no)(do_not_autoplace no)
+			(effects (font (size 1.27 1.27)))))
+	(global_label "VIDOUT_HSYNC"
+		(shape input)
+		(at 90.17 59.69 0)
+		(effects (font (size 1.27 1.27)) (justify left))
+		(uuid "51712776-db68-40cc-9465-fa004056cb3b")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 90.17 59.69 0)
+			(hide yes)(show_name no)(do_not_autoplace no)
+			(effects (font (size 1.27 1.27)))))
+	(global_label "VIDOUT_VSYNC"
+		(shape input)
+		(at 90.17 62.23 0)
+		(effects (font (size 1.27 1.27)) (justify left))
+		(uuid "600a77a7-edf2-455a-b579-8deb1f0dfe2d")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 90.17 62.23 0)
+			(hide yes)(show_name no)(do_not_autoplace no)
+			(effects (font (size 1.27 1.27)))))
+	(global_label "VIDOUT_SFL"
+		(shape input)
+		(at 90.17 64.77 0)
+		(effects (font (size 1.27 1.27)) (justify left))
+		(uuid "6791cfa8-c880-4c1d-9fd1-ce70880db9b0")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 90.17 64.77 0)
+			(hide yes)(show_name no)(do_not_autoplace no)
+			(effects (font (size 1.27 1.27)))))
 	(sheet_instances
 		(path "/"
 			(page "1")
