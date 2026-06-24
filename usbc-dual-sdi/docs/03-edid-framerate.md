@@ -62,7 +62,28 @@ without unplugging.
 - macOS/Windows/Linux differ in how aggressively they honor custom EDIDs.
 - 23.98/24 enumeration from laptop GPUs is historically the least reliable case.
 
-These limits are exactly why Tier 2 exists.
+These limits are exactly why Tier 2 exists — **and** why we accept an optional
+host-side helper (below).
+
+### Host-side helper (accepted, optional)
+Pure-EDID coaxing isn't always enough — some GPUs/OSes round or ignore custom
+fractional timings (23.98/24 is the worst case). We therefore accept that a
+**small host-side software/driver component may be needed** to make frame-rate
+forcing reliable, **without** requiring it for the device to function:
+
+- Video is always **driverless** (native DP Alt Mode); the SDI works on a bare
+  plug-in regardless.
+- The optional helper (the same app that talks to the management MCU over the
+  USB 2.0 sideband, `Tier 1`) can, where the OS allows, **create/apply a custom
+  display mode** matching the device's preferred timing — programmatically
+  pinning the exact resolution/frame rate instead of hoping the GPU picks it
+  from the EDID. This rides existing per-OS custom-resolution mechanisms.
+- This is a **reliability enhancer, not a dependency**: no helper → EDID-driven
+  behavior (works, occasionally imperfect on fractional rates); helper present →
+  deterministic mode locking.
+
+Not ideal (a driverless story is cleaner), but it's the pragmatic hedge against
+GPU/OS variability and is far cheaper than putting active FRC in v1.
 
 ## Tier 2 — Active frame-rate conversion (Pro / v2)
 

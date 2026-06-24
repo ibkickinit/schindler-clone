@@ -27,7 +27,12 @@ displays") while being honest about the physical size.
 - **EDID-forced frame-rate management** (true fractional rates 23.98 / 29.97 /
   59.94 advertised so the GPU emits broadcast cadence).
 - **Plug-and-play video** — no host driver required for the SDI to work.
-- Status LEDs per output (lock / format).
+- **Graceful degradation ladder** — when the host link or power can't sustain
+  dual-4K, drop predictably (single-4K twin output → dual-HD → single-HD twin)
+  instead of failing to black. See `02`.
+- **Flexible power** — bus/PD power from the host when sufficient, with a
+  secondary USB-C power-in (another port or a standard USB-C PD PSU) for dual-4K.
+- Status LEDs per output (lock / format / active degradation rung).
 
 ### Tier 1 — fast-follow (v1.x)
 - Optional **USB HID config app** (Win/Mac) for picking EDID profiles,
@@ -69,9 +74,15 @@ The gap we fill: **dual-channel, USB-C-display-native, broadcast-legal SDI out
 with deliberate EDID/frame-rate control.** Nobody is sitting exactly here.
 
 ## Key risks (see `06-open-questions.md`)
-1. **2-lane vs 4-lane DP Alt Mode** on the host — dual 4K needs 4 lanes.
-2. **Bus power budget** — dual 12G + FPGA likely exceeds what a host gives on
-   USB-C without PD; may require a power-in port.
+1. **MST-hub silicon obtainability** — DP1.4 MST hub chips may be NDA/ODM-gated;
+   the fallback is FPGA-native DP MST RX. (Under active sourcing research.)
+2. **2-lane vs 4-lane DP Alt Mode** on the host — dual 4K needs 4 lanes;
+   *mitigated* by the degradation ladder, but the host-lane behavior still needs
+   measurement.
 3. **GPU honoring fractional-rate EDID** — 23.98/24 from laptops is historically
-   flaky; the active-FRC fallback (Tier 2) de-risks this but adds cost.
+   flaky; *mitigated* by the optional host-side helper (`03`), with active FRC
+   (Tier 2) as the heavier fallback.
+
+(Power form is now decided — secondary USB-C power-in; only the per-rung wattage
+thresholds remain open. See `06` Q3.)
 </content>

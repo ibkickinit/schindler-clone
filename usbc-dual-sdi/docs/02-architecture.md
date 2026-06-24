@@ -100,6 +100,26 @@ but illustrates feasibility):
 nothing is lost in conversion. Full-4:4:4 dual-4K60 needs DP **DSC** and is a
 stretch goal; everything at/below dual-4K60 4:2:2 is the design target.
 
+### Graceful degradation ladder
+
+When the host link can't carry both outputs at full 4K — most commonly because
+the host only grants **2-lane** DP Alt Mode (see `06` Q2), or only bus power is
+available (below) — the box must **degrade predictably**, never fail to a black
+output. The intended ladder, advertised via EDID (`03`) so the host picks a
+supported point:
+
+1. **Dual 2160p59.94** (4:2:2 10b) — full capability; needs 4-lane DP + adequate power.
+2. **Single 2160p (twin output)** — one 4K stream **mirrored to both BNCs**.
+   Preserves a 4K feed when the link/power can't sustain two independent 4K streams.
+3. **Dual 1080p59.94** (HD, independent) — two independent outputs, dropped to HD.
+4. **Single 1080p (twin output)** — last-resort guaranteed-good state.
+
+The operator can also **pin** a rung via an EDID profile (e.g. force "dual HD"
+rather than letting the box auto-negotiate 4K). "Twin output" = the same stream
+fanned to both SDI drivers, which is cheap (no second RX/pipeline pressure) and
+genuinely useful (feed two monitors off one 4K source). The active rung is shown
+on the status LEDs / OLED and reported to the config app.
+
 **SDI side capacities (per output, single-link):**
 - 12G (ST 2082-1, 11.88 Gb/s): 2160p 50 / 59.94 / 60.
 - 6G (ST 2081): 2160p 23.98 / 24 / 25 / 29.97 / 30.
@@ -115,11 +135,19 @@ FPGA 2–4 W, two 12G drivers ~1 W each, MST hub + housekeeping ~1–2 W →
 
 - Primary: negotiate **USB PD** to pull adequate power from the host where
   available.
-- Fallback: a **secondary USB-C power-in** (or barrel) for hosts that won't
-  source enough. The box should brown-out gracefully — e.g. allow dual 1080p on
-  bus power, require aux power for dual 4K60.
-- Power budget is an **open question** (`06`) pending real silicon current
-  draw.
+- **Secondary USB-C power-in port (decided):** a dedicated second USB-C jack
+  that accepts power from **either** another USB-C port (a second laptop port, a
+  hub/dock) **or** a standard **USB-C PD wall PSU**. It is a **PD sink only** (no
+  data, no Alt Mode on this port) — purely supplemental rail feed. This keeps
+  the "one cable when you can" story while giving a clean, ubiquitous power
+  option (USB-C PSUs are everywhere; no proprietary barrel brick to lose).
+- **Power-source arbitration:** the box prefers the aux port when present and
+  falls back to host bus/PD power when it isn't, switching without dropping the
+  outputs. If neither source can sustain the requested format, it **degrades**
+  down the ladder above rather than browning out (e.g. dual 1080p on bus power,
+  dual 4K60 only with aux power).
+- Exact wattage thresholds per rung are an **open question** (`06`) pending real
+  silicon current draw from the sourcing research.
 
 ## Latency
 

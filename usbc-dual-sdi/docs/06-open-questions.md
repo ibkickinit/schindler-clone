@@ -13,27 +13,40 @@ Two ways to present two displays from one DP link:
 **Need:** a sourcing answer on (a) and an IP/resource estimate on (b) before
 committing. This decision cascades into FPGA size, BOM, and schedule.
 
-## Q2 — Does the target laptop give 4-lane DP Alt Mode? *(blocks max resolution)*
+## Q2 — Does the target laptop give 4-lane DP Alt Mode? *(measurement, not a fork)*
 Dual-4K60 needs 4 DP lanes. Many USB-C ports drop to **2-lane** DP when
 simultaneous USB 3 SuperSpeed is required. We sacrifice host USB 3 (keep only
 USB 2 sideband) to claim 4 lanes — but **does each target host actually grant 4
 lanes in that config?** Needs measurement across MacBook / Dell / Lenovo / HP.
-Fallback if only 2 lanes: cap at dual-1080p60 or single-4K, or require DSC.
+**Resolved behavior (decided):** when only 2 lanes (or insufficient bandwidth)
+are available, **degrade down the ladder** in `02` (dual-4K → single-4K twin →
+dual-HD → single-HD twin) rather than failing. The measurement still matters for
+knowing how often each host lands on which rung.
 
-## Q3 — Bus power vs auxiliary power-in *(blocks mechanical + UX)*
-Dual 12G + FPGA is ~5–8 W; a host USB-C port without PD may give less. Options:
-- Negotiate **USB PD** and rely on the host. Cleanest UX, not always available.
-- Add a **second USB-C power-in**. Robust, but it's "another cable" — hurts the
-  "just one cable" story.
-- **Tiered behavior**: dual-1080p on bus power, dual-4K requires aux. Honest but
-  needs clear UX signaling.
-Decision waits on **measured** silicon current draw (Phase 0).
+## Q3 — External power form *(DECIDED — wattage thresholds still open)*
+Dual 12G + FPGA is ~5–8 W; a host USB-C port without PD may give less.
+**Decision:** a **secondary USB-C power-in port** (PD sink only, no data/Alt
+Mode) that accepts **either another USB-C port or a standard USB-C PD wall PSU**;
+prefer host PD when sufficient, fall back to aux, and **degrade** (per ladder)
+when neither sustains the requested format. **Still open:** the measured wattage
+per ladder rung (which rungs are bus-powerable vs aux-only) — pending real
+silicon current draw from the sourcing research.
 
-## Q4 — Fractional-rate EDID reliability per OS *(blocks Tier-2 scope)*
+## Q4 — Fractional-rate EDID reliability per OS *(DECIDED to hedge — measurement still informs Tier-2)*
 How reliably do Win / macOS / Linux honor an EDID that advertises **only**
-23.98 / 59.94? If reliable, Tier-1 EDID management suffices for v1 and Tier-2
-active FRC can stay deferred. If flaky (likely for 23.98/24), the value case for
-**Tier-2 active FRC** rises — possibly into v1. Measured in Phase 4.
+23.98 / 59.94? **Decision:** accept an **optional host-side helper** (`03`) that
+programmatically pins the custom mode where pure-EDID coaxing is unreliable —
+video stays driverless, the helper only improves determinism. This de-risks v1
+without needing active FRC. The per-OS reliability measurement (Phase 4) still
+decides whether full **Tier-2 active FRC** is ever warranted.
+
+## Q10 — HD-class sibling on Zynq-7020? *(parallel thought, not planned)*
+The Zynq-7020 / TE0720 **cannot** do dual-4K 12G-SDI — even pure passthrough,
+no FRC — because its **GTP transceivers cap at ~6.25 Gb/s** vs 12G-SDI's
+~11.88 Gb/s (a PHY ceiling, unrelated to FRC compute). It *could* plausibly do
+**dual 3G/HD-SDI** or a **single 6G**. Parked as a possible cheaper **HD-class
+sibling** product, not on the 4K design path. Dual-4K needs UltraScale+
+GTH/GTY — see `04` Q-block 3.
 
 ## Q5 — DSC: in or out for v1?
 Dual-4K60 **4:4:4** needs DP DSC; dual-4K60 **4:2:2 10-bit** (what SDI carries)
