@@ -4,11 +4,14 @@ Top-down de-risking: prove the **hardest, highest-uncertainty** links first
 (DP-Alt-Mode-to-two-streams, and clean 12G out), then integrate.
 
 ## Phase 0 — Paper design & sourcing de-risk
-- ✅ **MST split decided: FPGA DP-RX** (no buyable MST-hub silicon) → AMD Zynq
-  US+ class (`06` Q1, `04`). Remaining Phase-0 work below.
-- **Get real AMD IP quotes** (AV bundle + DP1.4 RX + HDCP) and confirm whether
-  **eval/timeout licenses** carry Phases 1–4 before paying full freight (`06`
-  Q11). Decide whether **HDCP is needed at all**.
+- **CLOSE THE MST FORK (`06` Q1) — top priority.** Get a **Synaptics VMM6210/
+  VMM5330 quote + lead time at our quantity**. VMM procurable → **Path A** (VMM +
+  PolarFire, no AMD IP). Not procurable → **Path B** (AMD FPGA MST RX).
+- **If Path B:** get real **AMD IP quotes** (AV bundle + DP1.4 RX) and confirm
+  whether **eval/timeout licenses** carry Phases 1–4 before paying full freight
+  (`06` Q10). **HDCP entitlement is not needed** — non-HDCP-sink (`06` Q11).
+- **HDCP:** confirm the chosen DP/HDMI RX silicon (incl. VMM6210, which has
+  HDCP 2.3) can be **provably unprovisioned** so the box is not an HDCP sink.
 - Confirm **DP Alt Mode 4-lane** behavior on the target laptop classes
   (MacBook, Dell/Lenovo USB-C, etc.) and whether each gives 4 lanes (`06` Q2).
 - Confirm the chosen **Zynq US+ package exposes ≥4 GTH at 12.5G** (package

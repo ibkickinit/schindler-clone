@@ -45,19 +45,24 @@ flowchart LR
   all we need for HID config (no high-rate USB data path in v1).
 - Sideband: USB 2.0 D+/D- → management MCU as a **USB HID + vendor** device.
 
-### 2. DP MST RX — **inside the FPGA** (the "two displays" trick)
-- A **DP 1.4 Multi-Stream Transport** sink takes the single DP link and exposes
-  **two sink endpoints** to the host. The GPU then drives two logical displays.
-- **Sourcing reality (see `04`):** dedicated DP MST-**hub silicon** (Synaptics
-  VMM, Parade MST hubs) is **NDA/ODM-only and not buyable in low volume.** The
-  freely-stocked Parade/ITE parts are single-stream converters, *not* MST
-  splitters. So the MST sink is implemented as **FPGA IP** — the **AMD
-  DisplayPort 1.4 RX Subsystem (PG300)**, MST sink, 2 streams, fed by **PL GTH**
-  transceivers (the Zynq US+ PS hard-DP block only reaches HBR2/~4K30 and is not
-  used for this). This is a **paid IP license**, and it **pins the FPGA vendor to
-  AMD** — see `04` Blocks 2–3.
-- Each endpoint owns its **EDID/DDC channel**, which the management MCU
-  controls — this is where EDID/frame-rate management lives (see `03`).
+### 2. DP MST split — two candidate paths (the "two displays" trick)
+A **DP 1.4 Multi-Stream Transport** sink takes the single DP link and exposes
+**two sink endpoints** to the host; the GPU then drives two logical displays.
+**There are two ways to do the split, and which one wins is the top open
+decision (`06` Q1, `04` Block 2):**
+- **Path A — discrete Synaptics VMM MST hub** (VMM6210/VMM5330) splits in
+  silicon → two HDMI/DP streams into a *simpler* FPGA. Avoids the AMD IP NRE;
+  enables a cheaper FPGA (PolarFire). **Gated on VMM procurability** (unverified).
+  The block diagram above shows the in-FPGA variant; on Path A the `DP1.4 MST RX`
+  block becomes an external VMM hub feeding two SST RX cores.
+- **Path B — DP MST RX inside the FPGA** via the **AMD DP 1.4 RX Subsystem
+  (PG300)**, MST sink, 2 streams, fed by **PL GTH** (the Zynq US+ PS hard-DP
+  block only reaches HBR2/~4K30 and is not used). **Paid IP; pins vendor to AMD.**
+
+⚠️ The buyable Parade/ITE/Algoltek/Realtek parts are **single-stream converters,
+not MST splitters** — they can't do the split. In both paths, each endpoint owns
+its **EDID/DDC channel**, which the management MCU controls — this is where
+EDID/frame-rate management lives (see `03`).
 
 ### 3. Per-channel conversion (FPGA)
 The HDMI/DP-to-SDI conversion is done in an **FPGA** because it needs runtime-

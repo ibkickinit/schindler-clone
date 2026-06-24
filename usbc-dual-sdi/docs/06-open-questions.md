@@ -2,16 +2,21 @@
 
 Ordered by how much they constrain the rest of the design.
 
-## Q1 — MST hub chip vs FPGA DP-RX for the "two displays" split *(RESOLVED → FPGA DP-RX)*
-Sourcing deep-dive (`04`) settled this: **discrete DP1.4 MST-hub silicon is not
-obtainable** in low volume (Synaptics VMM / Parade MST hubs are NDA/ODM-only;
-the buyable Parade/ITE parts are single-stream converters, not MST splitters).
-**Decision: do MST RX in the FPGA** via the **AMD DP1.4 RX Subsystem (PG300)**,
-MST sink, 2 streams, fed by PL GTH. Consequences that cascade from this:
-- **FPGA vendor is pinned to AMD** (only proven DP-MST-RX + HDMI2.0-4K60-RX +
-  12G-SDI-TX stack) → **Zynq UltraScale+ XCZU4EV** class.
-- **Paid IP NRE** (~$11k AV bundle + ~$5k DP IP, +HDCP if needed) — see new Q11.
-- PS hard-DP block can't do HBR3 MST; must use the *soft* RX subsystem in PL.
+## Q1 — How to split one DP link into two displays *(REOPENED — two live paths, gated on VMM procurability)*
+The first pass concluded "MST silicon unobtainable → must do MST in an AMD
+FPGA." **Follow-up research corrected that:** Synaptics **VMM6210 / VMM5330**
+are *real, datasheet-published* DP1.4 MST hubs (dual-4K60) — so there are now
+**two live paths** (detail in `04` Block 2):
+- **Path A — discrete Synaptics VMM MST hub → cheaper FPGA (PolarFire, free
+  12G-SDI IP). Avoids the AMD IP NRE.** Gating unknown: **VMM low-volume
+  procurability** (datasheets public; live stock 403-blocked, *unverified*;
+  Synaptics sells via design-win/disti/FAE).
+- **Path B — DP MST RX inside an AMD FPGA** (DP1.4 RX Subsystem, PG300). Always
+  available; pins vendor to AMD; **paid IP** (~$11k AV + ~$5k DP, see Q10).
+**Decision rule:** if a Synaptics quote + lead time at our quantity is workable
+→ **Path A** (materially cheaper). Otherwise → **Path B** (fallback, costs ~$16k
+IP). ⚠️ The buyable Parade/ITE/Algoltek/Realtek parts are single-stream, **not**
+MST splitters. **This is the top architecture decision to close.**
 
 ## Q2 — Does the target laptop give 4-lane DP Alt Mode? *(measurement, not a fork)*
 Dual-4K60 needs 4 DP lanes. Many USB-C ports drop to **2-lane** DP when
@@ -40,16 +45,16 @@ video stays driverless, the helper only improves determinism. This de-risks v1
 without needing active FRC. The per-OS reliability measurement (Phase 4) still
 decides whether full **Tier-2 active FRC** is ever warranted.
 
-## Q10 — AMD IP-licensing NRE *(new — commercial, surfaced by Q1)*
-Pinning to AMD + FPGA-side MST drags in a real, partly-opaque NRE: **~$11k AMD
-AV IP bundle (HDMI/SDI) + ~$5k DP1.4 RX IP + HDCP 2.3 entitlement** (figures
-order-of-magnitude, "contact sales", *unverified*). This only amortizes at
-volume. Open questions:
+## Q10 — AMD IP-licensing NRE *(Path B only — avoided entirely on Path A)*
+Pinning to AMD + FPGA-side MST (Path B) drags in a real, partly-opaque NRE:
+**~$11k AMD AV IP bundle (HDMI/SDI) + ~$5k DP1.4 RX IP** (figures
+order-of-magnitude, "contact sales", *unverified*). Amortizes only at volume.
+**Path A (VMM + PolarFire, free 12G-SDI IP) avoids this NRE entirely** — which is
+the main reason to chase VMM procurability in Q1. If Path B is chosen:
 - Exact license SKUs, real quotes, and whether eval/timeout licenses suffice
   through Phase 1–4 bring-up before paying full freight.
-- **Is HDCP needed at all?** If the product is positioned for unprotected
-  live/production content, dropping HDCP removes cost + complexity. Confirm.
-  (See Q11 — HDCP posture.)
+- **HDCP entitlement is NOT needed** — see Q11 (we ship as a non-HDCP sink), so
+  drop it from the NRE on either path.
 
 ## Q5 — DSC: in or out for v1?
 Dual-4K60 **4:4:4** needs DP DSC; dual-4K60 **4:2:2 10-bit** (what SDI carries)
@@ -75,21 +80,33 @@ A v2 sibling doing **SDI→USB capture (UVC)** is an obvious adjacent product bu
 different data path. Out of scope here — flag only so we don't accidentally
 design v1 in a way that forecloses it.
 
-## Q11 — HDCP posture & consent UX *(under research)*
-SDI carries **no HDCP** (unprotected pro interface), so passing HDCP-protected
-content to an SDI output is decryption-to-clear — i.e. a circumvention device,
-not legally shippable. Direction (pending research confirmation of the legal
-reality + how Blackmagic/AJA handle it):
-- **Default compliant posture:** the box is **not an HDCP sink** (no keys) — it
-  only ever receives **unprotected** signals; protected sources blank at the
-  source. This is the standard converter pattern and **would let us drop the
-  HDCP IP license entirely** (ties to Q10).
-- **Schindler-style consent UX:** Schindler has an "HDCP override" toggle behind
-  an attestation/consent dialog + audit log (`docs/ui-menu.md` §1.3.5 / §13).
-  **Caveat:** Schindler's override targets an **HDMI OUT** (which *can* re-carry
-  HDCP); on **SDI there is no re-protection possible**, so the same UX over SDI
-  would be enabling a strip, which is a different legal animal. Whether any
-  consent-prompt framing is defensible here — or whether we simply ship the
-  no-HDCP-sink posture with a clear "protected content not supported" message
-  like Blackmagic — is the open question. **Resolve before any override UX is
-  designed.**
+## Q11 — HDCP posture *(DECIDED — non-HDCP-sink, like the incumbents)*
+Research-confirmed (legal-quote verbatim *unverified*, conclusions **high
+confidence**; get IP-counsel sign-off on datasheet language before shipping).
+
+**The answer to "can the user override HDCP passthrough to SDI like Schindler
+does?" is NO.** SDI carries no HDCP, so passing protected content to SDI is
+**decrypt-to-clear = a circumvention device**, illegal to sell/import under
+**DMCA §1201 (trafficking)** *and* barred by the **DCP LLC HDCP license** (you
+can't get device keys without being an adopter, who is then contractually
+forbidden from emitting cleartext to a non-HDCP receiver). A user "I own the
+rights" checkbox is **liability framing only — it does not legalize stripping.**
+Schindler's override is a different case: it targets an **HDMI OUT** that *can*
+re-carry HDCP; SDI cannot, so the same UX here would enable an illegal strip.
+
+**Decision — match Blackmagic / AJA / Decimator: be a NON-HDCP SINK.**
+- The input **never advertises as an HDCP receiver** (no device keys, never runs
+  the AKE handshake). Unprotected sources (laptop desktop, cameras, production
+  playback — i.e. essentially all real input) convert normally; a rare protected
+  source **blanks at the source**, not in our box.
+- This **avoids needing an HDCP IP license entirely** — removes that line from
+  the Path-B NRE (Q10) and is moot on Path A.
+- **Silicon caveat:** the **Synaptics VMM6210 includes HDCP 2.3** and many
+  DP/HDMI RX bridges ship HDCP; we must ensure HDCP is **provably
+  unprovisioned / never authenticated** so we are not a sink. Verify per chosen
+  part (`04`).
+- **Do NOT** ship or market any HDCP-defeating capability or "override" toggle.
+- UX: document plainly **"not HDCP-compliant; converts unprotected sources
+  only"** + a generic user-responsibility notice. No strip toggle.
+- Also confirm HDMI/DP/USB-C **trademark/adopter** obligations (separate from
+  HDCP).

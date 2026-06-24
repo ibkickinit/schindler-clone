@@ -59,6 +59,9 @@ displays") while being honest about the physical size.
   decompress in the box; that path needs a host driver, adds latency, and is
   unsuited to broadcast. We use native DP Alt Mode.
 - **Not 12G dual-link / quad-link 8K.** Single-link 12G per output is the cap.
+- **Not an HDCP stripper.** SDI has no HDCP, so the box ships as a **non-HDCP
+  sink** (like Blackmagic/AJA): unprotected sources convert; protected sources
+  blank at the source. No "override" toggle — stripping is illegal (`06` Q11).
 
 ## Competitive landscape
 
@@ -74,8 +77,10 @@ The gap we fill: **dual-channel, USB-C-display-native, broadcast-legal SDI out
 with deliberate EDID/frame-rate control.** Nobody is sitting exactly here.
 
 ## Key risks (see `06-open-questions.md`)
-1. **MST-hub silicon obtainability** — DP1.4 MST hub chips may be NDA/ODM-gated;
-   the fallback is FPGA-native DP MST RX. (Under active sourcing research.)
+1. **DP-MST path / Synaptics VMM procurability** — the cheap path (discrete VMM
+   hub + PolarFire, no AMD IP) hinges on whether VMM6210/VMM5330 is buyable in
+   our volume (*unverified*). Fallback is AMD FPGA MST RX (~$16k IP). Top
+   architecture decision to close (`06` Q1).
 2. **2-lane vs 4-lane DP Alt Mode** on the host — dual 4K needs 4 lanes;
    *mitigated* by the degradation ladder, but the host-lane behavior still needs
    measurement.
