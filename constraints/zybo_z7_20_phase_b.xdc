@@ -170,3 +170,11 @@ set_false_path -quiet -from [get_pins -hier -filter {NAME =~ *pg_re_0*/dbg_r_reg
 # soft-reset CDC (lead_cfg[31] FCLK_CLK0 -> pixel clock); quasi-static, firmware-pulsed. Same 2-FF capture
 # reg as lr1/dsel1 — without this the timer chases the unconstrained GPIO->sr1 path and wrecks placement.
 set_false_path -quiet -to [get_pins -hier -filter {NAME =~ *pg_re_0*/sr1_reg/D}]
+
+# PROJECTIVE build (env PROJECTIVE_BUILD=1) only: perspective-coeff CDC g1/h1 (axi_gpio_13/14 FCLK_CLK0
+# -> pixel clock). Same 2-FF ASYNC_REG capture-reg trap as a1..f1/lr1/sr1 — false-path the first stage D
+# so the unconstrained GPIO->g1/h1 path can't wreck the datapath placement. -quiet keeps these HARMLESS
+# in the affine build (g1/h1 regs still exist in pg_warp_top but are fed by the m_g/m_h xlconstant tie-0,
+# so the pins-not-found / already-constant case is a no-op). 40-bit each.
+set_false_path -quiet -to [get_pins -hier -filter {NAME =~ *pg_re_0*/g1_reg[*]/D}]
+set_false_path -quiet -to [get_pins -hier -filter {NAME =~ *pg_re_0*/h1_reg[*]/D}]

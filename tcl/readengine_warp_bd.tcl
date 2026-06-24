@@ -79,6 +79,20 @@ puts "BUILD: warp pg_re_0 OUT = ${WARP_OUT_W}x${WARP_OUT_H} (OUTPUT_MODE=[expr {
 set_property -dict [list CONFIG.IN_W {1920} CONFIG.IN_H {1080} CONFIG.OUT_W $WARP_OUT_W CONFIG.OUT_H $WARP_OUT_H \
     CONFIG.SLOT_STRIDE {6226560} CONFIG.NUM_FRAMES {7} \
     CONFIG.NTILE {512} CONFIG.WAY {4} CONFIG.PD {64} CONFIG.DREQ {64} CONFIG.LEAD {4096}] [get_bd_cells pg_re_0]
+
+# ---- PROJECTIVE front-end (P3, env PROJECTIVE_BUILD=1). DEFAULT OFF -> the affine BD is byte-identical.
+# When set: pg_re_0 runs the full projective address generator (keystone / corner-pin homography).
+#   CONFIG.PROJECTIVE {1}  -> instantiate pg_projective's divide path (vs the affine subset)
+#   CONFIG.FB {24}         -> numerator coeffs a..f are Q8.24 (P1 budget); the 6 coeff GPIOs are unchanged
+#                            (still 32-bit each on axi_gpio_8/9/10) but the firmware emits Q.24, not Q.12.
+#   GCW=40 / GFB=36 are the pg_warp_top defaults (Q4.36 perspective) and need no override.
+# The perspective coeffs m_g/m_h are NEW 40-bit ports -> wired from new GPIOs below (search PROJ_GH).
+set PROJECTIVE_BUILD 0
+if {[info exists ::env(PROJECTIVE_BUILD)] && $::env(PROJECTIVE_BUILD) ne "0"} { set PROJECTIVE_BUILD 1 }
+puts "BUILD: PROJECTIVE_BUILD=$PROJECTIVE_BUILD (warp front-end = [expr {$PROJECTIVE_BUILD?{projective keystone/corner-pin}:{affine}}])"
+if {$PROJECTIVE_BUILD} {
+    set_property -dict [list CONFIG.PROJECTIVE {1} CONFIG.FB {24} CONFIG.GCW {40} CONFIG.GFB {36}] [get_bd_cells pg_re_0]
+}
 connect_bd_net $pclk  [get_bd_pins pg_re_0/clk]
 connect_bd_net $prstn [get_bd_pins pg_re_0/rstn]
 connect_bd_net [get_bd_pins axi_vdma_0/s2mm_frame_ptr_out] [get_bd_pins pg_re_0/frame_ptr]
@@ -91,6 +105,10 @@ connect_bd_net [get_bd_pins axi_gpio_9/gpio2_io_o]  [get_bd_pins pg_re_0/m_d]
 connect_bd_net [get_bd_pins axi_gpio_10/gpio_io_o]  [get_bd_pins pg_re_0/m_e]
 connect_bd_net [get_bd_pins axi_gpio_10/gpio2_io_o] [get_bd_pins pg_re_0/m_f]
 connect_bd_net [get_bd_pins warp_matte/dout]        [get_bd_pins pg_re_0/matte_rgb]
+# m_g/m_h: perspective coeffs (40-bit each, PROJECTIVE only). In the AFFINE build they are LEFT
+# UNCONNECTED exactly as in the pre-P3 BD (pg_warp_top defaults unconnected inputs to 0 -> w=1 -> affine);
+# this keeps the affine wrapper/netlist byte-identical (no extra xlconstant cell). The PROJECTIVE build
+# drives them from the new GPIOs (search PROJ_GH below).
 # DataMover streams — CLOCK-CONVERTED between pg_re_0 (pclk 74.25) and the 143 MHz DataMover.
 # Widths/sidebands propagate from each connected master: cmd=72b (pclk->143), data=64b+tlast (143->pclk),
 # status=8b+tlast+tkeep (143->pclk).
@@ -188,5 +206,73 @@ connect_bd_net [get_bd_pins axi_gpio_12/gpio2_io_o] [get_bd_pins pg_re_0/lead_cf
 # fetch=0 -> prefetch dead; fill=0 -> DataMover returns nothing; ovalid=0 -> consumer never produces.
 delete_bd_objs [get_bd_nets -of_objects [get_bd_pins axi_gpio_2/gpio_io_i]]
 connect_bd_net [get_bd_pins pg_re_0/dbg] [get_bd_pins axi_gpio_2/gpio_io_i]
+
+# ============================================================================================
+# PROJ_GH — PROJECTIVE perspective coeffs m_g / m_h (P3). Only built when PROJECTIVE_BUILD=1.
+# ============================================================================================
+# WHY a new AXI master path: the classic axi_ic_lite (axi_interconnect) is at NUM_MI=16 (M00..M15 all
+# used by the affine warp build) — the IP HARD-CAPS at 16 master ports, so there is no free slot to add
+# the g/h GPIOs there. Instead the projective build enables the Zynq PS's SECOND GP master (M_AXI_GP1),
+# unused in the affine design, and hangs a small 2-port interconnect (axi_ic_lite2) off it. This leaves
+# axi_ic_lite and the entire affine build untouched.
+#
+# g/h GPIO PACKING (firmware in P4 MUST match this exactly):
+#   m_g / m_h are signed Q4.36 in a 40-bit word (GCW=40, GFB=36). A 32-bit GPIO channel can't hold 40
+#   bits, so each coeff is split LOW 32 + HIGH 8 across two dual-channel GPIOs:
+#     axi_gpio_13 (DUAL):  ch1 (gpio_io_o,  @+0x00) = m_g[31:0]     ch2 (gpio2_io_o, @+0x08) = m_h[31:0]
+#     axi_gpio_14 (DUAL):  ch1 (gpio_io_o,  @+0x00) = {24'b0, m_g[39:32]}   (only bits [7:0] used)
+#                          ch2 (gpio2_io_o, @+0x08) = {24'b0, m_h[39:32]}   (only bits [7:0] used)
+#   Reassembled here:  m_g = { axi_gpio_14.ch1[7:0], axi_gpio_13.ch1[31:0] }  (40 bits)
+#                      m_h = { axi_gpio_14.ch2[7:0], axi_gpio_13.ch2[31:0] }
+#   Defaults = 0 (g=h=0 -> w=1 -> the engine boots to a pure-affine geometry; matches the firmware boot
+#   identity which writes g=h=0).
+if {$PROJECTIVE_BUILD} {
+    puts "PROJ_GH: wiring m_g/m_h (Q4.36, 40-bit) via axi_gpio_13/14 on M_AXI_GP1/axi_ic_lite2"
+    # Enable PS second GP master (active-high reset already exists as rst_axi on FCLK_CLK0).
+    set_property -dict [list CONFIG.PCW_USE_M_AXI_GP1 {1}] [get_bd_cells zynq_ps]
+    connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0] [get_bd_pins zynq_ps/M_AXI_GP1_ACLK]
+
+    # Small 1->2 AXI-Lite interconnect off GP1.
+    create_bd_cell -type ip -vlnv xilinx.com:ip:axi_interconnect axi_ic_lite2
+    set_property -dict [list CONFIG.NUM_SI {1} CONFIG.NUM_MI {2}] [get_bd_cells axi_ic_lite2]
+    connect_bd_intf_net [get_bd_intf_pins zynq_ps/M_AXI_GP1] [get_bd_intf_pins axi_ic_lite2/S00_AXI]
+    connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]          [get_bd_pins axi_ic_lite2/ACLK]
+    connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]          [get_bd_pins axi_ic_lite2/S00_ACLK]
+    connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]          [get_bd_pins axi_ic_lite2/M00_ACLK]
+    connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]          [get_bd_pins axi_ic_lite2/M01_ACLK]
+    connect_bd_net [get_bd_pins rst_axi/interconnect_aresetn] [get_bd_pins axi_ic_lite2/ARESETN]
+    connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_lite2/S00_ARESETN]
+    connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_lite2/M00_ARESETN]
+    connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]   [get_bd_pins axi_ic_lite2/M01_ARESETN]
+
+    # Two dual-channel all-output GPIOs (default 0 -> g=h=0 -> affine boot).
+    foreach {gname mp} {axi_gpio_13 M00 axi_gpio_14 M01} {
+        create_bd_cell -type ip -vlnv xilinx.com:ip:axi_gpio $gname
+        set_property -dict [list CONFIG.C_GPIO_WIDTH {32} CONFIG.C_GPIO2_WIDTH {32} \
+            CONFIG.C_ALL_OUTPUTS {1} CONFIG.C_ALL_OUTPUTS_2 {1} CONFIG.C_IS_DUAL {1} \
+            CONFIG.C_INTERRUPT_PRESENT {0} CONFIG.C_DOUT_DEFAULT {0x00000000} \
+            CONFIG.C_DOUT_DEFAULT_2 {0x00000000}] [get_bd_cells $gname]
+        connect_bd_intf_net [get_bd_intf_pins axi_ic_lite2/${mp}_AXI] [get_bd_intf_pins ${gname}/S_AXI]
+        connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]          [get_bd_pins ${gname}/s_axi_aclk]
+        connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn] [get_bd_pins ${gname}/s_axi_aresetn]
+    }
+
+    # Slice the HIGH 8 bits out of axi_gpio_14's two channels.
+    re_slice sl_g_hi axi_gpio_14 gpio_io_o  7 0
+    re_slice sl_h_hi axi_gpio_14 gpio2_io_o 7 0
+
+    # Concat: Dout = {In1, In0} -> In0 = LOW 32 (axi_gpio_13), In1 = HIGH 8 (axi_gpio_14 slice) -> 40 bits.
+    create_bd_cell -type ip -vlnv xilinx.com:ip:xlconcat gh_g_cat
+    set_property -dict [list CONFIG.NUM_PORTS {2} CONFIG.IN0_WIDTH {32} CONFIG.IN1_WIDTH {8}] [get_bd_cells gh_g_cat]
+    connect_bd_net [get_bd_pins axi_gpio_13/gpio_io_o] [get_bd_pins gh_g_cat/In0]
+    connect_bd_net [get_bd_pins sl_g_hi/Dout]          [get_bd_pins gh_g_cat/In1]
+    connect_bd_net [get_bd_pins gh_g_cat/dout]         [get_bd_pins pg_re_0/m_g]
+
+    create_bd_cell -type ip -vlnv xilinx.com:ip:xlconcat gh_h_cat
+    set_property -dict [list CONFIG.NUM_PORTS {2} CONFIG.IN0_WIDTH {32} CONFIG.IN1_WIDTH {8}] [get_bd_cells gh_h_cat]
+    connect_bd_net [get_bd_pins axi_gpio_13/gpio2_io_o] [get_bd_pins gh_h_cat/In0]
+    connect_bd_net [get_bd_pins sl_h_hi/Dout]           [get_bd_pins gh_h_cat/In1]
+    connect_bd_net [get_bd_pins gh_h_cat/dout]          [get_bd_pins pg_re_0/m_h]
+}
 
 puts "READENGINE-WARP: integration block complete (pg_warp_top + 6-coeff GPIO + sel)"

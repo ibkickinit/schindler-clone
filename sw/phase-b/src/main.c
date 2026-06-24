@@ -502,6 +502,14 @@ static void cmd_help(void)
                "  k v <0-3>       scaler V kernel: 0=NN 1=2tap 2=4tap\r\n"
                "  k               query current kernel modes\r\n"
                "  J <json>        JSON-RPC 2.0 (catalog v0.1.0; for schindlerd)\r\n");
+#ifdef WARP_BUILD
+    xil_printf("  W <deg> [ix iy [px py]]  warp rotation/zoom/pan\r\n"
+               "  L <n>           warp prefetch lead override (0=auto)\r\n");
+#endif
+#ifdef PROJECTIVE_BUILD
+    xil_printf("  K <h> <v>       keystone (h,v = far-edge shrink, 1/1000; K 200 0 = 0.20 H)\r\n"
+               "  C x0 y0..x3 y3  corner-pin: 4 SOURCE corners TL,TR,BR,BL the output corners map to\r\n");
+#endif
 }
 
 /* ============================================================================
@@ -937,6 +945,25 @@ static void cp_dispatch_jsonrpc(const char *json)
 #  define LEAD_GPIO_BASE (XPAR_PHASE_B_BD_AXI_GPIO_12_BASEADDR + 0x08u)
 #endif
 
+/* PROJECTIVE build: perspective coeffs m_g / m_h (signed Q4.36 in a 40-bit word) ride two NEW dual-channel
+ * GPIOs on the PS second GP master (axi_ic_lite2). The 40-bit value is split LOW-32 + HIGH-8 (must match
+ * readengine_warp_bd.tcl PROJ_GH packing exactly):
+ *   axi_gpio_13 ch1 (+0x00) = m_g[31:0]   ;  axi_gpio_13 ch2 (+0x08) = m_h[31:0]
+ *   axi_gpio_14 ch1 (+0x00) = m_g[39:32]  ;  axi_gpio_14 ch2 (+0x08) = m_h[39:32]  (only bits [7:0] used)
+ * The BD reassembles m_g = {gpio14.ch1[7:0], gpio13.ch1[31:0]}, m_h likewise. */
+#ifdef PROJECTIVE_BUILD
+#  if defined(XPAR_AXI_GPIO_13_BASEADDR)
+#    define GH_LO_BASE XPAR_AXI_GPIO_13_BASEADDR
+#  elif defined(XPAR_PHASE_B_BD_AXI_GPIO_13_BASEADDR)
+#    define GH_LO_BASE XPAR_PHASE_B_BD_AXI_GPIO_13_BASEADDR
+#  endif
+#  if defined(XPAR_AXI_GPIO_14_BASEADDR)
+#    define GH_HI_BASE XPAR_AXI_GPIO_14_BASEADDR
+#  elif defined(XPAR_PHASE_B_BD_AXI_GPIO_14_BASEADDR)
+#    define GH_HI_BASE XPAR_PHASE_B_BD_AXI_GPIO_14_BASEADDR
+#  endif
+#endif
+
 /* ==========================================================================
  * WARP read-engine (pg_warp_top) affine geometry. In the WARP build the SAME
  * GPIOs axi_gpio_8/9/10 carry the 6 affine coeffs m_a..m_f (Q20.12 signed),
@@ -968,6 +995,12 @@ static int g_warp_deg = 0, g_warp_invx = 4096, g_warp_invy = 4096;  /* Q12 inver
 static int g_warp_panx = 0, g_warp_pany = 0;                        /* pan / shift, OUTPUT px (signed) */
 static unsigned g_warp_lead_ovr = 0;        /* UART 'L <n>' manual lead; 0 = auto per-geometry */
 static unsigned g_warp_lead = 0;            /* last lead actually written (for status / 'L' query) */
+#ifdef PROJECTIVE_BUILD
+static int g_proj_kh = 0, g_proj_kv = 0;    /* last keystone amounts (1/1000 units) for 'K' query */
+/* floor(x) for the fixed-point quantizers (matches the golden's math.floor: round toward -inf). No libm
+ * dependency; the BSP's floor() is available but this keeps the intent explicit and matches to_q exactly. */
+static long long llround_floor(double x) { long long i = (long long)x; if ((double)i > x) i--; return i; }
+#endif
 
 /* Per-geometry prefetch LEAD (pg_tilecache_rt2 run-ahead bound). The 4-way/512 cache deadlocks if the
  * prefetch runs far enough ahead to evict an unconsumed tile — too DEEP a lead for a gentle rotation is a
@@ -997,6 +1030,143 @@ static unsigned warp_calc_lead(int deg, int invx, int invy)
     return lead > 0x000FFFFFu ? 0x000FFFFFu : lead;
 }
 
+#ifdef PROJECTIVE_BUILD
+/* ==========================================================================
+ * PROJECTIVE coeff regime (FB=24 numerator / GFB=36 perspective). One writer
+ * for ALL geometry: warp_apply_homography(a..f, g, h). Rotation / zoom / pan
+ * are the affine sub-case (g=h=0). Keystone / corner-pin solve a full
+ * homography. Inputs are the ALREADY-quantized fixed-point ints:
+ *   a..f : signed Q8.24  (== floor(coeff * 2^24)), written to GEO_A/B/C GPIOs (low 32 bits, like affine)
+ *   g,h  : signed Q4.36  (== floor(coeff * 2^36)), 40-bit each -> split low32+high8 across GH_LO/GH_HI
+ * The engine inverse-maps OUTPUT->SOURCE: src = (a*ox + b*oy + c) / w,  w = g*ox + h*oy + 1.
+ *
+ * !! CW=32 PORT LIMIT (fixed by P1/P2): the a..f GPIO ports are 32 bits, so each Q8.24 coeff must fit
+ * signed-32 = +/-128 SOURCE-PIXELS. The translation coeffs c (=src_x at output origin) and f (=src_y)
+ * are ~hundreds of px at 1080p and OVERFLOW. This is an inherited P1/P2 format gap (the HDL faithful TB
+ * only ran at 64x48/96x72 where coeffs fit); see docs/projective-p3p4-results.md "CW=32 overflow". The
+ * firmware writes the low 32 bits per the HDL contract; the parent (P5) must bench-verify the geometry
+ * range and, if 1080p translation overflows, widen CW in pg_projective/pg_warp_top (a P1/P2 change, NOT
+ * P3/P4). Modest keystone (small h_amt) and the small-frame sim stay in range. */
+typedef long long q24_t;   /* Q8.24 intermediate (64-bit so products don't overflow before the >>24) */
+
+static void gh_write40(u32 base, long long g36, long long h36)
+{
+    /* g36/h36 are signed Q4.36; write the low 32 + high 8 to the two channels of the GH GPIO pair. */
+#if defined(GH_LO_BASE) && defined(GH_HI_BASE)
+    u32 g_lo = (u32)((unsigned long long)g36 & 0xFFFFFFFFull);
+    u32 h_lo = (u32)((unsigned long long)h36 & 0xFFFFFFFFull);
+    u32 g_hi = (u32)(((unsigned long long)g36 >> 32) & 0xFFu);
+    u32 h_hi = (u32)(((unsigned long long)h36 >> 32) & 0xFFu);
+    Xil_Out32(GH_LO_BASE + 0x00, g_lo);   /* axi_gpio_13 ch1 = m_g[31:0]  */
+    Xil_Out32(GH_LO_BASE + 0x08, h_lo);   /* axi_gpio_13 ch2 = m_h[31:0]  */
+    Xil_Out32(GH_HI_BASE + 0x00, g_hi);   /* axi_gpio_14 ch1 = m_g[39:32] */
+    Xil_Out32(GH_HI_BASE + 0x08, h_hi);   /* axi_gpio_14 ch2 = m_h[39:32] */
+    (void)base;
+#else
+    (void)base; (void)g36; (void)h36;
+#endif
+}
+
+/* Apply a homography given pre-quantized coeffs: a..f Q8.24, g/h Q4.36. Writes ALL geometry GPIOs and
+ * pulses the soft-reset (same flush sequence as affine warp_set_rotation). g=h=0 -> pure affine. */
+static void warp_apply_homography(int a24,int b24,int c24,int d24,int e24,int f24,
+                                  long long g36,long long h36, unsigned lead)
+{
+    Xil_Out32(GEO_A_BASE + 0x00, (u32)a24);   /* m_a */
+    Xil_Out32(GEO_A_BASE + 0x08, (u32)b24);   /* m_b */
+    Xil_Out32(GEO_B_BASE + 0x00, (u32)c24);   /* m_c */
+    Xil_Out32(GEO_B_BASE + 0x08, (u32)d24);   /* m_d */
+    Xil_Out32(GEO_C_BASE + 0x00, (u32)e24);   /* m_e */
+    Xil_Out32(GEO_C_BASE + 0x08, (u32)f24);   /* m_f */
+    gh_write40(0, g36, h36);
+#ifdef LEAD_GPIO_BASE
+    g_warp_lead = lead;
+    Xil_Out32(LEAD_GPIO_BASE, g_warp_lead);
+    /* soft-reset pulse (lead_cfg[31]) -> clean cache start on the new geometry, no transition wedge. */
+    Xil_Out32(LEAD_GPIO_BASE, (1u << 31) | (g_warp_lead & 0xFFFFFu));
+    for (volatile int d = 0; d < 30000; d++) { }
+    Xil_Out32(LEAD_GPIO_BASE, g_warp_lead & 0xFFFFFu);
+#else
+    (void)lead;
+#endif
+}
+
+/* float -> signed Q8.24 (floor), matching the golden's to_q(). The CPU does this once per geometry
+ * change (cheap, like the gamma-curve compute), so float on the A9 is fine. */
+static int to_q24(double v)  { return (int)llround_floor(v * 16777216.0); }     /* 2^24 */
+static long long to_q36(double v) { return (long long)llround_floor(v * 68719476736.0); } /* 2^36 */
+
+/* 4-point homography solver. Maps OUTPUT corners (dst) -> SOURCE corners (src) — the engine inverse-maps
+ * output->source, so H * [ox,oy,1]^T ~ [sx,sy,1]^T. Mirrors tools/pg_projective_golden.py solve_homography
+ * EXACTLY (same 8x8 DLT, same row ordering, i normalized to 1). dst is the full output raster corners;
+ * src[] are the 4 source-space corners (TL,TR,BR,BL order). Writes the engine via warp_apply_homography. */
+static int warp_solve_cornerpin(const double sx[4], const double sy[4])
+{
+    /* output (dst) corners, full raster, TL,TR,BR,BL — same as the golden's dst quad. */
+    const double ox[4] = {0.0, (double)(OUT_RASTER_W-1), (double)(OUT_RASTER_W-1), 0.0};
+    const double oy[4] = {0.0, 0.0, (double)(OUT_RASTER_H-1), (double)(OUT_RASTER_H-1)};
+    /* Build the 8x8 system A*[a b c d e f g h]^T = B  (rows per the golden):
+     *   row 2k  : [ox oy 1 0 0 0 -ox*sx -oy*sx] = sx
+     *   row 2k+1: [0 0 0 ox oy 1 -ox*sy -oy*sy] = sy   */
+    double M[8][9];
+    for (int k = 0; k < 4; k++) {
+        double X = ox[k], Y = oy[k], SX = sx[k], SY = sy[k];
+        double *r0 = M[2*k], *r1 = M[2*k+1];
+        r0[0]=X; r0[1]=Y; r0[2]=1; r0[3]=0; r0[4]=0; r0[5]=0; r0[6]=-X*SX; r0[7]=-Y*SX; r0[8]=SX;
+        r1[0]=0; r1[1]=0; r1[2]=0; r1[3]=X; r1[4]=Y; r1[5]=1; r1[6]=-X*SY; r1[7]=-Y*SY; r1[8]=SY;
+    }
+    /* Gaussian elimination with partial pivoting (mirrors the golden). */
+    for (int col = 0; col < 8; col++) {
+        int piv = col; double best = (M[col][col] < 0 ? -M[col][col] : M[col][col]);
+        for (int r = col+1; r < 8; r++) {
+            double av = (M[r][col] < 0 ? -M[r][col] : M[r][col]);
+            if (av > best) { best = av; piv = r; }
+        }
+        if (best < 1e-12) return 0;                    /* singular / degenerate corners */
+        if (piv != col) { for (int j=0;j<9;j++){ double t=M[col][j]; M[col][j]=M[piv][j]; M[piv][j]=t; } }
+        double pv = M[col][col];
+        for (int j = col; j < 9; j++) M[col][j] /= pv;
+        for (int r = 0; r < 8; r++) {
+            if (r != col && M[r][col] != 0.0) {
+                double fac = M[r][col];
+                for (int j = col; j < 9; j++) M[r][j] -= fac * M[col][j];
+            }
+        }
+    }
+    double a=M[0][8],b=M[1][8],c=M[2][8],d=M[3][8],e=M[4][8],f=M[5][8],g=M[6][8],h=M[7][8];
+    unsigned lead = 8192u;   /* deep lead: keystone concentrates reads at the foreshortened edge */
+    warp_apply_homography(to_q24(a),to_q24(b),to_q24(c),to_q24(d),to_q24(e),to_q24(f),
+                          to_q36(g),to_q36(h), lead);
+    xil_printf("PROJ cornerpin: a=%dE-6 c=%d f=%d (q24) g/h=Q36\r\n",
+               (int)(a*1000000), to_q24(c), to_q24(f));
+    return 1;
+}
+
+/* Symmetric H/V keystone -> 4 source corners -> cornerpin solver. h_amt/v_amt are PERCENT*10 of the far-
+ * edge shrink (so '200' = 0.20). Matches the golden's keystone_homography source-trapezoid construction
+ * (TL,TR shrunk by h_amt horizontally; left edge shrunk by v_amt vertically), so the same K args reproduce
+ * the same H the sim validated. */
+static void warp_set_keystone(int h_amt_e3, int v_amt_e3)
+{
+    double h = h_amt_e3 / 1000.0, v = v_amt_e3 / 1000.0;
+    if (h < 0) h = 0;
+    if (h > 0.9) h = 0.9;
+    if (v < 0) v = 0;
+    if (v > 0.9) v = 0.9;
+    double mx = FRAME_W * 0.5, my = FRAME_H * 0.5;
+    double sw = FRAME_W * 0.48, sh = FRAME_H * 0.48;
+    /* TL,TR,BR,BL — identical formula to the golden. */
+    double sx[4] = { mx - sw*(1.0-h), mx + sw*(1.0-h), mx + sw,        mx - sw };
+    double sy[4] = { my - sh*(1.0-v), my - sh*(1.0-v), my + sh,        my + sh };
+    g_proj_kh = h_amt_e3; g_proj_kv = v_amt_e3;
+    if (!warp_solve_cornerpin(sx, sy))
+        xil_printf("PROJ keystone: degenerate, ignored\r\n");
+    else
+        xil_printf("PROJ keystone h=%d.%03d v=%d.%03d applied\r\n",
+                   h_amt_e3/1000, h_amt_e3%1000, v_amt_e3/1000, v_amt_e3%1000);
+}
+#endif /* PROJECTIVE_BUILD */
+
 /* Compute + write the 6 affine coeffs for rotation `deg` with inverse-scale
  * invx/invy (Q12; 4096 = 1.0 source-px per output-px, >4096 = downscale). */
 static void warp_set_rotation(int deg, int invx, int invy, int panx, int pany)
@@ -1021,17 +1191,29 @@ static void warp_set_rotation(int deg, int invx, int invy, int panx, int pany)
      * rotation/zoom; the image leaves the frame and matte fills the opposite edge. +panx = image right. */
     m_c -= m_a * panx + m_b * pany;
     m_f -= m_d * panx + m_e * pany;
+    g_warp_deg = deg; g_warp_invx = invx; g_warp_invy = invy; g_warp_panx = panx; g_warp_pany = pany;
+    unsigned lead = g_warp_lead_ovr ? g_warp_lead_ovr : warp_calc_lead(deg, invx, invy);
+#ifdef PROJECTIVE_BUILD
+    /* PROJECTIVE build: the engine numerator is Q8.24 (FB=24), not Q.12. Rotation/zoom/pan are the affine
+     * sub-case (g=h=0). m_a..m_e here are co/si*invx >> 12 = Q.12 ratios; shift them << 12 to Q.24. The
+     * translation m_c/m_f were built as src_center*4096 (Q.12) so they also become Q.24 with << 12. Route
+     * through the single homography writer so rotation and keystone share one coeff path + one g/h packing. */
+    warp_apply_homography((int)((long long)m_a << 12), (int)((long long)m_b << 12),
+                          (int)((long long)m_c << 12), (int)((long long)m_d << 12),
+                          (int)((long long)m_e << 12), (int)((long long)m_f << 12),
+                          0, 0, lead);
+    g_proj_kh = 0; g_proj_kv = 0;   /* rotation cancels any prior keystone */
+#else
     Xil_Out32(GEO_A_BASE + 0x00, (u32)m_a);
     Xil_Out32(GEO_A_BASE + 0x08, (u32)m_b);
     Xil_Out32(GEO_B_BASE + 0x00, (u32)m_c);
     Xil_Out32(GEO_B_BASE + 0x08, (u32)m_d);
     Xil_Out32(GEO_C_BASE + 0x00, (u32)m_e);
     Xil_Out32(GEO_C_BASE + 0x08, (u32)m_f);
-    g_warp_deg = deg; g_warp_invx = invx; g_warp_invy = invy; g_warp_panx = panx; g_warp_pany = pany;
     /* set the prefetch LEAD for this geometry (manual override wins). Takes effect at the next sof
      * (lead_cnt resets there), same vblank the new coeffs latch. */
 #ifdef LEAD_GPIO_BASE
-    g_warp_lead = g_warp_lead_ovr ? g_warp_lead_ovr : warp_calc_lead(deg, invx, invy);
+    g_warp_lead = lead;
     Xil_Out32(LEAD_GPIO_BASE, g_warp_lead);
     /* Pulse the engine SOFT-RESET (lead_cfg[31]) AFTER the coeffs+lead are written: it clears the warp
      * engine + tile-cache + cmd formatter + output FIFO and FLUSHes the DataMover's in-flight beats, so the
@@ -1041,6 +1223,7 @@ static void warp_set_rotation(int deg, int invx, int invy, int panx, int pany)
     for (volatile int d = 0; d < 30000; d++) { }
     Xil_Out32(LEAD_GPIO_BASE, g_warp_lead & 0xFFFFFu);
 #endif
+#endif /* PROJECTIVE_BUILD */
     xil_printf("WARP rot=%d invx=%d invy=%d lead=%u: a=%d b=%d c=%d d=%d e=%d f=%d\r\n",
                deg, invx, invy, (unsigned)g_warp_lead, m_a, m_b, m_c, m_d, m_e, m_f);
 }
@@ -1324,6 +1507,44 @@ static void uart_dispatch(const char *line)
         }
 #else
         xil_printf("UART: 'L' is warp-only; no warp engine in this build\r\n");
+#endif
+    } else if (op == 'K') {
+        /* PROJECTIVE keystone: K <h> <v>  — symmetric H/V trapezoid. h,v are 1/1000 units of far-edge
+         * shrink (so 'K 200 0' = 0.20 horizontal keystone, no vertical). 'K' alone = query. */
+#ifdef PROJECTIVE_BUILD
+        int h, v;
+        if (parse_int(&p, &h)) {
+            v = 0; parse_int(&p, &v);
+            warp_set_keystone(h, v);
+        } else {
+            xil_printf("PROJ keystone h=%d.%03d v=%d.%03d\r\n",
+                       g_proj_kh/1000, g_proj_kh%1000, g_proj_kv/1000, g_proj_kv%1000);
+        }
+#else
+        xil_printf("UART: 'K' is projective-only; not a projective build\r\n");
+#endif
+    } else if (op == 'C') {
+        /* PROJECTIVE corner-pin: C <x0> <y0> <x1> <y1> <x2> <y2> <x3> <y3>
+         * The 8 args are the 4 SOURCE corners (in SOURCE pixels) that the 4 OUTPUT raster corners map to,
+         * in TL,TR,BR,BL order (same quad order as tools/pg_projective_golden.py). e.g. an identity-ish pin
+         * for a 1920x1080 source is 'C 0 0 1919 0 1919 1079 0 1079'. The engine inverse-maps output->source,
+         * so these are exactly the source coords sampled at each output corner. 'C' alone = no-op note. */
+#ifdef PROJECTIVE_BUILD
+        int xi[4], yi[4]; int ok = 1;
+        for (int k = 0; k < 4 && ok; k++) ok = parse_int(&p, &xi[k]) && parse_int(&p, &yi[k]);
+        if (ok) {
+            double sx[4], sy[4];
+            for (int k = 0; k < 4; k++) { sx[k] = (double)xi[k]; sy[k] = (double)yi[k]; }
+            if (warp_solve_cornerpin(sx, sy))
+                xil_printf("PROJ cornerpin applied: TL(%d,%d) TR(%d,%d) BR(%d,%d) BL(%d,%d)\r\n",
+                           xi[0],yi[0],xi[1],yi[1],xi[2],yi[2],xi[3],yi[3]);
+            else
+                xil_printf("PROJ cornerpin: degenerate corners, ignored\r\n");
+        } else {
+            xil_printf("UART: usage 'C x0 y0 x1 y1 x2 y2 x3 y3' (4 SOURCE corners TL,TR,BR,BL)\r\n");
+        }
+#else
+        xil_printf("UART: 'C' is projective-only; not a projective build\r\n");
 #endif
     } else if (op == 'G') {
         /* Route-B read-engine geometry (additive+mux build):

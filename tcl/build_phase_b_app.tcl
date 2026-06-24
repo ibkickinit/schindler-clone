@@ -133,6 +133,14 @@ if {[info exists ::env(WARP_ENGINE)] && $::env(WARP_ENGINE) ne "0"} {
     app config -name vdma_init -add define-compiler-symbols WARP_BUILD=1
     app config -name vdma_init -add define-compiler-symbols READENGINE_FULLMASTER=1
     puts "FW BUILD: added -DWARP_BUILD=1 + -DREADENGINE_FULLMASTER=1 (warp affine geometry)"
+    # PROJECTIVE build: pg_re_0 runs the keystone/corner-pin homography front-end (FB=24/GFB=36) and the
+    # perspective coeffs m_g/m_h ride axi_gpio_13/14 (see readengine_warp_bd.tcl PROJ_GH). Define
+    # PROJECTIVE_BUILD so main.c routes geometry through warp_apply_homography (Q.24/Q.36) and adds the
+    # 'K' (keystone) / 'C' (corner-pin) UART commands. Mirrors the BD's PROJECTIVE_BUILD env gate.
+    if {[info exists ::env(PROJECTIVE_BUILD)] && $::env(PROJECTIVE_BUILD) ne "0"} {
+        app config -name vdma_init -add define-compiler-symbols PROJECTIVE_BUILD=1
+        puts "FW BUILD: added -DPROJECTIVE_BUILD=1 (projective keystone/corner-pin geometry)"
+    }
 }
 
 app build -name vdma_init
