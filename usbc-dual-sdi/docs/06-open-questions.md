@@ -7,10 +7,15 @@ The first pass concluded "MST silicon unobtainable → must do MST in an AMD
 FPGA." **Follow-up research corrected that:** Synaptics **VMM6210 / VMM5330**
 are *real, datasheet-published* DP1.4 MST hubs (dual-4K60) — so there are now
 **two live paths** (detail in `04` Block 2):
-- **Path A — discrete Synaptics VMM MST hub → cheaper FPGA (PolarFire, free
-  12G-SDI IP). Avoids the AMD IP NRE.** Gating unknown: **VMM low-volume
-  procurability** (datasheets public; live stock 403-blocked, *unverified*;
-  Synaptics sells via design-win/disti/FAE).
+- **Path A — discrete MST hub chip → cheaper FPGA (PolarFire, free 12G-SDI IP).
+  Avoids the AMD IP NRE.** Two hub sources: **Synaptics VMM6210/5330**
+  (integrates USB-C input) or **Parade PS8650** (Taiwan; true DP2.1a→DP1.4 MST
+  hub, but needs a separate USB-C DP-Alt front stage). Gating unknown:
+  **low-volume procurability of either hub** (datasheets public/gated; live
+  stock 403-blocked, *unverified*; both sell via disti/FAE). A Thunderbolt/USB4
+  front end was evaluated — **no Asian single-chip does the dual-DP breakout**
+  (only Intel Goshen Ridge JHL8440, which is TB-cert-gated); not pursued for v1
+  unless Thunderbolt-only host support is required (`04` Block 2).
 - **Path B — DP MST RX inside an AMD FPGA** (DP1.4 RX Subsystem, PG300). Always
   available; pins vendor to AMD; **paid IP** (~$11k AV + ~$5k DP, see Q10).
 **Decision rule:** if a Synaptics quote + lead time at our quantity is workable

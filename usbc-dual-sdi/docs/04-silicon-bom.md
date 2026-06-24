@@ -72,22 +72,39 @@ There are **two real ways** to split one DP link into two displays, and the
 choice has large cost/lock-in consequences. **Which one wins is gated on whether
 Synaptics VMM parts are procurable in our volume** (see Q-block risk + `06` Q1).
 
-- **Path A — discrete Synaptics VMM MST hub (avoids AMD DP IP).**
-  **Synaptics VMM6210** (DP/USB-C HBR3 RX → 1× HDMI 2.1 + 1× DP 1.4, dual-4K60)
-  and **VMM5330** (DP1.4 MST hub, up to 3 TX) are *real, datasheet-published*
-  MST hubs — **not** the NDA-only myth the first pass assumed. The hub does the
-  split in silicon; the FPGA then only needs **HDMI/DP SST RX + 12G-SDI TX** (no
-  DP-MST IP). **Caveat:** Synaptics sells via design-win/distribution + FAE, and
-  **live low-volume distributor stock could not be confirmed (403)** — *this is
-  the gating unknown.* Cheap "MST hub" dongles (StarTech/Club3D/Cable Matters)
-  are built on VMM silicon, which is circumstantial evidence it's buildable.
+- **Path A — discrete MST hub chip (avoids AMD DP IP).** The hub does the split
+  in silicon; the FPGA then only needs **HDMI/DP SST RX + 12G-SDI TX** (no DP-MST
+  IP). Two hub sources:
+  - **Synaptics VMM6210** (USB-C/DP-Alt in → 1× HDMI 2.1 + 1× DP 1.4, dual-4K60)
+    / **VMM5330** (DP1.4 MST hub, up to 3 TX). VMM6210 **integrates the USB-C
+    input** — fewest parts. Sells via design-win/disti + FAE; **low-volume stock
+    unverified (403).** Cheap MST-hub dongles (StarTech/Club3D/Cable Matters) run
+    on VMM silicon — circumstantial evidence it's buildable.
+  - **Parade PS8650** (Taiwan) — genuine DP2.1a→DP1.4 **MST hub, 1 in → 4 out**,
+    4K60+HDR/stream; the one credible *non-Synaptics* MST-hub alternative. New
+    (sampling 2024), datasheet **gated via Macnica**, low-volume buyability
+    **unverified**. Takes a **DP input**, so it needs a separate USB-C
+    DP-Alt-Mode/PD front stage (unlike the VMM6210). Chase as a second-source.
 - **Path B — DP MST RX inside an AMD FPGA (no scarce hub chip).**
   **AMD DP1.4 RX Subsystem (PG300)**, MST sink, 2 streams, fed by PL GTH. Robust
   and self-contained, but **paid IP** (~$5k DP + ~$11k AV bundle) and **pins the
   FPGA to AMD**.
 
-⚠️ The buyable **Parade/ITE/Algoltek/Realtek** parts are **single-stream
-converters, not MST splitters** — they cannot do the split. Don't be fooled.
+**Thunderbolt / USB4 front end — evaluated, no Asian single-chip win.** TB/USB4
+natively tunnels two DP streams, but the only silicon that *receives* both and
+breaks them out as two independent DP outputs is **Intel's Goshen Ridge JHL8440**
+(dual-4K60) — Intel, not Asian, and **TB-cert/firmware-gated** (hard for a small
+shop). Asian USB4 parts don't replace the splitter: **ASMedia ASM2464PD** is
+storage-only, **ASM4242** is host-side (wrong direction), and **VIA Labs
+VL830/VL832** (Taiwan) are device-side but **single-DP-out** — they'd still need
+an MST hub bolted after them. So TB/USB4 buys broader Thunderbolt-only-laptop
+support and guaranteed dual-DP bandwidth, but **adds cost/cert friction and no
+Asian one-chip path** — not worth it for v1 unless Thunderbolt-only host support
+becomes a requirement.
+
+⚠️ The buyable **Parade PS176 / ITE / Algoltek / Realtek** *converter* parts are
+**single-stream, not MST splitters** — they cannot do the split. (Parade's
+splitter is the PS8650 above; don't confuse it with their PS176-class converters.)
 
 **Why Path A matters:** it can **eliminate the AMD IP NRE entirely** and unlock a
 much cheaper FPGA (Block 3) — *if* the VMM is procurable. **Verify VMM
@@ -184,7 +201,7 @@ DP mux/redriver routes the lanes.
 | Block | Recommended | Obtainable? | ~Price (1–10) | Caveat |
 |---|---|---|---|---|
 | 12G-SDI driver | Semtech **GS12281-INE3** (reclocking) ×2 | yes, stocked | ~$31 ea | + Si534x ref clock; no separate retimer |
-| DP MST split | **Path A:** Synaptics **VMM6210/VMM5330** hub · **Path B:** AMD DP1.4 RX IP | A: *unverified* · B: yes (paid IP ~$5k) | A: hub chip cost · B: license ~$5k | **gating fork** — Path A avoids AMD IP if VMM is procurable |
+| DP MST split | **Path A:** Synaptics **VMM6210/5330** *or* Parade **PS8650** hub · **Path B:** AMD DP1.4 RX IP | A: *unverified* · B: yes (paid IP ~$5k) | A: hub chip cost · B: license ~$5k | **gating fork** — Path A avoids AMD IP if a hub is procurable; PS8650 needs a USB-C front stage |
 | FPGA | **Path A:** Microchip **PolarFire MPF300T** (free IP) · **Path B:** AMD **Zynq US+ XCZU4EV** | yes, stocked | ~$150–400 | A: free 12G IP, no AMD NRE · B: ~$11k AV IP, verify GTH count |
 | USB-C PD/DP | TI **TPS65987DDHRSHR** + CCG3PA (port 2) | yes (*stock unverified*) | ~$5–8 | EEPROM config; 4-lane via multifn bit |
 | MCU | ST **STM32H723ZGT6** | yes, in stock | ~$12 | USB-HS needs ext ULPI (FS fine for HID) |

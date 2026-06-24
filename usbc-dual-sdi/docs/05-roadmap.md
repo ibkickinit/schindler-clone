@@ -4,9 +4,12 @@ Top-down de-risking: prove the **hardest, highest-uncertainty** links first
 (DP-Alt-Mode-to-two-streams, and clean 12G out), then integrate.
 
 ## Phase 0 — Paper design & sourcing de-risk
-- **CLOSE THE MST FORK (`06` Q1) — top priority.** Get a **Synaptics VMM6210/
-  VMM5330 quote + lead time at our quantity**. VMM procurable → **Path A** (VMM +
-  PolarFire, no AMD IP). Not procurable → **Path B** (AMD FPGA MST RX).
+- **CLOSE THE MST FORK (`06` Q1) — top priority.** Get quotes + lead times at our
+  quantity for a discrete MST hub: **Synaptics VMM6210/VMM5330** and, as a
+  second-source, **Parade PS8650** (via Macnica). Either procurable → **Path A**
+  (hub + PolarFire, no AMD IP). Neither → **Path B** (AMD FPGA MST RX). Skip the
+  Thunderbolt/USB4 front end unless TB-only host support becomes a requirement
+  (no Asian single-chip exists; Intel Goshen Ridge is cert-gated).
 - **If Path B:** get real **AMD IP quotes** (AV bundle + DP1.4 RX) and confirm
   whether **eval/timeout licenses** carry Phases 1–4 before paying full freight
   (`06` Q10). **HDCP entitlement is not needed** — non-HDCP-sink (`06` Q11).
