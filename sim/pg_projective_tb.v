@@ -2,7 +2,7 @@
 //
 //  (A) AFFINE EQUIVALENCE: pg_projective#(PROJECTIVE=1, FB=12, g=h=0) must match pg_affine
 //      bit-exact for rotation/scale/shift coeff sets (compared in-HDL, no golden file).
-//  (B) PROJECTIVE: pg_projective#(FB=24,GFB=36,RF=28,LUT=9,NR=2) must match the Python golden
+//  (B) PROJECTIVE: pg_projective#(FB=20,GFB=36,RF=28,LUT=9,NR=2) must match the Python golden
 //      (tools/pg_projective_golden.py) bit-exact for keystone-H/V/HV and a 4-corner pin.
 //  Both phases run a clean pass AND a back-pressure pass (random o_ready stalls) to prove the
 //  handshake never drops or duplicates a coord. Outputs are captured keyed on (o_valid && ready)
@@ -50,13 +50,13 @@ module pg_projective_tb;
         .o_valid(pj12_v),.o_ready(a_ready),.o_in_window(pj12_in),
         .o_src_col(pj12_col),.o_src_row(pj12_row),.o_h_frac(pj12_hf),.o_v_frac(pj12_vf),.o_new_row(pj12_nr));
 
-    // ---- (B) projective DUT: pg_projective#(FB=24) ----
+    // ---- (B) projective DUT: pg_projective#(FB=20) ----
     reg                  p_sof, p_ready;
     reg signed [CW-1:0]  p_a,p_b,p_c,p_d,p_e,p_f;
     reg signed [GCW-1:0] p_g,p_h;
     wire pj_v, pj_in, pj_nr; wire [11:0] pj_col,pj_row,pj_hf,pj_vf;
     pg_projective #(.OUT_W(OUT_W),.OUT_H(OUT_H),.IN_W(IN_W),.IN_H(IN_H),
-                    .CW(CW),.FB(24),.GCW(GCW),.GFB(36),.RF(28),.LUT_BITS(9),.NR_ITERS(2),
+                    .CW(CW),.FB(20),.GCW(GCW),.GFB(36),.RF(28),.LUT_BITS(9),.NR_ITERS(2),
                     .AW(44),.WW(48),.PROJECTIVE(1)) u_pj (
         .clk(clk),.rstn(rstn),.sof(p_sof),
         .m_a(p_a),.m_b(p_b),.m_c(p_c),.m_d(p_d),.m_e(p_e),.m_f(p_f),.m_g(p_g),.m_h(p_h),

@@ -30,16 +30,29 @@ import math, sys, argparse
 # ---------------- fixed Q-format (CHOSEN by the precision sweep — see tune()) ----------------
 # Two error sources, both AMPLIFIED by 1/w (~1.6x) at the most-foreshortened edge of a 1280-wide
 # output, so both coeff families need MORE fractional bits than the affine engine's Q.12:
-#   * numerator coeffs a..f -> FB = 24  (Q8.24 in a CW=32 word; affine-compat note below)
+#   * numerator coeffs a..f -> FB = 20  (Q12.20 in a CW=32 word; affine-compat note below)
 #   * perspective coeffs g,h -> GFB = 36 (tiny values, need a wide mantissa; GCW=40 word)
 # Reciprocal LUT+NR adds negligible error at RF=28 / LUT_BITS=9 / NR_ITERS=2.
-# Achieved worst-case sx/sy error over keystone+corner-pin @1280x720/1920x1080 = 1.2e-4 px (Q.13.0).
+# Achieved worst-case sx/sy error over keystone+corner-pin @1280x720/1920x1080 = 2.7e-3 px (Q.8.5),
+# at the most-foreshortened keystone corner — visually lossless (well under one bilinear LSB).
+#
+# FB 24->20 (overflow fix): FB was 24 (Q8.24) through P1-P4, but the a..f GPIO ports are CW=32 signed,
+# so the constant/translation coeffs c/f (= source coords up to ~1920 px) overflow signed-32 at FB=24
+# (even identity: 320 px * 2^24 > 2^31), warping to the wrong source origin on silicon. FB=20 gives a
+# signed-32 range of +/-2048 px, covering the 1920-px source, with max|a..f_q|=2^28.5 for strong
+# keystone (fits). See docs/projective-fb-fix.md.
 #
 # AFFINE COMPATIBILITY: with FB=12 + g=h=0 the engine is byte-for-byte pg_affine. The projective
-# build runs FB=24 (the firmware homography solver emits Q.24 a..f). The HDL parameterizes FB so the
-# affine production build keeps FB=12 (port + GPIO unchanged); only the projective build pays Q.24.
+# build runs FB=20 (the firmware homography solver emits Q.20 a..f). The HDL parameterizes FB so the
+# affine production build keeps FB=12 (port + GPIO unchanged); only the projective build pays Q.20.
 CW  = 32                # numerator coeff / accumulator word width (a..f)
-FB  = 24                # numerator fractional bits (Q8.24 projective; 12 for affine-compat build)
+FB  = 20                # numerator fractional bits (Q12.20 projective; 12 for affine-compat build)
+                        # NOTE: FB was 24 (Q8.24) in P1-P4. At FB=24 the constant/translation coeffs
+                        # c/f (= source coords up to ~1920 px) overflow signed-CW=32 (even identity:
+                        # 320 px * 2^24 > 2^31), warping to the wrong origin on silicon. FB=20 gives a
+                        # signed-32 range of +/-2048 px, covering the 1920-px source. Precision cost is
+                        # ~Q.8.6 (a few e-3 px) worst-case at the most-foreshortened keystone corner —
+                        # visually lossless (well under one bilinear LSB). See docs/projective-fb-fix.md.
 ONE = 1 << FB
 
 GCW = 40                # perspective coeff word width (g,h)
@@ -309,6 +322,11 @@ def precision_sweep(verbose=True):
 
 def tune():
     """Sweep FB / GFB / LUT_BITS / NR_ITERS / RF; pick smallest that achieves >=12 frac bits.
+    NOTE: this exploratory sweep optimizes for SUB-PIXEL PRECISION ONLY and would pick FB=24.
+    Production FB is fixed at 20 (the module global) because the a..f coeff GPIO ports are CW=32
+    signed and FB=24 overflows on the translation coeffs c/f (source coords ~1920 px) — a constraint
+    this precision-only sweep does not model. FB=20 trades Q.13->Q.8.5 precision (still visually
+    lossless) for the signed-32 range +/-2048 px. See docs/projective-fb-fix.md.
     Two error sources, both AMPLIFIED by 1/w (~1.6x) at the foreshortened edge:
       (1) numerator coeff quant 2^-FB * max(ox,oy)  -> needs FB wider than the affine 12;
       (2) perspective coeff quant 2^-GFB * (ox+oy)  -> needs GFB wide;
@@ -464,11 +482,11 @@ def main():
             a=co/s; b=si/s; cc=cxs-a*cxo-b*cyo
             dd=-si/s; ee=co/s; ff=cys-dd*cxo-ee*cyo
             return (a,b,cc,dd,ee,ff,0.0,0.0)
-        # Projective golden cases (FB=24 chosen config). The affine-EQUIVALENCE check is done in
+        # Projective golden cases (FB=20 chosen config). The affine-EQUIVALENCE check is done in
         # HDL (pg_projective#(FB=12) vs pg_affine), so no affine golden files are needed.
         sets = {
             # an affine homography (g=h=0) run THROUGH the projective path -> exercises the
-            # reciprocal-of-1.0 boundary at FB=24 (proves iw=1.0 path is exact).
+            # reciprocal-of-1.0 boundary at FB=20 (proves iw=1.0 path is exact).
             "proj_affineid":rot(0,1.0),
             "proj_keyH":    keystone_homography(OW,OH,IW,IH,0.30,0.0),
             "proj_keyV":    keystone_homography(OW,OH,IW,IH,0.0,0.30),

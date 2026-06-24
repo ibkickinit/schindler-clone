@@ -1032,22 +1032,21 @@ static unsigned warp_calc_lead(int deg, int invx, int invy)
 
 #ifdef PROJECTIVE_BUILD
 /* ==========================================================================
- * PROJECTIVE coeff regime (FB=24 numerator / GFB=36 perspective). One writer
+ * PROJECTIVE coeff regime (FB=20 numerator / GFB=36 perspective). One writer
  * for ALL geometry: warp_apply_homography(a..f, g, h). Rotation / zoom / pan
  * are the affine sub-case (g=h=0). Keystone / corner-pin solve a full
  * homography. Inputs are the ALREADY-quantized fixed-point ints:
- *   a..f : signed Q8.24  (== floor(coeff * 2^24)), written to GEO_A/B/C GPIOs (low 32 bits, like affine)
+ *   a..f : signed Q12.20 (== floor(coeff * 2^20)), written to GEO_A/B/C GPIOs (low 32 bits, like affine)
  *   g,h  : signed Q4.36  (== floor(coeff * 2^36)), 40-bit each -> split low32+high8 across GH_LO/GH_HI
  * The engine inverse-maps OUTPUT->SOURCE: src = (a*ox + b*oy + c) / w,  w = g*ox + h*oy + 1.
  *
- * !! CW=32 PORT LIMIT (fixed by P1/P2): the a..f GPIO ports are 32 bits, so each Q8.24 coeff must fit
- * signed-32 = +/-128 SOURCE-PIXELS. The translation coeffs c (=src_x at output origin) and f (=src_y)
- * are ~hundreds of px at 1080p and OVERFLOW. This is an inherited P1/P2 format gap (the HDL faithful TB
- * only ran at 64x48/96x72 where coeffs fit); see docs/projective-p3p4-results.md "CW=32 overflow". The
- * firmware writes the low 32 bits per the HDL contract; the parent (P5) must bench-verify the geometry
- * range and, if 1080p translation overflows, widen CW in pg_projective/pg_warp_top (a P1/P2 change, NOT
- * P3/P4). Modest keystone (small h_amt) and the small-frame sim stay in range. */
-typedef long long q24_t;   /* Q8.24 intermediate (64-bit so products don't overflow before the >>24) */
+ * !! CW=32 PORT FIT: the a..f GPIO ports are 32 bits, so each coeff must fit signed-32. FB was 24 (Q8.24)
+ * through P1-P4, which gave only +/-128 SOURCE-PIXELS of range -> the translation coeffs c (=src_x at
+ * output origin) and f (=src_y) are ~hundreds of px at 1080p (even identity ~320 px) and OVERFLOWED,
+ * warping to the wrong source origin on silicon. FB=20 (Q12.20) gives +/-2048 px, covering the 1920-px
+ * source (max|a..f_q| ~2^28.5 for strong keystone). The precision cost is Q.13 -> Q.8.5 worst-case at the
+ * most-foreshortened keystone corner (~2.7e-3 px), visually lossless. See docs/projective-fb-fix.md. */
+typedef long long q20_t;   /* Q12.20 intermediate (64-bit so products don't overflow before the >>20) */
 
 static void gh_write40(u32 base, long long g36, long long h36)
 {
@@ -1067,17 +1066,17 @@ static void gh_write40(u32 base, long long g36, long long h36)
 #endif
 }
 
-/* Apply a homography given pre-quantized coeffs: a..f Q8.24, g/h Q4.36. Writes ALL geometry GPIOs and
+/* Apply a homography given pre-quantized coeffs: a..f Q12.20, g/h Q4.36. Writes ALL geometry GPIOs and
  * pulses the soft-reset (same flush sequence as affine warp_set_rotation). g=h=0 -> pure affine. */
-static void warp_apply_homography(int a24,int b24,int c24,int d24,int e24,int f24,
+static void warp_apply_homography(int a20,int b20,int c20,int d20,int e20,int f20,
                                   long long g36,long long h36, unsigned lead)
 {
-    Xil_Out32(GEO_A_BASE + 0x00, (u32)a24);   /* m_a */
-    Xil_Out32(GEO_A_BASE + 0x08, (u32)b24);   /* m_b */
-    Xil_Out32(GEO_B_BASE + 0x00, (u32)c24);   /* m_c */
-    Xil_Out32(GEO_B_BASE + 0x08, (u32)d24);   /* m_d */
-    Xil_Out32(GEO_C_BASE + 0x00, (u32)e24);   /* m_e */
-    Xil_Out32(GEO_C_BASE + 0x08, (u32)f24);   /* m_f */
+    Xil_Out32(GEO_A_BASE + 0x00, (u32)a20);   /* m_a */
+    Xil_Out32(GEO_A_BASE + 0x08, (u32)b20);   /* m_b */
+    Xil_Out32(GEO_B_BASE + 0x00, (u32)c20);   /* m_c */
+    Xil_Out32(GEO_B_BASE + 0x08, (u32)d20);   /* m_d */
+    Xil_Out32(GEO_C_BASE + 0x00, (u32)e20);   /* m_e */
+    Xil_Out32(GEO_C_BASE + 0x08, (u32)f20);   /* m_f */
     gh_write40(0, g36, h36);
 #ifdef LEAD_GPIO_BASE
     g_warp_lead = lead;
@@ -1091,9 +1090,9 @@ static void warp_apply_homography(int a24,int b24,int c24,int d24,int e24,int f2
 #endif
 }
 
-/* float -> signed Q8.24 (floor), matching the golden's to_q(). The CPU does this once per geometry
+/* float -> signed Q12.20 (floor), matching the golden's to_q(). The CPU does this once per geometry
  * change (cheap, like the gamma-curve compute), so float on the A9 is fine. */
-static int to_q24(double v)  { return (int)llround_floor(v * 16777216.0); }     /* 2^24 */
+static int to_q20(double v)  { return (int)llround_floor(v * 1048576.0); }      /* 2^20 */
 static long long to_q36(double v) { return (long long)llround_floor(v * 68719476736.0); } /* 2^36 */
 
 /* 4-point homography solver. Maps OUTPUT corners (dst) -> SOURCE corners (src) — the engine inverse-maps
@@ -1135,10 +1134,10 @@ static int warp_solve_cornerpin(const double sx[4], const double sy[4])
     }
     double a=M[0][8],b=M[1][8],c=M[2][8],d=M[3][8],e=M[4][8],f=M[5][8],g=M[6][8],h=M[7][8];
     unsigned lead = 8192u;   /* deep lead: keystone concentrates reads at the foreshortened edge */
-    warp_apply_homography(to_q24(a),to_q24(b),to_q24(c),to_q24(d),to_q24(e),to_q24(f),
+    warp_apply_homography(to_q20(a),to_q20(b),to_q20(c),to_q20(d),to_q20(e),to_q20(f),
                           to_q36(g),to_q36(h), lead);
-    xil_printf("PROJ cornerpin: a=%dE-6 c=%d f=%d (q24) g/h=Q36\r\n",
-               (int)(a*1000000), to_q24(c), to_q24(f));
+    xil_printf("PROJ cornerpin: a=%dE-6 c=%d f=%d (q20) g/h=Q36\r\n",
+               (int)(a*1000000), to_q20(c), to_q20(f));
     return 1;
 }
 
@@ -1194,13 +1193,13 @@ static void warp_set_rotation(int deg, int invx, int invy, int panx, int pany)
     g_warp_deg = deg; g_warp_invx = invx; g_warp_invy = invy; g_warp_panx = panx; g_warp_pany = pany;
     unsigned lead = g_warp_lead_ovr ? g_warp_lead_ovr : warp_calc_lead(deg, invx, invy);
 #ifdef PROJECTIVE_BUILD
-    /* PROJECTIVE build: the engine numerator is Q8.24 (FB=24), not Q.12. Rotation/zoom/pan are the affine
-     * sub-case (g=h=0). m_a..m_e here are co/si*invx >> 12 = Q.12 ratios; shift them << 12 to Q.24. The
-     * translation m_c/m_f were built as src_center*4096 (Q.12) so they also become Q.24 with << 12. Route
+    /* PROJECTIVE build: the engine numerator is Q12.20 (FB=20), not Q.12. Rotation/zoom/pan are the affine
+     * sub-case (g=h=0). m_a..m_e here are co/si*invx >> 12 = Q.12 ratios; shift them << 8 to Q.20. The
+     * translation m_c/m_f were built as src_center*4096 (Q.12) so they also become Q.20 with << 8. Route
      * through the single homography writer so rotation and keystone share one coeff path + one g/h packing. */
-    warp_apply_homography((int)((long long)m_a << 12), (int)((long long)m_b << 12),
-                          (int)((long long)m_c << 12), (int)((long long)m_d << 12),
-                          (int)((long long)m_e << 12), (int)((long long)m_f << 12),
+    warp_apply_homography((int)((long long)m_a << 8), (int)((long long)m_b << 8),
+                          (int)((long long)m_c << 8), (int)((long long)m_d << 8),
+                          (int)((long long)m_e << 8), (int)((long long)m_f << 8),
                           0, 0, lead);
     g_proj_kh = 0; g_proj_kv = 0;   /* rotation cancels any prior keystone */
 #else

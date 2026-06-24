@@ -29,7 +29,7 @@
 
 module pg_warp_projective_faithful_tb;
     localparam OUT_W=64, OUT_H=48, IN_W=96, IN_H=72;
-    localparam LTILE=4, TILE=16, CW=32, FB=24, GCW=40, GFB=36, NA=OUT_W*OUT_H;
+    localparam LTILE=4, TILE=16, CW=32, FB=20, GCW=40, GFB=36, NA=OUT_W*OUT_H;
     localparam RF=28, LUT_BITS=9, NR_ITERS=2, AW=44, WW=48;
     // source 96x72 -> 24x18 = 432 4x4 tiles. Cache holds the whole working set; deep lead warms the frame.
     localparam NTILE=512, WAY=4, PD=64, DREQ=64, LEAD=32768;

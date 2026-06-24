@@ -83,15 +83,17 @@ set_property -dict [list CONFIG.IN_W {1920} CONFIG.IN_H {1080} CONFIG.OUT_W $WAR
 # ---- PROJECTIVE front-end (P3, env PROJECTIVE_BUILD=1). DEFAULT OFF -> the affine BD is byte-identical.
 # When set: pg_re_0 runs the full projective address generator (keystone / corner-pin homography).
 #   CONFIG.PROJECTIVE {1}  -> instantiate pg_projective's divide path (vs the affine subset)
-#   CONFIG.FB {24}         -> numerator coeffs a..f are Q8.24 (P1 budget); the 6 coeff GPIOs are unchanged
-#                            (still 32-bit each on axi_gpio_8/9/10) but the firmware emits Q.24, not Q.12.
+#   CONFIG.FB {20}         -> numerator coeffs a..f are Q12.20; the 6 coeff GPIOs are unchanged
+#                            (still 32-bit each on axi_gpio_8/9/10) but the firmware emits Q.20, not Q.12.
+#                            FB was 24 (Q8.24) through P1-P4 but c/f (source coords ~1920 px) overflow the
+#                            CW=32 signed port at FB=24; FB=20 gives a +/-2048 px range (docs/projective-fb-fix.md).
 #   GCW=40 / GFB=36 are the pg_warp_top defaults (Q4.36 perspective) and need no override.
 # The perspective coeffs m_g/m_h are NEW 40-bit ports -> wired from new GPIOs below (search PROJ_GH).
 set PROJECTIVE_BUILD 0
 if {[info exists ::env(PROJECTIVE_BUILD)] && $::env(PROJECTIVE_BUILD) ne "0"} { set PROJECTIVE_BUILD 1 }
 puts "BUILD: PROJECTIVE_BUILD=$PROJECTIVE_BUILD (warp front-end = [expr {$PROJECTIVE_BUILD?{projective keystone/corner-pin}:{affine}}])"
 if {$PROJECTIVE_BUILD} {
-    set_property -dict [list CONFIG.PROJECTIVE {1} CONFIG.FB {24} CONFIG.GCW {40} CONFIG.GFB {36}] [get_bd_cells pg_re_0]
+    set_property -dict [list CONFIG.PROJECTIVE {1} CONFIG.FB {20} CONFIG.GCW {40} CONFIG.GFB {36}] [get_bd_cells pg_re_0]
 }
 connect_bd_net $pclk  [get_bd_pins pg_re_0/clk]
 connect_bd_net $prstn [get_bd_pins pg_re_0/rstn]

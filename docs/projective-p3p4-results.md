@@ -169,6 +169,16 @@ for this phase). Options for whoever owns it: widen `CW` for a..f to ~40 bits (p
 projective bring-up to **720p** and/or **small keystone**. The slices/concat infra and the GPIO-packing
 pattern from this task are directly reusable if `CW` is widened.
 
+### ✅ RESOLVED 2026-06-24 — FB 24 → 20 (no CW widen). See `docs/projective-fb-fix.md`.
+
+Fixed by changing **`FB` 24 → 20** on the projective path (golden + BD `CONFIG.FB {20}` + firmware
+`to_q20` / `<<8`), **keeping CW=32 and the GPIOs as-is**. Q12.20 gives a signed-32 range of **±2048 px**
+(covers the 1920-px source; measured `max|a..f_q| = 2^28.5`, fits). Precision cost is Q.13 → **Q.8.5
+(≈2.7e-3 px)** at the most-foreshortened keystone corner — visually lossless. All P1/P2 sims re-pass
+bit-exact at FB=20, firmware↔golden cross-check is bit-identical at Q.20 (the keystone-H 0.20 `c` is now a
+true positive `233,538,846` instead of the wrapped `-558,345,749` above), and the **affine build (FB=12) is
+byte-for-byte unchanged**. Full writeup + re-validation table in `docs/projective-fb-fix.md`.
+
 ---
 
 ## → P5 build recipe (for the parent agent)

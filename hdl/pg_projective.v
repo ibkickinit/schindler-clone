@@ -20,9 +20,11 @@
 //   on the boundary (no integer-coord off-by-one). Bit-exact to tools/pg_projective_golden.py.
 //   This module hardcodes the pipeline for NR_ITERS==2 (the chosen config).
 //
-// PRECISION (budgeted in the golden; for >=Q.12 sub-pixel at the most-foreshortened edge of a
-// 1280-wide output over 1920x1080): FB=24, GFB=36, RF=28, LUT_BITS=9, NR_ITERS=2 -> worst-case
-// 1.2e-4 px (Q.13.0). (Affine-compat build uses FB=12.)
+// PRECISION (budgeted in the golden; at the most-foreshortened edge of a 1280-wide output over
+// 1920x1080): FB=20, GFB=36, RF=28, LUT_BITS=9, NR_ITERS=2 -> worst-case 2.7e-3 px (Q.8.5),
+// visually lossless. FB was 24 (Q.13.0 precision) through P1-P4 but overflowed the CW=32 signed
+// coeff port on the translation coeffs c/f (source coords ~1920 px); FB=20 gives +/-2048 px range.
+// See docs/projective-fb-fix.md. (Affine-compat build uses FB=12, untouched.)
 //
 // HANDSHAKE: same advance-only-on-accept contract as pg_affine. The reciprocal adds pipeline
 // latency, so the WHOLE datapath (DDA front + reciprocal pipe + multiply) freezes as one unit
