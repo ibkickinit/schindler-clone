@@ -4,15 +4,12 @@ Top-down de-risking: prove the **hardest, highest-uncertainty** links first
 (DP-Alt-Mode-to-two-streams, and clean 12G out), then integrate.
 
 ## Phase 0 — Paper design & sourcing de-risk
-- **Resolve the MST option (`06` Q1) — but it no longer blocks dev (see Phase 1).**
-  Price the cheapest-first options in parallel: discrete hubs **Parade
-  PS8650BGA274GTR-A0** (Avnet quote **requested 2026-06-24, pending**), **Synaptics
-  VMM6210/5330** (datasheet in hand), **Realtek RTD2186**; and the in-FPGA IP
-  routes **Intel** DP-MST + SDI II and **Parretto/Bitec MST IP on PolarFire**.
-  Default to **discrete hub + PolarFire (no IP NRE)**; AMD only as last resort.
-- **Only if forced to Family B:** quote **Intel** and **Parretto/Bitec** before
-  AMD; if AMD, confirm **eval/timeout licenses** carry Phases 1–4 (`06` Q10).
-  **HDCP entitlement is not needed** on any route — non-HDCP-sink (`06` Q11).
+- **MST sourcing — follow `07-sourcing-playbook.md` (decision set).** Concrete
+  buy-this-week actions: order a **Plugable USBC-MSTH2 (~$40, Amazon)** + the
+  **Microchip MPF300-VIDEO-KIT-NS (DigiKey)**; `git clone github.com/Parretto/
+  DisplayPort`; **email Parretto to confirm PolarFire MST dual-4K60 support** (the
+  one gating assumption). AMD ZCU102 is the maturity fallback; Parade PS8650 the
+  discrete backup (Avnet/Parade samples). HDCP entitlement not needed (`06` Q11).
 - **HDCP:** confirm the chosen DP/HDMI RX silicon (incl. VMM6210, which has
   HDCP 2.3) can be **provably unprovisioned** so the box is not an HDCP sink.
 - Confirm **DP Alt Mode 4-lane** behavior on the target laptop classes

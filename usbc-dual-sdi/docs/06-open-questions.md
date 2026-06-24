@@ -2,31 +2,23 @@
 
 Ordered by how much they constrain the rest of the design.
 
-## Q1 — How to split one DP link into two displays *(MANY routes now; no longer AMD-or-bust)*
-Successive research kept widening this. It is **not** the binary "cheap-gated-hub
-vs expensive-AMD" it looked like two passes ago. Full detail in `04` Block 2.
-Two families, several options each:
-- **Family A — discrete MST hub + cheap FPGA (PolarFire, free 12G-SDI IP). No MST
-  IP NRE.** Hub options: **Synaptics VMM6210/5330** (datasheet in hand; integrates
-  USB-C input), **Parade PS8650** (PS8650BGA274GTR-A0; **Avnet quote requested
-  2026-06-24, pending**; needs a USB-C front stage), **Realtek RTD2186** (DP1.4
-  MST → 4× HDMI2.0 4K60; sourcing unverified). Analogix ANX6470 is DP1.2-limited
-  (marginal).
-- **Family B — MST RX inside the FPGA.** Three IP routes, **not just AMD**: AMD
-  first-party (~$16k, most proven); **Intel/Altera** first-party (DP-MST sink +
-  12G-SDI II on Arria 10 / Cyclone 10 GX / Agilex; pricing unverified);
-  **third-party MST IP (Parretto/Bitec) on a cheap PolarFire** (keeps PolarFire's
-  free SDI IP → MST-in-FPGA *without* AMD's NRE).
-- **Thunderbolt/USB4** evaluated — no Asian single-chip; only Intel Goshen Ridge
-  JHL8440, TB-cert-gated. Park unless TB-only host support is required.
+## Q1 — How to split one DP link into two displays *(RECOMMENDATION SET — see `07` sourcing playbook)*
+The option-sprawl is resolved in **`07-sourcing-playbook.md`**, which ranks every
+route by real sourcing ease and picks one path. Bottom line: **no discrete MST
+hub is small-shop-buyable** (all NDA/design-win), so —
+- **Prototype:** a **$40 off-the-shelf USB-C→dual-HDMI MST adapter** (Plugable
+  USBC-MSTH2) into an FPGA HDMI-RX — offloads the MST hub to a commodity part;
+  build the SDI core now.
+- **Production (primary track):** **MST-in-FPGA on Microchip PolarFire +
+  Parretto DP-MST IP (free eval on GitHub) + Microchip 12G-SDI IP** — the only
+  path where every piece is touchable without a sales gate. **Gating assumption
+  to de-risk: Parretto MST RX on PolarFire delivering two independent 4K60 sink
+  streams.**
+- **Fallback:** AMD ZCU102 + DP1.4 RX Subsystem + UHD-SDI IP (most mature, paid
+  production license). Keep **Parade PS8650** as a discrete backup (email-for-
+  samples). **Drop Synaptics/Realtek/Analogix** for a small shop.
 
-**Decision rule:** pick the cheapest option whose sourcing/quote clears. Best
-case = discrete hub + PolarFire (no IP NRE). If hubs fall through, Intel or
-Parretto/Bitec-on-PolarFire still beat AMD; **AMD is now the last-resort
-fallback, not the default.** ⚠️ Parade PS176-class / ITE / Algoltek / Realtek
-**RTD2173**-class are single-stream converters, **not** MST splitters.
-**Crucially, this no longer gates development — see the decoupled dev path in
-`05` Phase 1.**
+Full per-option detail, links, and next actions live in `07`.
 
 ## Q2 — Does the target laptop give 4-lane DP Alt Mode? *(measurement, not a fork)*
 Dual-4K60 needs 4 DP lanes. Many USB-C ports drop to **2-lane** DP when
