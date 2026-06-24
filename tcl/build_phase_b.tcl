@@ -69,6 +69,7 @@ add_files -norecurse [file join $project_root hdl pg_compose.v]
 add_files -norecurse [file join $project_root hdl pg_read_engine_top.v]
 # warp read-engine (affine/arbitrary-geometry) modules
 add_files -norecurse [file join $project_root hdl pg_affine.v]
+add_files -norecurse [file join $project_root hdl pg_projective.v]  ;# projective addr-gen (PROJECTIVE_BUILD=1); affine build elaborates its byte-identical g_affine branch
 add_files -norecurse [file join $project_root hdl pg_skid.v]
 add_files -norecurse [file join $project_root hdl pg_tilecache_rt2.v]
 add_files -norecurse [file join $project_root hdl pg_warp_engine.v]
