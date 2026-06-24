@@ -15,13 +15,20 @@
 module pg_warp_engine #(
     parameter integer OUT_W=1280, OUT_H=720, IN_W=1920, IN_H=1080,
     parameter integer LTILE=4, NTILE=64, WAY=4, PD=16, CW=32, FB=12,
-    parameter integer LEAD=512                       // bound prefetch run-ahead so rr never evicts an unconsumed tile
+    parameter integer LEAD=512,                      // bound prefetch run-ahead so rr never evicts an unconsumed tile
+    // ---- projective front-end (P2). PROJECTIVE=0 + FB=12 + m_g/m_h tied 0 == byte-for-byte pg_affine. ----
+    parameter integer PROJECTIVE=0,                  // 0 = affine; 1 = keystone/corner-pin (wider coeffs + reciprocal)
+    parameter integer GCW=40, GFB=36,                // perspective coeff word width + frac bits (P1 budget)
+    parameter integer RF=28, LUT_BITS=9, NR_ITERS=2, // reciprocal datapath frac / seed-LUT / Newton steps
+    parameter integer AW=44, WW=48                   // numerator / denominator accumulator widths
 ) (
     input  wire        clk, rstn,
-    input  wire        sof,                        // 1-cyc: start the raster walk (affines self-pace via ready)
+    input  wire        sof,                        // 1-cyc: start the raster walk (addr-gens self-pace via ready)
     input  wire [19:0] lead_rt,                    // runtime prefetch lead (0 -> use build-param LEAD)
-    // affine coeffs (signed Q(CW-FB).FB), firmware-computed
+    // numerator coeffs (signed Q(CW-FB).FB), firmware-computed
     input  wire signed [CW-1:0] m_a,m_b,m_c,m_d,m_e,m_f,
+    // perspective coeffs (signed Q(GCW-GFB).GFB); tie 0 for affine (w=1 -> byte-for-byte pg_affine)
+    input  wire signed [GCW-1:0] m_g, m_h,
     input  wire [23:0] matte,                     // out-of-window fill
     // output AXIS-ish
     output wire        o_valid,
@@ -39,12 +46,14 @@ module pg_warp_engine #(
     // live tag lookup (which was the -3.5ns combinational handshake loop through the affine DDA).
     wire        tc_ready, pf_ready;
 
-    // ---- consumer affine -> skid -> cache ----
+    // ---- consumer addr-gen -> skid -> cache ----
     wire        ca_v, ca_in, ca_nr; wire [11:0] ca_col, ca_row, ca_fx, ca_fy; wire ca_sr;
     wire        cm_v; wire [48:0] cm_d;
-    pg_affine #(.OUT_W(OUT_W),.OUT_H(OUT_H),.IN_W(IN_W),.IN_H(IN_H),.CW(CW),.FB(FB)) u_aff_c (
+    pg_projective #(.OUT_W(OUT_W),.OUT_H(OUT_H),.IN_W(IN_W),.IN_H(IN_H),.CW(CW),.FB(FB),
+                    .GCW(GCW),.GFB(GFB),.RF(RF),.LUT_BITS(LUT_BITS),.NR_ITERS(NR_ITERS),
+                    .AW(AW),.WW(WW),.PROJECTIVE(PROJECTIVE)) u_aff_c (
         .clk(clk),.rstn(rstn),.sof(sof),.o_valid(ca_v),.o_ready(ca_sr),
-        .m_a(m_a),.m_b(m_b),.m_c(m_c),.m_d(m_d),.m_e(m_e),.m_f(m_f),
+        .m_a(m_a),.m_b(m_b),.m_c(m_c),.m_d(m_d),.m_e(m_e),.m_f(m_f),.m_g(m_g),.m_h(m_h),
         .o_in_window(ca_in),.o_src_col(ca_col),.o_src_row(ca_row),
         .o_h_frac(ca_fx),.o_v_frac(ca_fy),.o_new_row(ca_nr));
     pg_skid #(.W(49)) u_skid_c (.clk(clk),.rstn(rstn),
@@ -73,9 +82,13 @@ module pg_warp_engine #(
             lead_cnt <= lead_cnt + (pf_acc_r?20'd1:20'd0) - (c_acc_r?20'd1:20'd0);
         end
     end
-    pg_affine #(.OUT_W(OUT_W),.OUT_H(OUT_H),.IN_W(IN_W),.IN_H(IN_H),.CW(CW),.FB(FB)) u_aff_p (
+    // PREFETCH uses IDENTICAL geometry (same params + coeffs incl. m_g/m_h) as the consumer so the
+    // tile set the prefetch warms is exactly the set the consumer gathers -> cache stays coherent.
+    pg_projective #(.OUT_W(OUT_W),.OUT_H(OUT_H),.IN_W(IN_W),.IN_H(IN_H),.CW(CW),.FB(FB),
+                    .GCW(GCW),.GFB(GFB),.RF(RF),.LUT_BITS(LUT_BITS),.NR_ITERS(NR_ITERS),
+                    .AW(AW),.WW(WW),.PROJECTIVE(PROJECTIVE)) u_aff_p (
         .clk(clk),.rstn(rstn),.sof(sof),.o_valid(pa_v),.o_ready(pa_sr && pf_gate),
-        .m_a(m_a),.m_b(m_b),.m_c(m_c),.m_d(m_d),.m_e(m_e),.m_f(m_f),
+        .m_a(m_a),.m_b(m_b),.m_c(m_c),.m_d(m_d),.m_e(m_e),.m_f(m_f),.m_g(m_g),.m_h(m_h),
         .o_in_window(pa_in),.o_src_col(pa_col),.o_src_row(pa_row),
         .o_h_frac(),.o_v_frac(),.o_new_row());
     pg_skid #(.W(25)) u_skid_p (.clk(clk),.rstn(rstn),

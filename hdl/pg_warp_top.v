@@ -31,13 +31,22 @@ module pg_warp_top #(
                                                      //     (~1.1 GB/s) any geometry — needs BRAM relief first.
     parameter integer LEAD  = 2048,
     parameter integer CW = 32,
-    parameter integer FB = 12
+    parameter integer FB = 12,
+    // ---- projective front-end (P2). Default PROJECTIVE=0 keeps the current affine BD bit-identical;
+    // m_g/m_h are exposed as top-level inputs but tied 0 by the affine BD (NOT wired in P2 — that is P3).
+    parameter integer PROJECTIVE = 0,
+    parameter integer GCW = 40, GFB = 36,    // perspective coeff width / frac bits (m_g/m_h GPIO format; = P3 GPIO width)
+    parameter integer RF = 28, LUT_BITS = 9, NR_ITERS = 2,
+    parameter integer AW = 44, WW = 48
 ) (
     input  wire        clk, rstn,
     input  wire [5:0]  frame_ptr,            // VDMA s2mm_frame_ptr_out (async)
     input  wire        out_vsync,            // v_tc_tx vsync_out (this domain)
-    // affine coeffs (AXI GPIO, async — frame-atomic latched at sof inside pg_affine)
+    // numerator coeffs (AXI GPIO, async — frame-atomic latched at sof inside the addr-gen)
     input  wire signed [CW-1:0] m_a, m_b, m_c, m_d, m_e, m_f,
+    // perspective coeffs (AXI GPIO, async; GCW-bit signed Q(GCW-GFB).GFB). Tie 0 for affine.
+    // NOT wired into any BD tcl in P2 — exposed as ports only; the BD hook-up is P3.
+    input  wire signed [GCW-1:0] m_g, m_h,
     input  wire [23:0] matte_rgb,
     input  wire [31:0] lead_cfg,          // runtime per-geometry prefetch LEAD (AXI GPIO, async; 0 -> build LEAD)
     // output AXIS -> color stack
@@ -86,8 +95,11 @@ module pg_warp_top #(
         end
     end
 
-    // ---- coeff CDC (quasi-static; pg_affine re-latches at sof) ----
+    // ---- coeff CDC (quasi-static; the addr-gen re-latches at sof) ----
     (* ASYNC_REG="TRUE" *) reg signed [CW-1:0] a1,b1,c1,d1,e1,f1, a2,b2,c2,d2,e2,f2;
+    // perspective-coeff CDC (m_g/m_h), 2-FF, mirrors a..f. g1's D MUST be false-pathed in the XDC at
+    // P3 (same GPIO->pclk trap as the a..f / lr1 / sr1 crossings). Tied 0 in the affine BD -> harmless.
+    (* ASYNC_REG="TRUE" *) reg signed [GCW-1:0] g1,h1, g2,h2;
     (* ASYNC_REG="TRUE" *) reg [23:0] mt1, mt2;
     // runtime LEAD CDC (quasi-static GPIO; firmware writes the per-geometry lead at sof-far). 2-FF sync;
     // lr1's D is false-pathed in the XDC (same as the coeff CDC). 0 -> engine falls back to build LEAD.
@@ -101,8 +113,8 @@ module pg_warp_top #(
     (* ASYNC_REG="TRUE" *) reg sr1, srst;
     wire engine_rstn = rstn & ~srst;
     always @(posedge clk) begin
-        a1<=m_a;b1<=m_b;c1<=m_c;d1<=m_d;e1<=m_e;f1<=m_f; mt1<=matte_rgb;
-        a2<=a1;b2<=b1;c2<=c1;d2<=d1;e2<=e1;f2<=f1; mt2<=mt1;
+        a1<=m_a;b1<=m_b;c1<=m_c;d1<=m_d;e1<=m_e;f1<=m_f; mt1<=matte_rgb; g1<=m_g; h1<=m_h;
+        a2<=a1;b2<=b1;c2<=c1;d2<=d1;e2<=e1;f2<=f1; mt2<=mt1; g2<=g1; h2<=h1;
         lr1<=lead_cfg[19:0]; lr2<=lr1;
         dsel1<=lead_cfg[23:20]; dsel2<=dsel1;
         sr1<=lead_cfg[31]; srst<=sr1;
@@ -117,9 +129,11 @@ module pg_warp_top #(
     wire        cmd_rdy;                  // DataMover command formatter can accept a row command
 
     pg_warp_engine #(.OUT_W(OUT_W),.OUT_H(OUT_H),.IN_W(IN_W),.IN_H(IN_H),
-                     .LTILE(LTILE),.NTILE(NTILE),.WAY(WAY),.PD(PD),.CW(CW),.FB(FB),.LEAD(LEAD)) u_eng (
+                     .LTILE(LTILE),.NTILE(NTILE),.WAY(WAY),.PD(PD),.CW(CW),.FB(FB),.LEAD(LEAD),
+                     .PROJECTIVE(PROJECTIVE),.GCW(GCW),.GFB(GFB),.RF(RF),.LUT_BITS(LUT_BITS),
+                     .NR_ITERS(NR_ITERS),.AW(AW),.WW(WW)) u_eng (
         .clk(clk),.rstn(engine_rstn),.sof(sof),.lead_rt(lr2),  // engine_rstn includes the soft-reset
-        .m_a(a2),.m_b(b2),.m_c(c2),.m_d(d2),.m_e(e2),.m_f(f2),.matte(mt2),
+        .m_a(a2),.m_b(b2),.m_c(c2),.m_d(d2),.m_e(e2),.m_f(f2),.m_g(g2),.m_h(h2),.matte(mt2),
         .o_valid(o_valid),.o_pix(o_pix),.o_ready(o_ready),
         .fetch_req(wreq),.fetch_tx(wtx),.fetch_ty(wty),.fetch_ready(t_rdy),
         .fill_valid(fv),.fill_blk(fblk),.fill_last(fl));

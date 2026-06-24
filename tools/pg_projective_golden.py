@@ -368,10 +368,65 @@ def emit_vectors(path, OUT_W, OUT_H, IN_W, IN_H, coeffs, projective=True):
             n += 1
     return n
 
+# ---------------- synthetic source image + golden OUTPUT PIXELS (P2 faithful-TB) ----------------
+# The faithful warp TBs fill the source frame with frame[y*IN_W+x] = {x[7:0], y[7:0], (x*3+y*5+7)[7:0]}
+# (R=x, G=y, B=mix). We mirror that EXACTLY so the TB can check the full engine output (addr-gen ->
+# cache -> bilinear) bit-exact, not just the gathered coords.
+def src_px(x, y):
+    r = x & 0xFF
+    g = y & 0xFF
+    b = (x*3 + y*5 + 7) & 0xFF
+    return (r << 16) | (g << 8) | b
+
+def lerp8(a, b, w):
+    # bit-exact match to pg_warp_engine.lerp8 / the TB's g8: r = a + ((b-a)*w + 128) >> 8 (arith)
+    d = b - a
+    p = d * w
+    r = a + ((p + 128) >> 8)
+    return r & 0xFF
+
+def lerp24(a, b, w):
+    return (lerp8((a>>16)&0xFF,(b>>16)&0xFF,w) << 16) | \
+           (lerp8((a>>8)&0xFF,(b>>8)&0xFF,w) << 8)  | \
+            lerp8(a&0xFF,b&0xFF,w)
+
+def golden_pixel(sx_q, sy_q, valid, IN_W, IN_H, matte):
+    """Bilinear gather/lerp on the synthetic source at the golden Q.FB coords. Matches the engine's
+    cache neighbour-clamp (col+1 clamped to IN_W-1) and 2-stage lerp (weight = frac[11:4])."""
+    if not valid:
+        return matte
+    col = sx_q >> FB
+    row = sy_q >> FB
+    if col < 0 or row < 0 or col >= IN_W or row >= IN_H:
+        return matte
+    cn1 = col if col >= IN_W-1 else col+1
+    rn1 = row if row >= IN_H-1 else row+1
+    # weight = top 8 bits of the 12-bit fraction = (sx_q >> (FB-12)) >> 4, i.e. bits [FB-1:FB-8]
+    wx = (sx_q >> (FB-12)) >> 4 & 0xFF
+    wy = (sy_q >> (FB-12)) >> 4 & 0xFF
+    p00 = src_px(col, row);  p10 = src_px(cn1, row)
+    p01 = src_px(col, rn1);  p11 = src_px(cn1, rn1)
+    tp = lerp24(p00, p10, wx); bt = lerp24(p01, p11, wx)
+    return lerp24(tp, bt, wy)
+
+def emit_pixels(path, OUT_W, OUT_H, IN_W, IN_H, coeffs, matte, projective=True):
+    """Write <path>.pix: one 6-hex-digit RGB per output pixel (the expected ENGINE output), computed
+    by bilinear-sampling the synthetic source at the golden projective coords. matte where OOW."""
+    coeffs_q = quantize_coeffs(*coeffs)
+    n = 0
+    with open(path + ".pix", "w") as fp:
+        for ox, oy, sx_q, sy_q, valid in eval_frame(OUT_W, OUT_H, IN_W, IN_H, coeffs_q, projective):
+            fp.write(f"{golden_pixel(sx_q, sy_q, valid, IN_W, IN_H, matte):06x}\n")
+            n += 1
+    return n
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--tune", action="store_true", help="run the LUT/NR/RF tuning sweep")
     ap.add_argument("--emit", metavar="DIR", help="emit golden vectors into DIR")
+    ap.add_argument("--emit-pix", action="store_true",
+                    help="also emit golden OUTPUT PIXELS (.pix) for the faithful TB (needs --emit)")
+    ap.add_argument("--matte", default="101010", help="matte RGB hex for OOW pixels (default 101010)")
     ap.add_argument("--out-w", type=int, default=64)
     ap.add_argument("--out-h", type=int, default=48)
     ap.add_argument("--in-w", type=int, default=96)
@@ -421,10 +476,15 @@ def main():
             "proj_corner":  cornerpin_homography(OW,OH,IW,IH,
                                 [(6,4),(-5,3),(4,-6),(-3,-4)]),
         }
+        matte = int(args.matte, 16)
         for name, coeffs in sets.items():
             p = os.path.join(d, name)
             n = emit_vectors(p, OW, OH, IW, IH, coeffs, projective=True)
-            print(f"  emitted {name}: {n} px -> {p}.coef/.vec")
+            msg = f"  emitted {name}: {n} px -> {p}.coef/.vec"
+            if args.emit_pix:
+                np = emit_pixels(p, OW, OH, IW, IH, coeffs, matte, projective=True)
+                msg += f"/.pix ({np})"
+            print(msg)
         return
 
     # default: just tune

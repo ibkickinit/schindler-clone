@@ -120,3 +120,15 @@ projective additions land on (or adjacent to) the WNS-critical cache+coord cone:
 **Bottom line for P5:** the design is pipelined deep enough that the *only* real timing exposure is the
 multipliers; force them to DSP48 and false-path the two new coeff CDCs and it should close on the -1 at
 74.25 MHz with margin comparable to the current build. Validate WNS empirically before committing.
+
+---
+
+## → P2 (full-engine integration)
+
+P2 is **done and sim-proven** — see [`docs/projective-p2-results.md`](projective-p2-results.md).
+`pg_projective` is now instantiated (consumer + prefetch) in `pg_warp_engine`/`pg_warp_top` behind a
+`PROJECTIVE` param (default 0 = byte-for-byte affine). The faithful full-engine TB
+(`sim/pg_warp_projective_faithful_tb.v`, `sim/run_warp_projective_faithful.sh`) proves keystone +
+4-corner pin **complete a full frame with no wedge AND bit-exact to this golden**, clean and
+back-pressured, through the faithful DataMover — including an extreme-foreshortening probe. `m_g`/`m_h`
+are exposed at the top (width `GCW=40`) with CDC, but NOT wired into any BD tcl (that is P3).
