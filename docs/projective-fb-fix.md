@@ -110,3 +110,102 @@ negative `-558,345,749` (the P3P4 overflow demonstration). The fix is confirmed 
   `#else` direct GPIO-write block and the affine `warp_set_rotation` math are byte-identical.
 - Affine firmware ELF rebuilds clean with no `-DPROJECTIVE_BUILD`.
 - `pg_projective_tb.v` affine-equivalence DUTs stay `FB=12` and still match `pg_affine` bit-exact.
+
+---
+
+# Reciprocal timing fix — deepen the Newton-Raphson pipeline (WNS −0.40 ns)
+
+**Scope:** `hdl/pg_projective.v` `g_proj` (PROJECTIVE=1) reciprocal pipeline ONLY. Sim/elaborate
+re-validation only — no bitstream, no programming. The affine subset (`PROJECTIVE=0`) and `pg_affine.v`
+are **byte-for-byte unchanged**; the homography/coeff interface, the FB=20 numerator format, RF=28,
+LUT_BITS=9, NR_ITERS=2, and the (sx,sy)→src_col/row/frac output are all **identical given the same
+inputs** — only the internal pipeline *depth* changed.
+
+## The violation (measured on the routed projective bitstream)
+
+`WARP_ENGINE=1 PROJECTIVE_BUILD=1` failed timing at **WNS = −0.40 ns @ 74.25 MHz (xc7z020-1)**. The
+single worst path was inside `pg_projective`'s reciprocal:
+
+```
+FROM: u_eng/u_aff_c/g_proj.s3_mx_reg[0]/C
+TO:   u_eng/u_aff_c/g_proj.s6_x[29].._psdsp/D
+Data Path Delay: 13.74 ns (logic 9.93 / route 3.81), 19 logic levels (15×CARRY4, 2×DSP48)
+```
+
+In the OLD 8-stage pipe each "NR step" stage did a full `multiply → partial-product reduction →
+(2 − m·x) subtract → next multiply` and the synthesizer collapsed/retimed the intermediate flop, so a
+**second DSP multiply (plus its reduction CARRY4s) chained combinationally off the first** between the
+`s3`→`s6` registers — two DSP48 multiplies and ~15 CARRY4 in one clock.
+
+## The fix — one multiply per clock, raw product registered
+
+Every Newton-Raphson multiply now lives in its **own** clock with its **raw full-width product
+registered** (so the DSP48 output register absorbs it and the partial-product reduction never feeds the
+next multiply), and every round-shift and `(2 − m·x)` subtract is **isolated into its own stage**. No two
+DSP multiplies — and no `multiply → reduction → multiply` chain — are combinational anymore.
+
+New stage table (was 8 recip stages + 1 output = LAT 8; now 12 recip stages + 2 output):
+
+| stage | op | registered |
+|------|----|-----------|
+| S0  | latch DDA w | `s0_w`, valid |
+| S1  | leading-1 detect | `s1_msb` |
+| S2  | normalize w→m, seed x0=LUT | `s2_m`, `s2_x` |
+| **S3**  | **MUL** raw `p_mx1 = m·x0` | `s3_pmx1` (raw DSP product) |
+| S4  | RND `mx1 = round(p_mx1≫RF)`; `t1 = 2−mx1` | `s4_mx1` |
+| **S5**  | **MUL** raw `p_x1 = x0·t1` | `s5_px1` |
+| S6  | RND `x1 = round(p_x1≫RF)` | `s6_x1` |
+| **S7**  | **MUL** raw `p_mx2 = m·x1` | `s7_pmx2` |
+| S8  | RND `mx2 = round(p_mx2≫RF)`; `t2 = 2−mx2` | `s8_mx2` |
+| **S9**  | **MUL** raw `p_x2 = x1·t2` | `s9_px2` |
+| S10 | RND `x2 = round(p_x2≫RF)` | `s10_x2` |
+| S11 | DEN `iw = denorm(x2, msb)` | `s11_iw` |
+| **S12** | **MUL** raw `px = nx·iw`, `py = ny·iw` | `s12_px`, `s12_py` |
+| S13 | reduce `≫RF`, int/frac split, window compare, register outputs | `o_*`, `sx_q`, `sy_q` |
+
+The final `nx·iw`/`ny·iw` multiply (a wide `AW × (RF+3)` product that previously fed the `≫RF`
+reduction + int/frac split + window compare combinationally into the output register) is **also split**:
+S12 registers the raw products, S13 does the reduction/window. That breaks the second-longest projective
+chain too.
+
+**Pipeline depth:** reciprocal grew **8 → 14 stages** (+6 register stages). `iw` is valid at stage S11
+(`RECIP_LAT = 11`); the parallel `nx/ny/new_row/valid/w_bad` delay line is `DLINE = RECIP_LAT+1 = 12`
+deep so `nxq[DLINE-1]` (=`nxq[11]`) meets `s11_iw` exactly at the S12 multiply. Total
+`running → o_valid` latency is **14 clocks** (was 9). **Latency is free here** — hidden by the prefetch
+lead; throughput stays **1 px/clk** (whole pipe gated as one unit by `pipe_en`).
+
+`RF` was **left at 28** — pipelining alone fixes the path, so the extra-margin RF knob was not needed and
+the golden/TB are untouched.
+
+## Expected critical-path improvement (no build — estimate)
+
+The broken chain was `s3_mx → (2−mx1 subtract: CARRY4) → x1 = x0·(2−mx1) (DSP48 ×2 cascade + reduction)
+→ mx2 = m·x1 (DSP48 + reduction) → s6`, i.e. **two DSP48 multiplies + two CARRY4 reductions + a subtract
+in one clock (19 logic levels, 13.74 ns)**. After the fix the worst projective intra-pclk stage is a
+**single** DSP48 multiply with its product captured in the DSP output register — no second multiply, no
+chained reduction. The CARRY4 count on that path drops from ~15 to the partial-product reduction of one
+multiply, and the logic levels roughly **halve** (~19 → ~8–10). With the 13.468 ns period (74.25 MHz)
+this should clear the −0.40 ns deficit with comfortable (≥0.5 ns) positive logic headroom. (WNS not
+measurable without an impl run — the parent owns the build.)
+
+## Re-validation — bit-exact (sim/elaborate only)
+
+- **`xelab` projective config:** clean — `pg_projective_tb` (FB=12 + FB=20 DUTs) and the full
+  `pg_warp_projective_faithful_tb` engine both elaborate with **no structural errors**.
+- **`sim/run_pg_projective.sh` (P1):** `RESULT: PASS (all cases bit-exact)`. Affine-equivalence
+  (identity/zoom2/shrink0.5/rot30/rot90/shift incl. back-pressure) — `pg_projective#(FB=12,g=h=0)` still
+  matches `pg_affine` bit-exact — AND all 5 projective golden cases (affine-id, keyH, keyV, keyHV, corner)
+  + back-pressure variants, **errors=0** each.
+- **`sim/run_warp_projective_faithful.sh` (P2 full engine):** all **9 cases bit-err=0, 3072/3072 px**
+  (affine-id, keystoneH, keystoneV, keystoneHV, cornerpin, each clean + back-pressure) — **PASS**.
+
+The TBs capture on `o_valid && o_ready` into raster-ordered arrays and compare to the golden, so they are
+**inherently latency-immune** — the +5-clock latency required **no** TB latency-constant change and **no**
+golden change. Bit-exactness is the correctness proof that the deeper pipe is a pure re-timing of the
+identical arithmetic.
+
+## Affine path — still untouched
+
+- `g_affine` (PROJECTIVE==0) block: **0-line diff**; `hdl/pg_affine.v`: **0-line diff**.
+- Only `hdl/pg_projective.v` changed (the `g_proj` reciprocal); golden, firmware, BD, and TB Q-formats
+  unchanged. P1 runtime re-proves affine-equivalence bit-exact.

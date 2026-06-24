@@ -84,20 +84,37 @@ if (PROJECTIVE==0) begin : g_affine
 end else begin : g_proj
 // =============================== FULL PROJECTIVE PATH ===============================
 //
-// Pipeline (each row a register stage; the whole pipe is gated by pipe_en):
-//   S0  latch DDA: w0, nx0, ny0, nr0(new_row), valid; plus w_bad guard
-//   S1  leading-1 detect -> msb
-//   S2  normalize w -> mantissa m (Q.RF, leading 1 at bit RF); seed x0 = LUT[top bits]
-//   S3  NR1a: mx1 = round(m*x0 >> RF)
-//   S4  NR1b: x1  = round(x0*(2 - mx1) >> RF)
-//   S5  NR2a: mx2 = round(m*x1 >> RF)
-//   S6  NR2b: x2  = round(x1*(2 - mx2) >> RF)
-//   S7  denorm: iw = x2 << (GFB - msb)            [shift sign per exponent]
-//   S8  multiply: sx=round? no, trunc(nx*iw >> RF), sy=...; in_window from sx,sy
-// LAT = 8 stages. nx/ny/new_row/valid/w_bad ride a parallel LAT-1 deep delay line to S7,
-// where nx/ny meet iw at the S8 multiply. (NR_ITERS is fixed at 2 for this datapath.)
+// DEEPENED reciprocal pipeline (timing fix — see the detailed stage table at RECIP_LAT below and
+// docs/projective-fb-fix.md "reciprocal timing fix"). Every Newton-Raphson multiply now lives in
+// its OWN clock with its RAW product registered, and every round-shift / (2 - m*x) subtract is its
+// own stage, so no two DSP multiplies (and no multiply->reduction->multiply chain) are ever
+// combinationally chained. The whole pipe is gated by pipe_en; throughput stays 1 px/clk and the
+// extra latency is hidden by the prefetch lead. (NR_ITERS is fixed at 2 for this datapath.)
 
-    localparam integer LAT = 8;
+    // ---- DEEPENED reciprocal pipeline (timing fix) ----
+    // Every DSP multiply now occupies its OWN clock with its RAW product registered (so the DSP
+    // output reg absorbs it and the partial-product reduction never chains into the next multiply),
+    // and every round-shift / (2 - m*x) subtract is isolated into its own stage. No two multiplies
+    // (and no multiply->reduction->multiply chain) are combinational anymore.
+    //
+    //  S0  latch DDA: w0, valid
+    //  S1  leading-1 detect -> msb
+    //  S2  normalize w -> mantissa m (Q.RF); seed x0 = LUT[top bits]
+    //  S3  MUL : raw product p_mx1 = m*x0           (DSP, raw reg)
+    //  S4  RND : mx1 = round(p_mx1>>RF); t1 = 2-mx1  (subtract isolated)
+    //  S5  MUL : raw product p_x1 = x0*t1            (DSP, raw reg)
+    //  S6  RND : x1 = round(p_x1>>RF)
+    //  S7  MUL : raw product p_mx2 = m*x1            (DSP, raw reg)
+    //  S8  RND : mx2 = round(p_mx2>>RF); t2 = 2-mx2  (subtract isolated)
+    //  S9  MUL : raw product p_x2 = x1*t2            (DSP, raw reg)
+    //  S10 RND : x2 = round(p_x2>>RF)
+    //  S11 DEN : iw = denorm(x2, msb)
+    //  S12 MUL : raw products px=nx*iw, py=ny*iw     (DSP, raw reg)  <- nx/ny meet iw here
+    //  S13 OUT : sx=round(px>>RF), sy=...; in_window; register outputs
+    // RECIP_LAT = stage index at which iw is valid (= 11). The nx/ny/new_row/valid/w_bad delay line
+    // is RECIP_LAT deep so nxq[RECIP_LAT-1] aligns with s11_iw at the S12 multiply.
+    localparam integer RECIP_LAT = 11;   // stage index at which iw is valid (s11_v / s11_iw)
+    localparam integer DLINE     = RECIP_LAT + 1;   // delay-line depth: nxq[DLINE-1]=nxq[11] aligns s11_iw
     wire pipe_en;
 
     // ---------------- 3 incremental DDAs ----------------
@@ -164,43 +181,57 @@ end else begin : g_proj
     localparam [RF+1:0] TWO_RF  = (2 <<< RF);       // 2.0 in Q.RF
 
     // ---------------- reciprocal pipeline registers ----------------
-    reg                 s0_v, s1_v, s2_v, s3_v, s4_v, s5_v, s6_v, s7_v;
-    reg [WW-1:0]        s0_w, s1_w;
-    reg [7:0]           s1_msb, s2_msb, s3_msb, s4_msb, s5_msb, s6_msb, s7_msb;
-    reg [RF:0]          s2_m, s3_m, s4_m, s5_m;             // mantissa m carried (leading 1 @ bit RF)
-    reg [RF+1:0]        s2_x, s3_x, s4_x, s5_x, s6_x;       // x estimate (Q.RF)
-    reg [RF+1:0]        s3_mx, s5_mx;                       // m*x rounded (Q.RF, ~1.0)
-    reg [RF+2:0]        s7_iw;
+    // valid bits, one per stage S0..S11 (S11 = iw valid).
+    reg s0_v, s1_v, s2_v, s3_v, s4_v, s5_v, s6_v, s7_v, s8_v, s9_v, s10_v, s11_v;
+    reg [WW-1:0] s0_w, s1_w;
+    // msb (exponent) carried all the way to the de-normalize at S11.
+    reg [7:0] s1_msb,s2_msb,s3_msb,s4_msb,s5_msb,s6_msb,s7_msb,s8_msb,s9_msb,s10_msb;
+    // mantissa m carried to whichever multiply needs it (m*x0 @ S3, m*x1 @ S7).
+    reg [RF:0] s2_m, s3_m, s4_m, s5_m, s6_m;               // leading 1 @ bit RF
+    // x estimates and the x-operands carried across the split multiply/round stages.
+    reg [RF+1:0] s2_x;                                     // x0 seed
+    reg [RF+1:0] s3_x0, s4_x0;                             // x0 carried to the x1=x0*(2-mx1) multiply
+    reg [RF+1:0] s6_x1, s7_x1, s8_x1;                      // x1 carried to the x2=x1*(2-mx2) multiply
+    reg [RF+1:0] s4_mx1;                                   // mx1 rounded (Q.RF)
+    reg [RF+1:0] s8_mx2;                                   // mx2 rounded (Q.RF)
+    reg [RF+1:0] s10_x2;                                   // x2 = round(p_x2) (Q.RF)
+    reg [RF+2:0] s11_iw;
+    localparam integer MW = 2*RF + 4;                      // product width guard
+    reg [MW-1:0] s3_pmx1;                                  // raw m*x0
+    reg [MW-1:0] s5_px1;                                   // raw x0*(2-mx1)
+    reg [MW-1:0] s7_pmx2;                                  // raw m*x1
+    reg [MW-1:0] s9_px2;                                   // raw x1*(2-mx2)
 
-    // parallel delay line for nx/ny/new_row/valid/w_bad, aligned so nx/ny meet iw at the multiply.
-    reg signed [AW-1:0] nxq [0:LAT-1];
-    reg signed [AW-1:0] nyq [0:LAT-1];
-    reg [11:0]          nrq [0:LAT-1];
-    reg                 bdq [0:LAT-1];
-    reg                 vvq [0:LAT-1];
+    // parallel delay line for nx/ny/new_row/valid/w_bad, aligned so nx/ny meet iw at the S12 multiply.
+    reg signed [AW-1:0] nxq [0:DLINE-1];
+    reg signed [AW-1:0] nyq [0:DLINE-1];
+    reg [11:0]          nrq [0:DLINE-1];
+    reg                 bdq [0:DLINE-1];
+    reg                 vvq [0:DLINE-1];
     integer di;
 
     wire w_bad = ($signed(w) <= WEPS);
-    wire [RF:0] m_s1 = norm_m(s1_w, s1_msb);                // normalized mantissa from S1
+    wire [RF:0] m_s1 = norm_m(s1_w, s1_msb);              // normalized mantissa from S1
 
-    // 2.0 - m*x  in Q.RF  (m*x ~ 1.0, so this is ~1.0; fits RF+2 bits)
-    wire [RF+1:0] two_minus_3 = TWO_RF - s3_mx;
-    wire [RF+1:0] two_minus_5 = TWO_RF - s5_mx;
+    // round constant, MW-wide
+    wire [MW-1:0] HALF_W = {{(MW-RF){1'b0}}, HALF_RF};
 
-    // FULL-WIDTH products (must be explicit wide wires; an in-line A*B inside a narrow assignment
-    // context is truncated to the LHS width BEFORE the >>RF and yields 0). m and x are ~RF+1 bits
-    // each -> products up to ~2*RF+3 bits.
-    localparam integer MW = 2*RF + 4;                       // product width guard
-    wire [MW-1:0] mx1_full = {1'b0,s2_m} * s2_x;            // m * x0
-    wire [MW-1:0] x1_full  = s3_x       * two_minus_3;      // x0 * (2 - mx1)
-    wire [MW-1:0] mx2_full = {1'b0,s4_m} * s4_x;            // m * x1
-    wire [MW-1:0] x2_full  = s5_x       * two_minus_5;      // x1 * (2 - mx2)
-    wire [MW-1:0] HALF_W   = {{(MW-RF){1'b0}}, HALF_RF};    // round constant, MW-wide
+    // (2.0 - m*x) operands, formed in the round stage right before the consuming multiply.
+    wire [RF+1:0] two_minus_mx1 = TWO_RF - s4_mx1;        // formed @ S4, consumed by S5 multiply
+    wire [RF+1:0] two_minus_mx2 = TWO_RF - s8_mx2;        // formed @ S8, consumed by S9 multiply
+
+    // FULL-WIDTH products (explicit wide wires; m,x are ~RF+1 bits -> products up to ~2*RF+3 bits).
+    // Each is a SINGLE multiply whose result is registered raw in the same stage (no chaining).
+    wire [MW-1:0] mx1_mul = {1'b0,s2_m} * s2_x;           // S3: m * x0
+    wire [MW-1:0] x1_mul  = s4_x0       * two_minus_mx1;  // S5: x0 * (2 - mx1)
+    wire [MW-1:0] mx2_mul = {1'b0,s6_m} * s6_x1;          // S7: m * x1
+    wire [MW-1:0] x2_mul  = s8_x1       * two_minus_mx2;  // S9: x1 * (2 - mx2)
 
     always @(posedge clk) begin
         if(!rstn) begin
-            s0_v<=0; s1_v<=0; s2_v<=0; s3_v<=0; s4_v<=0; s5_v<=0; s6_v<=0; s7_v<=0;
-            for(di=0; di<LAT; di=di+1) vvq[di]<=0;
+            s0_v<=0; s1_v<=0; s2_v<=0; s3_v<=0; s4_v<=0; s5_v<=0;
+            s6_v<=0; s7_v<=0; s8_v<=0; s9_v<=0; s10_v<=0; s11_v<=0;
+            for(di=0; di<DLINE; di=di+1) vvq[di]<=0;
         end else if(pipe_en) begin
             // S0: latch DDA
             s0_v<=running; s0_w<=w;
@@ -209,45 +240,67 @@ end else begin : g_proj
             // S2: normalize + LUT seed
             s2_v<=s1_v; s2_msb<=s1_msb; s2_m<=m_s1;
             s2_x<=seed_lut[(m_s1-(1<<RF))>>(RF-LUT_BITS)];
-            // S3: NR1a  mx1 = round(m*x0)
-            s3_v<=s2_v; s3_msb<=s2_msb; s3_m<=s2_m; s3_x<=s2_x;
-            s3_mx<=( (mx1_full + HALF_W) >> RF );
-            // S4: NR1b  x1 = round(x0*(2-mx1))
-            s4_v<=s3_v; s4_msb<=s3_msb; s4_m<=s3_m;
-            s4_x<=( (x1_full + HALF_W) >> RF );
-            // S5: NR2a  mx2 = round(m*x1)
-            s5_v<=s4_v; s5_msb<=s4_msb; s5_m<=s4_m; s5_x<=s4_x;
-            s5_mx<=( (mx2_full + HALF_W) >> RF );
-            // S6: NR2b  x2 = round(x1*(2-mx2))
-            s6_v<=s5_v; s6_msb<=s5_msb;
-            s6_x<=( (x2_full + HALF_W) >> RF );
-            // S7: de-normalize -> iw
-            s7_v<=s6_v; s7_msb<=s6_msb;
-            s7_iw<=denorm(s6_x, s6_msb);
+            // S3: MUL  raw p_mx1 = m*x0   (DSP, raw product registered)
+            s3_v<=s2_v; s3_msb<=s2_msb; s3_m<=s2_m; s3_x0<=s2_x;
+            s3_pmx1<=mx1_mul;
+            // S4: RND  mx1 = round(p_mx1>>RF); carry x0 for the next multiply
+            s4_v<=s3_v; s4_msb<=s3_msb; s4_m<=s3_m; s4_x0<=s3_x0;
+            s4_mx1<=( (s3_pmx1 + HALF_W) >> RF );
+            // S5: MUL  raw p_x1 = x0*(2-mx1)   (DSP, raw product registered)
+            s5_v<=s4_v; s5_msb<=s4_msb; s5_m<=s4_m;
+            s5_px1<=x1_mul;
+            // S6: RND  x1 = round(p_x1>>RF)
+            s6_v<=s5_v; s6_msb<=s5_msb; s6_m<=s5_m;
+            s6_x1<=( (s5_px1 + HALF_W) >> RF );
+            // S7: MUL  raw p_mx2 = m*x1   (DSP, raw product registered); carry x1
+            s7_v<=s6_v; s7_msb<=s6_msb; s7_x1<=s6_x1;
+            s7_pmx2<=mx2_mul;
+            // S8: RND  mx2 = round(p_mx2>>RF); carry x1
+            s8_v<=s7_v; s8_msb<=s7_msb; s8_x1<=s7_x1;
+            s8_mx2<=( (s7_pmx2 + HALF_W) >> RF );
+            // S9: MUL  raw p_x2 = x1*(2-mx2)   (DSP, raw product registered)
+            s9_v<=s8_v; s9_msb<=s8_msb;
+            s9_px2<=x2_mul;
+            // S10: RND  x2 = round(p_x2>>RF)
+            s10_v<=s9_v; s10_msb<=s9_msb;
+            s10_x2<=( (s9_px2 + HALF_W) >> RF );
+            // S11: DEN  iw = denorm(x2, msb)
+            s11_v<=s10_v;
+            s11_iw<=denorm(s10_x2, s10_msb);
 
-            // parallel delay line (LAT deep so nxq[LAT-1] aligns with s7_iw at the multiply)
+            // parallel delay line (DLINE deep so nxq[DLINE-1] aligns with s11_iw at the S12 multiply)
             nxq[0]<=nx; nyq[0]<=ny; nrq[0]<=(ox==12'd0)?12'd1:12'd0; bdq[0]<=w_bad; vvq[0]<=running;
-            for(di=1; di<LAT; di=di+1) begin
+            for(di=1; di<DLINE; di=di+1) begin
                 nxq[di]<=nxq[di-1]; nyq[di]<=nyq[di-1]; nrq[di]<=nrq[di-1];
                 bdq[di]<=bdq[di-1]; vvq[di]<=vvq[di-1];
             end
         end
     end
 
-    // ---------------- final multiply: sx=nx*iw, sy=ny*iw (>>RF -> Q.FB) ----------------
+    // ---------------- S12: final multiply (raw products registered), S13: shift/window/output -------
+    // px=nx*iw, py=ny*iw registered RAW so the big AW*(RF+3) multiply is isolated to its own clock;
+    // the >>RF reduction + int/frac split + window compare then happen in S13 before the outputs.
+    localparam integer PXW = AW + RF + 4;
+    reg signed [PXW-1:0] s12_px, s12_py;
+    reg                  s12_v, s12_bad; reg [11:0] s12_nr;
+    wire signed [PXW-1:0] px_mul = nxq[DLINE-1] * $signed({1'b0,s11_iw});
+    wire signed [PXW-1:0] py_mul = nyq[DLINE-1] * $signed({1'b0,s11_iw});
+
     reg                 o_v_r, o_in_r, o_nr_r;
     reg signed [AW-1:0] sx_q, sy_q;
-    wire signed [AW+RF+3:0] px = nxq[LAT-1] * $signed({1'b0,s7_iw});
-    wire signed [AW+RF+3:0] py = nyq[LAT-1] * $signed({1'b0,s7_iw});
-    wire signed [AW-1:0] sx_n = px >>> RF;
-    wire signed [AW-1:0] sy_n = py >>> RF;
+    wire signed [AW-1:0] sx_n = s12_px >>> RF;
+    wire signed [AW-1:0] sy_n = s12_py >>> RF;
     wire signed [AW-1-FB:0] sx_int = sx_n >>> FB, sy_int = sy_n >>> FB;
-    wire inwin_n = (!bdq[LAT-1]) && (sx_int>=0)&&(sx_int<IN_W)&&(sy_int>=0)&&(sy_int<IN_H);
+    wire inwin_n = (!s12_bad) && (sx_int>=0)&&(sx_int<IN_W)&&(sy_int>=0)&&(sy_int<IN_H);
 
     always @(posedge clk) begin
-        if(!rstn) o_v_r<=0;
+        if(!rstn) begin s12_v<=0; o_v_r<=0; end
         else if(pipe_en) begin
-            o_v_r<=s7_v; o_in_r<=inwin_n; o_nr_r<=nrq[LAT-1][0]; sx_q<=sx_n; sy_q<=sy_n;
+            // S12: register raw products + the aligned side-band (bad/new_row/valid)
+            s12_px<=px_mul; s12_py<=py_mul;
+            s12_v<=s11_v; s12_bad<=bdq[DLINE-1]; s12_nr<=nrq[DLINE-1];
+            // S13: reduce + window + register outputs
+            o_v_r<=s12_v; o_in_r<=inwin_n; o_nr_r<=s12_nr[0]; sx_q<=sx_n; sy_q<=sy_n;
         end
     end
 
