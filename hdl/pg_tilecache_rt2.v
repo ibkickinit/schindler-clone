@@ -125,14 +125,16 @@ module pg_tilecache_rt2 #(
 
     // tile id = {ty,tx} concatenation (unique, NO multiply) — the multiply was on the lookup path
     function [TIDW-1:0] tidf; input [11:0] px,py; tidf={py[11:LTILE], px[11:LTILE]}; endfunction
-    // set index = mixing hash (tx*5 + ty*59). The OLD (tx*13 + ty*7) was only validated on a SPARSE
-    // transform set (rot20/rot45/shrink/aniso) and had a NARROW ALIASING RESONANCE at ~17-19deg where
-    // worst-set-live spiked to 7 (>4-way -> eviction thrash -> short/starved frame; bench-confirmed
-    // 2026-06-23: 16deg clean, 17-19deg collapse, 20deg clean). Dense re-sweep of EVERY degree 1-44 +
-    // shrink + aniso (offline, tools/warp_assoc_sweep.py family) found (5,59) holds worst-set-live=2
-    // EVERYWHERE (both odd -> full 128-set coverage), no resonance at any angle. tag = full tile-id (tidf).
+    // set index = mixing hash (tx*1 + ty*33). KEY FINDING (2026-06-24, exhaustive offline sweep of EVERY
+    // degree 1-179 against the working-set model): NO linear OR non-linear hash keeps worst-set-live<=4 at
+    // ALL continuous angles -- a 4-way cache structurally can't serve continuous rotation (some narrow angle
+    // band always overflows for any hash; bench-confirmed: 13,7 fails ~17-19deg, 5,59 fails ~90+125-140deg).
+    // The product therefore CLAMPS rotation to 10-degree increments (firmware snaps the W angle). On that
+    // 10deg grid {0,10,...,170}, (1,33) holds worst-set-live<=3 (a full way of margin under 4-way), so the
+    // working set FITS with zero eviction at every supported angle -> bench-clean. metric<=4 == fits-4-way
+    // == clean (proven: clean angles sit at 2-3, every bench failure was at metric>4). tag = full tile-id.
     function [SETW-1:0] setf; input [11:0] px,py;
-        setf=(((px>>LTILE)*5) + ((py>>LTILE)*59)) & {SETW{1'b1}}; endfunction
+        setf=(((px>>LTILE)*1) + ((py>>LTILE)*33)) & {SETW{1'b1}}; endfunction
     function [BAW-1:0] baddr; input [SLW-1:0] s; input [11:0] px,py;
         baddr=(s<<(2*HT))|(((py[LTILE-1:0]>>1)<<HT)|(px[LTILE-1:0]>>1)); endfunction
     // Consumer hit detect is INLINED in the gather always@* below (the setf ×13/×7 multiply + tidf are

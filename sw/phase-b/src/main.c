@@ -1000,6 +1000,12 @@ static unsigned warp_calc_lead(int deg, int invx, int invy)
  * invx/invy (Q12; 4096 = 1.0 source-px per output-px, >4096 = downscale). */
 static void warp_set_rotation(int deg, int invx, int invy)
 {
+    /* 2026-06-24 ROTATION CLAMP -> 10-degree increments. Continuous rotation overflows the 4-way tile
+     * cache at narrow angle bands for ANY set-index hash (exhaustively offline-proven 1-179deg; bench-
+     * confirmed 13,7 fails ~17-19, 5,59 fails ~90+125-140). The (1,33) hash in pg_tilecache_rt2 is
+     * bench-clean ONLY on the 10-deg grid {0,10,...,350}, where worst-set-live<=3 fits 4-way with no
+     * eviction. Snap the requested angle to the nearest 10deg so off-grid angles can't thrash the cache. */
+    { int m = deg % 360; if (m < 0) m += 360; m = ((m + 5) / 10) * 10; if (m >= 360) m -= 360; deg = m; }
     int co = warp_cos(deg), si = warp_sin(deg);          /* Q12 */
     int cxo = OUT_RASTER_W / 2, cyo = OUT_RASTER_H / 2;   /* output center */
     int cxs = FRAME_W / 2,      cys = FRAME_H / 2;        /* source center */
