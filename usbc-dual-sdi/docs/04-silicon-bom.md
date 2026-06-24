@@ -81,10 +81,13 @@ Synaptics VMM parts are procurable in our volume** (see Q-block risk + `06` Q1).
     unverified (403).** Cheap MST-hub dongles (StarTech/Club3D/Cable Matters) run
     on VMM silicon — circumstantial evidence it's buildable.
   - **Parade PS8650** (Taiwan) — genuine DP2.1a→DP1.4 **MST hub, 1 in → 4 out**,
-    4K60+HDR/stream; the one credible *non-Synaptics* MST-hub alternative. New
-    (sampling 2024), datasheet **gated via Macnica**, low-volume buyability
-    **unverified**. Takes a **DP input**, so it needs a separate USB-C
-    DP-Alt-Mode/PD front stage (unlike the VMM6210). Chase as a second-source.
+    4K60+HDR/stream; the one credible *non-Synaptics* MST-hub alternative.
+    Orderable MPN **PS8650BGA274GTR-A0** (BGA-274, tape-&-reel, rev A0),
+    distributed in the US by **Avnet** — **quote/details requested 2026-06-24,
+    pending** (this is now a tracked sourcing thread, not a dead-end). Takes a
+    **DP input**, so it needs a separate USB-C DP-Alt-Mode/PD front stage (unlike
+    the VMM6210). New part (sampling 2024); confirm datasheet access + config/
+    firmware tooling with Avnet/Macnica when they respond.
 - **Path B — DP MST RX inside an AMD FPGA (no scarce hub chip).**
   **AMD DP1.4 RX Subsystem (PG300)**, MST sink, 2 streams, fed by PL GTH. Robust
   and self-contained, but **paid IP** (~$5k DP + ~$11k AV bundle) and **pins the
@@ -201,7 +204,7 @@ DP mux/redriver routes the lanes.
 | Block | Recommended | Obtainable? | ~Price (1–10) | Caveat |
 |---|---|---|---|---|
 | 12G-SDI driver | Semtech **GS12281-INE3** (reclocking) ×2 | yes, stocked | ~$31 ea | + Si534x ref clock; no separate retimer |
-| DP MST split | **Path A:** Synaptics **VMM6210/5330** *or* Parade **PS8650** hub · **Path B:** AMD DP1.4 RX IP | A: *unverified* · B: yes (paid IP ~$5k) | A: hub chip cost · B: license ~$5k | **gating fork** — Path A avoids AMD IP if a hub is procurable; PS8650 needs a USB-C front stage |
+| DP MST split | **Path A:** Synaptics **VMM6210/5330** *or* Parade **PS8650BGA274GTR-A0** (Avnet, quote pending) · **Path B:** AMD DP1.4 RX IP | A: PS8650 via Avnet *(in progress)* · B: yes (paid IP ~$5k) | A: hub chip cost · B: license ~$5k | **gating fork** — Path A avoids AMD IP; PS8650 needs a USB-C front stage |
 | FPGA | **Path A:** Microchip **PolarFire MPF300T** (free IP) · **Path B:** AMD **Zynq US+ XCZU4EV** | yes, stocked | ~$150–400 | A: free 12G IP, no AMD NRE · B: ~$11k AV IP, verify GTH count |
 | USB-C PD/DP | TI **TPS65987DDHRSHR** + CCG3PA (port 2) | yes (*stock unverified*) | ~$5–8 | EEPROM config; 4-lane via multifn bit |
 | MCU | ST **STM32H723ZGT6** | yes, in stock | ~$12 | USB-HS needs ext ULPI (FS fine for HID) |
@@ -210,13 +213,18 @@ DP mux/redriver routes the lanes.
 
 ## Top sourcing risks (ranked)
 
-1. **DP MST split / VMM procurability — HIGHEST.** The whole Path-A-vs-Path-B
-   fork hinges on whether **Synaptics VMM6210/VMM5330** is buyable in our volume
-   (datasheets are public; live distributor stock was 403-blocked, *unverified*).
-   - VMM procurable → **Path A** (VMM + PolarFire), **no AMD IP NRE**.
-   - VMM not procurable → **Path B** (AMD FPGA + ~$16k IP). Always available, so
+1. **DP MST split / hub procurability — HIGHEST (now actively de-risking).** The
+   Path-A-vs-Path-B fork hinges on whether a discrete MST hub is buyable in our
+   volume.
+   - **Parade PS8650BGA274GTR-A0** has an orderable MPN with **Avnet (US)** —
+     **quote/details requested 2026-06-24, pending.** This is the live thread.
+   - Synaptics VMM6210/VMM5330 remain a parallel option (stock was 403-blocked,
+     *unverified*).
+   - Any hub procurable → **Path A** (hub + PolarFire), **no AMD IP NRE**.
+   - None procurable → **Path B** (AMD FPGA + ~$16k IP). Always available, so
      this is a true fallback — the risk is *cost*, not *can-we-ship*.
-   **Action:** get a Synaptics quote + lead time at our quantity early.
+   **Action:** track the Avnet PS8650 response (datasheet access, MOQ, lead time,
+   config/firmware tooling); price a Synaptics VMM quote in parallel.
 2. **AMD IP licensing (Path B only) — HIGH cost.** ~$11k AV bundle + ~$5k DP IP
    — large, partly-opaque ("contact sales") NRE. Path A avoids it. (No HDCP
    entitlement on either path — non-HDCP sink, `06` Q11.)

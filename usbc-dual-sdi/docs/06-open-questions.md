@@ -2,7 +2,7 @@
 
 Ordered by how much they constrain the rest of the design.
 
-## Q1 — How to split one DP link into two displays *(REOPENED — two live paths, gated on VMM procurability)*
+## Q1 — How to split one DP link into two displays *(two live paths; PS8650 sourcing in progress via Avnet)*
 The first pass concluded "MST silicon unobtainable → must do MST in an AMD
 FPGA." **Follow-up research corrected that:** Synaptics **VMM6210 / VMM5330**
 are *real, datasheet-published* DP1.4 MST hubs (dual-4K60) — so there are now
@@ -10,18 +10,21 @@ are *real, datasheet-published* DP1.4 MST hubs (dual-4K60) — so there are now
 - **Path A — discrete MST hub chip → cheaper FPGA (PolarFire, free 12G-SDI IP).
   Avoids the AMD IP NRE.** Two hub sources: **Synaptics VMM6210/5330**
   (integrates USB-C input) or **Parade PS8650** (Taiwan; true DP2.1a→DP1.4 MST
-  hub, but needs a separate USB-C DP-Alt front stage). Gating unknown:
-  **low-volume procurability of either hub** (datasheets public/gated; live
-  stock 403-blocked, *unverified*; both sell via disti/FAE). A Thunderbolt/USB4
+  hub, but needs a separate USB-C DP-Alt front stage). **Active sourcing:** Parade
+  **PS8650BGA274GTR-A0** quote/details requested from **Avnet (US) 2026-06-24,
+  pending** — the live thread closing the gating unknown; Synaptics VMM priced in
+  parallel. A Thunderbolt/USB4
   front end was evaluated — **no Asian single-chip does the dual-DP breakout**
   (only Intel Goshen Ridge JHL8440, which is TB-cert-gated); not pursued for v1
   unless Thunderbolt-only host support is required (`04` Block 2).
 - **Path B — DP MST RX inside an AMD FPGA** (DP1.4 RX Subsystem, PG300). Always
   available; pins vendor to AMD; **paid IP** (~$11k AV + ~$5k DP, see Q10).
-**Decision rule:** if a Synaptics quote + lead time at our quantity is workable
-→ **Path A** (materially cheaper). Otherwise → **Path B** (fallback, costs ~$16k
-IP). ⚠️ The buyable Parade/ITE/Algoltek/Realtek parts are single-stream, **not**
-MST splitters. **This is the top architecture decision to close.**
+**Decision rule:** if the Avnet PS8650 quote (or a Synaptics VMM quote) gives a
+workable price + lead time + datasheet/tooling access at our quantity → **Path A**
+(materially cheaper, no AMD IP). Otherwise → **Path B** (fallback, costs ~$16k
+IP). ⚠️ The buyable Parade PS176-class / ITE / Algoltek / Realtek parts are
+single-stream, **not** MST splitters. **This is the top architecture decision to
+close — and it's now actively in motion (Avnet request submitted 2026-06-24).**
 
 ## Q2 — Does the target laptop give 4-lane DP Alt Mode? *(measurement, not a fork)*
 Dual-4K60 needs 4 DP lanes. Many USB-C ports drop to **2-lane** DP when
