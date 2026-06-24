@@ -24,17 +24,22 @@ set_property -dict [list \
     CONFIG.c_mm2s_burst_size {256} CONFIG.c_m_axi_mm2s_addr_width {32} \
     CONFIG.c_include_mm2s_stsfifo {true} ] [get_bd_cells re_datamover]
 create_bd_cell -type ip -vlnv xilinx.com:ip:smartconnect axi_sc_mem2
-set_property -dict [list CONFIG.NUM_SI {1} CONFIG.NUM_MI {1} CONFIG.NUM_CLKS {2}] [get_bd_cells axi_sc_mem2]
+set_property -dict [list CONFIG.NUM_SI {1} CONFIG.NUM_MI {1} CONFIG.NUM_CLKS {1}] [get_bd_cells axi_sc_mem2]
 connect_bd_intf_net [get_bd_intf_pins re_datamover/M_AXI_MM2S] [get_bd_intf_pins axi_sc_mem2/S00_AXI]
 connect_bd_intf_net [get_bd_intf_pins axi_sc_mem2/M00_AXI]     [get_bd_intf_pins zynq_ps/S_AXI_HP1]
-connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK1] [get_bd_pins zynq_ps/S_AXI_HP1_ACLK]
-connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK1] [get_bd_pins axi_sc_mem2/aclk]
-connect_bd_net $prstn                          [get_bd_pins axi_sc_mem2/aresetn]
-connect_bd_net $pclk  [get_bd_pins re_datamover/m_axi_mm2s_aclk]
-connect_bd_net $pclk  [get_bd_pins re_datamover/m_axis_mm2s_cmdsts_aclk]
-connect_bd_net $prstn [get_bd_pins re_datamover/m_axi_mm2s_aresetn]
-connect_bd_net $prstn [get_bd_pins re_datamover/m_axis_mm2s_cmdsts_aresetn]
-connect_bd_net $pclk  [get_bd_pins axi_sc_mem2/aclk1]
+# OPTION (b) 2026-06-23: run the WHOLE DataMover (M_AXI mem side + cmd/data/status stream side) at
+# FCLK_CLK1 (142.86 MHz) -> ~1.92x read-issue rate vs pclk (the fetch-bandwidth wall behind 45deg
+# scramble + 1080 underrun + the 0.8% starvation floor). rst_mem is the FCLK_CLK1-synced reset
+# (created in build_phase_b.tcl). The 3 AXIS links to pg_re_0 (pclk) are clock-converted below.
+set fclk1  [get_bd_pins zynq_ps/FCLK_CLK1]
+set rst143 [get_bd_pins rst_mem/peripheral_aresetn]
+connect_bd_net $fclk1  [get_bd_pins zynq_ps/S_AXI_HP1_ACLK]
+connect_bd_net $fclk1  [get_bd_pins axi_sc_mem2/aclk]
+connect_bd_net $rst143 [get_bd_pins axi_sc_mem2/aresetn]
+connect_bd_net $fclk1  [get_bd_pins re_datamover/m_axi_mm2s_aclk]
+connect_bd_net $fclk1  [get_bd_pins re_datamover/m_axis_mm2s_cmdsts_aclk]
+connect_bd_net $rst143 [get_bd_pins re_datamover/m_axi_mm2s_aresetn]
+connect_bd_net $rst143 [get_bd_pins re_datamover/m_axis_mm2s_cmdsts_aresetn]
 
 # ---- coeff GPIOs (3 dual-channel = 6 coeffs). Defaults = fit-scale affine ----
 # Default coeffs = IDENTITY (centered 1:1 crop) so the pre-firmware boot phase is the gentlest cache case
@@ -86,10 +91,27 @@ connect_bd_net [get_bd_pins axi_gpio_9/gpio2_io_o]  [get_bd_pins pg_re_0/m_d]
 connect_bd_net [get_bd_pins axi_gpio_10/gpio_io_o]  [get_bd_pins pg_re_0/m_e]
 connect_bd_net [get_bd_pins axi_gpio_10/gpio2_io_o] [get_bd_pins pg_re_0/m_f]
 connect_bd_net [get_bd_pins warp_matte/dout]        [get_bd_pins pg_re_0/matte_rgb]
-# DataMover streams
-connect_bd_intf_net [get_bd_intf_pins pg_re_0/m_axis_cmd] [get_bd_intf_pins re_datamover/S_AXIS_MM2S_CMD]
-connect_bd_intf_net [get_bd_intf_pins re_datamover/M_AXIS_MM2S] [get_bd_intf_pins pg_re_0/s_axis_dm]
-connect_bd_intf_net [get_bd_intf_pins re_datamover/M_AXIS_MM2S_STS] [get_bd_intf_pins pg_re_0/s_axis_sts]
+# DataMover streams — CLOCK-CONVERTED between pg_re_0 (pclk 74.25) and the 143 MHz DataMover.
+# Widths/sidebands propagate from each connected master: cmd=72b (pclk->143), data=64b+tlast (143->pclk),
+# status=8b+tlast+tkeep (143->pclk).
+create_bd_cell -type ip -vlnv xilinx.com:ip:axis_clock_converter cc_cmd
+create_bd_cell -type ip -vlnv xilinx.com:ip:axis_clock_converter cc_dat
+create_bd_cell -type ip -vlnv xilinx.com:ip:axis_clock_converter cc_sts
+# cmd: pg_re_0 (pclk, master) -> DataMover S_AXIS_MM2S_CMD (143)
+connect_bd_net $pclk  [get_bd_pins cc_cmd/s_axis_aclk];  connect_bd_net $prstn  [get_bd_pins cc_cmd/s_axis_aresetn]
+connect_bd_net $fclk1 [get_bd_pins cc_cmd/m_axis_aclk];  connect_bd_net $rst143 [get_bd_pins cc_cmd/m_axis_aresetn]
+connect_bd_intf_net [get_bd_intf_pins pg_re_0/m_axis_cmd] [get_bd_intf_pins cc_cmd/S_AXIS]
+connect_bd_intf_net [get_bd_intf_pins cc_cmd/M_AXIS]      [get_bd_intf_pins re_datamover/S_AXIS_MM2S_CMD]
+# data: DataMover M_AXIS_MM2S (143, master) -> pg_re_0 s_axis_dm (pclk)
+connect_bd_net $fclk1 [get_bd_pins cc_dat/s_axis_aclk];  connect_bd_net $rst143 [get_bd_pins cc_dat/s_axis_aresetn]
+connect_bd_net $pclk  [get_bd_pins cc_dat/m_axis_aclk];  connect_bd_net $prstn  [get_bd_pins cc_dat/m_axis_aresetn]
+connect_bd_intf_net [get_bd_intf_pins re_datamover/M_AXIS_MM2S] [get_bd_intf_pins cc_dat/S_AXIS]
+connect_bd_intf_net [get_bd_intf_pins cc_dat/M_AXIS]           [get_bd_intf_pins pg_re_0/s_axis_dm]
+# status: DataMover M_AXIS_MM2S_STS (143, master) -> pg_re_0 s_axis_sts (pclk)
+connect_bd_net $fclk1 [get_bd_pins cc_sts/s_axis_aclk];  connect_bd_net $rst143 [get_bd_pins cc_sts/s_axis_aresetn]
+connect_bd_net $pclk  [get_bd_pins cc_sts/m_axis_aclk];  connect_bd_net $prstn  [get_bd_pins cc_sts/m_axis_aresetn]
+connect_bd_intf_net [get_bd_intf_pins re_datamover/M_AXIS_MM2S_STS] [get_bd_intf_pins cc_sts/S_AXIS]
+connect_bd_intf_net [get_bd_intf_pins cc_sts/M_AXIS]               [get_bd_intf_pins pg_re_0/s_axis_sts]
 
 # ---- 2:1 AXIS mux (sel default 1 = warp) ----
 create_bd_cell -type module -reference axis_mux2 re_mux

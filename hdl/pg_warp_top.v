@@ -23,6 +23,12 @@ module pg_warp_top #(
     parameter integer PD    = 16,
     parameter integer DREQ  = 16,
     parameter integer LTILE = 4,
+    parameter integer TILED = 0,                     // 0 = legacy raster (16 strided 48B reads/tile, ~200 MB/s,
+                                                     //     the bw wall) — CURRENT default; the warp cache (48
+                                                     //     RAMB) + pg_raster_to_tile bands (~40-60 RAMB) don't
+                                                     //     both fit in 140 on the -1 (see tile-dma scope §3).
+                                                     // 1 = source TILED (pg_raster_to_tile): ONE 768B burst/tile
+                                                     //     (~1.1 GB/s) any geometry — needs BRAM relief first.
     parameter integer LEAD  = 2048,
     parameter integer CW = 32,
     parameter integer FB = 12
@@ -118,7 +124,7 @@ module pg_warp_top #(
         .fetch_req(wreq),.fetch_tx(wtx),.fetch_ty(wty),.fetch_ready(t_rdy),
         .fill_valid(fv),.fill_blk(fblk),.fill_last(fl));
 
-    pg_tile_dma #(.IN_W(IN_W),.LTILE(LTILE),.DREQ(DREQ)) u_dma (
+    pg_tile_dma #(.IN_W(IN_W),.LTILE(LTILE),.DREQ(DREQ),.TILED(TILED)) u_dma (
         .clk(clk),.rstn(rstn),.srst(srst),.frame_base(frame_base),
         .t_req(wreq),.t_tx(wtx),.t_ty(wty),.t_ready(t_rdy),
         .fill_valid(fv),.fill_blk(fblk),.fill_last(fl),
