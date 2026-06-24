@@ -125,12 +125,14 @@ module pg_tilecache_rt2 #(
 
     // tile id = {ty,tx} concatenation (unique, NO multiply) — the multiply was on the lookup path
     function [TIDW-1:0] tidf; input [11:0] px,py; tidf={py[11:LTILE], px[11:LTILE]}; endfunction
-    // set index = mixing hash (tx*13 + ty*7). Validated worst-set-live<=4 for ALL swept transforms
-    // at NTILE=512 (128 sets x 4 ways) — tools/warp_assoc_sweep.py. The plain {ty,tx} low-bits index
-    // concentrated shrink's diagonal/ty-constant access onto few sets (15 live tiles/set -> 4-way
-    // thrash); this hash spreads them so 4-way holds. tag is still the full tile-id (tidf).
+    // set index = mixing hash (tx*5 + ty*59). The OLD (tx*13 + ty*7) was only validated on a SPARSE
+    // transform set (rot20/rot45/shrink/aniso) and had a NARROW ALIASING RESONANCE at ~17-19deg where
+    // worst-set-live spiked to 7 (>4-way -> eviction thrash -> short/starved frame; bench-confirmed
+    // 2026-06-23: 16deg clean, 17-19deg collapse, 20deg clean). Dense re-sweep of EVERY degree 1-44 +
+    // shrink + aniso (offline, tools/warp_assoc_sweep.py family) found (5,59) holds worst-set-live=2
+    // EVERYWHERE (both odd -> full 128-set coverage), no resonance at any angle. tag = full tile-id (tidf).
     function [SETW-1:0] setf; input [11:0] px,py;
-        setf=(((px>>LTILE)*13) + ((py>>LTILE)*7)) & {SETW{1'b1}}; endfunction
+        setf=(((px>>LTILE)*5) + ((py>>LTILE)*59)) & {SETW{1'b1}}; endfunction
     function [BAW-1:0] baddr; input [SLW-1:0] s; input [11:0] px,py;
         baddr=(s<<(2*HT))|(((py[LTILE-1:0]>>1)<<HT)|(px[LTILE-1:0]>>1)); endfunction
     // Consumer hit detect is INLINED in the gather always@* below (the setf ×13/×7 multiply + tidf are
