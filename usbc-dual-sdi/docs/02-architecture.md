@@ -11,26 +11,26 @@ flowchart LR
 
     subgraph BOX[Crossover box]
         direction TB
-        CC["USB-C port\n(DP Alt Mode 4-lane +\nUSB2 sideband)"]
-        MST["DP1.4 MST hub/sink\n1 DP in -> 2 streams"]
-        subgraph CH1[Channel 1]
-            RX1[DP/HDMI RX]
-            MAP1["FPGA: format conv\nST2082 mapping\naudio embed (ST299)\nST352 payload ID"]
-            DRV1[12G-SDI cable driver]
+        CC["USB-C port 1\n(DP Alt Mode 4-lane +\nUSB2 sideband)"]
+        PWR["USB-C port 2\n(PD power-in only)"]
+        REF["Low-jitter ref clk\n(Si534x)"]
+        subgraph FPGA["FPGA (AMD Zynq US+)"]
+            DPRX["DP1.4 MST RX\n1 link -> 2 streams"]
+            MAP1["pipeline 1: format conv\nST2082 map / ST299 audio\nST352 payload ID"]
+            MAP2["pipeline 2: format conv\nST2082 map / ST299 audio\nST352 payload ID"]
         end
-        subgraph CH2[Channel 2]
-            RX2[DP/HDMI RX]
-            MAP2["FPGA: format conv\nST2082 mapping\naudio embed\nST352 payload ID"]
-            DRV2[12G-SDI cable driver]
-        end
-        MCU["Mgmt MCU\nEDID emulation\nUSB HID\nOLED/LED"]
+        DRV1[12G-SDI reclocking driver]
+        DRV2[12G-SDI reclocking driver]
+        MCU["Mgmt MCU / PS\nEDID emulation\nUSB HID\nOLED/LED"]
     end
 
-    GPU -- "DP Alt Mode" --> CC --> MST
-    MST -- "stream A" --> RX1 --> MAP1 --> DRV1 --> BNC1["BNC OUT 1"]
-    MST -- "stream B" --> RX2 --> MAP2 --> DRV2 --> BNC2["BNC OUT 2"]
+    GPU -- "DP Alt Mode (4-lane HBR3)" --> CC --> DPRX
+    DPRX -- "stream A" --> MAP1 --> DRV1 --> BNC1["BNC OUT 1"]
+    DPRX -- "stream B" --> MAP2 --> DRV2 --> BNC2["BNC OUT 2"]
+    REF --> FPGA
+    PWR -- "PD rail (ORing)" --> FPGA
     APP <-- "USB2" --> CC <--> MCU
-    MCU -- "EDID/DDC" --> MST
+    MCU -- "EDID/DDC" --> DPRX
     MCU -- "config/status" --> MAP1 & MAP2
 ```
 
@@ -45,12 +45,17 @@ flowchart LR
   all we need for HID config (no high-rate USB data path in v1).
 - Sideband: USB 2.0 D+/D- → management MCU as a **USB HID + vendor** device.
 
-### 2. DP MST hub / sink (the "two displays" trick)
-- A **DP 1.4 Multi-Stream Transport** hub takes the single DP link and exposes
+### 2. DP MST RX — **inside the FPGA** (the "two displays" trick)
+- A **DP 1.4 Multi-Stream Transport** sink takes the single DP link and exposes
   **two sink endpoints** to the host. The GPU then drives two logical displays.
-- Equivalent commercial topology: the MST-hub chips used in USB-C → dual-HDMI
-  docks. Output of the hub is two HDMI 2.0 / DP streams feeding the conversion
-  stage.
+- **Sourcing reality (see `04`):** dedicated DP MST-**hub silicon** (Synaptics
+  VMM, Parade MST hubs) is **NDA/ODM-only and not buyable in low volume.** The
+  freely-stocked Parade/ITE parts are single-stream converters, *not* MST
+  splitters. So the MST sink is implemented as **FPGA IP** — the **AMD
+  DisplayPort 1.4 RX Subsystem (PG300)**, MST sink, 2 streams, fed by **PL GTH**
+  transceivers (the Zynq US+ PS hard-DP block only reaches HBR2/~4K30 and is not
+  used for this). This is a **paid IP license**, and it **pins the FPGA vendor to
+  AMD** — see `04` Blocks 2–3.
 - Each endpoint owns its **EDID/DDC channel**, which the management MCU
   controls — this is where EDID/frame-rate management lives (see `03`).
 
@@ -69,9 +74,14 @@ bridge silicon can't expose that. Per channel the FPGA:
 A single mid-size FPGA with ≥4 multi-gigabit transceivers handles **both**
 channels (2 RX + 2 TX serial links). One FPGA, two pipelines.
 
-### 4. SDI cable drivers
-- One **12G-SDI cable driver** per output → 75Ω BNC. Auto rate 12G/6G/3G/HD/SD.
-- Optional **reclocker** if jitter budget requires it before the driver.
+### 4. SDI cable drivers + reference clock
+- One **12G-SDI reclocking cable driver** per output → 75Ω BNC. Auto rate
+  12G/6G/3G/HD/SD. (Semtech GS12281 class — see `04`.)
+- A **low-jitter reference clock (Skyworks Si534x)** feeds the FPGA GTH
+  transceivers. This is **mandatory, not optional**: the dominant 12G TX jitter
+  source is the transceiver reference, and a plain non-reclocking buffer would
+  fail SMPTE ST 2082 jitter. No discrete retimer IC is needed on the straight
+  FPGA→BNC path (the reclocking driver covers it).
 
 ### 5. Management MCU
 - **EDID emulation** for both sink endpoints (writable EDID, profile store).

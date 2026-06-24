@@ -2,16 +2,16 @@
 
 Ordered by how much they constrain the rest of the design.
 
-## Q1 — MST hub chip vs FPGA DP-RX for the "two displays" split *(blocks topology)*
-Two ways to present two displays from one DP link:
-- **(a) Discrete DP1.4 MST hub** outputting two HDMI/DP streams into the FPGA.
-  Pro: offloads DP/MST complexity. Con: **MST-hub silicon is hard to source in
-  low volume** (NDA / dock-ODM channels).
-- **(b) DP1.4 RX directly into the FPGA**, MST handled in FPGA IP. Pro: no scarce
-  hub chip, fewer parts. Con: heavier FPGA, more IP licensing, harder bring-up.
-
-**Need:** a sourcing answer on (a) and an IP/resource estimate on (b) before
-committing. This decision cascades into FPGA size, BOM, and schedule.
+## Q1 — MST hub chip vs FPGA DP-RX for the "two displays" split *(RESOLVED → FPGA DP-RX)*
+Sourcing deep-dive (`04`) settled this: **discrete DP1.4 MST-hub silicon is not
+obtainable** in low volume (Synaptics VMM / Parade MST hubs are NDA/ODM-only;
+the buyable Parade/ITE parts are single-stream converters, not MST splitters).
+**Decision: do MST RX in the FPGA** via the **AMD DP1.4 RX Subsystem (PG300)**,
+MST sink, 2 streams, fed by PL GTH. Consequences that cascade from this:
+- **FPGA vendor is pinned to AMD** (only proven DP-MST-RX + HDMI2.0-4K60-RX +
+  12G-SDI-TX stack) → **Zynq UltraScale+ XCZU4EV** class.
+- **Paid IP NRE** (~$11k AV bundle + ~$5k DP IP, +HDCP if needed) — see new Q11.
+- PS hard-DP block can't do HBR3 MST; must use the *soft* RX subsystem in PL.
 
 ## Q2 — Does the target laptop give 4-lane DP Alt Mode? *(measurement, not a fork)*
 Dual-4K60 needs 4 DP lanes. Many USB-C ports drop to **2-lane** DP when
@@ -47,6 +47,18 @@ no FRC — because its **GTP transceivers cap at ~6.25 Gb/s** vs 12G-SDI's
 **dual 3G/HD-SDI** or a **single 6G**. Parked as a possible cheaper **HD-class
 sibling** product, not on the 4K design path. Dual-4K needs UltraScale+
 GTH/GTY — see `04` Q-block 3.
+
+## Q11 — AMD IP-licensing NRE *(new — commercial, surfaced by Q1)*
+Pinning to AMD + FPGA-side MST drags in a real, partly-opaque NRE: **~$11k AMD
+AV IP bundle (HDMI/SDI) + ~$5k DP1.4 RX IP + HDCP 2.3 entitlement** (figures
+order-of-magnitude, "contact sales", *unverified*). This only amortizes at
+volume. Open questions:
+- Exact license SKUs, real quotes, and whether eval/timeout licenses suffice
+  through Phase 1–4 bring-up before paying full freight.
+- **Is HDCP needed at all?** If the product is positioned for unprotected
+  live/production content, dropping HDCP removes cost + complexity. Confirm.
+- Does the NRE change the build-vs-license calculus for a future HD-class
+  sibling (PolarFire free SDI IP, DP-only) — see Q10.
 
 ## Q5 — DSC: in or out for v1?
 Dual-4K60 **4:4:4** needs DP DSC; dual-4K60 **4:2:2 10-bit** (what SDI carries)

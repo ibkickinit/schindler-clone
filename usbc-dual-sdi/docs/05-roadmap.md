@@ -4,13 +4,19 @@ Top-down de-risking: prove the **hardest, highest-uncertainty** links first
 (DP-Alt-Mode-to-two-streams, and clean 12G out), then integrate.
 
 ## Phase 0 — Paper design & sourcing de-risk
-- Lock the **MST-hub-vs-FPGA-DP-RX** decision (`06` Q1) — this gates the whole
-  topology.
+- ✅ **MST split decided: FPGA DP-RX** (no buyable MST-hub silicon) → AMD Zynq
+  US+ class (`06` Q1, `04`). Remaining Phase-0 work below.
+- **Get real AMD IP quotes** (AV bundle + DP1.4 RX + HDCP) and confirm whether
+  **eval/timeout licenses** carry Phases 1–4 before paying full freight (`06`
+  Q11). Decide whether **HDCP is needed at all**.
 - Confirm **DP Alt Mode 4-lane** behavior on the target laptop classes
-  (MacBook, Dell/Lenovo USB-C, etc.) and whether each gives 4 lanes.
-- Confirm **12G SERDES** availability/margin on the chosen FPGA.
-- Power budget first-pass from real datasheet currents → decide bus-power vs
-  aux-power-in.
+  (MacBook, Dell/Lenovo USB-C, etc.) and whether each gives 4 lanes (`06` Q2).
+- Confirm the chosen **Zynq US+ package exposes ≥4 GTH at 12.5G** (package
+  selection is the gotcha).
+- Validate the **power budget** (~10–15 W) against Xilinx Power Estimator →
+  confirms PD is required and sizes the secondary power port (`04` Block 6).
+- **Live-verify distributor stock/price** for GS12281, TPS65987D, STM32H723,
+  Si534x (the research was 403-blocked from live carts).
 
 ## Phase 1 — One channel, eval boards
 - Bench: USB-C → DP source into an **eval MST hub** (or FPGA DP-RX eval) →
