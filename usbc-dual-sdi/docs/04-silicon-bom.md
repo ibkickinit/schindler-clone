@@ -10,46 +10,48 @@
 > snapshots + manufacturer selector guides. **Verify in a live cart before
 > committing.** Anything uncorroborated is marked *unverified*.
 
-## The architecture-defining fork: how to do the MST split
+## Architecture baseline: fixed-function, NO FPGA (decided)
 
-Getting **two independent displays from one DP link requires MST**, and the
-research went through two passes:
+v1 is the **"dumb" design** — pure HDMI→SDI format passthrough, no frame buffer,
+no FPGA, no SOM, no DDR. The conversion is done by a **fixed-function bridge
+ASIC** per channel. An FPGA only ever returns for the **smart/Pro variant**
+(active frame-rate conversion / color / genlock — Blocks 2-Family-B & 3 below are
+*Pro-only*).
 
-- **First pass:** concluded discrete MST-hub silicon was unbuyable, so MST had to
-  be done inside an AMD FPGA (paid IP).
-- **Follow-up pass (corrects it):** **Synaptics VMM6210 / VMM5330 are real,
-  datasheet-published DP1.4 MST hubs** (dual-4K60) — the "totally unobtainable"
-  claim was too strong. They aren't openly stocked at LCSC/DigiKey, but are
-  reachable via **Synaptics design-win / distribution / FAE** (the cheap MST-hub
-  dongles on Amazon are built on VMM silicon). **Live low-volume stock is
-  unverified (distributor pages 403-blocked) — that is the gating unknown.**
+**v1 dumb BOM (per box):**
 
-So there are **two live paths** (full detail in Block 2):
-
-| | **Path A — discrete VMM hub** | **Path B — MST in AMD FPGA** |
+| Block | Part | Role |
 |---|---|---|
-| Split done by | Synaptics VMM6210/VMM5330 | AMD DP1.4 RX Subsystem (PG300) |
-| FPGA needed | simpler: **DP/HDMI SST RX + 12G TX** → PolarFire (free IP) | AMD Zynq US+ (DP-MST IP) |
-| IP NRE | **none** (PolarFire 12G-SDI IP is free) | **~$11k AV + ~$5k DP** |
-| Availability | **unverified** (VMM procurability) | high (AMD always available) |
-| Vendor lock | two-vendor BOM | pinned to AMD |
+| MST hub | VMM6210 / PS8650 / RTD2186 | 1 USB-C DP → 2× HDMI 2.0 (still required; the hard-to-source block) |
+| Conversion ×2 | **Semtech GS12170** | HDMI 2.0 → 12G-SDI bridge ASIC, audio embed, ST 352 — **no FPGA** |
+| Cable driver ×2 | Semtech **GS12281** | 12G reclocking driver → 75 Ω BNC |
+| HDMI redriver ×2 | TI/Diodes/Parade HDMI 2.0 redriver | clean TMDS into the GS12170 |
+| USB-C PD/DP | TI **TPS65987D** (+ CCG3PA on port 2) | 4-lane DP Alt negotiate + PD sink |
+| MCU | ST **STM32H723** | EDID emulation, USB HID, status, I²C config |
 
-⚠️ The buyable **Parade PS176/PS186 / ITE IT6563 / Algoltek / Realtek** parts are
-**single-stream DP→HDMI converters, not MST splitters** — they cannot do the
-split, on either path.
-
-**Decision rule (`06` Q1):** chase a Synaptics VMM quote first. Procurable →
-**Path A** (materially cheaper, no AMD IP). Not procurable → **Path B** as the
-guaranteed-available fallback. HDCP IP is **not** needed on either path — we ship
-as a non-HDCP sink (`06` Q11).
+Getting two displays from one USB-C **still requires the MST hub** — going
+FPGA-less does not remove that (see Block 2 / `07`). What it removes is the
+entire FPGA + DP-MST-IP + 12G-SDI-IP problem on the *conversion* side.
 
 ## Block-by-block
 
-### Block 1 — 12G-SDI cable driver (+ reference clock)
-Use a **reclocking** cable driver, one per BNC. The dominant 12G TX jitter
-source is the **FPGA transceiver reference clock**, so a low-jitter reference is
-mandatory — a plain (non-reclocking) buffer just passes jitter through and fails
-SMPTE ST 2082.
+### Block 1 — Conversion: Semtech GS12170 HDMI→SDI bridge (the FPGA-killer)
+- **One chip per channel:** HDMI 2.0 in (≤4Kp60 4:2:2 10-bit) → **12G-SDI out**,
+  auto HD/3G/6G/12G; **embeds up to 16-ch audio** and builds the **ST 352
+  payload ID**; carries HDR InfoFrames. 196-ball BGA, 12×12 mm, **<2 W**.
+- **~$73 qty 1** (GS12170-IBE3); stocked DigiKey/Mouser/Arrow/LCSC (*unverified*).
+- **HDMI port is chip-to-chip TMDS** → needs an **HDMI redriver** on the cable
+  input. Expects **unencrypted** TMDS, no HDCP — aligns with non-HDCP-sink (`06`
+  Q11); ensure the MST hub upstream doesn't authenticate HDCP.
+- ⚠️ **TOP RISK — lifecycle:** one source flags GS12170 EOL/NRND while it remains
+  stocked. **Confirm with Semtech before designing in.** Fallback if EOL = small-
+  FPGA recipe (HDMI RX + Lattice ECP5/Artix + SDI IP + GS12281) — more work, the
+  thing the bridge was built to avoid.
+- Only the **GS12170** does HDMI 2.0 → 12G-SDI single-chip; older Gennum SDI
+  parts (GS2972/GS2971A) are SDI-only and cap at 3G.
+
+### Block 1b — 12G-SDI cable driver
+Use a **reclocking** cable driver, one per BNC, after the GS12170 SDI output.
 
 | Part | Reclock | Lifecycle | Stock / ~price | Note |
 |---|---|---|---|---|
@@ -58,22 +60,22 @@ SMPTE ST 2082.
 | Semtech GS12081-INE3 | no | Active | snippet showed **non-stocked, ~24-wk lead** | cost-down, risky |
 | TI LMH1208RTVR | no | *NRND-vs-active unverified* | listed | avoid until confirmed |
 
-- **No separate retimer IC needed** on a straight FPGA→BNC path — the reclocking
-  driver covers it. A discrete retimer (LMH1219/LMH1239/GS12141) is only for
-  RX/loop-through, which we don't have in v1.
-- **Add a low-jitter reference clock** feeding the FPGA GTH: **Skyworks Si534x**
-  (e.g. **Si5342/Si5344**). This is not optional for 12G compliance.
+- The **GS12281 reclocking** driver after the GS12170 covers SDI output jitter —
+  **no separate retimer and no external Si534x reference clock needed in the dumb
+  design** (the GS12170 generates the SDI bitstream; there's no FPGA GTH to
+  feed). *(The Si534x reference is only relevant to the Pro/FPGA variant, where
+  the transceiver reference is the dominant jitter source.)*
 - ⚠️ **3G-only parts that look tempting but are disqualified:** GS3490, LMH0307,
   LMH0394 — cannot do 12G.
 
-### Block 2 — DP MST split → **two families + a decoupled dev path**
-Repeated research has widened this considerably from the early "must be AMD"
-conclusion. Two architectural families, each now with several options, plus a
-prototyping path that **decouples MST-hub sourcing from development**.
+### Block 2 — DP MST split (still required in the dumb design)
+The MST hub is **unchanged by the FPGA-less decision** — you still need it to get
+two displays from one USB-C. In v1 the hub feeds the **GS12170 bridges** (HDMI
+2.0), not an FPGA. (The "Family B — MST-in-FPGA" sub-section below applies **only
+to the Pro/smart variant**, which has no separate bridge chip.)
 
-**Family A — discrete MST hub chip + a simple FPGA.** The hub splits in silicon;
-the FPGA then only needs **HDMI/DP SST RX + 12G-SDI TX** (no DP-MST IP → cheaper
-FPGA, Block 3). Hub options, best first:
+**Family A — discrete MST hub chip (the v1 path).** The hub splits in silicon →
+two HDMI 2.0 streams into the two GS12170 bridges. Hub options, best first:
 - **Synaptics VMM6210** (USB-C/DP-Alt in → 1× HDMI 2.1 + 1× DP 1.4, dual-4K60) /
   **VMM5330** (DP1.4 MST hub, ≤3 TX). VMM6210 **integrates the USB-C input** —
   fewest parts. **Datasheet obtained (2026-06-24, vault `_Projects/USB_DualSDI`)**
@@ -90,8 +92,10 @@ FPGA, Block 3). Hub options, best first:
   only** (1 in → 3 streams, 21.6 Gb/s total), so dual-4K60 is tight/not
   guaranteed. Listed for completeness; lower priority.
 
-**Family B — DP MST RX inside the FPGA.** No scarce hub chip; the cost is IP.
-Now three IP routes, not just AMD:
+**Family B — DP MST RX inside the FPGA (PRO/SMART VARIANT ONLY — not v1).** Only
+relevant if you build the FPGA-based smart variant (active FRC/color/genlock),
+where the FPGA does both the MST split and the conversion. No scarce hub chip;
+the cost is IP. Three IP routes, not just AMD:
 - **AMD DP1.4 RX Subsystem (PG300)** on Zynq/Artix US+ — MST sink, proven, but
   **paid IP** (~$5k DP + ~$11k AV bundle) and **pins to AMD**.
 - **Intel/Altera DisplayPort FPGA IP** *(new find)* — has a true **MST sink (up
@@ -128,19 +132,17 @@ support is required.
 Parade **PS176**-class, ITE, Algoltek, and Realtek's **RTD2173**-class converters.
 Don't confuse them with the real MST hubs above (PS8650, RTD2186).
 
-### Block 3 — FPGA (depends on the Block-2 family)
-The FPGA need depends on the Family-A-vs-B choice:
-- **Family A (discrete hub did the split):** FPGA only needs **DP/HDMI SST RX +
-  12G-SDI TX** → cheapest is **Microchip PolarFire** (free 12G-SDI IP; its
-  SST-only DP RX is fine post-split; feed it the hub's **DP** output to dodge
-  PolarFire's 4K30 HDMI-RX cap). Extreme cost-down: **Semtech GS12170 HDMI→SDI
-  bridge ASIC** (no FPGA) — but it sacrifices the managed-EDID/FRC/color thesis,
-  so dumb-converter variant only.
-- **Family B (MST in FPGA):** **no longer AMD-only.** Three IP routes (Block 2):
-  AMD first-party; **Intel/Altera** first-party (DP-MST sink + 12G-SDI II on
-  Arria 10 / Cyclone 10 GX / Agilex 7); or **third-party MST IP (Parretto/Bitec)
-  on a cheap PolarFire** — which gives MST-in-FPGA **without AMD's ~$16k NRE**
-  (pairs with PolarFire's free SDI IP).
+### Block 3 — FPGA *(NOT IN v1 — Pro/smart variant only)*
+**v1 has no FPGA** (the GS12170 bridges do the conversion). This block applies
+only if/when the **smart variant** is built (active FRC / color / genlock), where
+one FPGA replaces both bridges and does the MST split too. Options, if that day
+comes:
+- **Discrete hub + cheap FPGA:** **Microchip PolarFire** (free 12G-SDI IP) doing
+  DP/HDMI SST RX + 12G-SDI TX after a hub split — plus DDR for the frame buffer.
+- **MST-in-FPGA:** **no longer AMD-only** — AMD first-party, **Intel/Altera**
+  first-party (DP-MST sink + 12G-SDI II on Arria 10 / Cyclone 10 GX / Agilex 7),
+  or **third-party MST IP (Parretto/Bitec) on PolarFire** (MST-in-FPGA without
+  AMD's ~$16k NRE, pairs with PolarFire's free SDI IP).
 
 | Family/role | SerDes max | 12G-SDI | DP/HDMI RX MST | IP cost | Obtainable |
 |---|---|---|---|---|---|
@@ -187,81 +189,71 @@ DP mux/redriver routes the lanes.
   DigiKey before committing.
 
 ### Block 5 — Management MCU
-- **Recommendation: ST STM32H723ZGT6** (LQFP-144, Cortex-M7 550 MHz). **4× I²C**
-  (two for DDC/EDID slave emulation + OLED + spare), 6× SPI, 2× OCTOSPI (share
-  FPGA flash), 1 MB flash / 564 KB RAM, USB-FS device. **Active** (DS13313 Rev 5,
-  May 2025). Mouser ~1,362 in stock; DigiKey ~$12, ships today.
-- Alt: **STM32H743ZIT6** (2 MB/1 MB, ~$16) for more bitstream-staging headroom.
-- ⚠️ **No on-chip USB High-Speed PHY** (Full-Speed only). For a HID config port,
-  **FS (12 Mbps) is plenty** — non-issue. HS would need an external ULPI PHY.
-- **Could be folded into the Zynq US+ PS** instead of a discrete MCU — decide in
-  layout (discrete MCU = simpler bring-up + isolation; PS = fewer parts).
+- The dumb design has light MCU duties, so it can be **smaller/cheaper than the
+  H723**. **ST STM32H723ZGT6** is fine and over-provisioned; an **STM32G0/G4 or
+  L4** class part with **≥3 I²C** (two DDC/EDID slave channels + bridge/hub
+  config) and **USB-FS device** (HID) would do and cut cost. Pick in layout.
+- Duties: **EDID emulation** on the two MST-hub DDC channels, **USB HID** config,
+  **status LEDs/OLED**, **GS12170 + hub config** over I²C. No bitstream staging
+  (no FPGA), so no large flash / OCTOSPI needed.
+- **USB-FS (12 Mbps) is plenty** for HID — no external HS PHY.
 
-### Block 6 — Power budget (dual-4K60 worst case)
+### Block 6 — Power budget (dumb design, dual-4K60 worst case)
 
 | Block | Typical | Note |
 |---|---|---|
-| FPGA (ZU4EV, dual-4K + 4 GTH) | ~6–10 W | dominant; confirm via Xilinx Power Estimator |
-| 2× 12G reclocking drivers | ~0.7 W | GS12281 ~0.34 W ea |
-| Si534x reference clock | ~0.3–0.5 W | |
-| USB-C PD + DP mux/redriver | ~0.5–1 W | |
-| MCU + OLED/LEDs | ~0.5 W | |
-| DC-DC losses (~85%) | +~1.5–2 W | |
-| **Total realistic** | **~10–15 W** | push to 15–18 W if run hot |
+| 2× GS12170 bridge | ~3–4 W | <2 W ea |
+| 2× GS12281 cable drivers | ~0.7 W | ~0.34 W ea |
+| 2× HDMI redrivers | ~0.4 W | |
+| MST hub | ~1–2 W | |
+| USB-C PD + MCU + LEDs | ~1 W | |
+| DC-DC losses (~85%) | +~1 W | |
+| **Total realistic** | **~6–9 W** | lower than the FPGA design — no big-FPGA load |
 
-- **Verdict: bus power is insufficient — PD is required.** Default non-PD bus
-  (≤15 W, 5 V/3 A) won't cover FPGA peaks + conversion loss for dual-4K. A single
-  PD contract at **9 V/2 A (18 W)** or **15 V/3 A (45 W)** covers it comfortably.
-- This **validates the secondary-power-port decision** (`02`): negotiate
-  ≥27–45 W PD on the video port, or feed the dedicated Port 2 from a charger, so
-  the design never depends on a host's stingy port budget. The **degradation
-  ladder** handles the bus-power-only case by dropping to dual-HD / single-4K.
+- **Verdict: still above bare bus power — PD recommended.** A single PD contract
+  at **9 V/2 A (18 W)** covers it comfortably.
+- **Validates the secondary-power-port decision** (`02`): negotiate PD on the
+  video port, or feed Port 2 from a USB-C charger; **degrade** rather than brown
+  out on a stingy host.
 
 ## Summary recommendation table
 
+**v1 dumb design** (FPGA/IP rows are Pro-variant only):
+
 | Block | Recommended | Obtainable? | ~Price (1–10) | Caveat |
 |---|---|---|---|---|
-| 12G-SDI driver | Semtech **GS12281-INE3** (reclocking) ×2 | yes, stocked | ~$31 ea | + Si534x ref clock; no separate retimer |
-| DP MST split | **Fam A (hub):** VMM6210/5330 · Parade **PS8650** (Avnet, quote pending) · Realtek **RTD2186** — **Fam B (in-FPGA IP):** AMD · Intel · Parretto/Bitec-on-PolarFire | A: PS8650 via Avnet *(in progress)* · B: yes | A: hub chip cost · B: IP NRE | **no longer AMD-or-bust** — many routes; gated on Block-2 quotes (`06` Q1) |
-| FPGA | **Fam A:** Microchip **PolarFire MPF300T** (free 12G IP) · **Fam B:** AMD **Zynq US+ XCZU4EV** *or* Intel **Cyclone 10 GX** *or* PolarFire + 3rd-party MST IP | yes, stocked | ~$150–400 | A: no IP NRE · B: Intel/3rd-party-IP both beat AMD's ~$16k |
-| USB-C PD/DP | TI **TPS65987DDHRSHR** + CCG3PA (port 2) | yes (*stock unverified*) | ~$5–8 | EEPROM config; 4-lane via multifn bit |
-| MCU | ST **STM32H723ZGT6** | yes, in stock | ~$12 | USB-HS needs ext ULPI (FS fine for HID) |
-| Ref clock | Skyworks **Si5342/Si5344** | yes | — | mandatory for 12G jitter |
-| Power | PD ≥27–45 W (+ 2nd USB-C port) | — | — | default 15 W bus insufficient for dual-4K |
+| **Conversion ×2** | Semtech **GS12170** bridge ASIC | stocked (*lifecycle unverified*) | ~$73 ea | **the FPGA-killer; confirm EOL status w/ Semtech** |
+| 12G cable driver ×2 | Semtech **GS12281-INE3** | yes, stocked | ~$31 ea | reclocking; after each GS12170 |
+| HDMI redriver ×2 | TI/Diodes/Parade HDMI 2.0 redriver | yes | ~$2–6 ea | clean TMDS into the bridge |
+| DP MST hub | VMM6210 · PS8650 (Avnet, quote pending) · RTD2186 | design-win channel | hub chip cost | still required; `07` for sourcing |
+| USB-C PD/DP | TI **TPS65987D** + CCG3PA (port 2) | yes (*stock unverified*) | ~$5–8 | 4-lane DP + PD sink |
+| MCU | ST **STM32H723** (or smaller G0/G4/L4) | yes, in stock | ~$3–12 | EDID + HID + config; FS USB fine |
+| Power | PD ~18 W (+ 2nd USB-C port) | — | — | ~6–9 W load; bus power marginal |
+| *FPGA + DP/SDI IP* | *Pro/smart variant only — see Block 3* | — | — | *not in v1* |
 
 ## Top sourcing risks (ranked)
 
-1. **DP MST split — MODERATE (downgraded; many routes now).** No longer a single
-   gating chip — there are multiple discrete hubs *and* multiple in-FPGA IP
-   routes (Block 2). Cheapest = a discrete hub + PolarFire (no IP NRE).
-   - **Parade PS8650BGA274GTR-A0** — orderable MPN, **Avnet (US)**, quote
-     **requested 2026-06-24, pending** (live thread).
-   - **Synaptics VMM6210/5330** (datasheet in hand; quote pending) and **Realtek
-     RTD2186** are parallel hub options.
-   - Even if *no* hub sources out, MST-in-FPGA via **Intel** or **Parretto/Bitec
-     IP on PolarFire** avoids AMD's NRE; **AMD is the last-resort fallback**.
-   **Action:** track Avnet PS8650 (datasheet/MOQ/lead/tooling); price VMM in
-   parallel; keep Parretto/Bitec + Intel as IP fallbacks.
-2. **IP licensing (only if forced into Family B) — was HIGH, now bounded.** AMD
-   ~$11k AV + ~$5k DP is the *expensive* route; **Intel first-party** and
-   **Parretto/Bitec MST IP on PolarFire** are cheaper Family-B options to price
-   before defaulting to AMD. (No HDCP entitlement anywhere — non-HDCP sink,
-   `06` Q11.)
-3. **12G driver lifecycle/stock — MODERATE.** GS12281 looks well-stocked; the
-   cost-down GS12081 showed non-stocked / 24-wk lead, and TI LMH1208/1297
-   active-vs-NRND couldn't be confirmed (403). Stick with GS12281.
-4. **PD controller config/stock — LOW-MODERATE.** Active + listed, but live
-   stock/price unverified, and all need a firmware/EEPROM config flow. Avoid
-   NRND TPS65988.
-5. **MCU — LOWEST.** STM32H723/H743 Active, four-figure same-day stock; shortage
-   recovered. Only watch-item (USB-HS PHY) is a non-issue for HID.
+1. **GS12170 lifecycle — HIGHEST.** The single chip that removes the FPGA may be
+   **EOL/NRND** (one source) while still **stocked** at DigiKey/Mouser/Arrow/LCSC
+   (~$73). **Confirm status directly with Semtech before designing it in.**
+   Fallback if truly EOL = the small-FPGA conversion recipe (HDMI RX +
+   ECP5/Artix + SDI IP + GS12281) — more engineering, the thing the bridge
+   avoided. **Action:** Semtech lifecycle inquiry; identify a second-source
+   bridge or commit to the FPGA-recipe fallback early.
+2. **DP MST hub sourcing — MODERATE.** Still required; all hubs are design-win-
+   channel parts. *Decoupled from development* by an off-the-shelf MST adapter
+   (`07`). **Parade PS8650** (Avnet quote pending), **VMM6210** (datasheet in
+   hand), **RTD2186** are the candidates.
+3. **PD controller config/stock — LOW-MODERATE.** Active + listed; needs a
+   firmware/EEPROM config flow. Avoid NRND TPS65988.
+4. **MCU — LOWEST.** STM32 family, in stock; FS-USB is fine for HID.
 
-## Make-vs-buy note
-An **FPGA is non-negotiable for the managed-EDID / frame-rate / color thesis** —
-fixed-function bridge silicon (e.g. the **Semtech GS12170 HDMI→SDI bridge ASIC**,
-which does HDMI→12G-SDI at 4Kp60 4:2:2 with no FPGA) is cheaper but exposes none
-of the EDID/FRC/color control that is the whole product. Reserve GS12170 only for
-a hypothetical dumb-converter variant. Within the FPGA approach, **Path A (VMM +
-PolarFire) avoids the AMD IP NRE** while keeping full FPGA flexibility — so the
-make-vs-buy tension is now mostly resolved *in favor of Path A, contingent on VMM
-procurability.*
+## Make-vs-buy note (decided: buy fixed-function)
+Earlier drafts argued an FPGA was "non-negotiable for the managed-EDID/FRC/color
+thesis." **That was scope creep.** The features the product actually needs —
+EDID-driven resolution/frame-rate management + format conversion + embedded audio
+— are delivered by the **MCU (EDID) + the GS12170 bridge (conversion/audio)**
+with **no FPGA**. Only *active* frame-rate conversion, color processing, and
+genlock genuinely need an FPGA + DDR, and those are deferred to the **Pro
+variant**. So v1 = **buy fixed-function** (GS12170), keep the FPGA design
+documented as the Pro upgrade path (Blocks 2-Family-B & 3).

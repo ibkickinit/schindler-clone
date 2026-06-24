@@ -1,6 +1,13 @@
 # 02 — System Architecture
 
-## Signal path, end to end
+> **Baseline = the "dumb" fixed-function design (no FPGA, no SOM, no DDR).** The
+> product is an integrated *format converter*: HDMI/DP in → SDI out, ×2, in one
+> box — i.e. a USB-C MST dongle + two HDMI→SDI micro-converters collapsed onto one
+> board. A heavier **FPGA-based "smart" variant** (active frame-rate conversion,
+> color processing, genlock) is documented as a **future Pro option** at the end,
+> not v1.
+
+## Signal path, end to end (v1 baseline)
 
 ```mermaid
 flowchart LR
@@ -9,163 +16,144 @@ flowchart LR
         APP["Config app (optional)\nUSB HID"]
     end
 
-    subgraph BOX[Crossover box]
+    subgraph BOX[the box]
         direction TB
         CC["USB-C port 1\n(DP Alt Mode 4-lane +\nUSB2 sideband)"]
         PWR["USB-C port 2\n(PD power-in only)"]
-        REF["Low-jitter ref clk\n(Si534x)"]
-        subgraph FPGA["FPGA (AMD Zynq US+)"]
-            DPRX["DP1.4 MST RX\n1 link -> 2 streams"]
-            MAP1["pipeline 1: format conv\nST2082 map / ST299 audio\nST352 payload ID"]
-            MAP2["pipeline 2: format conv\nST2082 map / ST299 audio\nST352 payload ID"]
+        MST["DP1.4 MST hub\n1 link -> 2x HDMI 2.0"]
+        subgraph CH1[Channel 1 — fixed function]
+            RDR1[HDMI redriver]
+            BR1["GS12170\nHDMI->12G-SDI bridge\n(audio embed, ST352)"]
+            DRV1["GS12281\n12G cable driver"]
         end
-        DRV1[12G-SDI reclocking driver]
-        DRV2[12G-SDI reclocking driver]
-        MCU["Mgmt MCU / PS\nEDID emulation\nUSB HID\nOLED/LED"]
+        subgraph CH2[Channel 2 — fixed function]
+            RDR2[HDMI redriver]
+            BR2["GS12170\nHDMI->12G-SDI bridge"]
+            DRV2["GS12281\n12G cable driver"]
+        end
+        MCU["MCU (STM32)\nEDID emulation\nUSB HID / status\nbridge config (I2C)"]
     end
 
-    GPU -- "DP Alt Mode (4-lane HBR3)" --> CC --> DPRX
-    DPRX -- "stream A" --> MAP1 --> DRV1 --> BNC1["BNC OUT 1"]
-    DPRX -- "stream B" --> MAP2 --> DRV2 --> BNC2["BNC OUT 2"]
-    REF --> FPGA
-    PWR -- "PD rail (ORing)" --> FPGA
+    GPU -- "DP Alt Mode (4-lane HBR3)" --> CC --> MST
+    MST -- "HDMI A" --> RDR1 --> BR1 --> DRV1 --> BNC1["BNC OUT 1"]
+    MST -- "HDMI B" --> RDR2 --> BR2 --> DRV2 --> BNC2["BNC OUT 2"]
+    PWR -- "PD rail (ORing)" --> BOX
     APP <-- "USB2" --> CC <--> MCU
-    MCU -- "EDID/DDC" --> DPRX
-    MCU -- "config/status" --> MAP1 & MAP2
+    MCU -- "EDID/DDC" --> MST
+    MCU -- "config" --> BR1 & BR2
 ```
+
+**No FPGA. No DDR. No SOM.** A 4–6 layer board carries it; the only stringent
+routing is the **12G-SDI differential pair** and the **HDMI TMDS pairs**
+(controlled impedance, length-matched) — *not* a DDR bus, which is exactly the
+hard thing that made a SOM worth it on Schindler and which we don't have here.
 
 ## Block-by-block
 
 ### 1. USB-C front end
-- USB-C receptacle wired for **DisplayPort Alt Mode**. A USB-C **PD/Alt-Mode
-  controller** (CC-line negotiation) requests **4-lane DP** configuration.
-- **Why 4-lane:** two independent 4K streams do not fit in 2-lane DP (see
-  budget below). 4-lane DP Alt Mode means the SuperSpeed USB pairs are
-  repurposed for DP, leaving **USB 2.0** for the management sideband — which is
-  all we need for HID config (no high-rate USB data path in v1).
-- Sideband: USB 2.0 D+/D- → management MCU as a **USB HID + vendor** device.
+- USB-C receptacle wired for **DisplayPort Alt Mode**; a USB-C **PD/Alt-Mode
+  controller** (TI TPS65987D class) negotiates **4-lane DP**.
+- **Why 4-lane:** two independent 4K streams don't fit in 2-lane DP (budget
+  below). 4-lane repurposes the SuperSpeed pairs for DP, leaving **USB 2.0** for
+  the management sideband (HID config) — all we need.
 
-### 2. DP MST split — two candidate paths (the "two displays" trick)
-A **DP 1.4 Multi-Stream Transport** sink takes the single DP link and exposes
-**two sink endpoints** to the host; the GPU then drives two logical displays.
-**There are two ways to do the split, and which one wins is the top open
-decision (`06` Q1, `04` Block 2):**
-- **Path A — discrete Synaptics VMM MST hub** (VMM6210/VMM5330) splits in
-  silicon → two HDMI/DP streams into a *simpler* FPGA. Avoids the AMD IP NRE;
-  enables a cheaper FPGA (PolarFire). **Gated on VMM procurability** (unverified).
-  The block diagram above shows the in-FPGA variant; on Path A the `DP1.4 MST RX`
-  block becomes an external VMM hub feeding two SST RX cores.
-- **Path B — DP MST RX inside the FPGA** via the **AMD DP 1.4 RX Subsystem
-  (PG300)**, MST sink, 2 streams, fed by **PL GTH** (the Zynq US+ PS hard-DP
-  block only reaches HBR2/~4K30 and is not used). **Paid IP; pins vendor to AMD.**
+### 2. DP MST split (the "two displays" trick — still required)
+The one genuinely hard, sourcing-sensitive block — *unchanged by going FPGA-less.*
+A **DP 1.4 MST hub** splits the single DP link into **two independent HDMI 2.0
+streams**. Options + sourcing in `04` Block 2 / `07`:
+- Discrete hub: **Synaptics VMM6210** (integrates USB-C input), **Parade
+  PS8650**, **Realtek RTD2186**.
+- For prototyping, an **off-the-shelf USB-C→dual-HDMI MST adapter** stands in for
+  the hub (see `07`).
 
-⚠️ The buyable Parade/ITE/Algoltek/Realtek parts are **single-stream converters,
-not MST splitters** — they can't do the split. In both paths, each endpoint owns
-its **EDID/DDC channel**, which the management MCU controls — this is where
-EDID/frame-rate management lives (see `03`).
+Each hub output owns an **EDID/DDC channel** the MCU controls — see §5, this is
+where EDID/frame-rate management lives, and it matters even in the dumb design
+(below).
 
-### 3. Per-channel conversion (FPGA)
-The HDMI/DP-to-SDI conversion is done in an **FPGA** because it needs runtime-
-reconfigurable control of timing, payload ID, color, and EDID — fixed-function
-bridge silicon can't expose that. Per channel the FPGA:
-1. Receives the HDMI 2.0 / DP stream (FPGA transceiver + HDMI/DP RX core).
-2. **Maps to SMPTE serial-digital:** ST 2082-10 (12G, 2160p50/59.94/60),
-   ST 2081 (6G, 2160p ≤30), ST 425 (3G, 1080p), ST 292 (HD).
-3. **Embeds audio** (ST 299 audio data packets) from the DP/HDMI audio stream.
-4. Inserts **ST 352 payload identifier** and any ancillary (VPID, RP188 TC if
-   sourced).
-5. Serializes to the cable driver at the SDI line rate.
+### 3. Per-channel conversion — **Semtech GS12170 bridge ASIC (no FPGA)**
+One fixed-function chip per channel does the whole conversion:
+- **HDMI 2.0 in (≤4Kp60 4:2:2 10-bit) → 12G-SDI out**, software-selected
+  HDMI→SDI mode. Auto-spans HD-SDI / 3G / 6G / 12G (ST 292 → ST 2082-1).
+- **Embeds audio** (up to 16 ch @ 48 kHz) and auto-builds the **ST 352 payload
+  ID**; carries HDMI InfoFrames incl. HDR metadata.
+- 196-ball BGA, 12 × 12 mm, **< 2 W**. ~$73/ea qty 1 (less at volume).
+- **Companions (small, cheap):** an **HDMI redriver/retimer** on the cable input
+  (the GS12170 HDMI port is chip-to-chip TMDS), and a **GS12281 12G reclocking
+  cable driver** on the SDI output to the 75 Ω BNC.
+- **HDCP:** the GS12170 expects **unencrypted** TMDS and does no HDCP — which
+  *aligns with our non-HDCP-sink posture* (`06` Q11). Ensure the MST hub upstream
+  passes unencrypted TMDS (does not authenticate as an HDCP sink).
+- ⚠️ **Lifecycle is the top risk** (`06`): one source flags the GS12170 as
+  EOL/NRND, yet it's stocked at DigiKey/Mouser/Arrow/LCSC — **confirm with Semtech
+  before designing it in.** Fallback if truly EOL = the FPGA recipe (small
+  ECP5/Artix + SDI IP + HDMI RX), i.e. the "smart variant" minus the smarts.
 
-A single mid-size FPGA with ≥4 multi-gigabit transceivers handles **both**
-channels (2 RX + 2 TX serial links). One FPGA, two pipelines.
+### 4. SDI cable driver
+- **Semtech GS12281** 12G **reclocking** cable driver per output → 75 Ω BNC. The
+  reclocking stage cleans jitter to meet SMPTE ST 2082 over real coax. (In the
+  dumb design the SDI bit-clock is **derived from the incoming HDMI pixel clock**
+  — output is genlocked to the source, not house sync; fine for passthrough.)
 
-### 4. SDI cable drivers + reference clock
-- One **12G-SDI reclocking cable driver** per output → 75Ω BNC. Auto rate
-  12G/6G/3G/HD/SD. (Semtech GS12281 class — see `04`.)
-- A **low-jitter reference clock (Skyworks Si534x)** feeds the FPGA GTH
-  transceivers. This is **mandatory, not optional**: the dominant 12G TX jitter
-  source is the transceiver reference, and a plain non-reclocking buffer would
-  fail SMPTE ST 2082 jitter. No discrete retimer IC is needed on the straight
-  FPGA→BNC path (the reclocking driver covers it).
+### 5. Management MCU (EDID is still the value-add)
+A small **STM32** (no FPGA needed):
+- **EDID emulation** on both MST-hub DDC channels (writable, profile store).
+- **USB HID** endpoint for the optional config app; **status LEDs / OLED**.
+- **Bridge + hub config** over I²C.
 
-### 5. Management MCU
-- **EDID emulation** for both sink endpoints (writable EDID, profile store).
-- **USB HID** endpoint for the config app.
-- Drives **status LEDs** and optional **OLED**.
-- Configures the FPGA pipelines (output format lock, color range, audio
-  routing) over a control bus (SPI/I2C/UART).
+**Why EDID still matters in the dumb design:** the GS12170 only accepts a **valid
+SMPTE raster** (e.g. exactly 1080p/2160p at SMPTE rates incl. /1.001 fractional
+rates) — arbitrary VESA/PC timings won't map to a legal SDI format. So the
+EDID-driven **resolution / frame-rate management** the product was always meant
+to have (`03`) isn't a luxury here — it's how we **force the laptop to emit
+SDI-legal timings** so the bridge produces clean output. This is *passive*
+(EDID-nudged, source-locked) management; **active** rate conversion (60.00→59.94)
+is the FPGA-only Pro feature.
 
-## Link-bandwidth budget
+## Link-bandwidth budget (DP/host side — unchanged)
 
-**DP 1.4 HBR3, 4 lanes:** 4 × 8.1 Gbit/s = 32.4 Gbit/s raw → ×0.8 (8b/10b) =
-**25.92 Gbit/s usable**, shared across both MST streams.
+**DP 1.4 HBR3, 4 lanes:** 4 × 8.1 Gbit/s = 32.4 raw → ×0.8 = **25.92 Gbit/s
+usable**, shared across both MST streams.
 
-Per-stream active video rate (pixel rate × bits/pixel; blanking adds overhead
-but illustrates feasibility):
+| Format | Rate/stream | **Two streams** | Fits 4-lane HBR3? |
+|---|---|---|---|
+| 1080p59.94 4:2:2 10b | 2.49 Gb/s | 4.97 Gb/s | ✅ trivially |
+| 2160p30 4:2:2 10b | 4.97 Gb/s | 9.95 Gb/s | ✅ easily |
+| 2160p59.94 4:2:2 10b | 9.95 Gb/s | **19.9 Gb/s** | ✅ with blanking margin |
+| 2160p59.94 4:4:4 8b | 11.94 Gb/s | 23.9 Gb/s | ⚠️ needs DSC or 4:2:2 |
 
-| Format | Pixel rate | bits/px | Rate/stream | **Two streams** | Fits 4-lane HBR3? |
-|---|---|---|---|---|---|
-| 1080p59.94 4:2:2 10b | 124 Mpx/s | 20 | 2.49 Gb/s | 4.97 Gb/s | ✅ trivially |
-| 2160p30 4:2:2 10b | 249 Mpx/s | 20 | 4.97 Gb/s | 9.95 Gb/s | ✅ easily |
-| 2160p59.94 4:2:2 10b | 498 Mpx/s | 20 | 9.95 Gb/s | **19.9 Gb/s** | ✅ with blanking margin |
-| 2160p59.94 4:4:4 8b | 498 Mpx/s | 24 | 11.94 Gb/s | 23.9 Gb/s | ⚠️ needs **DSC** or 4:2:2 |
+**Headline:** two independent outputs up to **2160p59.94 4:2:2 10-bit** — exactly
+what 12G-SDI carries (ST 2082-10), and what the GS12170 accepts on its HDMI side.
 
-**Headline capability:** two independent outputs up to **2160p59.94 4:2:2
-10-bit** — which is exactly the color sampling 12G-SDI carries (ST 2082-10), so
-nothing is lost in conversion. Full-4:4:4 dual-4K60 needs DP **DSC** and is a
-stretch goal; everything at/below dual-4K60 4:2:2 is the design target.
+### Graceful degradation ladder (host/link-driven, via EDID)
+1. **Dual 2160p59.94** — full capability (needs 4-lane DP + adequate power).
+2. **Single 2160p, mirrored to both BNCs** — preserves a 4K feed when the
+   link/power can't sustain two independent 4K streams.
+3. **Dual 1080p59.94** (independent HD).
+4. **Single 1080p, mirrored** — last-resort guaranteed-good state.
 
-### Graceful degradation ladder
+Advertised via EDID so the host picks a supported rung; operator can pin one.
 
-When the host link can't carry both outputs at full 4K — most commonly because
-the host only grants **2-lane** DP Alt Mode (see `06` Q2), or only bus power is
-available (below) — the box must **degrade predictably**, never fail to a black
-output. The intended ladder, advertised via EDID (`03`) so the host picks a
-supported point:
+**SDI capacities (per output, single-link, auto in GS12170):** 12G (2160p
+50/59.94/60) · 6G (2160p ≤30) · 3G (1080p 50/59.94/60) · HD (1080i/720p).
 
-1. **Dual 2160p59.94** (4:2:2 10b) — full capability; needs 4-lane DP + adequate power.
-2. **Single 2160p (twin output)** — one 4K stream **mirrored to both BNCs**.
-   Preserves a 4K feed when the link/power can't sustain two independent 4K streams.
-3. **Dual 1080p59.94** (HD, independent) — two independent outputs, dropped to HD.
-4. **Single 1080p (twin output)** — last-resort guaranteed-good state.
-
-The operator can also **pin** a rung via an EDID profile (e.g. force "dual HD"
-rather than letting the box auto-negotiate 4K). "Twin output" = the same stream
-fanned to both SDI drivers, which is cheap (no second RX/pipeline pressure) and
-genuinely useful (feed two monitors off one 4K source). The active rung is shown
-on the status LEDs / OLED and reported to the config app.
-
-**SDI side capacities (per output, single-link):**
-- 12G (ST 2082-1, 11.88 Gb/s): 2160p 50 / 59.94 / 60.
-- 6G (ST 2081): 2160p 23.98 / 24 / 25 / 29.97 / 30.
-- 3G (ST 425): 1080p 50 / 59.94 / 60.
-- HD (ST 292): 1080i / 720p / 1080p ≤30.
-
-## Power
-
-Dual 12G cable drivers + FPGA + MST hub is a **multi-watt** load (rough order:
-FPGA 2–4 W, two 12G drivers ~1 W each, MST hub + housekeeping ~1–2 W →
-**~5–8 W total**). A host USB-C port without a PD contract may only offer
-~4.5–7.5 W, so **bus power is marginal for dual 4K**. Design decisions:
-
-- Primary: negotiate **USB PD** to pull adequate power from the host where
-  available.
-- **Secondary USB-C power-in port (decided):** a dedicated second USB-C jack
-  that accepts power from **either** another USB-C port (a second laptop port, a
-  hub/dock) **or** a standard **USB-C PD wall PSU**. It is a **PD sink only** (no
-  data, no Alt Mode on this port) — purely supplemental rail feed. This keeps
-  the "one cable when you can" story while giving a clean, ubiquitous power
-  option (USB-C PSUs are everywhere; no proprietary barrel brick to lose).
-- **Power-source arbitration:** the box prefers the aux port when present and
-  falls back to host bus/PD power when it isn't, switching without dropping the
-  outputs. If neither source can sustain the requested format, it **degrades**
-  down the ladder above rather than browning out (e.g. dual 1080p on bus power,
-  dual 4K60 only with aux power).
-- Exact wattage thresholds per rung are an **open question** (`06`) pending real
-  silicon current draw from the sourcing research.
+## Power (lower than the FPGA design)
+Per channel ≈ GS12170 (<2 W) + GS12281 (~0.3 W) + redriver (~0.2 W). Two channels
++ MST hub + PD/MCU ≈ **~5–7 W** worst-case dual-4K (no FPGA load). Still likely
+above bare bus power, so:
+- Negotiate **USB PD** from the host where available.
+- **Secondary USB-C power-in port** (PD sink only, no data) accepting **another
+  USB-C port or a standard USB-C PD PSU**; prefer host PD, fall back to aux,
+  **degrade** rather than brown out. Per-rung wattage TBD (`06` Q3).
 
 ## Latency
+Fixed-function line-based conversion is **sub-frame**, source-locked. (Active FRC
+— the Pro variant — adds ≥1 frame of buffering by definition; opt-in only.)
 
-Native DP Alt Mode + line-based SDI mapping is **sub-frame** (no frame buffer in
-v1). Active FRC (Tier 2) adds ≥1 frame of buffering by definition — that is the
-cost of true rate conversion and is opt-in.
+## Future "smart" / Pro variant (NOT v1)
+Swap the two GS12170 bridges for a single **FPGA** (+ DDR) to add: **active
+frame-rate conversion** (host 60.00 → SDI 59.94, 50↔60), **color/range
+processing**, and **genlock to house reference**. This is the only thing that
+justifies an FPGA + DDR here, and it mirrors Schindler's Mini/Pro split: same
+front end (USB-C + MST hub + MCU), different conversion core. The v1 PCB can
+leave the door open but should not stuff it.
+</content>

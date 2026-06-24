@@ -47,6 +47,14 @@ Target users:
 | Frame-rate intent | passthrough | **EDID-forced broadcast rates** |
 | Max per channel | usually 3G/6G | **12G (2160p59.94)** |
 
+## Architecture (decided)
+
+**Fixed-function — no FPGA, no SOM.** USB-C MST hub → two **Semtech GS12170
+HDMI→SDI bridge ASICs** → two BNCs, with a small MCU for EDID. Effectively a
+USB-C MST dongle + two HDMI→SDI micro-converters integrated into one box. An
+FPGA-based "smart" variant (active frame-rate conversion, color, genlock) is a
+documented future **Pro** option, not v1. See [`docs/02-architecture.md`](docs/02-architecture.md).
+
 ## Status
 
 Concept / paper design. See [`docs/`](docs/) for the full design package.

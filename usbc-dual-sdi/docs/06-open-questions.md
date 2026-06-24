@@ -2,23 +2,28 @@
 
 Ordered by how much they constrain the rest of the design.
 
-## Q1 — How to split one DP link into two displays *(RECOMMENDATION SET — see `07` sourcing playbook)*
-The option-sprawl is resolved in **`07-sourcing-playbook.md`**, which ranks every
-route by real sourcing ease and picks one path. Bottom line: **no discrete MST
-hub is small-shop-buyable** (all NDA/design-win), so —
-- **Prototype:** a **$40 off-the-shelf USB-C→dual-HDMI MST adapter** (Plugable
-  USBC-MSTH2) into an FPGA HDMI-RX — offloads the MST hub to a commodity part;
-  build the SDI core now.
-- **Production (primary track):** **MST-in-FPGA on Microchip PolarFire +
-  Parretto DP-MST IP (free eval on GitHub) + Microchip 12G-SDI IP** — the only
-  path where every piece is touchable without a sales gate. **Gating assumption
-  to de-risk: Parretto MST RX on PolarFire delivering two independent 4K60 sink
-  streams.**
-- **Fallback:** AMD ZCU102 + DP1.4 RX Subsystem + UHD-SDI IP (most mature, paid
-  production license). Keep **Parade PS8650** as a discrete backup (email-for-
-  samples). **Drop Synaptics/Realtek/Analogix** for a small shop.
+## Q0 — GS12170 lifecycle *(HIGHEST — the v1 architecture hinges on it)*
+v1 removes the FPGA by using the **Semtech GS12170** HDMI→12G-SDI bridge ASIC
+(`02` §3, `04` Block 1). One source flags it **EOL/NRND**, yet it's still
+**stocked** (DigiKey/Mouser/Arrow/LCSC, ~$73) — contradictory. **Resolve directly
+with Semtech before committing the design.**
+- If active/supported → proceed with the dumb design as the baseline.
+- If truly EOL → fall back to the **small-FPGA conversion recipe** (HDMI RX +
+  Lattice ECP5/Artix + SDI IP + GS12281), which is more engineering and reintro-
+  duces a (small, raw-chip) FPGA — still no SOM/DDR for passthrough.
+**Action:** Semtech lifecycle inquiry + get the GS12170 eval board (Phase 0).
 
-Full per-option detail, links, and next actions live in `07`.
+## Q1 — MST hub: still required, sourcing per `07` *(dumb design uses a discrete hub, not FPGA-MST)*
+Going FPGA-less does **not** remove the MST hub — you still need it to get two
+displays from one USB-C. In the dumb design the hub feeds the two GS12170 bridges
+(HDMI 2.0). Sourcing playbook + decision in **`07-sourcing-playbook.md`**:
+- **Prototype:** a **$40 off-the-shelf USB-C→dual-HDMI MST adapter** (Plugable
+  USBC-MSTH2) — offloads the hub to a commodity part; build the conversion now.
+- **Production:** a discrete hub — **Parade PS8650** (Avnet quote pending),
+  **Synaptics VMM6210** (datasheet in hand), or **Realtek RTD2186**. All are
+  design-win-channel parts; chase quotes in parallel with the build.
+- *(MST-in-FPGA — Parretto/AMD/Intel — is only relevant to the Pro/smart variant,
+  which has no separate bridge chip. See `04` Block 2 Family B.)*
 
 ## Q2 — Does the target laptop give 4-lane DP Alt Mode? *(measurement, not a fork)*
 Dual-4K60 needs 4 DP lanes. Many USB-C ports drop to **2-lane** DP when
@@ -47,16 +52,12 @@ video stays driverless, the helper only improves determinism. This de-risks v1
 without needing active FRC. The per-OS reliability measurement (Phase 4) still
 decides whether full **Tier-2 active FRC** is ever warranted.
 
-## Q10 — AMD IP-licensing NRE *(Path B only — avoided entirely on Path A)*
-Pinning to AMD + FPGA-side MST (Path B) drags in a real, partly-opaque NRE:
-**~$11k AMD AV IP bundle (HDMI/SDI) + ~$5k DP1.4 RX IP** (figures
-order-of-magnitude, "contact sales", *unverified*). Amortizes only at volume.
-**Path A (VMM + PolarFire, free 12G-SDI IP) avoids this NRE entirely** — which is
-the main reason to chase VMM procurability in Q1. If Path B is chosen:
-- Exact license SKUs, real quotes, and whether eval/timeout licenses suffice
-  through Phase 1–4 bring-up before paying full freight.
-- **HDCP entitlement is NOT needed** — see Q11 (we ship as a non-HDCP sink), so
-  drop it from the NRE on either path.
+## Q10 — FPGA IP-licensing NRE *(MOOT for v1 — Pro/smart variant only)*
+**Not a v1 concern** — the dumb design has no FPGA and no IP licensing. This only
+matters if the **Pro/smart variant** is built. For reference: AMD MST-in-FPGA
+carries ~$11k AV + ~$5k DP IP; **Intel** first-party or **Parretto/Bitec on
+PolarFire** are cheaper Pro routes (`04` Block 3). **HDCP entitlement is never
+needed** (non-HDCP sink, Q11).
 
 ## Q5 — DSC: in or out for v1?
 Dual-4K60 **4:4:4** needs DP DSC; dual-4K60 **4:2:2 10-bit** (what SDI carries)

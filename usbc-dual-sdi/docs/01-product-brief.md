@@ -3,11 +3,15 @@
 **Working name:** Crossover (placeholder)
 **Category:** USB-C-native dual-channel 12G-SDI display adapter / converter
 **Form factor:** compact palm-sized box with a captive (or detachable) USB-C
-cable and two BNC outputs. **Not** a thumb-stick dongle — dual 12G-SDI plus an
-FPGA and cable drivers dissipates several watts and needs real BNC connectors,
-so the realistic envelope is "Blackmagic Micro Converter" sized, not "HDMI
-dongle" sized. We keep the *user mental model* of a dongle ("plug in, get two
+cable and two BNC outputs — "Blackmagic Micro Converter" sized, not "HDMI
+dongle." We keep the *user mental model* of a dongle ("plug in, get two
 displays") while being honest about the physical size.
+**Architecture (decided):** the **fixed-function "dumb" design** — USB-C MST hub
++ two **Semtech GS12170 HDMI→SDI bridge ASICs** + a small MCU for EDID. **No
+FPGA, no DDR, no SOM** (see `02`, `04`). This is literally "a USB-C MST dongle +
+two HDMI→SDI micro-converters, integrated into one box." An FPGA-based **smart
+variant** (active frame-rate conversion, color, genlock) is a documented future
+**Pro** option, not v1.
 
 ## The core promise
 
@@ -22,10 +26,14 @@ displays") while being honest about the physical size.
 - Presents as **two independent displays** to host (via DP MST).
 - **Two 12G-SDI outputs**, each auto-negotiating 12G / 6G / 3G / HD / SD.
 - Per-output formats up to **2160p59.94 4:2:2 10-bit** (4K UHD).
-- **Embedded audio** (LPCM from the DP stream → SMPTE ST 299 audio groups).
-- **Managed EDID** per output with selectable profiles.
+- **Embedded audio** (HDMI LPCM → SMPTE-embedded SDI audio, up to 16 ch — done
+  in the GS12170 bridge).
+- **Managed EDID** per output with selectable profiles (in the MCU).
 - **EDID-forced frame-rate management** (true fractional rates 23.98 / 29.97 /
-  59.94 advertised so the GPU emits broadcast cadence).
+  59.94 advertised so the GPU emits broadcast cadence). *Passive* (EDID-nudged,
+  source-locked) — this is also **required** to keep the laptop emitting
+  SDI-legal SMPTE rasters the bridge can convert (`02` §5). *Active* rate
+  conversion is a Pro feature.
 - **Plug-and-play video** — no host driver required for the SDI to work.
 - **Graceful degradation ladder** — when the host link or power can't sustain
   dual-4K, drop predictably (single-4K twin output → dual-HD → single-HD twin)
@@ -42,14 +50,16 @@ displays") while being honest about the physical size.
 - Small on-device **OLED + button** for standalone status / profile cycling.
 - SDI **payload ID (ST 352)** and **format flip** confidence on the OLED.
 
-### Tier 2 — Pro / v2 (architecturally reserved, not v1)
-- **Genlock / reference input** (tri-level or black-burst REF IN BNC) so both
-  outputs lock to house sync.
-- **Active frame-rate conversion** with a DDR frame buffer (e.g. host 60.00 →
-  SDI 59.94, or 50↔60 region conversion) instead of relying on EDID coaxing.
+### Tier 2 — Pro / v2 (FPGA-based "smart" variant — NOT v1)
+This is the **only** thing that justifies adding an FPGA + DDR, and it mirrors
+Schindler's Mini/Pro split (same front end, different conversion core):
+- **Active frame-rate conversion** with a DDR frame buffer (host 60.00 → SDI
+  59.94, 50↔60 region conversion) instead of EDID coaxing.
+- **Color / range processing** and **genlock to house reference** (tri-level /
+  black-burst REF IN BNC).
 - **SDI loop / second source** or HDMI confidence out.
-- These require DDR + a genlock PLL on the carrier; v1 PCB should leave
-  footprints / FPGA banks for them but not stuff them.
+- Replaces the two GS12170 bridges with one FPGA + DDR. Out of scope for v1; the
+  v1 PCB need not pre-stuff it.
 
 ## Explicit non-goals (v1)
 - **Not a capture device.** This is SDI *out* from the laptop, not SDI *in*. (A
@@ -77,16 +87,17 @@ The gap we fill: **dual-channel, USB-C-display-native, broadcast-legal SDI out
 with deliberate EDID/frame-rate control.** Nobody is sitting exactly here.
 
 ## Key risks (see `06-open-questions.md`)
-1. **DP-MST path / Synaptics VMM procurability** — the cheap path (discrete VMM
-   hub + PolarFire, no AMD IP) hinges on whether VMM6210/VMM5330 is buyable in
-   our volume (*unverified*). Fallback is AMD FPGA MST RX (~$16k IP). Top
-   architecture decision to close (`06` Q1).
-2. **2-lane vs 4-lane DP Alt Mode** on the host — dual 4K needs 4 lanes;
-   *mitigated* by the degradation ladder, but the host-lane behavior still needs
-   measurement.
-3. **GPU honoring fractional-rate EDID** — 23.98/24 from laptops is historically
-   flaky; *mitigated* by the optional host-side helper (`03`), with active FRC
-   (Tier 2) as the heavier fallback.
+1. **DP MST hub sourcing** — getting two displays from one USB-C still needs an
+   MST hub (VMM6210 / PS8650 / RTD2186); all are design-win-channel parts.
+   *Mitigated* for development by an off-the-shelf MST adapter (`07`). The one
+   block FPGA-removal does **not** simplify.
+2. **GS12170 lifecycle** — the bridge ASIC that removes the FPGA may be EOL/NRND
+   (still stocked; conflicting signals). **Confirm with Semtech before designing
+   in.** Fallback = small-FPGA conversion recipe (`06`, `04`).
+3. **2-lane vs 4-lane DP Alt Mode** on the host — dual 4K needs 4 lanes;
+   *mitigated* by the degradation ladder; host-lane behavior needs measurement.
+4. **GPU honoring fractional-rate EDID** — 23.98/24 from laptops is historically
+   flaky; *mitigated* by the optional host-side helper (`03`).
 
-(Power form is now decided — secondary USB-C power-in; only the per-rung wattage
-thresholds remain open. See `06` Q3.)
+(Decided: fixed-function/no-FPGA architecture; secondary USB-C power-in;
+non-HDCP-sink. Per-rung wattage still open — `06` Q3.)
