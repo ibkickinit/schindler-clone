@@ -164,4 +164,3 @@ FPGA 2–4 W, two 12G drivers ~1 W each, MST hub + housekeeping ~1–2 W →
 Native DP Alt Mode + line-based SDI mapping is **sub-frame** (no frame buffer in
 v1). Active FRC (Tier 2) adds ≥1 frame of buffering by definition — that is the
 cost of true rate conversion and is opt-in.
-</content>

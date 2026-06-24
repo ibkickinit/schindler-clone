@@ -85,4 +85,3 @@ with deliberate EDID/frame-rate control.** Nobody is sitting exactly here.
 
 (Power form is now decided — secondary USB-C power-in; only the per-rung wattage
 thresholds remain open. See `06` Q3.)
-</content>

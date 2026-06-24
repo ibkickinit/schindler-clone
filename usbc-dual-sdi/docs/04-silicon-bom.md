@@ -84,7 +84,7 @@ a proven one-toolchain stack of **4K60 HDMI 2.0 RX + DP 1.4 MST RX + 12G-SDI TX*
   that amortizes only at volume.
 - **PolarFire is disqualified for *this* design** despite free 12G-SDI IP: its DP
   RX is **SST-only (no MST)** and stock HDMI RX caps at **4K30** — it can't do the
-  dual-4K60 MST architecture. (It *would* suit a DP-only or HD-class variant.)
+  dual-4K60 MST architecture.
 - **CertusPro-NX disqualified:** SerDes hard-capped at 10.3G < 12G.
 
 ### Block 4 — USB-C PD + DP Alt-Mode controller
@@ -175,4 +175,3 @@ The FPGA path is non-negotiable for the managed-EDID / frame-rate / color thesis
 is the AMD AV/DP IP NRE above. A future **HD-class / DP-only budget variant**
 could escape both the 12G-SDI and the AMD-IP costs (e.g. PolarFire with its free
 SDI IP for a 3G/6G product), but cannot serve the dual-4K60 MST design.
-</content>

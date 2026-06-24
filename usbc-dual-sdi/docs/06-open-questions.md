@@ -40,15 +40,7 @@ video stays driverless, the helper only improves determinism. This de-risks v1
 without needing active FRC. The per-OS reliability measurement (Phase 4) still
 decides whether full **Tier-2 active FRC** is ever warranted.
 
-## Q10 — HD-class sibling on Zynq-7020? *(parallel thought, not planned)*
-The Zynq-7020 / TE0720 **cannot** do dual-4K 12G-SDI — even pure passthrough,
-no FRC — because its **GTP transceivers cap at ~6.25 Gb/s** vs 12G-SDI's
-~11.88 Gb/s (a PHY ceiling, unrelated to FRC compute). It *could* plausibly do
-**dual 3G/HD-SDI** or a **single 6G**. Parked as a possible cheaper **HD-class
-sibling** product, not on the 4K design path. Dual-4K needs UltraScale+
-GTH/GTY — see `04` Q-block 3.
-
-## Q11 — AMD IP-licensing NRE *(new — commercial, surfaced by Q1)*
+## Q10 — AMD IP-licensing NRE *(new — commercial, surfaced by Q1)*
 Pinning to AMD + FPGA-side MST drags in a real, partly-opaque NRE: **~$11k AMD
 AV IP bundle (HDMI/SDI) + ~$5k DP1.4 RX IP + HDCP 2.3 entitlement** (figures
 order-of-magnitude, "contact sales", *unverified*). This only amortizes at
@@ -57,8 +49,7 @@ volume. Open questions:
   through Phase 1–4 bring-up before paying full freight.
 - **Is HDCP needed at all?** If the product is positioned for unprotected
   live/production content, dropping HDCP removes cost + complexity. Confirm.
-- Does the NRE change the build-vs-license calculus for a future HD-class
-  sibling (PolarFire free SDI IP, DP-only) — see Q10.
+  (See Q11 — HDCP posture.)
 
 ## Q5 — DSC: in or out for v1?
 Dual-4K60 **4:4:4** needs DP DSC; dual-4K60 **4:2:2 10-bit** (what SDI carries)
@@ -83,4 +74,22 @@ DDR bank on the v1 PCB so Pro is a stuffing upgrade, not a respin? Proposed:
 A v2 sibling doing **SDI→USB capture (UVC)** is an obvious adjacent product but a
 different data path. Out of scope here — flag only so we don't accidentally
 design v1 in a way that forecloses it.
-</content>
+
+## Q11 — HDCP posture & consent UX *(under research)*
+SDI carries **no HDCP** (unprotected pro interface), so passing HDCP-protected
+content to an SDI output is decryption-to-clear — i.e. a circumvention device,
+not legally shippable. Direction (pending research confirmation of the legal
+reality + how Blackmagic/AJA handle it):
+- **Default compliant posture:** the box is **not an HDCP sink** (no keys) — it
+  only ever receives **unprotected** signals; protected sources blank at the
+  source. This is the standard converter pattern and **would let us drop the
+  HDCP IP license entirely** (ties to Q10).
+- **Schindler-style consent UX:** Schindler has an "HDCP override" toggle behind
+  an attestation/consent dialog + audit log (`docs/ui-menu.md` §1.3.5 / §13).
+  **Caveat:** Schindler's override targets an **HDMI OUT** (which *can* re-carry
+  HDCP); on **SDI there is no re-protection possible**, so the same UX over SDI
+  would be enabling a strip, which is a different legal animal. Whether any
+  consent-prompt framing is defensible here — or whether we simply ship the
+  no-HDCP-sink posture with a clear "protected content not supported" message
+  like Blackmagic — is the open question. **Resolve before any override UX is
+  designed.**

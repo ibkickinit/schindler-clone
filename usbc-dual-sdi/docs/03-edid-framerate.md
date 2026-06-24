@@ -120,4 +120,3 @@ Minimal, per output:
 
 No driver is needed for video; the app only talks to the management MCU over the
 USB 2.0 sideband to change EDID/config and read status.
-</content>

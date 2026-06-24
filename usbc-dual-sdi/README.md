@@ -59,5 +59,4 @@ Concept / paper design. See [`docs/`](docs/) for the full design package.
 - [`docs/04-silicon-bom.md`](docs/04-silicon-bom.md) — candidate silicon for each block, with open sourcing risks.
 - [`docs/05-roadmap.md`](docs/05-roadmap.md) — phased bring-up plan and prototype platform.
 - [`docs/06-open-questions.md`](docs/06-open-questions.md) — unresolved decisions that gate the design.
-</content>
 </invoke>

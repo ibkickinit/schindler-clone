@@ -69,4 +69,3 @@ Top-down de-risking: prove the **hardest, highest-uncertainty** links first
   10-bit, from one USB-C cable, presenting as two displays, with selectable EDID
   profiles that reliably force the advertised resolution/frame rate on the major
   OSes — verified on an SDI analyzer and real downstream gear.
-</content>
