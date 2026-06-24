@@ -77,9 +77,11 @@ Synaptics VMM parts are procurable in our volume** (see Q-block risk + `06` Q1).
   IP). Two hub sources:
   - **Synaptics VMM6210** (USB-C/DP-Alt in → 1× HDMI 2.1 + 1× DP 1.4, dual-4K60)
     / **VMM5330** (DP1.4 MST hub, up to 3 TX). VMM6210 **integrates the USB-C
-    input** — fewest parts. Sells via design-win/disti + FAE; **low-volume stock
-    unverified (403).** Cheap MST-hub dongles (StarTech/Club3D/Cable Matters) run
-    on VMM silicon — circumstantial evidence it's buildable.
+    input** — fewest parts. **Datasheet obtained (2026-06-24, in project vault
+    `_Projects/USB_DualSDI`)** — de-risks the spec/feasibility review; still need
+    a procurement quote (stock was 403-blocked). Cheap MST-hub dongles
+    (StarTech/Club3D/Cable Matters) run on VMM silicon — circumstantial evidence
+    it's buildable.
   - **Parade PS8650** (Taiwan) — genuine DP2.1a→DP1.4 **MST hub, 1 in → 4 out**,
     4K60+HDR/stream; the one credible *non-Synaptics* MST-hub alternative.
     Orderable MPN **PS8650BGA274GTR-A0** (BGA-274, tape-&-reel, rev A0),
