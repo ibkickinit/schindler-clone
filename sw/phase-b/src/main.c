@@ -985,14 +985,14 @@ static unsigned warp_calc_lead(int deg, int invx, int invy)
      * timing build — the old "deep-lead deadlock" was the stale failed-timing bitstream.) */
     unsigned mx = (unsigned)(invx > invy ? invx : invy);
     int d180 = deg % 180; if (d180 < 0) d180 += 180;   /* 0 (and 180) = axis-aligned */
-    /* DEEP lead (8192) ONLY for the one geometry class that both NEEDS it (high unique-fetch rate) and
-     * TOLERATES it (no set over-run): axis-aligned (0 or 180 deg) at 1:1 or zoom-IN (mx<=4096). Each source
-     * tile is used ~once in forward/reverse raster -> no eviction, deep covers the DMA round-trip (measured
-     * 762k px @1024, FULL @8192). EVERYTHING ELSE -> shallow 1280: rotations spread tiles across the 4-way
-     * sets and downscale reads sparsely-but-widely, so both EVICTION-WEDGE at deep lead. 1280 is eviction-
-     * safe for all of them (full frame for gentle rotation; steep/downscale short-frame at worst -> tune via
-     * 'L'). Bias safe: a short frame is mild, a wedge needs a reprogram. */
-    unsigned lead = (d180 == 0 && mx <= 4096u) ? 8192u : 1280u;
+    /* DEEP lead (8192) for axis-aligned (0/180deg) zoom-in. ROTATIONS -> 4096 (2026-06-24): with the
+     * 10deg-clamp + (1,33) cache hash, rotations no longer eviction-wedge at a deep lead (the hash spreads
+     * the 2x2 working set so worst-set-live<=3 << 4-way at every supported angle), AND the deeper lead is
+     * REQUIRED for the cardinal-transpose reads (90/270deg) and the near-cardinal band (40/220deg): at
+     * shallow 1280 they STARVE (90deg eol 442; bench), at L=4096 every 10deg angle is FULL FRAME (verified
+     * 30/40/90/130/160/20/70deg). So 4096 is the single rotation lead that covers transpose-starvation
+     * without eviction. (Downscale mx>4096 still wants ~24576; deferred with scale<100%.) */
+    unsigned lead = (d180 == 0 && mx <= 4096u) ? 8192u : 4096u;
     return lead > 0x000FFFFFu ? 0x000FFFFFu : lead;
 }
 
