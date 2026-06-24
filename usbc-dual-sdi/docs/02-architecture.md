@@ -70,6 +70,34 @@ Each hub output owns an **EDID/DDC channel** the MCU controls — see §5, this 
 where EDID/frame-rate management lives, and it matters even in the dumb design
 (below).
 
+> ### ⚠️ HOST PLATFORM SUPPORT — the MST-vs-USB4 fork (defining decision, `06` Q-MAC)
+> **macOS does NOT support DP MST extended desktop — it mirrors** (hardware-locked
+> on Apple Silicon; verified current 2026, no fix coming). So an **MST** front end
+> gives **two independent outputs on Windows/Linux, but only two *identical*
+> (mirrored) outputs on Mac.** For a Mac-heavy broadcast/production market that is
+> a **dealbreaker** for the "two independent" promise (though dual-mirror is still
+> useful = one source → two SDI destinations, our twin-output mode).
+>
+> Macs deliver independent dual-display via **Thunderbolt/USB4 DP tunneling**, not
+> MST. The good news: a **USB4 hub (Realtek RTS5490 — non-Intel, not TB-cert-
+> gated, fixed-function, NOT an FPGA)** can replace the MST hub and feed the same
+> `→ GS12170 → SDI` chain, giving **independent dual on Mac (M4+/Pro/Max) and
+> Windows** while staying "dumb." Caveats: pricier/more complex front end; may
+> require a USB4/TB host (could *narrow* cheap-DP-Alt-only-PC support — verify);
+> base **M1/M2/M3 Macs cap at one external display** regardless; and **"macOS
+> extends across RTS5490's two tunneled streams" is UNVERIFIED — must test on a
+> real M4/M5 Mac.**
+>
+> | Front end | Win/Linux indep. | **Mac indep.** | Cheap DP-Alt PC | FPGA? | Cost |
+> |---|---|---|---|---|---|
+> | **MST hub** (baseline) | ✅ | ❌ mirror | ✅ | no | low |
+> | **USB4 hub (RTS5490)** | ✅ (USB4/TB) | ✅ (M4+/Pro/Max) | ⚠️ verify | no | higher |
+>
+> **Decision is "who's the customer?":** Windows live-events/AV → MST is fine.
+> Mac broadcast/production → must go USB4. Prototype conversion on MST regardless
+> (the GS12170 chain is identical); gate the production front-end choice on an
+> RTS5490 + real-M4-Mac evaluation.
+
 ### 3. Per-channel conversion — **Semtech GS12170 bridge ASIC (no FPGA)**
 One fixed-function chip per channel does the whole conversion:
 - **HDMI 2.0 in (≤4Kp60 4:2:2 10-bit) → 12G-SDI out**, software-selected

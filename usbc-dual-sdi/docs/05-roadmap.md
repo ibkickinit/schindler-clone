@@ -39,11 +39,16 @@ ordinary display first; MST-hub sourcing runs in parallel and blocks nothing.
 - Push the same path to **2160p59.94 4:2:2 10-bit / 12G-SDI** through the GS12170.
 - Validate the **12G eye / jitter** out of the GS12281 over real coax lengths.
 
-## Phase 3 — Two channels + the real MST hub
+## Phase 3 — Two channels + the real front-end hub (+ the MST-vs-USB4 decision)
 - Add the **second GS12170 channel**, and swap the off-the-shelf adapter for the
-  **chosen production MST hub** (VMM6210 / PS8650 / RTD2186).
-- Stress the **link-bandwidth budget** (`02`): confirm dual-4K60 4:2:2 holds on
-  4-lane HBR3; validate independent formats per output.
+  **chosen production hub**.
+- **Resolve `06` Q-MAC (defining):** MST hub (VMM6210/PS8650/RTD2186 — Windows-
+  independent, Mac-mirror) **vs USB4 hub (Realtek RTS5490 — Mac+Windows
+  independent, still no FPGA).** If Mac broadcast is a target, **get an RTS5490
+  dev/dock and verify two-independent extended displays on a real M4/M5 Mac**, and
+  check USB4-hub behavior on a plain DP-Alt-only PC.
+- Stress the **link-bandwidth budget** (`02`); validate independent formats per
+  output.
 
 ## Phase 4 — EDID & frame-rate management (MCU)
 - Bring up **EDID emulation** + profile store on the MCU; validate **profile

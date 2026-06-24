@@ -2,6 +2,32 @@
 
 Ordered by how much they constrain the rest of the design.
 
+## Q-MAC — MST vs USB4 front end (Mac independent-dual) *(DEFINING product decision)*
+**Verified (HIGH confidence, 2026):** macOS does **not** support DP MST extended
+desktop — it **mirrors** (hardware-locked on Apple Silicon, no fix coming). So:
+- **MST front end** (current baseline) → two-independent on **Windows/Linux**,
+  **mirror-only on Mac**. For a Mac-heavy broadcast/production market this is a
+  **dealbreaker** for the "two independent" promise (dual-mirror still serves
+  one-source→two-destinations, our twin-output mode).
+- Macs do independent dual via **Thunderbolt/USB4 DP tunneling**, not MST. A
+  **USB4 hub (Realtek RTS5490** — non-Intel, **not** TB-cert-gated, fixed-
+  function, **no FPGA)** can replace the MST hub → same GS12170 chain → Mac
+  *and* Windows independent dual, still "dumb."
+
+**The decision is "who's the customer?"** Windows live-events/AV → MST (cheapest).
+Mac broadcast/production → USB4. **Open / to verify:**
+- ⚠️ **Does macOS actually extend across RTS5490's two tunneled DP streams?**
+  UNVERIFIED — **test on a real M4/M5 Mac** before committing.
+- Does a USB4 hub still work on a **plain DP-Alt-only PC** host, or does USB4
+  *narrow* cheap-PC support?
+- **Apple Silicon caps:** base **M1/M2/M3 = 1 external** (no dual by any method);
+  **M4/M5 base + Pro/Max = 2+**. A real support-matrix caveat either way.
+- RTS5490 sourcing (low-volume) and cost vs an MST hub.
+
+**Does not block the prototype:** the GS12170 conversion chain is identical for
+either front end, so Phase 1 proceeds on MST; this is a *production front-end*
+decision (`02` §2, `04` Block 2, `05` Phase 3).
+
 ## Q0 — GS12170 lifecycle *(HIGHEST — the v1 architecture hinges on it)*
 v1 removes the FPGA by using the **Semtech GS12170** HDMI→12G-SDI bridge ASIC
 (`02` §3, `04` Block 1). One source flags it **EOL/NRND**, yet it's still

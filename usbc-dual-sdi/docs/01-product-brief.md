@@ -21,9 +21,17 @@ variant** (active frame-rate conversion, color, genlock) is a documented future
 
 ## Feature tiers
 
+> **⚠️ Platform caveat (defining, `06` Q-MAC):** with an **MST** front end, "two
+> independent displays" is true on **Windows/Linux** but **Mac mirrors** (macOS
+> has no MST extended; hardware-locked on Apple Silicon). Independent-dual on Mac
+> requires a **USB4 front end (Realtek RTS5490 — still no FPGA)**. The choice is a
+> who's-the-customer decision; see `02` §2.
+
 ### Tier 0 — must-ship (v1 MVP)
-- USB-C **DisplayPort Alt Mode** input (DP 1.4, 4-lane HBR3).
-- Presents as **two independent displays** to host (via DP MST).
+- USB-C input (DP 1.4 / 4-lane HBR3 for MST, **or USB4** for the Mac-independent
+  variant — see platform caveat).
+- Presents as **two independent displays** (Windows/Linux via MST; Mac via USB4 —
+  MST mirrors on Mac).
 - **Two 12G-SDI outputs**, each auto-negotiating 12G / 6G / 3G / HD / SD.
 - Per-output formats up to **2160p59.94 4:2:2 10-bit** (4K UHD).
 - **Embedded audio** (HDMI LPCM → SMPTE-embedded SDI audio, up to 16 ch — done
@@ -87,10 +95,14 @@ The gap we fill: **dual-channel, USB-C-display-native, broadcast-legal SDI out
 with deliberate EDID/frame-rate control.** Nobody is sitting exactly here.
 
 ## Key risks (see `06-open-questions.md`)
-1. **DP MST hub sourcing** — getting two displays from one USB-C still needs an
-   MST hub (VMM6210 / PS8650 / RTD2186); all are design-win-channel parts.
-   *Mitigated* for development by an off-the-shelf MST adapter (`07`). The one
-   block FPGA-removal does **not** simplify.
+1. **MST vs USB4 front end / Mac support (DEFINING — `06` Q-MAC)** — MST gives
+   independent-dual on Windows but **mirror-only on Mac**; a Mac-heavy target
+   forces the **USB4 (RTS5490)** front end. Still no FPGA either way, but it
+   reshapes the front-end BOM and host compatibility. **Verify RTS5490 macOS
+   independent-dual on a real M4 Mac.**
+2. **DP MST / USB4 hub sourcing** — the front-end hub (VMM6210 / PS8650 /
+   RTD2186 / RTS5490) is a design-win-channel part. *Mitigated* for development
+   by an off-the-shelf adapter (`07`).
 2. **GS12170 lifecycle** — the bridge ASIC that removes the FPGA may be EOL/NRND
    (still stocked; conflicting signals). **Confirm with Semtech before designing
    in.** Fallback = small-FPGA conversion recipe (`06`, `04`).

@@ -68,14 +68,14 @@ Use a **reclocking** cable driver, one per BNC, after the GS12170 SDI output.
 - ⚠️ **3G-only parts that look tempting but are disqualified:** GS3490, LMH0307,
   LMH0394 — cannot do 12G.
 
-### Block 2 — DP MST split (still required in the dumb design)
-The MST hub is **unchanged by the FPGA-less decision** — you still need it to get
-two displays from one USB-C. In v1 the hub feeds the **GS12170 bridges** (HDMI
-2.0), not an FPGA. (The "Family B — MST-in-FPGA" sub-section below applies **only
-to the Pro/smart variant**, which has no separate bridge chip.)
+### Block 2 — Front-end hub: split one USB-C into two displays (still required)
+Unchanged by the FPGA-less decision — you still need a hub to get two displays
+from one USB-C, feeding the two **GS12170 bridges** (HDMI 2.0). **Two hub
+technologies, and the choice decides Mac support** (`06` Q-MAC, `02` §2):
 
-**Family A — discrete MST hub chip (the v1 path).** The hub splits in silicon →
-two HDMI 2.0 streams into the two GS12170 bridges. Hub options, best first:
+**Option 1 — DP MST hub (Windows-independent / Mac-mirror).** Cheapest; works on
+any DP-Alt host; but **macOS mirrors** (no MST extended). Discrete options, best
+first:
 - **Synaptics VMM6210** (USB-C/DP-Alt in → 1× HDMI 2.1 + 1× DP 1.4, dual-4K60) /
   **VMM5330** (DP1.4 MST hub, ≤3 TX). VMM6210 **integrates the USB-C input** —
   fewest parts. **Datasheet obtained (2026-06-24, vault `_Projects/USB_DualSDI`)**
@@ -91,6 +91,22 @@ two HDMI 2.0 streams into the two GS12170 bridges. Hub options, best first:
 - **Analogix ANX6470** *(new find, marginal)* — real MST hub but **DP1.2/HBR2
   only** (1 in → 3 streams, 21.6 Gb/s total), so dual-4K60 is tight/not
   guaranteed. Listed for completeness; lower priority.
+- ⚠️ Parade PS176-class / ITE / Algoltek / Realtek **RTD2173**-class are
+  single-stream converters, **not** MST splitters.
+
+**Option 2 — USB4 hub (Mac AND Windows independent-dual; still no FPGA).** Uses
+Thunderbolt/USB4 DP tunneling instead of MST, so **macOS extends** (not mirrors).
+Replaces the MST hub, feeds the same GS12170 chain — *fixed-function, not an
+FPGA.*
+- **Realtek RTS5490** — **USB4 hub** (DP2.1 tunneling, multi-display, PD), **not**
+  Thunderbolt-cert-gated, non-Intel; shipping in the 2025 MS Surface USB4 Dock.
+  The cost-down vs Intel **Barlow Ridge JHL9480** (TB5, premium, cert-gated) or
+  **Goshen Ridge JHL8440** (TB4, DP1.4, mature). ⚠️ **Verify it presents two
+  *fully independent* tunneled DP outs that macOS extends — test on a real M4/M5
+  Mac**; confirm low-volume sourcing; and check whether it requires a **USB4/TB
+  host** (may not work on plain DP-Alt-only PCs — could narrow PC support).
+- Caveat: base **M1/M2/M3 Macs cap at 1 external** regardless; only M4+/Pro/Max
+  do independent dual.
 
 **Family B — DP MST RX inside the FPGA (PRO/SMART VARIANT ONLY — not v1).** Only
 relevant if you build the FPGA-based smart variant (active FRC/color/genlock),
