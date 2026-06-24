@@ -4,17 +4,15 @@ Top-down de-risking: prove the **hardest, highest-uncertainty** links first
 (DP-Alt-Mode-to-two-streams, and clean 12G out), then integrate.
 
 ## Phase 0 — Paper design & sourcing de-risk
-- **CLOSE THE MST FORK (`06` Q1) — top priority, IN MOTION.** Parade
-  **PS8650BGA274GTR-A0** quote/details **requested from Avnet (US) 2026-06-24,
-  pending** — track for price, MOQ, lead time, datasheet + config/firmware
-  tooling. Price **Synaptics VMM6210/VMM5330** in parallel as a second-source.
-  Either procurable → **Path A** (hub + PolarFire, no AMD IP). Neither → **Path B**
-  (AMD FPGA MST RX). Skip the Thunderbolt/USB4 front end unless TB-only host
-  support becomes a requirement (no Asian single-chip exists; Intel Goshen Ridge
-  is cert-gated).
-- **If Path B:** get real **AMD IP quotes** (AV bundle + DP1.4 RX) and confirm
-  whether **eval/timeout licenses** carry Phases 1–4 before paying full freight
-  (`06` Q10). **HDCP entitlement is not needed** — non-HDCP-sink (`06` Q11).
+- **Resolve the MST option (`06` Q1) — but it no longer blocks dev (see Phase 1).**
+  Price the cheapest-first options in parallel: discrete hubs **Parade
+  PS8650BGA274GTR-A0** (Avnet quote **requested 2026-06-24, pending**), **Synaptics
+  VMM6210/5330** (datasheet in hand), **Realtek RTD2186**; and the in-FPGA IP
+  routes **Intel** DP-MST + SDI II and **Parretto/Bitec MST IP on PolarFire**.
+  Default to **discrete hub + PolarFire (no IP NRE)**; AMD only as last resort.
+- **Only if forced to Family B:** quote **Intel** and **Parretto/Bitec** before
+  AMD; if AMD, confirm **eval/timeout licenses** carry Phases 1–4 (`06` Q10).
+  **HDCP entitlement is not needed** on any route — non-HDCP-sink (`06` Q11).
 - **HDCP:** confirm the chosen DP/HDMI RX silicon (incl. VMM6210, which has
   HDCP 2.3) can be **provably unprovisioned** so the box is not an HDCP sink.
 - Confirm **DP Alt Mode 4-lane** behavior on the target laptop classes
@@ -26,13 +24,26 @@ Top-down de-risking: prove the **hardest, highest-uncertainty** links first
 - **Live-verify distributor stock/price** for GS12281, TPS65987D, STM32H723,
   Si534x (the research was 403-blocked from live carts).
 
-## Phase 1 — One channel, eval boards
-- Bench: USB-C → DP source into an **eval MST hub** (or FPGA DP-RX eval) →
-  one HDMI/DP stream into an **FPGA dev board** → **SDI driver eval board** →
-  scope / SDI analyzer on the BNC.
+## Phase 1 — One channel, SDI-first (decoupled from MST sourcing)
+**Key insight: MST is the *last* thing you need.** The "twin output" rung needs
+no MST, so bring up the hard part (the SDI chain) from a single ordinary display
+first, using an off-the-shelf front end — the MST-hub sourcing thread (`06` Q1)
+runs in parallel and blocks nothing here.
+- **Front end = a commercial USB-C→dual-HDMI MST adapter** (StarTech
+  **MST14CD122HD** or Plugable **USBC-MSTH2**) tapped into the FPGA HDMI RX —
+  gives two clean independent 4K60 HDMI streams *today*, no bare MST silicon
+  needed. Caveats: drive it from a **Windows/Linux** laptop with **DP1.4 + DSC +
+  HBR3** (macOS mirrors only; non-DSC hosts drop to 4K30); **don't** buy a
+  DisplayLink dock by mistake.
+- Bench: that adapter → **FPGA dev board** (PolarFire eval, or **AMD ZCU102** if
+  validating a real DP-MST sink) → **SDI driver eval board** → scope / SDI
+  analyzer on the BNC.
 - Goal: **one clean 3G-SDI output** (1080p59.94) from a laptop, lock verified on
-  an SDI analyzer / a real SDI monitor.
+  an SDI analyzer / real SDI monitor.
 - Validate **embedded audio** (ST 299) and **ST 352 payload ID**.
+- Note: the off-the-shelf adapter *bypasses* (doesn't validate) our own MST sink —
+  that validation comes in Phase 3 on the real front end (ZCU102 ships a
+  4-stream-over-one-DP MST example for exactly this).
 
 ## Phase 2 — One channel at 12G
 - Push the same path to **2160p59.94 4:2:2 10-bit / 12G-SDI**.

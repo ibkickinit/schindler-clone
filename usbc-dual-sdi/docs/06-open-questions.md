@@ -2,29 +2,31 @@
 
 Ordered by how much they constrain the rest of the design.
 
-## Q1 — How to split one DP link into two displays *(two live paths; PS8650 sourcing in progress via Avnet)*
-The first pass concluded "MST silicon unobtainable → must do MST in an AMD
-FPGA." **Follow-up research corrected that:** Synaptics **VMM6210 / VMM5330**
-are *real, datasheet-published* DP1.4 MST hubs (dual-4K60) — so there are now
-**two live paths** (detail in `04` Block 2):
-- **Path A — discrete MST hub chip → cheaper FPGA (PolarFire, free 12G-SDI IP).
-  Avoids the AMD IP NRE.** Two hub sources: **Synaptics VMM6210/5330**
-  (integrates USB-C input) or **Parade PS8650** (Taiwan; true DP2.1a→DP1.4 MST
-  hub, but needs a separate USB-C DP-Alt front stage). **Active sourcing:** Parade
-  **PS8650BGA274GTR-A0** quote/details requested from **Avnet (US) 2026-06-24,
-  pending** — the live thread closing the gating unknown; Synaptics VMM priced in
-  parallel. A Thunderbolt/USB4
-  front end was evaluated — **no Asian single-chip does the dual-DP breakout**
-  (only Intel Goshen Ridge JHL8440, which is TB-cert-gated); not pursued for v1
-  unless Thunderbolt-only host support is required (`04` Block 2).
-- **Path B — DP MST RX inside an AMD FPGA** (DP1.4 RX Subsystem, PG300). Always
-  available; pins vendor to AMD; **paid IP** (~$11k AV + ~$5k DP, see Q10).
-**Decision rule:** if the Avnet PS8650 quote (or a Synaptics VMM quote) gives a
-workable price + lead time + datasheet/tooling access at our quantity → **Path A**
-(materially cheaper, no AMD IP). Otherwise → **Path B** (fallback, costs ~$16k
-IP). ⚠️ The buyable Parade PS176-class / ITE / Algoltek / Realtek parts are
-single-stream, **not** MST splitters. **This is the top architecture decision to
-close — and it's now actively in motion (Avnet request submitted 2026-06-24).**
+## Q1 — How to split one DP link into two displays *(MANY routes now; no longer AMD-or-bust)*
+Successive research kept widening this. It is **not** the binary "cheap-gated-hub
+vs expensive-AMD" it looked like two passes ago. Full detail in `04` Block 2.
+Two families, several options each:
+- **Family A — discrete MST hub + cheap FPGA (PolarFire, free 12G-SDI IP). No MST
+  IP NRE.** Hub options: **Synaptics VMM6210/5330** (datasheet in hand; integrates
+  USB-C input), **Parade PS8650** (PS8650BGA274GTR-A0; **Avnet quote requested
+  2026-06-24, pending**; needs a USB-C front stage), **Realtek RTD2186** (DP1.4
+  MST → 4× HDMI2.0 4K60; sourcing unverified). Analogix ANX6470 is DP1.2-limited
+  (marginal).
+- **Family B — MST RX inside the FPGA.** Three IP routes, **not just AMD**: AMD
+  first-party (~$16k, most proven); **Intel/Altera** first-party (DP-MST sink +
+  12G-SDI II on Arria 10 / Cyclone 10 GX / Agilex; pricing unverified);
+  **third-party MST IP (Parretto/Bitec) on a cheap PolarFire** (keeps PolarFire's
+  free SDI IP → MST-in-FPGA *without* AMD's NRE).
+- **Thunderbolt/USB4** evaluated — no Asian single-chip; only Intel Goshen Ridge
+  JHL8440, TB-cert-gated. Park unless TB-only host support is required.
+
+**Decision rule:** pick the cheapest option whose sourcing/quote clears. Best
+case = discrete hub + PolarFire (no IP NRE). If hubs fall through, Intel or
+Parretto/Bitec-on-PolarFire still beat AMD; **AMD is now the last-resort
+fallback, not the default.** ⚠️ Parade PS176-class / ITE / Algoltek / Realtek
+**RTD2173**-class are single-stream converters, **not** MST splitters.
+**Crucially, this no longer gates development — see the decoupled dev path in
+`05` Phase 1.**
 
 ## Q2 — Does the target laptop give 4-lane DP Alt Mode? *(measurement, not a fork)*
 Dual-4K60 needs 4 DP lanes. Many USB-C ports drop to **2-lane** DP when

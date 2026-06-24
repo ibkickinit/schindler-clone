@@ -66,87 +66,103 @@ SMPTE ST 2082.
 - ⚠️ **3G-only parts that look tempting but are disqualified:** GS3490, LMH0307,
   LMH0394 — cannot do 12G.
 
-### Block 2 — DP MST split → **two live paths** (this is the key open fork)
-Follow-up research refined the earlier "MST silicon is unobtainable" conclusion.
-There are **two real ways** to split one DP link into two displays, and the
-choice has large cost/lock-in consequences. **Which one wins is gated on whether
-Synaptics VMM parts are procurable in our volume** (see Q-block risk + `06` Q1).
+### Block 2 — DP MST split → **two families + a decoupled dev path**
+Repeated research has widened this considerably from the early "must be AMD"
+conclusion. Two architectural families, each now with several options, plus a
+prototyping path that **decouples MST-hub sourcing from development**.
 
-- **Path A — discrete MST hub chip (avoids AMD DP IP).** The hub does the split
-  in silicon; the FPGA then only needs **HDMI/DP SST RX + 12G-SDI TX** (no DP-MST
-  IP). Two hub sources:
-  - **Synaptics VMM6210** (USB-C/DP-Alt in → 1× HDMI 2.1 + 1× DP 1.4, dual-4K60)
-    / **VMM5330** (DP1.4 MST hub, up to 3 TX). VMM6210 **integrates the USB-C
-    input** — fewest parts. **Datasheet obtained (2026-06-24, in project vault
-    `_Projects/USB_DualSDI`)** — de-risks the spec/feasibility review; still need
-    a procurement quote (stock was 403-blocked). Cheap MST-hub dongles
-    (StarTech/Club3D/Cable Matters) run on VMM silicon — circumstantial evidence
-    it's buildable.
-  - **Parade PS8650** (Taiwan) — genuine DP2.1a→DP1.4 **MST hub, 1 in → 4 out**,
-    4K60+HDR/stream; the one credible *non-Synaptics* MST-hub alternative.
-    Orderable MPN **PS8650BGA274GTR-A0** (BGA-274, tape-&-reel, rev A0),
-    distributed in the US by **Avnet** — **quote/details requested 2026-06-24,
-    pending** (this is now a tracked sourcing thread, not a dead-end). Takes a
-    **DP input**, so it needs a separate USB-C DP-Alt-Mode/PD front stage (unlike
-    the VMM6210). New part (sampling 2024); confirm datasheet access + config/
-    firmware tooling with Avnet/Macnica when they respond.
-- **Path B — DP MST RX inside an AMD FPGA (no scarce hub chip).**
-  **AMD DP1.4 RX Subsystem (PG300)**, MST sink, 2 streams, fed by PL GTH. Robust
-  and self-contained, but **paid IP** (~$5k DP + ~$11k AV bundle) and **pins the
-  FPGA to AMD**.
+**Family A — discrete MST hub chip + a simple FPGA.** The hub splits in silicon;
+the FPGA then only needs **HDMI/DP SST RX + 12G-SDI TX** (no DP-MST IP → cheaper
+FPGA, Block 3). Hub options, best first:
+- **Synaptics VMM6210** (USB-C/DP-Alt in → 1× HDMI 2.1 + 1× DP 1.4, dual-4K60) /
+  **VMM5330** (DP1.4 MST hub, ≤3 TX). VMM6210 **integrates the USB-C input** —
+  fewest parts. **Datasheet obtained (2026-06-24, vault `_Projects/USB_DualSDI`)**
+  — spec review unblocked; procurement quote still pending (stock 403-blocked).
+- **Parade PS8650** — DP2.1a→DP1.4 **MST hub, 1 in → 4 out**, 4K60+HDR/stream.
+  Orderable MPN **PS8650BGA274GTR-A0** (BGA-274), US distributor **Avnet** —
+  **quote requested 2026-06-24, pending**. Needs a separate USB-C DP-Alt/PD front
+  stage (takes a DP input).
+- **Realtek RTD2186** *(new find)* — DP1.4 RX **SST/MST (≤7 in, out to 4
+  displays)**, **HDMI 2.0b 4K60** per output (no DSC). Single-chip DP-MST-RX →
+  4× HDMI 2.0; Chinese reference designs (schematic + PCB) exist. Low-volume
+  obtainability **unverified** — but a credible 3rd discrete hub.
+- **Analogix ANX6470** *(new find, marginal)* — real MST hub but **DP1.2/HBR2
+  only** (1 in → 3 streams, 21.6 Gb/s total), so dual-4K60 is tight/not
+  guaranteed. Listed for completeness; lower priority.
 
-**Thunderbolt / USB4 front end — evaluated, no Asian single-chip win.** TB/USB4
-natively tunnels two DP streams, but the only silicon that *receives* both and
-breaks them out as two independent DP outputs is **Intel's Goshen Ridge JHL8440**
-(dual-4K60) — Intel, not Asian, and **TB-cert/firmware-gated** (hard for a small
-shop). Asian USB4 parts don't replace the splitter: **ASMedia ASM2464PD** is
-storage-only, **ASM4242** is host-side (wrong direction), and **VIA Labs
-VL830/VL832** (Taiwan) are device-side but **single-DP-out** — they'd still need
-an MST hub bolted after them. So TB/USB4 buys broader Thunderbolt-only-laptop
-support and guaranteed dual-DP bandwidth, but **adds cost/cert friction and no
-Asian one-chip path** — not worth it for v1 unless Thunderbolt-only host support
-becomes a requirement.
+**Family B — DP MST RX inside the FPGA.** No scarce hub chip; the cost is IP.
+Now three IP routes, not just AMD:
+- **AMD DP1.4 RX Subsystem (PG300)** on Zynq/Artix US+ — MST sink, proven, but
+  **paid IP** (~$5k DP + ~$11k AV bundle) and **pins to AMD**.
+- **Intel/Altera DisplayPort FPGA IP** *(new find)* — has a true **MST sink (up
+  to 4 streams, HBR3)**, and Intel FPGAs with ≥12.5G transceivers
+  (**Arria 10 GX, Cyclone 10 GX, Agilex 7 F-Tile**) also have first-party **12G-
+  SDI II IP** → a **complete non-AMD single-chip** equivalent of the AMD path.
+  Intel IP pricing not public (*"cheaper than AMD" unverified*).
+- **Third-party MST IP on a cheap FPGA** *(new find — softens the cost wall)* —
+  **Parretto** (vendor-neutral MST IP: AMD/Intel/Lattice/Microchip; on GitHub +
+  commercial) or **Bitec DP1.4a** (MST "on request"). These let us run **MST sink
+  on a low-cost Microchip PolarFire** (whose own DP RX is SST-only) **alongside
+  PolarFire's FREE 12G-SDI IP** — i.e. MST-in-FPGA **without** AMD's ~$16k NRE.
+  Stream-count/HBR3 details need confirming (vendor pages 403).
 
-⚠️ The buyable **Parade PS176 / ITE / Algoltek / Realtek** *converter* parts are
-**single-stream, not MST splitters** — they cannot do the split. (Parade's
-splitter is the PS8650 above; don't confuse it with their PS176-class converters.)
+**Development path — decouple sourcing from progress (do this regardless).** A
+commercial **USB-C → dual-HDMI-2.0 MST adapter** (StarTech **MST14CD122HD**,
+Plugable **USBC-MSTH2**) outputs two independent 4K60 HDMI streams *today* → feed
+the FPGA HDMI RX and bring up the **whole SDI chain** now. Caveats: dual-4K60
+needs a **host with DP1.4 + DSC + HBR3** (else it drops to 4K30); **macOS mirrors
+only — use Windows/Linux**; **don't** accidentally buy a DisplayLink dock
+(compressed, driver-based). This *bypasses* (doesn't *validate*) our own MST
+sink — but it unblocks all the SDI-TX work. Eval boards for the real MST sink:
+**AMD ZCU102** ships a 4-stream-over-one-DP MST example; Intel dev kits
+(Cyclone 10 GX) have DP + 12G-SDI examples; PS8650 EVB via Macnica.
 
-**Why Path A matters:** it can **eliminate the AMD IP NRE entirely** and unlock a
-much cheaper FPGA (Block 3) — *if* the VMM is procurable. **Verify VMM
-obtainability in our volume before locking the architecture.**
+**Thunderbolt / USB4 — evaluated, no Asian single-chip.** Only **Intel Goshen
+Ridge JHL8440** receives both tunneled DP streams → dual independent DP
+(dual-4K60), but it's Intel and **TB-cert/firmware-gated**. Asian USB4 parts
+don't replace the splitter (ASMedia ASM2464PD = storage-only; ASM4242 =
+host-side; VIA VL830/VL832 = single-DP-out). Not for v1 unless TB-only host
+support is required.
 
-### Block 3 — FPGA (depends on the Block-2 path)
-**Path B (MST-in-FPGA) pins the vendor to AMD** — the only proven one-toolchain
-stack of **4K60 HDMI 2.0 RX + DP 1.4 MST RX + 12G-SDI TX**. **Path A (discrete
-VMM hub) relaxes this**: the FPGA only needs **DP/HDMI SST RX + 12G-SDI TX**,
-which opens cheaper, non-AMD options — notably **Microchip PolarFire** with its
-**free** 12G-SDI IP (its DP RX is SST-only, which is now *fine* because the VMM
-already split the link, and at 4K60 per SST stream; feed it the VMM's **DP**
-output, not HDMI, to dodge PolarFire's 4K30 HDMI-RX cap). An even more extreme
-cost-down on Path A is the **Semtech GS12170 HDMI→SDI bridge ASIC** (HDMI in →
-12G-SDI out, 4Kp60 4:2:2, *no FPGA*) — but that **sacrifices the managed-EDID /
-frame-rate / color thesis**, so it's only for a dumb-converter variant.
+⚠️ **Not** MST splitters (single-stream converters — can't do the split):
+Parade **PS176**-class, ITE, Algoltek, and Realtek's **RTD2173**-class converters.
+Don't confuse them with the real MST hubs above (PS8650, RTD2186).
 
-| Family | SerDes max | 12G-SDI | DP/HDMI RX | IP cost | Obtainable |
+### Block 3 — FPGA (depends on the Block-2 family)
+The FPGA need depends on the Family-A-vs-B choice:
+- **Family A (discrete hub did the split):** FPGA only needs **DP/HDMI SST RX +
+  12G-SDI TX** → cheapest is **Microchip PolarFire** (free 12G-SDI IP; its
+  SST-only DP RX is fine post-split; feed it the hub's **DP** output to dodge
+  PolarFire's 4K30 HDMI-RX cap). Extreme cost-down: **Semtech GS12170 HDMI→SDI
+  bridge ASIC** (no FPGA) — but it sacrifices the managed-EDID/FRC/color thesis,
+  so dumb-converter variant only.
+- **Family B (MST in FPGA):** **no longer AMD-only.** Three IP routes (Block 2):
+  AMD first-party; **Intel/Altera** first-party (DP-MST sink + 12G-SDI II on
+  Arria 10 / Cyclone 10 GX / Agilex 7); or **third-party MST IP (Parretto/Bitec)
+  on a cheap PolarFire** — which gives MST-in-FPGA **without AMD's ~$16k NRE**
+  (pairs with PolarFire's free SDI IP).
+
+| Family/role | SerDes max | 12G-SDI | DP/HDMI RX MST | IP cost | Obtainable |
 |---|---|---|---|---|---|
-| **AMD Zynq US+ XCZU4EV / ZU3EG** ★ | PL GTH **12.5G** | yes (via GTH) | **DP1.4 MST + HDMI2.0 4K60 RX** | paid (~$11k AV bundle) | yes, stocked (~$150–400) |
-| AMD Artix US+ AU25P | GTH 12.5G (pkg-dependent!) | yes (SFVB784 pkg) | DP + HDMI2.0 | paid ~$11k | yes |
-| Microchip PolarFire MPF300T | 12.7G | yes (**free** 12G IP, Jan-2026) | DP1.4 RX **SST only**; HDMI RX **only 4K30** | free | **fits Path A** (VMM DP-out → SST RX); not Path B |
+| **AMD Zynq US+ XCZU4EV/ZU3EG** ★(B) | PL GTH **12.5G** | yes (GTH) | **DP1.4 MST + HDMI2.0 4K60** (1st-party) | ~$11k AV +$5k DP | yes, stocked (~$150–400) |
+| **Intel Arria10/Cyclone10 GX**(B) | **12.5G** | yes (SDI II IP) | **DP MST sink (≤4, HBR3)** 1st-party | paid (*unverified*) | yes |
+| **Microchip PolarFire MPF300T** ★(A, or B via 3rd-party IP) | 12.7G | **free** 12G IP | native SST only; **MST via Parretto/Bitec** | free / 3rd-party IP | yes |
 | Lattice CertusPro-NX | **10.3G** | **NO — disqualified** | — | — | — |
-| Lattice Avant-G | 12.5G | electrically yes, **no turnkey 12G-SDI IP** | DP IP; HDMI bridging | mixed | eval only |
+| Lattice Avant | 12.5G | no turnkey 12G IP | MST via Parretto (prelim) | mixed | eval only |
 
-- **Path B recommendation: AMD Zynq UltraScale+ XCZU4EV (or ZU3EG)** in a
-  **12.5G-GTH package** — confirm the package exposes **≥4 GTH at 12.5G**. The
-  integrated ARM PS can also absorb the USB-C control plane (folding in Block 5).
-  **Downside:** ~$11k AV IP + ~$5k DP IP (Block 2) NRE; amortizes only at volume.
-- **Path A recommendation: Microchip PolarFire MPF300T** — free 12G-SDI IP +
-  free/SST DP RX is sufficient once a VMM hub has done the split, **eliminating
-  the AMD IP NRE**. Gated entirely on **VMM procurability** (Block 2 / `06` Q1).
-- **CertusPro-NX disqualified** (SerDes capped at 10.3G < 12G) on either path.
-- **Net:** if the VMM is procurable, **Path A (VMM + PolarFire) is materially
-  cheaper** (no ~$16k AMD IP, cheaper FPGA) at the cost of an extra hub chip and
-  a two-chip-vendor BOM. If the VMM can't be sourced in our volume, **Path B
-  (AMD)** is the fallback. **This is the top architecture decision to close.**
+- **Cheapest overall: Family A + PolarFire** — discrete hub (VMM/PS8650/RTD2186)
+  + PolarFire (free 12G-SDI IP), **no MST IP NRE at all**. Gated on hub
+  procurability (Block 2 / `06` Q1).
+- **If no hub sources out: Family B no longer means a forced ~$16k AMD bill.**
+  Two cheaper-than-AMD routes now exist: **Intel** first-party DP-MST + SDI II,
+  or **Parretto/Bitec MST IP on PolarFire** (keeps the free SDI IP). AMD remains
+  the most-proven but most-expensive Family-B option.
+- **CertusPro-NX disqualified** (SerDes capped at 10.3G < 12G) everywhere.
+- **Net:** the architecture is **no longer a binary "cheap-but-gated vs
+  expensive-AMD."** Best case = discrete hub + PolarFire (no IP NRE); if hubs
+  fall through, MST-in-PolarFire via Parretto/Bitec, or an Intel FPGA, both beat
+  the AMD NRE. AMD is now the *fallback-of-last-resort*, not the default.
+  **Decision still gated on the Block-2 sourcing/quote results.**
 
 ### Block 4 — USB-C PD + DP Alt-Mode controller
 The box is a **DP Alt-Mode sink (UFP_D)** wanting **4-lane DP (pin assignment
@@ -206,8 +222,8 @@ DP mux/redriver routes the lanes.
 | Block | Recommended | Obtainable? | ~Price (1–10) | Caveat |
 |---|---|---|---|---|
 | 12G-SDI driver | Semtech **GS12281-INE3** (reclocking) ×2 | yes, stocked | ~$31 ea | + Si534x ref clock; no separate retimer |
-| DP MST split | **Path A:** Synaptics **VMM6210/5330** *or* Parade **PS8650BGA274GTR-A0** (Avnet, quote pending) · **Path B:** AMD DP1.4 RX IP | A: PS8650 via Avnet *(in progress)* · B: yes (paid IP ~$5k) | A: hub chip cost · B: license ~$5k | **gating fork** — Path A avoids AMD IP; PS8650 needs a USB-C front stage |
-| FPGA | **Path A:** Microchip **PolarFire MPF300T** (free IP) · **Path B:** AMD **Zynq US+ XCZU4EV** | yes, stocked | ~$150–400 | A: free 12G IP, no AMD NRE · B: ~$11k AV IP, verify GTH count |
+| DP MST split | **Fam A (hub):** VMM6210/5330 · Parade **PS8650** (Avnet, quote pending) · Realtek **RTD2186** — **Fam B (in-FPGA IP):** AMD · Intel · Parretto/Bitec-on-PolarFire | A: PS8650 via Avnet *(in progress)* · B: yes | A: hub chip cost · B: IP NRE | **no longer AMD-or-bust** — many routes; gated on Block-2 quotes (`06` Q1) |
+| FPGA | **Fam A:** Microchip **PolarFire MPF300T** (free 12G IP) · **Fam B:** AMD **Zynq US+ XCZU4EV** *or* Intel **Cyclone 10 GX** *or* PolarFire + 3rd-party MST IP | yes, stocked | ~$150–400 | A: no IP NRE · B: Intel/3rd-party-IP both beat AMD's ~$16k |
 | USB-C PD/DP | TI **TPS65987DDHRSHR** + CCG3PA (port 2) | yes (*stock unverified*) | ~$5–8 | EEPROM config; 4-lane via multifn bit |
 | MCU | ST **STM32H723ZGT6** | yes, in stock | ~$12 | USB-HS needs ext ULPI (FS fine for HID) |
 | Ref clock | Skyworks **Si5342/Si5344** | yes | — | mandatory for 12G jitter |
@@ -215,21 +231,22 @@ DP mux/redriver routes the lanes.
 
 ## Top sourcing risks (ranked)
 
-1. **DP MST split / hub procurability — HIGHEST (now actively de-risking).** The
-   Path-A-vs-Path-B fork hinges on whether a discrete MST hub is buyable in our
-   volume.
-   - **Parade PS8650BGA274GTR-A0** has an orderable MPN with **Avnet (US)** —
-     **quote/details requested 2026-06-24, pending.** This is the live thread.
-   - Synaptics VMM6210/VMM5330 remain a parallel option (stock was 403-blocked,
-     *unverified*).
-   - Any hub procurable → **Path A** (hub + PolarFire), **no AMD IP NRE**.
-   - None procurable → **Path B** (AMD FPGA + ~$16k IP). Always available, so
-     this is a true fallback — the risk is *cost*, not *can-we-ship*.
-   **Action:** track the Avnet PS8650 response (datasheet access, MOQ, lead time,
-   config/firmware tooling); price a Synaptics VMM quote in parallel.
-2. **AMD IP licensing (Path B only) — HIGH cost.** ~$11k AV bundle + ~$5k DP IP
-   — large, partly-opaque ("contact sales") NRE. Path A avoids it. (No HDCP
-   entitlement on either path — non-HDCP sink, `06` Q11.)
+1. **DP MST split — MODERATE (downgraded; many routes now).** No longer a single
+   gating chip — there are multiple discrete hubs *and* multiple in-FPGA IP
+   routes (Block 2). Cheapest = a discrete hub + PolarFire (no IP NRE).
+   - **Parade PS8650BGA274GTR-A0** — orderable MPN, **Avnet (US)**, quote
+     **requested 2026-06-24, pending** (live thread).
+   - **Synaptics VMM6210/5330** (datasheet in hand; quote pending) and **Realtek
+     RTD2186** are parallel hub options.
+   - Even if *no* hub sources out, MST-in-FPGA via **Intel** or **Parretto/Bitec
+     IP on PolarFire** avoids AMD's NRE; **AMD is the last-resort fallback**.
+   **Action:** track Avnet PS8650 (datasheet/MOQ/lead/tooling); price VMM in
+   parallel; keep Parretto/Bitec + Intel as IP fallbacks.
+2. **IP licensing (only if forced into Family B) — was HIGH, now bounded.** AMD
+   ~$11k AV + ~$5k DP is the *expensive* route; **Intel first-party** and
+   **Parretto/Bitec MST IP on PolarFire** are cheaper Family-B options to price
+   before defaulting to AMD. (No HDCP entitlement anywhere — non-HDCP sink,
+   `06` Q11.)
 3. **12G driver lifecycle/stock — MODERATE.** GS12281 looks well-stocked; the
    cost-down GS12081 showed non-stocked / 24-wk lead, and TI LMH1208/1297
    active-vs-NRND couldn't be confirmed (403). Stick with GS12281.
