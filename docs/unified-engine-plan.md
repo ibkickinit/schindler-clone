@@ -23,6 +23,11 @@ from composite-SD up to 1080p. The engine lives on `warp-demand-fetch-fsm`; this
 These are the product requirements as the operator stated them, with the technical reading.
 
 1. **Scale range: 0.5× – 2.0×.** (300% target relaxed → only 200% needed.) **50% must be clean.**
+   - **1080p60: scale DISABLED** (canon — downscale multiplies the fetch past the 60p budget).
+   - BUT **1080p60 still allows geometry *trim*: small rotation + non-shrinking corner-pin/keystone**
+     (these remap a ~1:1 fetch, they don't multiply it). Caveat: corner-pin that significantly
+     *shrinks* the image is downscale-in-disguise → falls back to the ≤30p rule. Cache fit at the
+     larger 1080 frame must be verified (rotation/corner-pin cache was proven at 720p).
 2. **Each engine works from an LOD = its OUTPUT RESOLUTION. Never switch LOD within an engine.**
    - This is the **dest-res-master** architecture. The scaler reduces the master → this engine's
      output-res LOD; the tiler tiles that LOD; the ring does ±2× of it. One fixed LOD per engine.
@@ -48,6 +53,12 @@ These are the product requirements as the operator stated them, with the technic
     engine alone. Aggregate two-engine bandwidth is a first-class design item (see W2/§4).
   → Forces **runtime parameterization**: one engine design, instantiated twice, each with its own
     runtime LOD size / tile geometry / source dims / framerate.
+- **Engine assignment (relaxes W2 a lot):** Engine A = **HDMI/VGA** (high-res, up to 1080p), Engine B =
+  **Composite/Component analog** (SD/ED, occasionally 1080i). **SDI** assignable to either as needed.
+  Any PHY that can't do the engine's set res/framerate is **disabled** (engine is master of res; PHYs
+  follow or drop). → The two engines are **naturally asymmetric** (analog ≪ HDMI res), so "two 1080p
+  engines both downscaling" is mostly off the table by construction. **Operator OK'd clamping combos**,
+  so W2 = a small table of legal (A res/fps, B res/fps) pairs that fit aggregate bandwidth.
 - **Output resolution range: composite-SD (~720×480) → 1920×1080.** Difficulty of clean-50% scales
   with output res (see §3). 1080p is the binding case.
 - **Canon:** 1080p-warp is a **≤30p** feature; **1080p60 = clean passthrough** (no warp/scale).
@@ -99,17 +110,20 @@ true worst case → likely both ≤30p, or one HD + one SD.
 ## 4. PLAN / WORK ITEMS
 
 Status: ☐ todo · ◐ in progress · ✅ done · 🔬 needs verification
+**Priority (operator-set 2026-06-25):** W1 is the lead (delivers clean 50%). W3 (UI) PARKED — not needed now.
 
 - **W1 ◐ Dest-res-master build (the main change).** Move the scaler in FRONT of the tile-writer:
   scaler reduces master → this engine's output-res LOD → `raster_to_tile` tiles the LOD → ring does
   0.5–2.0× of it. Make **LOD size, tile-frame geometry (currently hardwired 1920×1080/8040 tiles),
   and warp source dims** runtime params. This delivers clean 50% and retires the mip.
-- **W2 ☐ Two-engine bandwidth budget.** Model aggregate DDR/HP fetch for two simultaneous engines
-  across the HD↔SD range; define which (res, framerate) pairs are jointly clean. HP map today:
-  HP0=VDMA, HP1=warp read, HP2=Path-B dedicated write. Second engine needs its own read path.
-- **W3 ☐ Port corner-pin UI + daemon handlers onto this branch, MINUS keystone.** UI panels +
-  `corner.set` (drop `keystone.set`/`K`) live on `orient-integration` (commits dd4afd5, 62e5bed,
-  5983031). Firmware here already supports `C`. Add the daemon method, port the web panel.
+- **W2 ☐ Two-engine bandwidth clamp table.** Given Engine A = HDMI/VGA (HD), Engine B = Composite/
+  Component (mostly SD/ED) + assignable SDI, produce the **table of legal (A res/fps, B res/fps)
+  combos** that fit aggregate DDR/HP bandwidth (operator OK'd clamping). PHY-disable rule applies.
+  Asymmetric assignment makes this tractable. HP map today: HP0=VDMA, HP1=warp read, HP2=Path-B write;
+  second engine needs its own read path.
+- **W3 ☐ (PARKED — operator doesn't need the UI handles now.)** Port corner-pin UI + daemon
+  `corner.set` onto this branch, MINUS keystone, when control surface is wanted. UI panels live on
+  `orient-integration` (dd4afd5, 62e5bed, 5983031); firmware here already supports `C`. Low priority.
 - **W4 ☐ Pincushion (mandatory, net-new HDL).** Non-linear/radial term in the address generator on
   the projective core. Sim-prove, then bench. **Validate cache/lead behavior independently** — non-
   linear excursion per row breaks the affine/projective locality assumptions.
@@ -117,6 +131,10 @@ Status: ☐ todo · ◐ in progress · ✅ done · 🔬 needs verification
   0.1° steps (target worst-set-live ≤4), then bench-sweep `opix/frame`. Likely clean; verify before
   promising. Tooling exists (the offline analysis that proved the 10° grid).
 - **W6 ☐ Remove dead LOD/mip firmware** (`mip_downsample`/`mip_fill_static`) — wrong approach per W1.
+- **W7 🔬 1080p60 geometry-trim envelope.** Verify small rotation + non-shrinking corner-pin fit the
+  60p budget at the 1080 frame (bandwidth ~1:1, but cache fit at the bigger frame is unproven — the
+  rotation/corner-pin cache was validated at 720p). Define the "non-shrinking" corner-pin boundary
+  beyond which it becomes downscale (→ ≤30p). Enables keystone correction at full 1080p60.
 
 ### Honest unknowns (do not promise)
 - **Infinite/continuous rotation** — structurally impossible on 4-way cache. Only a cache-associativity
