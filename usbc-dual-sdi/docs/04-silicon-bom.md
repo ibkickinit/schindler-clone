@@ -139,7 +139,18 @@ a complete dev kit (`MPF300-VIDEO-KIT-NS` + `VIDEO-DC-SDI` FMC for 12G).
 **What PolarFire gives us:**
 - **12G-SDI RX/TX IP — FREE** (1.5G/3G/6G/12G, ST 2082-1; demo DG0889).
 - **DisplayPort RX IP** — DP 1.4 **HBR3/SST → 4K60** (Microchip CoreDP or Bitec).
-- 12.7G transceivers; MPF300T (300K LE) + DDR4 + SPI flash; stocked (~$150–300).
+- 12.7G transceivers; MPF300T (300K LE) + DDR4 + SPI flash; stocked.
+
+**Recommended part: `MPF300T-FCG1152I`** — in stock at DigiKey (#7356235) /
+MicrochipDirect; **16 transceiver lanes** (covers 2× DP-RX @2–4 lanes + 2× SDI-TX
+@1 lane with headroom); same device as the video kit (prototype = production).
+- Cheaper alt **`MPF300T-FCG484I`** (#7356231, in stock) has **8 lanes** — works
+  **only if** DP-RX is **2 lanes/stream** (4+2 = 6 of 8); fails if the hub drives
+  4-lane DP per stream. Verify the per-stream DP lane count first.
+- ⚠️ In-stock parts are **standard speed grade**; the video kit uses **`-1`**
+  (`MPF300T-1FCG1152I`). Confirm whether you want the `-1` for IP timing-closure
+  margin + that 12.7G transceivers are supported on the chosen grade. Confirm live
+  qty on the cart (stock not readable remotely).
 
 **Diligence items before committing (`06` Q0b):**
 - ⚠️ **HDMI-RX caps at 4K30** — must use the **DP-RX** path for 4K60 (drives the
