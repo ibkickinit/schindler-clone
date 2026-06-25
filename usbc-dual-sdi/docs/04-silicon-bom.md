@@ -52,6 +52,12 @@ entire FPGA + DP-MST-IP + 12G-SDI-IP problem on the *conversion* side.
 - **HDMI port is chip-to-chip TMDS** → needs an **HDMI redriver** on the cable
   input. Expects **unencrypted** TMDS, no HDCP — aligns with non-HDCP-sink (`06`
   Q11); ensure the MST hub upstream doesn't authenticate HDCP.
+- **Eval / reference design: `RDK-GS12170-H2S00`** (HDMI→SDI flavor; Newark
+  #90AJ5039, Symmetry, Utmel) — a **complete reference design** (HDMI redriver +
+  GS12170 + external PLL + GS12281 + BNC). Its schematic/BOM **specifies the exact
+  PLL/redriver/driver parts** and seeds the gen-1 conversion subsystem — "adapt
+  the RDK + add MST hub + MCU," not design SDI from scratch. (Other flavors:
+  `-S2H00` SDI→HDMI, `-S2S00` gearbox.)
 - ⚠️ **TOP RISK — lifecycle:** one source flags GS12170 EOL/NRND while it remains
   stocked. **Confirm with Semtech before designing in.** Fallback if EOL = small-
   FPGA recipe (HDMI RX + Lattice ECP5/Artix + SDI IP + GS12281) — more work, the

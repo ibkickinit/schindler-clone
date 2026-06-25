@@ -6,10 +6,15 @@ De-risk the two real unknowns first: **the GS12170 conversion block** and **MST
 hub sourcing** (decoupled — see Phase 1).
 
 ## Phase 0 — Paper design & sourcing de-risk
-- **GS12170 — confirm lifecycle + get the eval board.** Email Semtech / a distri
-  to resolve the **EOL/NRND question** (top risk, `06`), and get the **GS12170
-  evaluation board** (and GS12281 driver eval) so the conversion can be validated
-  on the bench. If EOL is confirmed, pivot early to the small-FPGA fallback recipe.
+- **GS12170 — order the HDMI→SDI RDK + confirm lifecycle.** The right eval/
+  reference vehicle is **`RDK-GS12170-H2S00`** (HDMI→SDI flavor; Newark #90AJ5039,
+  Symmetry, Utmel) — a **complete reference design** containing the HDMI redriver
+  + GS12170 + external PLL + GS12281 cable driver + BNC. Order **two** (one per
+  channel). Its **schematic + BOM is the gen-1 conversion-subsystem reference** —
+  it specifies the exact PLL/redriver/driver parts, so the real PCB is "adapt the
+  RDK + add MST hub + MCU," not design SDI from scratch. (Other flavors: `-S2H00`
+  SDI→HDMI, `-S2S00` gearbox — not ours.) Separately ask Semtech the **EOL/NRND**
+  question (`06` Q0); if EOL, pivot to the small-FPGA fallback.
 - **MST sourcing — follow `07-sourcing-playbook.md`.** Buy a **Plugable
   USBC-MSTH2 (~$40, Amazon)** now as the prototype front end; chase a production
   hub in parallel (**Parade PS8650** Avnet quote pending; **VMM6210** datasheet in
@@ -29,8 +34,9 @@ ordinary display first; MST-hub sourcing runs in parallel and blocks nothing.
   today, no bare MST silicon. Drive from a **Windows/Linux** laptop with **DP1.4 +
   DSC + HBR3** (macOS mirrors only; non-DSC hosts drop to 4K30); **don't** buy a
   DisplayLink dock.
-- Bench: adapter → **HDMI redriver → GS12170 eval board → GS12281 → BNC** → scope
-  / SDI analyzer (or a known-good 12G SDI monitor).
+- Bench: adapter HDMI out → **`RDK-GS12170-H2S00`** (the RDK already *is* the
+  redriver → GS12170 → PLL → GS12281 → BNC chain) → scope / SDI analyzer (or a
+  known-good 12G SDI monitor). One RDK per channel.
 - Goal: **one clean SDI output** (start at 1080p59.94 / 3G) from a laptop, lock +
   format verified, **embedded audio + ST 352 payload** confirmed — all from the
   GS12170, no FPGA.
