@@ -680,35 +680,9 @@ connect_bd_net $pclk_in  [get_bd_pins axi_vdma_0/s_axis_s2mm_aclk]
 connect_bd_net $pclk_in  [get_bd_pins scaler_0/aclk]
 if {[info exists RASTER_TO_TILE] && $RASTER_TO_TILE} {        ;# RASTER_TO_TILE clk: same S2MM-write pclk_in domain
     connect_bd_net $pclk_in [get_bd_pins raster_to_tile_0/aclk]
-    # ---- Path B dedicated WRITE DataMover clocking + reset ----
-    # pclk_in domain (tiler-side): wr_pack, wr_cmd, and the pclk_in side of the 3 AXIS clock converters.
-    # FCLK_CLK1 domain (HP2 mem side + DataMover stream side): wr_datamover, wr_sc, wr_hp2_rs, S_AXI_HP2_ACLK,
-    # and the FCLK_CLK1 side of the 3 AXIS clock converters.  Resets: rst_axi (pclk_in/FCLK_CLK0-async, the IPs
-    # self-sync) for the pclk_in cells; rst_mem (FCLK_CLK1-synced) for the FCLK_CLK1 cells — same split the
-    # read path uses (prstn vs rst143).
-    set _f1   [get_bd_pins zynq_ps/FCLK_CLK1]
-    set _rpi  [get_bd_pins rst_axi/peripheral_aresetn]
-    set _rf1  [get_bd_pins rst_mem/peripheral_aresetn]
-    # HP2 port clock
-    connect_bd_net $_f1 [get_bd_pins zynq_ps/S_AXI_HP2_ACLK]
-    # pclk_in-domain custom cells
-    connect_bd_net $pclk_in [get_bd_pins wr_pack/aclk];  connect_bd_net $_rpi [get_bd_pins wr_pack/aresetn]
-    connect_bd_net $pclk_in [get_bd_pins wr_cmd/aclk];   connect_bd_net $_rpi [get_bd_pins wr_cmd/aresetn]
-    # DataMover (M_AXI S2MM + cmd/data/status stream side) on FCLK_CLK1
-    connect_bd_net $_f1 [get_bd_pins wr_datamover/m_axi_s2mm_aclk]
-    connect_bd_net $_f1 [get_bd_pins wr_datamover/m_axis_s2mm_cmdsts_aclk]
-    connect_bd_net $_rf1 [get_bd_pins wr_datamover/m_axi_s2mm_aresetn]
-    connect_bd_net $_rf1 [get_bd_pins wr_datamover/m_axis_s2mm_cmdsts_aresetn]
-    # SmartConnect + register slice -> HP2 on FCLK_CLK1
-    connect_bd_net $_f1 [get_bd_pins wr_sc/aclk];        connect_bd_net $_rf1 [get_bd_pins wr_sc/aresetn]
-    connect_bd_net $_f1 [get_bd_pins wr_hp2_rs/aclk];    connect_bd_net $_rf1 [get_bd_pins wr_hp2_rs/aresetn]
-    # AXIS clock converters: data (pclk_in S -> FCLK_CLK1 M), cmd (pclk_in S -> FCLK_CLK1 M), sts (FCLK_CLK1 S -> pclk_in M)
-    connect_bd_net $pclk_in [get_bd_pins wr_cc_dat/s_axis_aclk]; connect_bd_net $_rpi [get_bd_pins wr_cc_dat/s_axis_aresetn]
-    connect_bd_net $_f1     [get_bd_pins wr_cc_dat/m_axis_aclk]; connect_bd_net $_rf1 [get_bd_pins wr_cc_dat/m_axis_aresetn]
-    connect_bd_net $pclk_in [get_bd_pins wr_cc_cmd/s_axis_aclk]; connect_bd_net $_rpi [get_bd_pins wr_cc_cmd/s_axis_aresetn]
-    connect_bd_net $_f1     [get_bd_pins wr_cc_cmd/m_axis_aclk]; connect_bd_net $_rf1 [get_bd_pins wr_cc_cmd/m_axis_aresetn]
-    connect_bd_net $_f1     [get_bd_pins wr_cc_sts/s_axis_aclk]; connect_bd_net $_rf1 [get_bd_pins wr_cc_sts/s_axis_aresetn]
-    connect_bd_net $pclk_in [get_bd_pins wr_cc_sts/m_axis_aclk]; connect_bd_net $_rpi [get_bd_pins wr_cc_sts/m_axis_aresetn]
+    # NOTE: the dedicated WRITE DataMover clock+reset wiring lives AFTER the reset
+    # infrastructure (rst_axi/rst_mem) is created — search "Path B dedicated WRITE
+    # DataMover clocking + reset". rst_axi/rst_mem don't exist yet at this point.
 }
 # iter5-bisect-iter4d3: AXIS FIFO removed — clock wire not needed
 connect_bd_net $pclk_in  [get_bd_pins v_tc_rx/clk]  ;# iter4e: detector on pclk_in
@@ -734,6 +708,39 @@ connect_bd_net [get_bd_pins zynq_ps/FCLK_RESET0_N] [get_bd_pins rst_axi/ext_rese
 connect_bd_net [get_bd_pins zynq_ps/FCLK_RESET0_N] [get_bd_pins rst_mem/ext_reset_in]
 connect_bd_net [get_bd_pins clk_wiz_pixclk_out/locked] [get_bd_pins rst_pixclk_out/dcm_locked]
 connect_bd_net [get_bd_pins zynq_ps/FCLK_RESET0_N]     [get_bd_pins rst_pixclk_out/ext_reset_in]
+
+if {[info exists RASTER_TO_TILE] && $RASTER_TO_TILE} {
+    # ---- Path B dedicated WRITE DataMover clocking + reset ----
+    # (Relocated here: rst_axi/rst_mem must exist before referencing their pins.)
+    # pclk_in domain (tiler-side): wr_pack, wr_cmd, and the pclk_in side of the 3 AXIS clock converters.
+    # FCLK_CLK1 domain (HP2 mem side + DataMover stream side): wr_datamover, wr_sc, wr_hp2_rs, S_AXI_HP2_ACLK,
+    # and the FCLK_CLK1 side of the 3 AXIS clock converters.  Resets: rst_axi (pclk_in/FCLK_CLK0-async, the IPs
+    # self-sync) for the pclk_in cells; rst_mem (FCLK_CLK1-synced) for the FCLK_CLK1 cells — same split the
+    # read path uses (prstn vs rst143).
+    set _f1   [get_bd_pins zynq_ps/FCLK_CLK1]
+    set _rpi  [get_bd_pins rst_axi/peripheral_aresetn]
+    set _rf1  [get_bd_pins rst_mem/peripheral_aresetn]
+    # HP2 port clock
+    connect_bd_net $_f1 [get_bd_pins zynq_ps/S_AXI_HP2_ACLK]
+    # pclk_in-domain custom cells
+    connect_bd_net $pclk_in [get_bd_pins wr_pack/aclk];  connect_bd_net $_rpi [get_bd_pins wr_pack/aresetn]
+    connect_bd_net $pclk_in [get_bd_pins wr_cmd/aclk];   connect_bd_net $_rpi [get_bd_pins wr_cmd/aresetn]
+    # DataMover (M_AXI S2MM + cmd/data/status stream side) on FCLK_CLK1
+    connect_bd_net $_f1 [get_bd_pins wr_datamover/m_axi_s2mm_aclk]
+    connect_bd_net $_f1 [get_bd_pins wr_datamover/m_axis_s2mm_cmdsts_awclk]  ;# S2MM cmd/sts clock pin is *_awclk (MM2S side is *_aclk)
+    connect_bd_net $_rf1 [get_bd_pins wr_datamover/m_axi_s2mm_aresetn]
+    connect_bd_net $_rf1 [get_bd_pins wr_datamover/m_axis_s2mm_cmdsts_aresetn]
+    # SmartConnect + register slice -> HP2 on FCLK_CLK1
+    connect_bd_net $_f1 [get_bd_pins wr_sc/aclk];        connect_bd_net $_rf1 [get_bd_pins wr_sc/aresetn]
+    connect_bd_net $_f1 [get_bd_pins wr_hp2_rs/aclk];    connect_bd_net $_rf1 [get_bd_pins wr_hp2_rs/aresetn]
+    # AXIS clock converters: data (pclk_in S -> FCLK_CLK1 M), cmd (pclk_in S -> FCLK_CLK1 M), sts (FCLK_CLK1 S -> pclk_in M)
+    connect_bd_net $pclk_in [get_bd_pins wr_cc_dat/s_axis_aclk]; connect_bd_net $_rpi [get_bd_pins wr_cc_dat/s_axis_aresetn]
+    connect_bd_net $_f1     [get_bd_pins wr_cc_dat/m_axis_aclk]; connect_bd_net $_rf1 [get_bd_pins wr_cc_dat/m_axis_aresetn]
+    connect_bd_net $pclk_in [get_bd_pins wr_cc_cmd/s_axis_aclk]; connect_bd_net $_rpi [get_bd_pins wr_cc_cmd/s_axis_aresetn]
+    connect_bd_net $_f1     [get_bd_pins wr_cc_cmd/m_axis_aclk]; connect_bd_net $_rf1 [get_bd_pins wr_cc_cmd/m_axis_aresetn]
+    connect_bd_net $_f1     [get_bd_pins wr_cc_sts/s_axis_aclk]; connect_bd_net $_rf1 [get_bd_pins wr_cc_sts/s_axis_aresetn]
+    connect_bd_net $pclk_in [get_bd_pins wr_cc_sts/m_axis_aclk]; connect_bd_net $_rpi [get_bd_pins wr_cc_sts/m_axis_aresetn]
+}
 
 # iter-4c-test2 rgb2dvi reset hookup: hold rgb2dvi in reset until
 # clk_wiz_pixclk_out has locked, so its internal MMCM doesn't race against an

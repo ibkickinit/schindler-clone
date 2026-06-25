@@ -1124,9 +1124,24 @@ static unsigned warp_calc_lead(int deg, int invx, int invy)
      *                 only the half-res LOD mip (task #28, docs/lod-mip-design.md) makes 50% full.
      * 24576 keeps fit clean (the operating point); deeper downscale is the mip's job, not the lead's. */
     unsigned lead;
-    if (mx > 4096u)        lead = 24576u;   /* downscale: deep lead -> fit (1.5x) full frame, silicon-verified */
+#if defined(RASTER_TO_TILE)
+    /* TILED path (Path B dedicated-DMA, bench-measured 2026-06-25): the DEEP 24576 lead that the old
+     * RASTER read path needed for downscale CATASTROPHICALLY STARVES the tiled read (it prefetches far
+     * past the frame, thrashing the cache -> fit 1.5x = 82-126k/921600). The tiled path wants the SAME
+     * ~8192 throughput-floor lead as identity. At lead=8192 on silicon:
+     *   - single-axis downscale (H OR V alone): FULL FRAME to 2x  (V-2x and H-1.5x both = 921600).
+     *   - uniform (both-axis) downscale: clean to ~1.4x (71%), marginal/teetering 1.5x-2x (combined
+     *     H+V per-row tile span * tile-row count hits the genuine BW wall -> dest-res-master, task #28).
+     * Tiling INVERTED the old asymmetry: vertical strides are now cheap (tile-row bursts), horizontal
+     * width is the per-row cost. So one floor (8192) covers downscale, zoom-in, and identity here. */
+    if (mx > 4096u)        lead = 8192u;    /* tiled downscale: 8192 floor (24576 overruns -> starve) */
     else if (d180 == 0)    lead = 8192u;    /* axis-aligned zoom-in / identity throughput floor */
     else                   lead = 4096u;    /* rotations: 10deg-clamp+(1,33) hash, covers transpose-starve */
+#else
+    if (mx > 4096u)        lead = 24576u;   /* RASTER downscale: deep lead -> fit (1.5x) full frame, silicon-verified */
+    else if (d180 == 0)    lead = 8192u;    /* axis-aligned zoom-in / identity throughput floor */
+    else                   lead = 4096u;    /* rotations: 10deg-clamp+(1,33) hash, covers transpose-starve */
+#endif
     return lead > 0x000FFFFFu ? 0x000FFFFFu : lead;
 }
 
