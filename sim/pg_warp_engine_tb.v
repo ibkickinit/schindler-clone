@@ -15,7 +15,7 @@ module pg_warp_engine_tb;
     reg fill_valid=0; reg [95:0] fill_blk=0; reg fill_last=0;
 
     pg_warp_engine #(.OUT_W(OUT_W),.OUT_H(OUT_H),.IN_W(IN_W),.IN_H(IN_H),.LTILE(LTILE),.NTILE(NTILE),.CW(CW),.FB(FB),.LEAD(LEAD)) dut (
-        .clk(clk),.rstn(rstn),.sof(sof),
+        .clk(clk),.rstn(rstn),.sof(sof),.lod(3'd0),
         .m_a(m_a),.m_b(m_b),.m_c(m_c),.m_d(m_d),.m_e(m_e),.m_f(m_f),.matte(matte),
         .o_valid(o_valid),.o_pix(o_pix),.o_ready(o_ready),
         .fetch_req(fetch_req),.fetch_tx(ftx),.fetch_ty(fty),

@@ -50,13 +50,13 @@ module pg_warp_projective_faithful_tb;
                      .NTILE(NTILE),.WAY(WAY),.PD(PD),.CW(CW),.FB(FB),.LEAD(LEAD),
                      .PROJECTIVE(1),.GCW(GCW),.GFB(GFB),.RF(RF),.LUT_BITS(LUT_BITS),
                      .NR_ITERS(NR_ITERS),.AW(AW),.WW(WW)) dut (
-        .clk(clk),.rstn(rstn),.sof(sof),.lead_rt(20'd0),
+        .clk(clk),.rstn(rstn),.sof(sof),.lead_rt(20'd0),.lod(3'd0),
         .m_a(m_a),.m_b(m_b),.m_c(m_c),.m_d(m_d),.m_e(m_e),.m_f(m_f),.m_g(m_g),.m_h(m_h),.matte(matte),
         .o_valid(o_valid),.o_pix(o_pix),.o_ready(o_ready),
         .fetch_req(wreq),.fetch_tx(wtx),.fetch_ty(wty),.fetch_ready(t_ready),
         .fill_valid(fv),.fill_blk(fblk),.fill_last(fl));
     pg_tile_dma #(.IN_W(IN_W),.LTILE(LTILE),.DREQ(DREQ)) u_dma (
-        .clk(clk),.rstn(rstn),.srst(1'b0),.frame_base(32'd0),
+        .clk(clk),.rstn(rstn),.srst(1'b0),.frame_buf_base(32'd0),.rd_slot(6'd0),.lod(3'd0),
         .t_req(wreq),.t_tx(wtx),.t_ty(wty),.t_ready(t_ready),
         .fill_valid(fv),.fill_blk(fblk),.fill_last(fl),
         .fetch_req(dm_req),.fetch_addr(dm_addr),.fetch_len(dm_len),.fetch_ready(dm_ready),

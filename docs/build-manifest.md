@@ -1309,42 +1309,48 @@ via pyserial, NOT `cat`/`stty` — that read nothing).
   boots with DEFAULT shrink coeffs before firmware sets rot20; can't start clean today). Justin monitor obs
   (black vs ~1 line then frozen) would corroborate.
 
-## 2026-06-25 — Path B (TILED DataMover) implemented + sim-proven (NOT yet bench-built)
+## 2026-06-24 — UI feedback batch: anchor + downscale-lead + corner-pin recalibration (FW ea28b04 substrate)
+Bitstream UNCHANGED (HDL untouched) — FW-only ELF rebuild (`WARP_ENGINE=1 PROJECTIVE_BUILD=1`,
+`build/vitis-phase-b/vdma_init/Debug/vdma_init.elf`, 365136 B). Artifact: `build/artifacts/warp-demand-fetch-fsm-720p-scaler_top-enable-ea28b04`. Programmed bit+elf via `tcl/program_phase_b_full.tcl`.
+- **Downscale deep-lead** (`warp_calc_lead`): `mx>4096` → lead **24576** (was 4096). Bench register-verified:
+  `W 0 6144 6144` → `lead=24576`, `OUT opix/frame=921600 (exp 921600)` = FULL FRAME at 1.5× shrink (67%),
+  no underrun. Clean to ~75%; below that still needs the half-res LOD mip (task #28, deferred).
+- **Top-left anchor** (`warp_set_rotation`): new `g_warp_anchor` (W command 8th arg). 0=center (m_c=cxs·4096−m_a·cxo−m_b·cyo),
+  1=top-left (m_c=xoff·4096 where xoff=(FRAME−OUT)/2=320,180). Identical at identity, diverges under zoom.
+- **Corner-pin identity recalibration** (daemon+UI, Dropbox `orient-integration` 39b86fb/79f50ae): this is a
+  READENGINE_FULLMASTER build → SOURCE=1920×1080, OUTPUT=1280×720. Engine identity (rot/zoom) = the CENTER
+  1280×720 CROP at 1:1 (output(0,0)→source(320,180); FW prints c=320·4096=1310720, f=180·4096=737280). The
+  corner-pin UI had identity = 1080p rect (0,0)-(1919,1079) → mapped 1280 output onto 1920 src = **1.5×
+  downscale baked into "identity"** → "100% showed at ~853px (868×488)" + Factory-Reset cache-thrash scramble.
+  Fix: UI corner-pin identity → center-crop `[320,180],[1599,180],[1599,899],[320,899]` (ident/canvas/__cpReset/
+  factory-reset all). Now 1:1 = true 100%, matches rot/zoom, no thrash. Chain-verified: `cornerpin.set` →
+  `C 320 180 1599 180 1599 899 320 899`; `warp.set {anchor:1}` → `W 0 4096 4096 0 0 0 0 1`.
+- STATUS: register + daemon-chain verified; monitor visual (100%=full-frame, clean reset, zoom-about-TL) pending operator.
 
-**Branch:** `path-b-tiled-datamover` (off `warp-demand-fetch-fsm` @ `1cba1a8`). **Build axis only — no bitstream run yet.**
+## 2026-06-24 (eve) — whole-frame "100%" + signed keystone + cornerpin lead-from-quad (FW-only, ELF 15:42)
+Bitstream UNCHANGED; FW-only ELF rebuild (`WARP_ENGINE=1 PROJECTIVE_BUILD=1`). Artifact: build/artifacts/warp-demand-fetch-fsm-720p-scaler_top-enable-ea28b04/
+Operator chose 100% = WHOLE 1920×1080 source fit into 720p (1.5× downscale), not 1:1 center crop.
+- **UI/daemon** (Dropbox 5983031): Scale 100%→invx/invy 6144 (FIT_INV); daemon warp default+zoom→6144;
+  corner-pin identity=full raster (0,0)-(1919,1079); number boxes SIGNED (ID−corner, +x right/+y down);
+  factory reset→fit. Canvas range −960..2880 / −540..1620.
+- **FW warp_solve_cornerpin**: lead now = warp_calc_lead(quad source-extent / OUT ratio) instead of
+  hardcoded 8192. Full-raster identity = 1.5× → lead 24576. FIXES factory-reset scramble (cornerpin/keystone
+  at fit were underrunning at 8192; warp.set's 24576 was clean — the "toggle scale to fix it" tell).
+  Verified: cornerpin full-raster → a=1.5003 c=0.
+- **FW warp_set_keystone**: SIGNED ±0.9 (was clamped h/v<0→0 = "negative does nothing"); +h top-edge /
+  −h bottom-edge width shrink; +v LEFT-edge / −v RIGHT-edge HEIGHT shrink — a REAL trapezoid (the old V
+  moved both top corners = uniform vertical SCALE, the "+V just stretches taller" bug). sw/sh=(FRAME−1)/2 so
+  h=v=0 identity = full raster. Verified: all 4 directions distinct homographies; daemon K −200 0 / K 0 −200.
+- KNOWN/DEFERRED: Scale X below ~1260 (downscale beyond ~1.5×) breaks up = tile-cache working-set ceiling;
+  needs the half-res LOD mip (task #28, HDL). Operating range is ≥100% (fit → zoom-in).
 
-**What:** switch the warp source-fetch from strided raster reads (TILED=0: 16×48B reads/tile, ~37% DDR
-efficiency — the vertical-downscale starvation wall) to a pre-tiled DDR layout (TILED=1: one 768B burst/tile,
-~5.5× throughput). The DataMover already runs at 143 MHz (option-b).
-
-**Changes (all gated; default build is byte-identical to base):**
-- `tcl/readengine_warp_bd.tcl`: pg_re_0 `CONFIG.TILED {1}`, `IN_H 1080→1072` (1080 not ÷16; engine clamps
-  ty≤66 so it never reads the un-written 68th tile-row), `NTILE 512→256` (frees ~48 RAMB36 for the band
-  buffers). WAY stays 4.
-- `hdl/pg_raster_to_tile_bd.v` (NEW): AXIS-named BD wrapper around the bit-exact `pg_raster_to_tile` core
-  (core + its TB untouched).
-- `tcl/build_phase_b.tcl`: `RASTER_TO_TILE=1` env inserts `pg_raster_to_tile_bd` between `scaler_0/m_axis`
-  and `axi_vdma_0/S_AXIS_S2MM`; asserts `SCALER_MODULE=scaler_bypass_1080p`. Clock=pclk_in, rst=rst_axi.
-- `tcl/build_phase_b_app.tcl`: `-DRASTER_TO_TILE=1` when env set.
-- `sw/phase-b/src/main.c`: S2MM write programmed as a contiguous tile stream — `HSIZE=Stride=768`,
-  `VSIZE=TILES_X*TILES_Y=120*67=8040`. One AXIS tlast == one tile == one S2MM "line" ⇒ tile k lands at
-  `slot_base + k*768`, exactly pg_tile_dma's TILED read address. **SLOT_STRIDE / genlock UNCHANGED** (tiled
-  frame 6,174,720 B ≤ SLOT_BYTES 6,226,560 B).
-- `sim/pg_tiled_roundtrip_tb.v` (NEW) + `make sim-tiled`.
-
-**Sim (xsim 2025.2):** `make sim-tiled` → `pg_raster_to_tile_tb` PASS, `pg_tile_dma_tiled_tb` PASS,
-`pg_tiled_roundtrip_tb` PASS (end-to-end producer → S2MM-contiguous-store model → consumer, bit-exact, with
-a non-÷16 height exercising the dropped-partial-band path). pg_warp_top elaborates clean at TILED=1/IN_H=1072/
-NTILE=256. (`pg_warp_top_tb` errors are PRE-EXISTING on base — warp HDL byte-identical to base, untouched.)
-
-**BRAM:** ~115.5/140 − 48 (NTILE 512→256) + ~60 (two 16×1920 bands, worst-case packing) = ~127.5/140 → FITS.
-
-**Bench-build status:** ⚠️ NOT BUILT. Parent runs Vivado + bench. Build with:
-`WARP_ENGINE=1 PROJECTIVE_BUILD=1 RASTER_TO_TILE=1 SCALER_MODULE=scaler_bypass_1080p OUTPUT_MODE=720p`
-(+ matching env on `build_phase_b_app.tcl`).
-
-**Risks to confirm at bench (cannot be sim-proven):** (1) real BRAM fit + timing close at 74.25/143 MHz with
-the two new band BRAMs; (2) VDMA S2MM accepting VSIZE=8040 with HSIZE=Stride=768 + hardware s2mm_fsync (the
-per-tile tlast must be the S2MM EOL — model says yes, IP behaviour unverified); (3) bottom ~5 output rows show
-matte (the dropped 8 source rows) — expected, not a bug. (4) The VDMA MM2S **bypass** (mux sel=0) reads the
-tiled DDR as raster → scrambled; only the warp path (sel=1, default) is valid under RASTER_TO_TILE=1.
+## 2026-06-24 (eve) — LOD mip: DESIGN + GOLDEN PROOF (task #28, HDL in progress)
+Root-cause CORRECTED: downscale-below-fit breakup is NOT set-conflict (tools/warp_lod_gate.py: deployed
+(tx+33ty)&127 hash → worst-set-live ≤2 even at 4× shrink) but FETCH-THROUGHPUT starvation
+(tools/warp_lod_throughput.py, cycle-accurate, real params tile16×512/ddr16Bcyc/lead24576: clean to ~1.6×
+[slider~1200], UNDERRUN at 1.75×[slider~1097]+ — matches bench "below 1260"). LOD fix proven: fetch from
+half/quarter mip so effective shrink ≤~1 → 0 underruns to 4×. Design+phased plan: docs/lod-mip-design.md.
+LOD select (firmware): L=max(0,ceil(log2(S/1.5))), S=max(invx,invy)/4096. DDR mip rings after L0
+(L1 @ +43585920, stride 2880; L2 after, stride 1440); same gray frame_ptr. Phase 1 (read-path coord-shift +
+per-L addressing + LOD in lead_cfg[22:20], L=0 byte-identical) HDL drafting now. Phase 2 = HW box-average
+mip generator (BD broadcast + 2 S2MM rings, ~3 RAMB36 + ~116 MB/s write) — bitstream-heavy, pending review.

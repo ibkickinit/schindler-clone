@@ -44,7 +44,7 @@ module pg_projective_tb;
     pg_projective #(.OUT_W(OUT_W),.OUT_H(OUT_H),.IN_W(IN_W),.IN_H(IN_H),
                     .CW(CW),.FB(12),.GCW(GCW),.GFB(36),.RF(28),.LUT_BITS(9),.NR_ITERS(2),
                     .AW(44),.WW(48),.PROJECTIVE(1)) u_pj12 (
-        .clk(clk),.rstn(rstn),.sof(a_sof),
+        .clk(clk),.rstn(rstn),.sof(a_sof),.lod(3'd0),
         .m_a(a_a),.m_b(a_b),.m_c(a_c),.m_d(a_d),.m_e(a_e),.m_f(a_f),
         .m_g({GCW{1'b0}}),.m_h({GCW{1'b0}}),
         .o_valid(pj12_v),.o_ready(a_ready),.o_in_window(pj12_in),
@@ -58,7 +58,7 @@ module pg_projective_tb;
     pg_projective #(.OUT_W(OUT_W),.OUT_H(OUT_H),.IN_W(IN_W),.IN_H(IN_H),
                     .CW(CW),.FB(20),.GCW(GCW),.GFB(36),.RF(28),.LUT_BITS(9),.NR_ITERS(2),
                     .AW(44),.WW(48),.PROJECTIVE(1)) u_pj (
-        .clk(clk),.rstn(rstn),.sof(p_sof),
+        .clk(clk),.rstn(rstn),.sof(p_sof),.lod(3'd0),
         .m_a(p_a),.m_b(p_b),.m_c(p_c),.m_d(p_d),.m_e(p_e),.m_f(p_f),.m_g(p_g),.m_h(p_h),
         .o_valid(pj_v),.o_ready(p_ready),.o_in_window(pj_in),
         .o_src_col(pj_col),.o_src_row(pj_row),.o_h_frac(pj_hf),.o_v_frac(pj_vf),.o_new_row(pj_nr));
