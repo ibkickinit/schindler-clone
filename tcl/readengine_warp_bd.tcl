@@ -85,9 +85,32 @@ if {[info exists OUTPUT_MODE] && ($OUTPUT_MODE eq "1080p30" || $OUTPUT_MODE eq "
     set WARP_OUT_W 1920; set WARP_OUT_H 1080
 }
 puts "BUILD: warp pg_re_0 OUT = ${WARP_OUT_W}x${WARP_OUT_H} (OUTPUT_MODE=[expr {[info exists OUTPUT_MODE]?$OUTPUT_MODE:{unset}}])"
-set_property -dict [list CONFIG.IN_W {1920} CONFIG.IN_H {1080} CONFIG.OUT_W $WARP_OUT_W CONFIG.OUT_H $WARP_OUT_H \
-    CONFIG.SLOT_STRIDE {6226560} CONFIG.NUM_FRAMES {7} \
-    CONFIG.NTILE {512} CONFIG.WAY {4} CONFIG.PD {64} CONFIG.DREQ {64} CONFIG.LEAD {4096}] [get_bd_cells pg_re_0]
+# ---- PATH B (TILED DataMover) 2026-06-25 ----------------------------------------------------------------
+# CONFIG.TILED {1}: the source is now stored TILE-ROW-MAJOR in DDR by pg_raster_to_tile (inserted on the
+# S2MM write leg in build_phase_b.tcl). pg_tile_dma's TILED branch then reads ONE contiguous 768B burst per
+# 16x16 tile (fetch_addr = frame_base + (ty*TILES_X+tx)*768) instead of 16 strided 48B row reads (~37% DDR
+# efficiency, the fetch-bandwidth wall that starved vertical downscale). ~5.5x throughput.  The producer
+# (pg_raster_to_tile, sim pg_raster_to_tile_tb) and consumer (pg_tile_dma TILED, sim pg_tile_dma_tiled_tb)
+# share the identical addressing contract: tile (ty,tx) at byte (ty*TILES_X+tx)*768, in-tile px(r,c) at
+# +(r*16+c)*3 row-major.  Both TBs PASS bit-exact -> the layout is proven, not guessed.
+#
+# IN_H 1080 -> 1072: 1080 is NOT a multiple of 16 (1080/16 = 67.5). The tiled grid is a whole number of
+# 16-row bands; pg_raster_to_tile only emits COMPLETE bands, so it stores exactly floor(1080/16)=67 tile-rows
+# (rows 0..1071) and drops the trailing 8-row partial band. We therefore tell the read engine IN_H=1072 so
+# its source-coord clamp (pg_tilecache_rt2 cy<=IN_H-1) never lets fetch_ty exceed 66 -> the engine NEVER
+# requests the un-written 68th tile-row.  COST: the bottom 8 source rows (1072..1079) are cropped (~5 output
+# rows of matte at the very bottom after the 1.5x fit-downscale). This is the conservative, fully-sim-proven
+# choice; padding to 1088 (full height) needs a partial-band-flush path in pg_raster_to_tile that is NOT yet
+# TB-covered -> deferred (see Path-B report).  TILES_X (=IN_W/16=120) is UNCHANGED, so the tile addressing
+# offset is identical between producer and consumer regardless of IN_H.
+#
+# NTILE 512 -> 256: tiled deterministic fetch (1 burst/tile, no demand-fetch thrash) doesn't need the deep
+# associativity the strided path did. 512->256 frees ~48 RAMB36 in the cache data store, which pays for
+# pg_raster_to_tile's two 16-row band buffers (~60 RAMB36 worst case at IN_W=1920). Net: ~115.5/140 - 48 + 60
+# = ~127.5/140 worst case -> FITS (WAY stays 4; budget has margin, so the proven 4-way hash is kept).
+set_property -dict [list CONFIG.IN_W {1920} CONFIG.IN_H {1072} CONFIG.OUT_W $WARP_OUT_W CONFIG.OUT_H $WARP_OUT_H \
+    CONFIG.SLOT_STRIDE {6226560} CONFIG.NUM_FRAMES {7} CONFIG.TILED {1} \
+    CONFIG.NTILE {256} CONFIG.WAY {4} CONFIG.PD {64} CONFIG.DREQ {64} CONFIG.LEAD {4096}] [get_bd_cells pg_re_0]
 
 # ---- PROJECTIVE front-end (P3, env PROJECTIVE_BUILD=1). DEFAULT OFF -> the affine BD is byte-identical.
 # When set: pg_re_0 runs the full projective address generator (keystone / corner-pin homography).

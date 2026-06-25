@@ -125,6 +125,13 @@ if {[info exists ::env(READENGINE_FULLMASTER)] && $::env(READENGINE_FULLMASTER) 
     app config -name vdma_init -add define-compiler-symbols READENGINE_FULLMASTER=1
     puts "FW BUILD: added -DREADENGINE_FULLMASTER=1 (full 1080p master → 720p via read-engine)"
 }
+# Path B (TILED DataMover): the S2MM stores the source TILE-ROW-MAJOR (pg_raster_to_tile inserted on the
+# write leg, BD gated by RASTER_TO_TILE=1). main.c must program S2MM as a contiguous tile stream
+# (HSIZE=Stride=768, VSIZE=TILES_X*TILES_Y) instead of a 1920x1080 raster. Mirror the BD env gate.
+if {[info exists ::env(RASTER_TO_TILE)] && $::env(RASTER_TO_TILE) ne "0"} {
+    app config -name vdma_init -add define-compiler-symbols RASTER_TO_TILE=1
+    puts "FW BUILD: added -DRASTER_TO_TILE=1 (S2MM stores tile-row-major; tiled DataMover read path)"
+}
 # WARP build: the read-engine is pg_warp_top (affine warp). axi_gpio_8/9/10 carry the
 # 6 affine coeffs (m_a..m_f, Q20.12) instead of route-B DDA. Define WARP_BUILD so main.c
 # uses warp_set_rotation at boot + the 'W' UART command. Warp always needs the full 1080p

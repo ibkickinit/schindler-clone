@@ -90,6 +90,40 @@
 #define BYTES_PP          3
 #define STRIDE            (FRAME_W * BYTES_PP)
 #define FRAME_BYTES       (STRIDE * FRAME_H)
+
+/* ---- Path B (TILED DataMover) S2MM layout --------------------------------------------------------------
+ * RASTER_TO_TILE=1: pg_raster_to_tile (on the S2MM write leg) converts the source raster into a contiguous
+ * TILE-ROW-MAJOR stream of 16x16 tiles (each tile = 256 px = 768 bytes), with AXIS tlast on the LAST beat of
+ * every tile.  The warp read engine (pg_tile_dma TILED) then fetches one 768B burst per tile from
+ *     tile (ty,tx) -> frame_base + (ty*TILES_X + tx) * TILE_BYTES.
+ *
+ * To make the DDR bytes land at exactly those addresses, the S2MM must store the AXIS stream CONTIGUOUSLY at
+ * the slot base.  The VDMA S2MM is a 2D engine (HSIZE bytes/line, Stride between lines, VSIZE lines) that
+ * advances one "line" per AXIS tlast.  Since pg_raster_to_tile asserts tlast once per 768-byte tile, we map
+ * ONE S2MM "line" == ONE tile:
+ *     HoriSizeInput = TILE_BYTES (768)           — bytes written per tlast
+ *     Stride        = TILE_BYTES (768)           — == HSIZE  => fully contiguous, no inter-line gap
+ *     VertSizeInput = TILES_X * TILES_Y          — total tiles per frame
+ * Result: tile k (= ty*TILES_X+tx, the emit order) lands at slot_base + k*768.  This is bit-identical to
+ * pg_tile_dma's TILED read address (verified by sim pg_raster_to_tile_tb + pg_tile_dma_tiled_tb sharing the
+ * (ty*TILES_X+tx)*768 / (r*16+c)*3 contract).  Total bytes/frame = TILES_X*TILES_Y*768 (see below) <=
+ * the existing SLOT_STRIDE, so the slot ring (FRAME_BUF_BASE + slot*SLOT_STRIDE) and genlock are UNCHANGED.
+ *
+ * 1080 is NOT a multiple of 16 (1080/16 = 67.5).  pg_raster_to_tile only emits COMPLETE 16-row bands, so it
+ * stores TILES_Y = floor(1080/16) = 67 tile-rows (source rows 0..1071) and drops the trailing 8-row band.
+ * VSIZE must therefore be TILES_X*67 (= the actual tile-tlast count/frame), and pg_re_0 is built with
+ * IN_H=1072 so the read engine never requests ty>66.  The bottom 8 source rows are cropped (cosmetic ~5
+ * output rows of matte after the 1.5x fit-downscale).  Padding to 1088 (full height) is deferred — it needs
+ * a partial-band-flush path in pg_raster_to_tile that is not yet sim-covered.
+ *
+ * TILES_X uses IN_W (1920, divisible by 16) regardless of the build's FRAME_W, because the tile grid width is
+ * fixed by the 1920-wide DDR master that the warp engine reads. */
+#define TILE_PX           16
+#define TILE_BYTES        (TILE_PX * TILE_PX * BYTES_PP)   /* 768 */
+#define TILES_X_FULL      (1920 / TILE_PX)                 /* 120 */
+#define TILES_Y_FULL      (1080 / TILE_PX)                 /* 67  (floor; trailing 8-row band dropped) */
+#define TILED_FRAME_TILES (TILES_X_FULL * TILES_Y_FULL)    /* 8040 (== VDMA VSIZE, < 8191 reg max) */
+#define TILED_FRAME_BYTES (TILED_FRAME_TILES * TILE_BYTES) /* 6,174,720  (<= FRAME_BYTES 6,220,800) */
 /* iter5-bisect-720p: NUM_FRAMES 5 → 3 to isolate scroll cause. Bisect shows
  * 5 framestores is the only iter5 substrate change vs. clean iter4h; revert
  * to 3 to confirm. BD config c_num_fstores must also match (3 in TCL). */
@@ -115,7 +149,14 @@ static int vdma_setup_channel(int direction, UINTPTR *frame_addrs)
     cfg.VertSizeInput     = FRAME_H;
     cfg.HoriSizeInput     = STRIDE;
     cfg.Stride            = STRIDE;
-#if defined(READENGINE_FULLMASTER)
+#if defined(RASTER_TO_TILE)
+    /* Path B: S2MM stores the contiguous tile-row-major stream (1 S2MM "line" == 1 tile). See the
+     * TILE_BYTES / TILED_FRAME_* block above for the full layout reasoning. The MM2S leg is unused on this
+     * path (the warp engine reads via its own DataMover), so it gets the same tiled geometry harmlessly. */
+    cfg.VertSizeInput = TILED_FRAME_TILES;   /* 8040 tiles/frame                    */
+    cfg.HoriSizeInput = TILE_BYTES;          /* 768 valid bytes per tlast (1 tile)  */
+    cfg.Stride        = TILE_BYTES;          /* == HSIZE => fully contiguous in DDR  */
+#elif defined(READENGINE_FULLMASTER)
     /* DIAGNOSTIC 2026-06-02: in full-master mode S2MM stores the full 1920×1080
      * master, but the output VTC raster is 1280×720. The MM2S (read) leg must
      * therefore read a geometry-correct CROP, else it streams a 1920-wide raster

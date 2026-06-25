@@ -171,6 +171,36 @@ sim-pg: ## xsim present-geometry (read-engine-B) module TBs — requires Vivado 
 	else echo "FAIL: pg_read_engine_top_tb"; grep -E 'CASE|ERR|Total errors' sim/xsim-top.log | head; exit 1; fi
 	@echo "=== read-engine-B sim suite (M1+M2+M3+M4+unpack+top): ALL PASS ==="
 
+sim-tiled: ## xsim Path-B tiled DataMover TBs (raster->tile + tile_dma TILED + end-to-end roundtrip)
+	@command -v xvlog >/dev/null 2>&1 || { \
+		echo "xvlog not found; source /tools/Xilinx/2025.2/Vivado/settings64.sh first"; \
+		exit 2; }
+	@echo "→ pg_raster_to_tile_tb (RASTER->TILE emit order)..."
+	@cd sim && xvlog pg_raster_to_tile_tb.v ../hdl/pg_raster_to_tile.v > xvlog-r2t.log 2>&1 || \
+		{ tail -10 sim/xvlog-r2t.log; exit 1; }
+	@cd sim && xelab -top pg_raster_to_tile_tb -snapshot r2t_sim > xelab-r2t.log 2>&1 || \
+		{ tail -10 sim/xelab-r2t.log; exit 1; }
+	@cd sim && xsim r2t_sim -runall > xsim-r2t.log 2>&1
+	@grep -qE 'RASTER2TILE:.*PASS' sim/xsim-r2t.log && echo "PASS: pg_raster_to_tile_tb" || \
+		{ echo "FAIL: pg_raster_to_tile_tb"; grep -E 'RASTER2TILE|ERR' sim/xsim-r2t.log | head; exit 1; }
+	@echo "→ pg_tile_dma_tiled_tb (TILED read addressing + 2x2 reorder)..."
+	@cd sim && xvlog pg_tile_dma_tiled_tb.v ../hdl/pg_tile_dma.v > xvlog-dmt.log 2>&1 || \
+		{ tail -10 sim/xvlog-dmt.log; exit 1; }
+	@cd sim && xelab -top pg_tile_dma_tiled_tb -snapshot dmt_sim > xelab-dmt.log 2>&1 || \
+		{ tail -10 sim/xelab-dmt.log; exit 1; }
+	@cd sim && xsim dmt_sim -runall > xsim-dmt.log 2>&1
+	@grep -qE 'DMA_TILED: PASS' sim/xsim-dmt.log && echo "PASS: pg_tile_dma_tiled_tb" || \
+		{ echo "FAIL: pg_tile_dma_tiled_tb"; grep -E 'DMA_TILED|tile\(' sim/xsim-dmt.log | head; exit 1; }
+	@echo "→ pg_tiled_roundtrip_tb (END-TO-END: producer -> S2MM-store model -> consumer, bit-exact)..."
+	@cd sim && xvlog pg_tiled_roundtrip_tb.v ../hdl/pg_raster_to_tile.v ../hdl/pg_tile_dma.v > xvlog-rt.log 2>&1 || \
+		{ tail -10 sim/xvlog-rt.log; exit 1; }
+	@cd sim && xelab -top pg_tiled_roundtrip_tb -snapshot rt_sim > xelab-rt.log 2>&1 || \
+		{ tail -10 sim/xelab-rt.log; exit 1; }
+	@cd sim && xsim rt_sim -runall > xsim-rt.log 2>&1
+	@grep -qE 'TILED_ROUNDTRIP: PASS' sim/xsim-rt.log && echo "PASS: pg_tiled_roundtrip_tb" || \
+		{ echo "FAIL: pg_tiled_roundtrip_tb"; grep -E 'TILED_ROUNDTRIP|roundtrip|CAPTURE' sim/xsim-rt.log | head; exit 1; }
+	@echo "=== Path-B tiled sim suite (raster_to_tile + tile_dma TILED + roundtrip): ALL PASS ==="
+
 sim-vivado-mackin: ## xsim Mackin TB suite (3360-vector) — if sources present
 	@command -v xvlog >/dev/null 2>&1 || { echo "source Vivado env first"; exit 2; }
 	@if find sim/mackin -maxdepth 2 -name '*_tb.v' -o -name '*_tb.sv' 2>/dev/null | head -1 | grep -q .; then \

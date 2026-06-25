@@ -1308,3 +1308,43 @@ via pyserial, NOT `cat`/`stty` — that read nothing).
   the new telemetry localizes the stuck stage. Likely also need a firmware engine soft-reset (the engine
   boots with DEFAULT shrink coeffs before firmware sets rot20; can't start clean today). Justin monitor obs
   (black vs ~1 line then frozen) would corroborate.
+
+## 2026-06-25 — Path B (TILED DataMover) implemented + sim-proven (NOT yet bench-built)
+
+**Branch:** `path-b-tiled-datamover` (off `warp-demand-fetch-fsm` @ `1cba1a8`). **Build axis only — no bitstream run yet.**
+
+**What:** switch the warp source-fetch from strided raster reads (TILED=0: 16×48B reads/tile, ~37% DDR
+efficiency — the vertical-downscale starvation wall) to a pre-tiled DDR layout (TILED=1: one 768B burst/tile,
+~5.5× throughput). The DataMover already runs at 143 MHz (option-b).
+
+**Changes (all gated; default build is byte-identical to base):**
+- `tcl/readengine_warp_bd.tcl`: pg_re_0 `CONFIG.TILED {1}`, `IN_H 1080→1072` (1080 not ÷16; engine clamps
+  ty≤66 so it never reads the un-written 68th tile-row), `NTILE 512→256` (frees ~48 RAMB36 for the band
+  buffers). WAY stays 4.
+- `hdl/pg_raster_to_tile_bd.v` (NEW): AXIS-named BD wrapper around the bit-exact `pg_raster_to_tile` core
+  (core + its TB untouched).
+- `tcl/build_phase_b.tcl`: `RASTER_TO_TILE=1` env inserts `pg_raster_to_tile_bd` between `scaler_0/m_axis`
+  and `axi_vdma_0/S_AXIS_S2MM`; asserts `SCALER_MODULE=scaler_bypass_1080p`. Clock=pclk_in, rst=rst_axi.
+- `tcl/build_phase_b_app.tcl`: `-DRASTER_TO_TILE=1` when env set.
+- `sw/phase-b/src/main.c`: S2MM write programmed as a contiguous tile stream — `HSIZE=Stride=768`,
+  `VSIZE=TILES_X*TILES_Y=120*67=8040`. One AXIS tlast == one tile == one S2MM "line" ⇒ tile k lands at
+  `slot_base + k*768`, exactly pg_tile_dma's TILED read address. **SLOT_STRIDE / genlock UNCHANGED** (tiled
+  frame 6,174,720 B ≤ SLOT_BYTES 6,226,560 B).
+- `sim/pg_tiled_roundtrip_tb.v` (NEW) + `make sim-tiled`.
+
+**Sim (xsim 2025.2):** `make sim-tiled` → `pg_raster_to_tile_tb` PASS, `pg_tile_dma_tiled_tb` PASS,
+`pg_tiled_roundtrip_tb` PASS (end-to-end producer → S2MM-contiguous-store model → consumer, bit-exact, with
+a non-÷16 height exercising the dropped-partial-band path). pg_warp_top elaborates clean at TILED=1/IN_H=1072/
+NTILE=256. (`pg_warp_top_tb` errors are PRE-EXISTING on base — warp HDL byte-identical to base, untouched.)
+
+**BRAM:** ~115.5/140 − 48 (NTILE 512→256) + ~60 (two 16×1920 bands, worst-case packing) = ~127.5/140 → FITS.
+
+**Bench-build status:** ⚠️ NOT BUILT. Parent runs Vivado + bench. Build with:
+`WARP_ENGINE=1 PROJECTIVE_BUILD=1 RASTER_TO_TILE=1 SCALER_MODULE=scaler_bypass_1080p OUTPUT_MODE=720p`
+(+ matching env on `build_phase_b_app.tcl`).
+
+**Risks to confirm at bench (cannot be sim-proven):** (1) real BRAM fit + timing close at 74.25/143 MHz with
+the two new band BRAMs; (2) VDMA S2MM accepting VSIZE=8040 with HSIZE=Stride=768 + hardware s2mm_fsync (the
+per-tile tlast must be the S2MM EOL — model says yes, IP behaviour unverified); (3) bottom ~5 output rows show
+matte (the dropped 8 source rows) — expected, not a bug. (4) The VDMA MM2S **bypass** (mux sel=0) reads the
+tiled DDR as raster → scrambled; only the warp path (sel=1, default) is valid under RASTER_TO_TILE=1.

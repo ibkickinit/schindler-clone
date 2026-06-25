@@ -75,6 +75,8 @@ add_files -norecurse [file join $project_root hdl pg_tilecache_rt2.v]
 add_files -norecurse [file join $project_root hdl pg_warp_engine.v]
 add_files -norecurse [file join $project_root hdl pg_tile_dma.v]
 add_files -norecurse [file join $project_root hdl pg_warp_top.v]
+add_files -norecurse [file join $project_root hdl pg_raster_to_tile.v]    ;# Path B: RASTER->TILE writer (S2MM tiled-layout)
+add_files -norecurse [file join $project_root hdl pg_raster_to_tile_bd.v] ;# Path B: AXIS-named BD wrapper for the above
 add_files -norecurse [file join $project_root hdl axis_mux2.v]
 add_files -norecurse [file join $project_root hdl scaler_top.v]
 add_files -norecurse [file join $project_root hdl scaler_h.v]
@@ -375,10 +377,46 @@ puts "BUILD: using SCALER_MODULE=$SCALER_MODULE"
 create_bd_cell -type module -reference $SCALER_MODULE scaler_0
 connect_bd_intf_net [get_bd_intf_pins v_vid_in_axi4s_0/video_out] [get_bd_intf_pins scaler_0/s_axis]
 
-# iter5-bisect-iter4d3: bypass AXIS FIFO — connect scaler directly to S2MM
-# as in iter4d-3 (which shipped visually clean). FIFO is one of three iter4h
-# additions being bisected to isolate the scroll cause.
-connect_bd_intf_net [get_bd_intf_pins scaler_0/m_axis] [get_bd_intf_pins axi_vdma_0/S_AXIS_S2MM]
+# =============================================================================
+# Path B (TILED DataMover) — RASTER->TILE writer on the S2MM leg
+# =============================================================================
+# RASTER_TO_TILE=1 inserts pg_raster_to_tile_bd between scaler_0/m_axis and the VDMA S2MM so the source is
+# stored TILE-ROW-MAJOR in DDR (each 16x16 tile contiguous = 768B). The warp read engine (pg_re_0 with
+# CONFIG.TILED=1, set in readengine_warp_bd.tcl) then fetches one 768B burst/tile instead of 16 strided 48B
+# row reads -> ~5.5x DDR efficiency, fixing the vertical-downscale fetch starvation.
+#
+# REQUIREMENTS for this path (enforced by the parent's env, asserted here):
+#   * SCALER_MODULE=scaler_bypass_1080p  — the writer must see the FULL 1920x1080 source raster. scaler_top
+#     downscales to 720 lines and would feed pg_raster_to_tile a partial frame (wrong band geometry).
+#   * Firmware programs S2MM as a CONTIGUOUS tile stream: HSIZE=Stride=768, VSIZE=TILES_X*TILES_Y(=120*67).
+#     pg_raster_to_tile emits m_tlast per 16x16 tile (=768B) so each tlast is one S2MM "line" -> the frame
+#     lands contiguously at frame_base + (ty*TILES_X+tx)*768, exactly where pg_tile_dma's TILED branch reads.
+#   * IN_H=1072 in pg_re_0 (readengine_warp_bd.tcl): 1080 isn't a multiple of 16; the writer stores 67 full
+#     tile-rows (1072 rows) and drops the trailing 8-row partial band, so the reader must not request ty>66.
+#
+# NOTE: the VDMA MM2S passthrough (mux sel=0) reads the SAME DDR as a plain raster and will show scrambled
+# tiles under this layout. The warp path (sel=1, default) is the only valid output when RASTER_TO_TILE=1.
+# Flag for bench: do not use mux=0 passthrough while tiled.
+set RASTER_TO_TILE 0
+if {[info exists ::env(RASTER_TO_TILE)] && $::env(RASTER_TO_TILE) ne "0"} { set RASTER_TO_TILE 1 }
+puts "BUILD: RASTER_TO_TILE=$RASTER_TO_TILE (S2MM stores [expr {$RASTER_TO_TILE?{TILE-ROW-MAJOR (Path B)}:{raster}}])"
+if {$RASTER_TO_TILE} {
+    if {$SCALER_MODULE ne "scaler_bypass_1080p"} {
+        puts "ERROR: RASTER_TO_TILE=1 requires SCALER_MODULE=scaler_bypass_1080p (got $SCALER_MODULE) — the"
+        puts "       tile writer needs the full 1920x1080 source raster, not a downscaled frame."
+        exit 1
+    }
+    create_bd_cell -type module -reference pg_raster_to_tile_bd raster_to_tile_0
+    set_property -dict [list CONFIG.IN_W {1920} CONFIG.LTILE {4}] [get_bd_cells raster_to_tile_0]
+    # clock (pclk_in) + reset are fanned out alongside scaler_0's below (search RASTER_TO_TILE clk/rst).
+    connect_bd_intf_net [get_bd_intf_pins scaler_0/m_axis]        [get_bd_intf_pins raster_to_tile_0/s_axis]
+    connect_bd_intf_net [get_bd_intf_pins raster_to_tile_0/m_axis] [get_bd_intf_pins axi_vdma_0/S_AXIS_S2MM]
+} else {
+    # iter5-bisect-iter4d3: bypass AXIS FIFO — connect scaler directly to S2MM
+    # as in iter4d-3 (which shipped visually clean). FIFO is one of three iter4h
+    # additions being bisected to isolate the scroll cause.
+    connect_bd_intf_net [get_bd_intf_pins scaler_0/m_axis] [get_bd_intf_pins axi_vdma_0/S_AXIS_S2MM]
+}
 
 # =============================================================================
 # Video Timing Controller — generates output sync timing
@@ -559,6 +597,9 @@ set pclk_out [get_bd_pins clk_wiz_pixclk_out/clk_out1]
 connect_bd_net $pclk_in  [get_bd_pins v_vid_in_axi4s_0/aclk]
 connect_bd_net $pclk_in  [get_bd_pins axi_vdma_0/s_axis_s2mm_aclk]
 connect_bd_net $pclk_in  [get_bd_pins scaler_0/aclk]
+if {[info exists RASTER_TO_TILE] && $RASTER_TO_TILE} {        ;# RASTER_TO_TILE clk: same S2MM-write pclk_in domain
+    connect_bd_net $pclk_in [get_bd_pins raster_to_tile_0/aclk]
+}
 # iter5-bisect-iter4d3: AXIS FIFO removed — clock wire not needed
 connect_bd_net $pclk_in  [get_bd_pins v_tc_rx/clk]  ;# iter4e: detector on pclk_in
 # Output side
@@ -675,6 +716,9 @@ if {$COLOR_PIPELINE ne "bypass"} {
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]        [get_bd_pins v_tc_rx/resetn]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]        [get_bd_pins v_vid_in_axi4s_0/aresetn]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]        [get_bd_pins scaler_0/aresetn]
+if {[info exists RASTER_TO_TILE] && $RASTER_TO_TILE} {         ;# RASTER_TO_TILE rst: same domain as scaler_0/v_vid_in_axi4s_0
+    connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]    [get_bd_pins raster_to_tile_0/aresetn]
+}
 # iter5-bisect-iter4d3: AXIS FIFO removed — reset wire not needed
 
 # =============================================================================
