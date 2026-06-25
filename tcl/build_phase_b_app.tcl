@@ -125,12 +125,15 @@ if {[info exists ::env(READENGINE_FULLMASTER)] && $::env(READENGINE_FULLMASTER) 
     app config -name vdma_init -add define-compiler-symbols READENGINE_FULLMASTER=1
     puts "FW BUILD: added -DREADENGINE_FULLMASTER=1 (full 1080p master → 720p via read-engine)"
 }
-# Path B (TILED DataMover): the S2MM stores the source TILE-ROW-MAJOR (pg_raster_to_tile inserted on the
-# write leg, BD gated by RASTER_TO_TILE=1). main.c must program S2MM as a contiguous tile stream
-# (HSIZE=Stride=768, VSIZE=TILES_X*TILES_Y) instead of a 1920x1080 raster. Mirror the BD env gate.
+# Path B (DEDICATED-DMA tiled write, 2026-06-25): the tiled write leg is a PL-resident dedicated
+# axi_datamover S2MM (pg_tile_pack64 + pg_tile_s2mm_cmd), NOT the VDMA S2MM. The dedicated DMA is fully
+# self-contained in hardware (one contiguous command per tiler m_sof, ring-slot + gray frame_ptr generated in
+# the PL), so main.c must NOT set up the VDMA S2MM/MM2S on this path. -DPATH_B_DEDICATED_DMA=1 gates that skip.
+# (RASTER_TO_TILE is still defined for the tile-geometry constants used elsewhere in main.c.)
 if {[info exists ::env(RASTER_TO_TILE)] && $::env(RASTER_TO_TILE) ne "0"} {
     app config -name vdma_init -add define-compiler-symbols RASTER_TO_TILE=1
-    puts "FW BUILD: added -DRASTER_TO_TILE=1 (S2MM stores tile-row-major; tiled DataMover read path)"
+    app config -name vdma_init -add define-compiler-symbols PATH_B_DEDICATED_DMA=1
+    puts "FW BUILD: added -DRASTER_TO_TILE=1 -DPATH_B_DEDICATED_DMA=1 (dedicated PL S2MM tiled write; VDMA skipped)"
 }
 # WARP build: the read-engine is pg_warp_top (affine warp). axi_gpio_8/9/10 carry the
 # 6 affine coeffs (m_a..m_f, Q20.12) instead of route-B DDA. Define WARP_BUILD so main.c

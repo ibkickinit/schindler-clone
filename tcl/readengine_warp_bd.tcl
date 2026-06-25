@@ -129,7 +129,20 @@ if {$PROJECTIVE_BUILD} {
 }
 connect_bd_net $pclk  [get_bd_pins pg_re_0/clk]
 connect_bd_net $prstn [get_bd_pins pg_re_0/rstn]
-connect_bd_net [get_bd_pins axi_vdma_0/s2mm_frame_ptr_out] [get_bd_pins pg_re_0/frame_ptr]
+# frame_ptr GENLOCK source.
+#   * Path B dedicated-DMA (RASTER_TO_TILE=1): the dedicated write engine owns the ring, so the genlock
+#     pointer comes from wr_cmd/frame_ptr_out — a GRAY-coded write-slot counter that advances once per
+#     COMPLETED tiled frame, mirroring the VDMA s2mm_frame_ptr_out semantics pg_warp_top decodes
+#     (gray2bin -> fp_bin = slot-being-written; rd_slot = fp_bin-1 = last fully-written slot). The VDMA S2MM
+#     is not the writer here, so its s2mm_frame_ptr_out would not advance — using it would freeze the warp on
+#     one slot. Proven coherent in sim/pg_tile_s2mm_cmd_tb + sim/pg_dedicated_dma_roundtrip_tb.
+#   * Legacy (RASTER_TO_TILE=0): the VDMA S2MM is the writer -> use its s2mm_frame_ptr_out (unchanged).
+if {[info exists RASTER_TO_TILE] && $RASTER_TO_TILE} {
+    connect_bd_net [get_bd_pins wr_cmd/frame_ptr_out]     [get_bd_pins pg_re_0/frame_ptr]
+    puts "READENGINE-WARP: Path B dedicated-DMA genlock — pg_re_0/frame_ptr <- wr_cmd/frame_ptr_out (gray write-slot)"
+} else {
+    connect_bd_net [get_bd_pins axi_vdma_0/s2mm_frame_ptr_out] [get_bd_pins pg_re_0/frame_ptr]
+}
 connect_bd_net [get_bd_pins v_tc_tx/vsync_out]            [get_bd_pins pg_re_0/out_vsync]
 # 6 affine coeffs wired DIRECTLY (full 32-bit, no slices)
 connect_bd_net [get_bd_pins axi_gpio_8/gpio_io_o]   [get_bd_pins pg_re_0/m_a]

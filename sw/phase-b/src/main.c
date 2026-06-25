@@ -2882,10 +2882,25 @@ int main(void)
         return status;
     }
 
+#if defined(RASTER_TO_TILE) && defined(PATH_B_DEDICATED_DMA)
+    /* Path B dedicated-DMA (2026-06-25): the tiled write leg is owned by a dedicated axi_datamover S2MM in
+     * the PL (driven autonomously by pg_tile_s2mm_cmd — one contiguous command per tiler m_sof, ring-slot +
+     * gray frame_ptr generated in hardware). The VDMA S2MM channel is NOT in the write path (its AXIS slave
+     * is unconnected in the BD), so we do NOT set it up here — arming it would just leave an idle S2MM engine
+     * waiting on a stream that never arrives, and (more importantly) NO firmware register write must touch the
+     * dedicated DMA path: it is fully self-contained in the PL. The VDMA MM2S leg stays present (sel=0
+     * passthrough fallback; invalid under the tiled layout, never selected by the warp build) but we skip it
+     * too since nothing reads it on this path. The warp read engine (re_datamover + pg_re_0) is unchanged and
+     * is set up exactly as before (its GPIO geometry + LEAD writes below). */
+    xil_printf("Path B DEDICATED-DMA: VDMA S2MM/MM2S setup SKIPPED — tiled write via PL wr_datamover; "
+               "genlock via wr_cmd gray frame_ptr (%d-frame ring)\r\n", NUM_FRAMES);
+    (void)s2mm_frame_addrs; (void)mm2s_frame_addrs;
+#else
     if (vdma_setup_channel(XAXIVDMA_WRITE, s2mm_frame_addrs) != XST_SUCCESS) return -1;
     if (vdma_setup_channel(XAXIVDMA_READ,  mm2s_frame_addrs) != XST_SUCCESS) return -1;
 
     xil_printf("VDMA running — S2MM + MM2S enabled, %d-frame ring\r\n", NUM_FRAMES);
+#endif
 
 #if defined(READENGINE_FULLMASTER) && defined(GEO_A_BASE)
     /* Full-master route-B: scaler bypassed → S2MM stores the full 1920×1080

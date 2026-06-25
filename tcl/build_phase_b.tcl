@@ -77,6 +77,10 @@ add_files -norecurse [file join $project_root hdl pg_tile_dma.v]
 add_files -norecurse [file join $project_root hdl pg_warp_top.v]
 add_files -norecurse [file join $project_root hdl pg_raster_to_tile.v]    ;# Path B: RASTER->TILE writer (S2MM tiled-layout)
 add_files -norecurse [file join $project_root hdl pg_raster_to_tile_bd.v] ;# Path B: AXIS-named BD wrapper for the above
+add_files -norecurse [file join $project_root hdl pg_tile_pack64.v]       ;# Path B dedicated-DMA: 24b->64b packer (DDR-width stream)
+add_files -norecurse [file join $project_root hdl pg_tile_pack64_bd.v]    ;# Path B dedicated-DMA: AXIS-named BD wrapper for the packer
+add_files -norecurse [file join $project_root hdl pg_tile_s2mm_cmd.v]     ;# Path B dedicated-DMA: S2MM cmd-gen + ring-slot + gray frame_ptr
+add_files -norecurse [file join $project_root hdl pg_tile_s2mm_cmd_bd.v]  ;# Path B dedicated-DMA: AXIS-named BD wrapper for the cmd-gen
 add_files -norecurse [file join $project_root hdl axis_mux2.v]
 add_files -norecurse [file join $project_root hdl scaler_top.v]
 add_files -norecurse [file join $project_root hdl scaler_h.v]
@@ -129,6 +133,8 @@ set_property -dict [list \
     CONFIG.PCW_S_AXI_HP0_DATA_WIDTH {64} \
     CONFIG.PCW_USE_S_AXI_HP1 {1} \
     CONFIG.PCW_S_AXI_HP1_DATA_WIDTH {64} \
+    CONFIG.PCW_USE_S_AXI_HP2 {1} \
+    CONFIG.PCW_S_AXI_HP2_DATA_WIDTH {64} \
     CONFIG.PCW_FPGA0_PERIPHERAL_FREQMHZ {100} \
     CONFIG.PCW_FPGA1_PERIPHERAL_FREQMHZ {150} \
     CONFIG.PCW_FPGA2_PERIPHERAL_FREQMHZ {200} \
@@ -410,7 +416,82 @@ if {$RASTER_TO_TILE} {
     set_property -dict [list CONFIG.IN_W {1920} CONFIG.LTILE {4}] [get_bd_cells raster_to_tile_0]
     # clock (pclk_in) + reset are fanned out alongside scaler_0's below (search RASTER_TO_TILE clk/rst).
     connect_bd_intf_net [get_bd_intf_pins scaler_0/m_axis]        [get_bd_intf_pins raster_to_tile_0/s_axis]
-    connect_bd_intf_net [get_bd_intf_pins raster_to_tile_0/m_axis] [get_bd_intf_pins axi_vdma_0/S_AXIS_S2MM]
+
+    # =========================================================================================================
+    # Path B DEDICATED WRITE DataMover (2026-06-25) — replaces the VDMA S2MM for the tiled write leg.
+    # ---------------------------------------------------------------------------------------------------------
+    # WHY: the tiled stream is GAPLESS (no blanking, no 2D raster). The VDMA S2MM frame-sync model expects a 2D
+    # raster with a blanking gap and fsync LEADING the data; fed the gapless tile stream it asserts EOLEarly,
+    # corrupts the tiled master, and the warp produces only ~12% of a frame even at fit. KEY INSIGHT: a tiled
+    # frame is just TILES_X*TILES_Y*768 = 6,174,720 CONTIGUOUS bytes/frame -> one plain S2MM DataMover command
+    # per frame (no 2D, no fsync, no per-line semantics). pg_tile_s2mm_cmd issues that command on each m_sof.
+    #
+    # TOPOLOGY (mirrors the proven re_datamover MM2S read path, but S2MM):
+    #   raster_to_tile_0/m_axis (24b, pclk_in)
+    #     -> pg_tile_pack64 (24b->64b, pclk_in)
+    #     -> cc_wr_dat (axis_clock_converter pclk_in -> FCLK_CLK1)
+    #     -> wr_datamover/S_AXIS_S2MM (64b, FCLK_CLK1)  ==>  M_AXI_S2MM -> wr_sc -> wr_hp2_rs -> S_AXI_HP2
+    #   pg_tile_s2mm_cmd (pclk_in): m_sof -> command stream -> cc_wr_cmd (pclk_in->FCLK_CLK1) -> S_AXIS_S2MM_CMD
+    #                               status M_AXIS_S2MM_STS -> cc_wr_sts (FCLK_CLK1->pclk_in) -> pg_tile_s2mm_cmd
+    #                               frame_ptr_out (gray) -> pg_re_0/frame_ptr (wired in readengine_warp_bd.tcl)
+    #
+    # HP-PORT CHOICE = HP2.  HP0 = VDMA M_AXI (S2MM+MM2S), HP1 = warp READ DataMover. HP2 is the next free PS
+    # high-perf slave port. Putting the dedicated WRITE on its own HP port keeps it OFF HP1 so it never
+    # arbitrates against the warp's READ traffic (the bandwidth-critical leg) at the same PS port.
+    #
+    # CLOCK CHOICE = FCLK_CLK1 (142.86 MHz) for the M_AXI mem side + the cmd/data/status STREAM side of the
+    # DataMover, EXACTLY like re_datamover. Reasons: (1) the HP port runs on a STABLE PS clock (source-loss
+    # robust; the recovered pclk_in stops when HDMI drops), (2) identical clocking to the proven read path,
+    # (3) 142.86 MHz x 8 B = 1.14 GB/s peak write >> the 370 MB/s average tiled write (60 fps x 6.17 MB). The
+    # tiler-side packer + cmd-gen run on pclk_in (so m_sof is in-domain, no CDC on the frame-start), and the 3
+    # AXIS links cross to FCLK_CLK1 via axis_clock_converters — same pattern as cc_cmd/cc_dat/cc_sts.
+    # =========================================================================================================
+    set wr_fclk1 [get_bd_pins zynq_ps/FCLK_CLK1]
+
+    create_bd_cell -type ip -vlnv xilinx.com:ip:axi_datamover wr_datamover
+    set_property -dict [list \
+        CONFIG.c_include_mm2s {Omit} CONFIG.c_enable_mm2s {0} \
+        CONFIG.c_include_s2mm {Full} CONFIG.c_enable_s2mm {1} \
+        CONFIG.c_m_axi_s2mm_data_width {64} CONFIG.c_s_axis_s2mm_tdata_width {64} \
+        CONFIG.c_s2mm_burst_size {256} CONFIG.c_m_axi_s2mm_addr_width {32} \
+        CONFIG.c_include_s2mm_stsfifo {true} ] [get_bd_cells wr_datamover]
+
+    # 24b -> 64b packer (DDR-width stream), pclk_in domain (tiler clock)
+    create_bd_cell -type module -reference pg_tile_pack64_bd wr_pack
+    connect_bd_intf_net [get_bd_intf_pins raster_to_tile_0/m_axis] [get_bd_intf_pins wr_pack/s_axis]
+
+    # S2MM command generator + ring slot + gray frame_ptr, pclk_in domain (consumes raster_to_tile_0/m_sof)
+    create_bd_cell -type module -reference pg_tile_s2mm_cmd_bd wr_cmd
+    set_property -dict [list CONFIG.FRAME_BUF_BASE {0x10000000} CONFIG.NUM_FRAMES {7} \
+        CONFIG.SLOT_STRIDE {6226560} CONFIG.FRAME_BYTES {6174720}] [get_bd_cells wr_cmd]
+    connect_bd_net [get_bd_pins raster_to_tile_0/m_sof] [get_bd_pins wr_cmd/m_sof]
+
+    # SmartConnect + registered AXI slice -> S_AXI_HP2 (mirror re_hp1_rs: split the long route to the PS port)
+    create_bd_cell -type ip -vlnv xilinx.com:ip:smartconnect wr_sc
+    set_property -dict [list CONFIG.NUM_SI {1} CONFIG.NUM_MI {1} CONFIG.NUM_CLKS {1}] [get_bd_cells wr_sc]
+    connect_bd_intf_net [get_bd_intf_pins wr_datamover/M_AXI_S2MM] [get_bd_intf_pins wr_sc/S00_AXI]
+    create_bd_cell -type ip -vlnv xilinx.com:ip:axi_register_slice wr_hp2_rs
+    set_property -dict [list CONFIG.REG_AR {1} CONFIG.REG_AW {1} CONFIG.REG_W {1} CONFIG.REG_R {1} CONFIG.REG_B {1}] [get_bd_cells wr_hp2_rs]
+    connect_bd_intf_net [get_bd_intf_pins wr_sc/M00_AXI]      [get_bd_intf_pins wr_hp2_rs/S_AXI]
+    connect_bd_intf_net [get_bd_intf_pins wr_hp2_rs/M_AXI]    [get_bd_intf_pins zynq_ps/S_AXI_HP2]
+
+    # AXIS clock converters: data (pclk_in->FCLK_CLK1), cmd (pclk_in->FCLK_CLK1), status (FCLK_CLK1->pclk_in)
+    create_bd_cell -type ip -vlnv xilinx.com:ip:axis_clock_converter wr_cc_dat
+    create_bd_cell -type ip -vlnv xilinx.com:ip:axis_clock_converter wr_cc_cmd
+    create_bd_cell -type ip -vlnv xilinx.com:ip:axis_clock_converter wr_cc_sts
+    # data: wr_pack (pclk_in, master) -> wr_datamover/S_AXIS_S2MM (FCLK_CLK1)
+    connect_bd_intf_net [get_bd_intf_pins wr_pack/m_axis]       [get_bd_intf_pins wr_cc_dat/S_AXIS]
+    connect_bd_intf_net [get_bd_intf_pins wr_cc_dat/M_AXIS]     [get_bd_intf_pins wr_datamover/S_AXIS_S2MM]
+    # cmd: wr_cmd (pclk_in, master) -> wr_datamover/S_AXIS_S2MM_CMD (FCLK_CLK1)
+    connect_bd_intf_net [get_bd_intf_pins wr_cmd/m_axis_cmd]    [get_bd_intf_pins wr_cc_cmd/S_AXIS]
+    connect_bd_intf_net [get_bd_intf_pins wr_cc_cmd/M_AXIS]     [get_bd_intf_pins wr_datamover/S_AXIS_S2MM_CMD]
+    # status: wr_datamover/M_AXIS_S2MM_STS (FCLK_CLK1, master) -> wr_cmd/s_axis_sts (pclk_in)
+    connect_bd_intf_net [get_bd_intf_pins wr_datamover/M_AXIS_S2MM_STS] [get_bd_intf_pins wr_cc_sts/S_AXIS]
+    connect_bd_intf_net [get_bd_intf_pins wr_cc_sts/M_AXIS]             [get_bd_intf_pins wr_cmd/s_axis_sts]
+
+    # NOTE: the VDMA S2MM AXIS slave (axi_vdma_0/S_AXIS_S2MM) is intentionally LEFT UNCONNECTED on Path B —
+    # the dedicated DataMover owns the write. The VDMA MM2S read leg also stays present (sel=0 passthrough
+    # fallback; invalid under the tiled layout, never selected). Firmware skips the VDMA S2MM setup for Path B.
 } else {
     # iter5-bisect-iter4d3: bypass AXIS FIFO — connect scaler directly to S2MM
     # as in iter4d-3 (which shipped visually clean). FIFO is one of three iter4h
@@ -599,6 +680,35 @@ connect_bd_net $pclk_in  [get_bd_pins axi_vdma_0/s_axis_s2mm_aclk]
 connect_bd_net $pclk_in  [get_bd_pins scaler_0/aclk]
 if {[info exists RASTER_TO_TILE] && $RASTER_TO_TILE} {        ;# RASTER_TO_TILE clk: same S2MM-write pclk_in domain
     connect_bd_net $pclk_in [get_bd_pins raster_to_tile_0/aclk]
+    # ---- Path B dedicated WRITE DataMover clocking + reset ----
+    # pclk_in domain (tiler-side): wr_pack, wr_cmd, and the pclk_in side of the 3 AXIS clock converters.
+    # FCLK_CLK1 domain (HP2 mem side + DataMover stream side): wr_datamover, wr_sc, wr_hp2_rs, S_AXI_HP2_ACLK,
+    # and the FCLK_CLK1 side of the 3 AXIS clock converters.  Resets: rst_axi (pclk_in/FCLK_CLK0-async, the IPs
+    # self-sync) for the pclk_in cells; rst_mem (FCLK_CLK1-synced) for the FCLK_CLK1 cells — same split the
+    # read path uses (prstn vs rst143).
+    set _f1   [get_bd_pins zynq_ps/FCLK_CLK1]
+    set _rpi  [get_bd_pins rst_axi/peripheral_aresetn]
+    set _rf1  [get_bd_pins rst_mem/peripheral_aresetn]
+    # HP2 port clock
+    connect_bd_net $_f1 [get_bd_pins zynq_ps/S_AXI_HP2_ACLK]
+    # pclk_in-domain custom cells
+    connect_bd_net $pclk_in [get_bd_pins wr_pack/aclk];  connect_bd_net $_rpi [get_bd_pins wr_pack/aresetn]
+    connect_bd_net $pclk_in [get_bd_pins wr_cmd/aclk];   connect_bd_net $_rpi [get_bd_pins wr_cmd/aresetn]
+    # DataMover (M_AXI S2MM + cmd/data/status stream side) on FCLK_CLK1
+    connect_bd_net $_f1 [get_bd_pins wr_datamover/m_axi_s2mm_aclk]
+    connect_bd_net $_f1 [get_bd_pins wr_datamover/m_axis_s2mm_cmdsts_aclk]
+    connect_bd_net $_rf1 [get_bd_pins wr_datamover/m_axi_s2mm_aresetn]
+    connect_bd_net $_rf1 [get_bd_pins wr_datamover/m_axis_s2mm_cmdsts_aresetn]
+    # SmartConnect + register slice -> HP2 on FCLK_CLK1
+    connect_bd_net $_f1 [get_bd_pins wr_sc/aclk];        connect_bd_net $_rf1 [get_bd_pins wr_sc/aresetn]
+    connect_bd_net $_f1 [get_bd_pins wr_hp2_rs/aclk];    connect_bd_net $_rf1 [get_bd_pins wr_hp2_rs/aresetn]
+    # AXIS clock converters: data (pclk_in S -> FCLK_CLK1 M), cmd (pclk_in S -> FCLK_CLK1 M), sts (FCLK_CLK1 S -> pclk_in M)
+    connect_bd_net $pclk_in [get_bd_pins wr_cc_dat/s_axis_aclk]; connect_bd_net $_rpi [get_bd_pins wr_cc_dat/s_axis_aresetn]
+    connect_bd_net $_f1     [get_bd_pins wr_cc_dat/m_axis_aclk]; connect_bd_net $_rf1 [get_bd_pins wr_cc_dat/m_axis_aresetn]
+    connect_bd_net $pclk_in [get_bd_pins wr_cc_cmd/s_axis_aclk]; connect_bd_net $_rpi [get_bd_pins wr_cc_cmd/s_axis_aresetn]
+    connect_bd_net $_f1     [get_bd_pins wr_cc_cmd/m_axis_aclk]; connect_bd_net $_rf1 [get_bd_pins wr_cc_cmd/m_axis_aresetn]
+    connect_bd_net $_f1     [get_bd_pins wr_cc_sts/s_axis_aclk]; connect_bd_net $_rf1 [get_bd_pins wr_cc_sts/s_axis_aresetn]
+    connect_bd_net $pclk_in [get_bd_pins wr_cc_sts/m_axis_aclk]; connect_bd_net $_rpi [get_bd_pins wr_cc_sts/m_axis_aresetn]
 }
 # iter5-bisect-iter4d3: AXIS FIFO removed — clock wire not needed
 connect_bd_net $pclk_in  [get_bd_pins v_tc_rx/clk]  ;# iter4e: detector on pclk_in
@@ -764,8 +874,12 @@ connect_bd_net [get_bd_pins dvi2rgb_0/vid_pVSync]            [get_bd_pins s2mm_f
 # raster_to_tile_0/m_sof is already pclk_in-domain (raster_to_tile_0/aclk = $pclk_in == s_axis_s2mm_aclk), so
 # it drives s2mm_fsync directly without CDC, same as the source-vsync pulse it replaces.
 if {[info exists RASTER_TO_TILE] && $RASTER_TO_TILE} {
+    # Path B dedicated-DMA (2026-06-25): the VDMA S2MM no longer writes the tiled stream (the dedicated
+    # wr_datamover does). The VDMA S2MM AXIS slave is unconnected, so its fsync is moot — but c_use_s2mm_fsync=1
+    # exposes the s2mm_fsync input port, so tie it to m_sof (harmless; keeps the port driven). The actual Path B
+    # frame boundary lives in wr_cmd (one DataMover command per m_sof). No VDMA fsync semantics are relied on.
     connect_bd_net [get_bd_pins raster_to_tile_0/m_sof]         [get_bd_pins axi_vdma_0/s2mm_fsync]
-    puts "BUILD: Path B s2mm_fsync = raster_to_tile_0/m_sof (tiler output frame boundary)"
+    puts "BUILD: Path B dedicated-DMA — VDMA S2MM unused; s2mm_fsync tied to m_sof (no-op), write via wr_datamover"
 } else {
     connect_bd_net [get_bd_pins s2mm_fsync_pulse_gen/pulse_out] [get_bd_pins axi_vdma_0/s2mm_fsync]
 }

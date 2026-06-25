@@ -1354,3 +1354,31 @@ LOD select (firmware): L=max(0,ceil(log2(S/1.5))), S=max(invx,invy)/4096. DDR mi
 (L1 @ +43585920, stride 2880; L2 after, stride 1440); same gray frame_ptr. Phase 1 (read-path coord-shift +
 per-L addressing + LOD in lead_cfg[22:20], L=0 byte-identical) HDL drafting now. Phase 2 = HW box-average
 mip generator (BD broadcast + 2 S2MM rings, ~3 RAMB36 + ~116 MB/s write) — bitstream-heavy, pending review.
+
+## 2026-06-25 — Path B DEDICATED WRITE-DataMover (branch `path-b-dedicated-dma`, HDL/BD/FW + sim only)
+Replaces the Xilinx VDMA S2MM on the Path B tiled-write leg with a dedicated `axi_datamover` (S2MM). The VDMA's
+2D-raster + fsync-leads-data frame-sync model cannot express the GAPLESS tile stream (asserted EOLEarly →
+corrupt master → warp produced ~12% of a frame even at fit). KEY INSIGHT: a tiled frame is just
+`TILES_X*TILES_Y*768 = 6,174,720` CONTIGUOUS bytes/frame → ONE plain S2MM command/frame, no 2D, no fsync.
+- **New HDL:** `pg_tile_pack64.v` (24b→64b LE byte-exact gearbox, robust under back-pressure on both sides),
+  `pg_tile_s2mm_cmd.v` (one S2MM command per tiler `m_sof`: `{addr=BASE+wr_slot*SLOT_STRIDE, BTT=FRAME_BYTES,
+  INCR, EOF}`; ring `wr_slot` advances at DataMover STATUS = frame completion; emits GRAY-coded `frame_ptr_out`
+  mirroring `s2mm_frame_ptr_out`). Plus `_bd` wrappers for AXIS interface inference.
+- **BD (`build_phase_b.tcl`, gated RASTER_TO_TILE=1):** tiler → `wr_pack` → `wr_cc_dat` → `wr_datamover`
+  S_AXIS_S2MM; `wr_cmd` → `wr_cc_cmd` → S_AXIS_S2MM_CMD; M_AXIS_S2MM_STS → `wr_cc_sts` → `wr_cmd`. M_AXI_S2MM →
+  `wr_sc` → `wr_hp2_rs` → **S_AXI_HP2** (HP0=VDMA, HP1=warp READ, HP2=this write → no HP-port contention with
+  the read). DataMover M_AXI + stream side on **FCLK_CLK1** (142.86 MHz, like `re_datamover`: stable PS clock,
+  source-loss-robust, 1.14 GB/s ≫ 370 MB/s avg write); packer+cmd-gen on `pclk_in` (so `m_sof` is in-domain),
+  3 AXIS clock-converters bridge — same pattern as the read path. VDMA S2MM AXIS left UNCONNECTED.
+- **Genlock (`readengine_warp_bd.tcl`):** `pg_re_0/frame_ptr <- wr_cmd/frame_ptr_out` for Path B (VDMA
+  `s2mm_frame_ptr_out` would never advance — VDMA isn't the writer). `gray2bin-1` = last fully-written slot.
+- **Firmware (`main.c`, `build_phase_b_app.tcl`):** `-DPATH_B_DEDICATED_DMA=1` skips the VDMA S2MM/MM2S setup
+  (dedicated DMA is fully PL-self-contained — no firmware register writes touch it). Warp read setup unchanged.
+- **SIM (all PASS, `sim/run_path_b_dedicated.sh`):** `PACK64_TB` (byte-exact under back-pressure),
+  `CMD_TB` (1 cmd/frame, correct addr/BTT, slot advance+wrap, frame_ptr→completed slot), `TILED_ROUNDTRIP`
+  + `FSYNC_TB` (regressions), `DEDICATED_DMA_RT` (8-frame raster→tile→pack→[S2MM model]→TILED read BIT-EXACT,
+  ring slot 0,1,2,0,1,2… with the warp reading the just-completed slot). NOT bitstream-built (parent builds).
+- **Residual bench risk:** (1) the dedicated DataMover keeping up with source rate (avg fine; verify no
+  back-pressure starves the tiler's band buffers under burst); (2) HP2 vs HP0(VDMA)/HP1(read) PS arbitration
+  under full warp load; (3) the runtime `Z` (freeze) UART cmd still pokes the VDMA S2MM RS bit — a no-op under
+  dedicated DMA (freeze not wired to the new path; out of scope).
