@@ -141,16 +141,25 @@ a complete dev kit (`MPF300-VIDEO-KIT-NS` + `VIDEO-DC-SDI` FMC for 12G).
 - **DisplayPort RX IP** — DP 1.4 **HBR3/SST → 4K60** (Microchip CoreDP or Bitec).
 - 12.7G transceivers; MPF300T (300K LE) + DDR4 + SPI flash; stocked.
 
-**Recommended part: `MPF300T-FCG1152I`** — in stock at DigiKey (#7356235) /
-MicrochipDirect; **16 transceiver lanes** (covers 2× DP-RX @2–4 lanes + 2× SDI-TX
-@1 lane with headroom); same device as the video kit (prototype = production).
-- Cheaper alt **`MPF300T-FCG484I`** (#7356231, in stock) has **8 lanes** — works
-  **only if** DP-RX is **2 lanes/stream** (4+2 = 6 of 8); fails if the hub drives
-  4-lane DP per stream. Verify the per-stream DP lane count first.
-- ⚠️ In-stock parts are **standard speed grade**; the video kit uses **`-1`**
-  (`MPF300T-1FCG1152I`). Confirm whether you want the `-1` for IP timing-closure
-  margin + that 12.7G transceivers are supported on the chosen grade. Confirm live
-  qty on the cart (stock not readable remotely).
+**Part selection — MPF300 is overkill/too costly; size down.** The die (logic) is
+the cost driver; all PolarFire have the same 12.7G transceivers (12G is fine on
+any). DigiKey qty-1 prices:
+
+| Part | Logic | Xcvr lanes | Qty-1 | Fit for dual-4K60 (2× DP-RX + 2× SDI-TX) |
+|---|---|---|---|---|
+| MPF300T-FCG1152I | 300K | 16 | **~$600** | overkill (kit part) |
+| **MPF200T-FCG484I** | 192K | 16 | **$345** | comfortable — safe choice |
+| **MPF100T-FCG484I** | 109K | 8 | **$174** | cheapest viable; **logic TIGHT** (~110–130K needed) — may not fit two full channels |
+| MPF050T | 50K | few | less | too small for two 4K60 channels |
+
+- **Recommended: start design on `MPF100T-FCG484I` ($174), fall back to
+  `MPF200T-FCG484I` ($345) if it doesn't fit.** Transceivers are fine on MPF100T
+  (4 DP-RX + 2 SDI-TX = 6 of 8); the gate is **logic-element fit** — a Phase-3
+  bench item (`06` Q0b).
+- Volume pricing drops ~30–50%; verify live qty/price on the cart (403 remotely).
+- **⚠️ Cost reality (`06` Q0c):** even the cheapest, the FPGA is $100–175 + the
+  DP-RX IP license — a heavy BOM line. The real lever is **SDI-rate scope**: dual
+  4K30/6G or dual 1080p/3G need far cheaper silicon. See Q0c.
 
 **Diligence items before committing (`06` Q0b):**
 - ⚠️ **HDMI-RX caps at 4K30** — must use the **DP-RX** path for 4K60 (drives the

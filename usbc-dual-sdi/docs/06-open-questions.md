@@ -54,6 +54,26 @@ below), but the **durable design is PolarFire**.
 - **Bench needs `VIDEO-DC-SDI` FMC** for 12G (the video kit's on-board SDI is
   HD/3G only).
 
+## Q0c — SDI-rate scope vs cost *(GATING product-economics decision)*
+The FPGA cost is driven by the **dual-4K60/12G** ambition, and it's a heavy BOM
+line at any size: MPF100T **$174** (logic tight), MPF200T **$345**, MPF300T
+**~$600** (qty-1; ~30–50% less at volume) — **plus** the DP-RX IP license. For a
+sub-$600–900-retail product that's tough. **The biggest cost lever is the SDI
+rate, not the part number:**
+
+| Target | SDI rate | Silicon | Rel. FPGA cost |
+|---|---|---|---|
+| Dual **4K60** | 12G | MPF100T/200T+ | $174–345+ |
+| Dual **4K30** | 6G | smaller PolarFire / **Lattice CertusPro-NX** (10.3G OK for 6G) | much less (~$30–80) |
+| Dual **1080p60** | 3G | small PolarFire / cheap FPGA | least |
+
+**3G/1080p is the most common broadcast format** (huge installed base of 1080p
+switchers/monitors). **Decision needed:** is dual-4K60 essential, or does dual-
+1080p (3G) / dual-4K30 (6G) serve the real use case (feeding SDI monitors/
+switchers from a laptop)? A lower rate opens **much cheaper silicon** (incl.
+non-PolarFire) and a viable BOM, with 4K60 as a premium model later. **This gates
+the FPGA choice and the whole BOM — resolve before committing.**
+
 *(History below retained for the decision trail.)*
 
 **CONFIRMED EOL Feb 2025 — the no-FPGA design lost its keystone:** the GS12170 is
