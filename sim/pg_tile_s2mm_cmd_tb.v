@@ -22,8 +22,9 @@ module pg_tile_s2mm_cmd_tb;
     reg  [7:0]  sts_td=8'h00; reg sts_tv=0; wire sts_tr;
     wire [5:0]  fp; wire [31:0] dbg;
 
-    pg_tile_s2mm_cmd #(.FRAME_BUF_BASE(BASE),.NUM_FRAMES(N),.SLOT_STRIDE(STRIDE),.FRAME_BYTES(FBYTES)) dut(
+    pg_tile_s2mm_cmd #(.FRAME_BUF_BASE(BASE),.NUM_FRAMES(N)) dut(
         .clk(clk),.rstn(rstn),.m_sof(m_sof),
+        .frame_bytes(FBYTES[22:0]),.slot_stride(STRIDE[31:0]),
         .cmd_tdata(cmd_td),.cmd_tvalid(cmd_tv),.cmd_tready(cmd_tr),
         .sts_tdata(sts_td),.sts_tvalid(sts_tv),.sts_tready(sts_tr),
         .frame_ptr_out(fp),.dbg(dbg));

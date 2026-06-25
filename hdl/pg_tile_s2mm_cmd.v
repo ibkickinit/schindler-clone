@@ -29,14 +29,19 @@
 `default_nettype none
 `timescale 1ns / 1ps
 
+// RUNTIME GEOMETRY (dest-res-master, 2026-06-25): FRAME_BYTES (the per-frame contiguous BTT) and SLOT_STRIDE
+// (ring-slot spacing in DDR) are now RUNTIME inputs, not params — they depend on the LOD tile count
+// (TILES_X*TILES_Y*768), which varies per engine output resolution. Firmware computes them from the LOD dims
+// and drives them via GPIO. One synthesized cmd-gen serves any LOD. NUM_FRAMES (ring depth) + FRAME_BUF_BASE
+// stay params (memory-map allocation decisions, fixed at build).
 module pg_tile_s2mm_cmd #(
     parameter [31:0]  FRAME_BUF_BASE = 32'h1000_0000,
-    parameter integer NUM_FRAMES     = 7,
-    parameter integer SLOT_STRIDE    = 6226560,
-    parameter integer FRAME_BYTES    = 6174720      // TILES_X*TILES_Y*768 (120*67*768)
+    parameter integer NUM_FRAMES     = 7
 ) (
     input  wire        clk, rstn,
     input  wire        m_sof,                 // 1-cyc pulse: first beat of tile(0,0) of a new frame (tiler clk)
+    input  wire [22:0] frame_bytes,           // RUNTIME BTT = TILES_X*TILES_Y*768 (whole tiled LOD frame)
+    input  wire [31:0] slot_stride,           // RUNTIME ring-slot spacing in DDR (>= frame_bytes)
 
     // S2MM DataMover command stream (72-bit, standard DataMover format)
     output reg  [71:0] cmd_tdata,
@@ -61,8 +66,8 @@ module pg_tile_s2mm_cmd #(
 
     // ---- command word ----
     // {RSVD[71:68]=0, TAG[67:64]=0, SADDR[63:32], DRR[31]=0, EOF[30]=1, DSA[29:24]=0, TYPE[23]=1(INCR), BTT[22:0]}
-    wire [31:0] slot_addr = FRAME_BUF_BASE + wr_slot * SLOT_STRIDE;
-    wire [22:0] btt       = FRAME_BYTES[22:0];
+    wire [31:0] slot_addr = FRAME_BUF_BASE + wr_slot * slot_stride;
+    wire [22:0] btt       = frame_bytes;
 
     reg        cmd_inflight;                   // a frame's command is issued, status not yet returned
     reg [13:0] cmds_issued, frames_done;

@@ -26,7 +26,7 @@ module pg_tiled_roundtrip_tb;
     reg [23:0] s_td; reg s_tv=0, s_tuser=0, s_tlast=0; wire s_tr;
     wire [23:0] p_td; wire p_tv, p_tl; reg p_tr=1;
     pg_raster_to_tile #(.IN_W(IN_W),.LTILE(4)) u_prod(
-        .clk(clk),.rstn(rstn),.s_tdata(s_td),.s_tvalid(s_tv),.s_tready(s_tr),
+        .clk(clk),.rstn(rstn),.in_w(IN_W[11:0]),.s_tdata(s_td),.s_tvalid(s_tv),.s_tready(s_tr),
         .s_tuser(s_tuser),.s_tlast(s_tlast),
         .m_tdata(p_td),.m_tvalid(p_tv),.m_tready(p_tr),.m_tlast(p_tl));
 

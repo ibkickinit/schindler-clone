@@ -25,13 +25,14 @@
 `timescale 1ns / 1ps
 
 module pg_raster_to_tile_bd #(
-    parameter integer IN_W  = 1920,
+    parameter integer IN_W  = 1920,                   // MAX width (BRAM band sizing); active width = in_w port
     parameter integer LTILE = 4                       // TILE = 16
 ) (
     input  wire        aclk,
     input  wire        aresetn,
+    input  wire [11:0] in_w,                          // RUNTIME active width (firmware GPIO; multiple of TILE, <= IN_W)
 
-    // slave AXIS (from scaler_0/m_axis — the full 1920x1080 source raster)
+    // slave AXIS (from scaler_0/m_axis — the source raster, now the output-res LOD)
     input  wire [23:0] s_axis_tdata,
     input  wire        s_axis_tvalid,
     output wire        s_axis_tready,
@@ -50,6 +51,7 @@ module pg_raster_to_tile_bd #(
     pg_raster_to_tile #(.IN_W(IN_W), .LTILE(LTILE)) u_core (
         .clk     (aclk),
         .rstn    (aresetn),
+        .in_w    (in_w),
         .s_tdata (s_axis_tdata),
         .s_tvalid(s_axis_tvalid),
         .s_tready(s_axis_tready),

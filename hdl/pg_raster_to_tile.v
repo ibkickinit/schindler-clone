@@ -17,11 +17,18 @@
 `default_nettype none
 `timescale 1ns / 1ps
 
+// RUNTIME WIDTH (dest-res-master, 2026-06-25): IN_W is now the *maximum* width — it sizes the BRAM band
+// buffers for the worst case (1920). The ACTIVE width comes from the `in_w` input at runtime, so one
+// synthesized tiler serves any output-res LOD (e.g. 1280 for 720p, 720 for SD) without rebuild. in_w MUST
+// be a multiple of TILE and <= IN_W. Height is already runtime (the tiler emits 16-row bands as the source
+// SOF delimits them), so width was the only hardwired geometry. Read+write both stride by in_w, so the band
+// buffer packs densely from address 0 regardless of in_w (the BRAM's upper region is simply unused).
 module pg_raster_to_tile #(
-    parameter integer IN_W  = 1920,
+    parameter integer IN_W  = 1920,                   // MAX width (BRAM band sizing); active width = in_w
     parameter integer LTILE = 4                       // TILE = 16
 ) (
     input  wire        clk, rstn,
+    input  wire [11:0] in_w,                           // RUNTIME active width (multiple of TILE, <= IN_W)
     input  wire [23:0] s_tdata, input wire s_tvalid, output wire s_tready,
     input  wire        s_tuser,                        // SOF
     input  wire        s_tlast,                        // EOL (unused; row width is counted)
@@ -29,7 +36,8 @@ module pg_raster_to_tile #(
     output reg         m_tlast,                        // last beat of a 16x16 tile
     output reg         m_sof                           // 1-cyc pulse on FIRST beat of tile(0,0) of a frame
 );
-    localparam integer TILE=(1<<LTILE), BAND=TILE*IN_W, TILES_X=IN_W/TILE, AW=$clog2(BAND);
+    localparam integer TILE=(1<<LTILE), BAND=TILE*IN_W, AW=$clog2(BAND);
+    wire [11:0] tiles_x = in_w >> LTILE;               // runtime in_w/TILE (replaces the old TILES_X localparam)
     (* ram_style="block" *) reg [23:0] band0[0:BAND-1];
     (* ram_style="block" *) reg [23:0] band1[0:BAND-1];
     reg full0, full1;                                  // per-buffer: filled, waiting to emit
@@ -44,14 +52,14 @@ module pg_raster_to_tile #(
     wire        sof_beat = wbeat && s_tuser;            // SOF -> this beat is (row 0, col 0)
     wire [11:0] erow = sof_beat ? 12'd0 : wrow;
     wire [11:0] ecol = sof_beat ? 12'd0 : wcol;
-    wire [AW-1:0] waddr = erow*IN_W + ecol;
+    wire [AW-1:0] waddr = erow*in_w + ecol;
 
     // ---- EMIT: the buffer esel -> tiled stream (1-cycle BRAM read pipeline) ----
     reg        esel; reg e_act; reg [11:0] etx; reg [3:0] er, ec;
     reg        sof_armed;                              // pending: fire m_sof on the next OUT beat (first beat of tile(0,0))
     wire efull = esel ? full1 : full0;
     wire efull_sof = esel ? sof1 : sof0;
-    wire [AW-1:0] eaddr = er*IN_W + (etx*TILE + ec);
+    wire [AW-1:0] eaddr = er*in_w + (etx*TILE + ec);
     reg  s1_v, s1_last, s1_sel, s1_sof; reg [23:0] eq0, eq1;  // S1: registered read + carried meta (s1_sof=tile(0,0) beat0 of a frame)
     wire out_ready = !m_tvalid || m_tready;
     wire emit_go = out_ready && (e_act || s1_v);        // run while emitting OR flushing the last S1 beat
@@ -67,7 +75,7 @@ module pg_raster_to_tile #(
             if(sof_beat) wband_sof <= 1'b1;                         // mark the in-fill band as a frame-start band
             if(wbeat) begin
                 if(wsel==0) band0[waddr]<=s_tdata; else band1[waddr]<=s_tdata;
-                if(ecol==IN_W-1) begin wcol<=0;
+                if(ecol==in_w-1) begin wcol<=0;
                     if(erow==TILE-1) begin wrow<=0;
                         // band done -> hand off (+ carry its frame-start flag) + swap; clear the in-fill flag
                         if(wsel==0) begin full0<=1'b1; sof0<=wband_sof; end
@@ -95,7 +103,7 @@ module pg_raster_to_tile #(
                     s1_sof <= sof_armed; sof_armed <= 1'b0;        // tag only the very first S1 beat of the band
                     if(ec==TILE-1) begin ec<=0;
                         if(er==TILE-1) begin er<=0;
-                            if(etx==TILES_X-1) e_act<=1'b0; else etx<=etx+1'b1;
+                            if(etx==tiles_x-1) e_act<=1'b0; else etx<=etx+1'b1;
                         end else er<=er+1'b1;
                     end else ec<=ec+1'b1;
                 end else begin                                     // FLUSH last beat -> free buffer + swap

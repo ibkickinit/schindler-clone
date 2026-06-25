@@ -10,7 +10,7 @@ module pg_raster_to_tile_tb;
     wire [23:0] m_td; wire m_tv, m_tl; reg m_tr=1;
 
     pg_raster_to_tile #(.IN_W(IN_W),.LTILE(4)) dut(
-        .clk(clk),.rstn(rstn),.s_tdata(s_td),.s_tvalid(s_tv),.s_tready(s_tr),
+        .clk(clk),.rstn(rstn),.in_w(IN_W[11:0]),.s_tdata(s_td),.s_tvalid(s_tv),.s_tready(s_tr),
         .s_tuser(s_tuser),.s_tlast(s_tlast),
         .m_tdata(m_td),.m_tvalid(m_tv),.m_tready(m_tr),.m_tlast(m_tl));
 

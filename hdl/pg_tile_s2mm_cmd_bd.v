@@ -16,13 +16,13 @@
 
 module pg_tile_s2mm_cmd_bd #(
     parameter [31:0]  FRAME_BUF_BASE = 32'h1000_0000,
-    parameter integer NUM_FRAMES     = 7,
-    parameter integer SLOT_STRIDE    = 6226560,
-    parameter integer FRAME_BYTES    = 6174720
+    parameter integer NUM_FRAMES     = 7
 ) (
     input  wire        aclk,
     input  wire        aresetn,
     input  wire        m_sof,                  // raster_to_tile_0/m_sof (pclk_in domain)
+    input  wire [22:0] frame_bytes,            // RUNTIME BTT = TILES_X*TILES_Y*768 (firmware GPIO)
+    input  wire [31:0] slot_stride,            // RUNTIME ring-slot spacing in DDR (firmware GPIO)
 
     // master AXIS: DataMover S2MM command (72-bit)
     output wire [71:0] m_axis_cmd_tdata,
@@ -40,10 +40,10 @@ module pg_tile_s2mm_cmd_bd #(
     output wire [31:0] dbg
 );
     pg_tile_s2mm_cmd #(
-        .FRAME_BUF_BASE(FRAME_BUF_BASE), .NUM_FRAMES(NUM_FRAMES),
-        .SLOT_STRIDE(SLOT_STRIDE), .FRAME_BYTES(FRAME_BYTES)
+        .FRAME_BUF_BASE(FRAME_BUF_BASE), .NUM_FRAMES(NUM_FRAMES)
     ) u_core (
         .clk(aclk), .rstn(aresetn), .m_sof(m_sof),
+        .frame_bytes(frame_bytes), .slot_stride(slot_stride),
         .cmd_tdata(m_axis_cmd_tdata), .cmd_tvalid(m_axis_cmd_tvalid), .cmd_tready(m_axis_cmd_tready),
         .sts_tdata(s_axis_sts_tdata), .sts_tvalid(s_axis_sts_tvalid), .sts_tready(s_axis_sts_tready),
         .frame_ptr_out(frame_ptr_out), .dbg(dbg)

@@ -35,8 +35,11 @@ module pg_dedicated_dma_roundtrip_tb;
     // ---- producer: pg_raster_to_tile ----
     reg [23:0] s_td; reg s_tv=0, s_tuser=0, s_tlast=0; wire s_tr;
     wire [23:0] t_td; wire t_tv, t_tl, t_sof; wire t_tr;
-    pg_raster_to_tile #(.IN_W(IN_W),.LTILE(4)) u_prod(
-        .clk(clk),.rstn(rstn),.s_tdata(s_td),.s_tvalid(s_tv),.s_tready(s_tr),
+    // RUNTIME-WIDTH PROOF (dest-res-master): synth the tiler BRAM for a MAX width 64 (.IN_W(64)) but drive the
+    // ACTIVE width in_w=IN_W=32 at runtime. Proves a runtime width *below* the synth max tiles+reads bit-exact
+    // end-to-end — exactly the silicon case (BRAM sized 1920, active LOD e.g. 1280).
+    pg_raster_to_tile #(.IN_W(64),.LTILE(4)) u_prod(
+        .clk(clk),.rstn(rstn),.in_w(IN_W[11:0]),.s_tdata(s_td),.s_tvalid(s_tv),.s_tready(s_tr),
         .s_tuser(s_tuser),.s_tlast(s_tlast),
         .m_tdata(t_td),.m_tvalid(t_tv),.m_tready(t_tr),.m_tlast(t_tl),.m_sof(t_sof));
 
@@ -51,8 +54,9 @@ module pg_dedicated_dma_roundtrip_tb;
     wire [71:0] cmd_td; wire cmd_tv; reg cmd_tr_int;
     reg  [7:0]  sts_td; reg sts_tv; wire sts_tr;
     wire [5:0]  fp; wire [31:0] cmd_dbg;
-    pg_tile_s2mm_cmd #(.FRAME_BUF_BASE(BASE),.NUM_FRAMES(NFR),.SLOT_STRIDE(STRIDE),.FRAME_BYTES(FBYTES)) u_cmd(
+    pg_tile_s2mm_cmd #(.FRAME_BUF_BASE(BASE),.NUM_FRAMES(NFR)) u_cmd(
         .clk(clk),.rstn(rstn),.m_sof(t_sof),
+        .frame_bytes(FBYTES[22:0]),.slot_stride(STRIDE[31:0]),
         .cmd_tdata(cmd_td),.cmd_tvalid(cmd_tv),.cmd_tready(cmd_tr_int),
         .sts_tdata(sts_td),.sts_tvalid(sts_tv),.sts_tready(sts_tr),
         .frame_ptr_out(fp),.dbg(cmd_dbg));
