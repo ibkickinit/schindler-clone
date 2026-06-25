@@ -148,12 +148,12 @@ any). DigiKey qty-1 prices:
 | Part | Logic | Xcvr lanes | Qty-1 | Fit for dual-4K60 (2× DP-RX + 2× SDI-TX) |
 |---|---|---|---|---|
 | MPF300T-FCG1152I | 300K | 16 | **~$600** | overkill (kit part) |
-| **MPF200T-FCG484I** | 192K | 16 | **$345** | comfortable — safe choice |
+| **MPF200T-FCG484I** | 192K | 16 | **$286** | comfortable — safe choice |
 | **MPF100T-FCG484I** | 109K | 8 | **$174** | cheapest viable; **logic TIGHT** (~110–130K needed) — may not fit two full channels |
 | MPF050T | 50K | few | less | too small for two 4K60 channels |
 
-- **PLAN OF RECORD: `MPF200T-FCG484I` ($345)** — 192K LE / 16 xcvr, comfortable
-  for two 4K60 channels. **Cost-down target: `MPF100T-FCG484I` ($174)** if the
+- **PLAN OF RECORD: `MPF200T-FCG484I` ($286, DigiKey)** — 192K LE / 16 xcvr,
+  comfortable for two 4K60 channels. **Cost-down target: `MPF100T-FCG484I` ($174)** if the
   design fits its 109K LE (transceivers already fine — 6 of 8). The MPF100T fit is
   a **Phase-3 bench item** (`06` Q0b); design to MPF200T, port down if it fits.
 - Volume pricing drops ~30–50%; verify live qty/price on the cart (403 remotely).

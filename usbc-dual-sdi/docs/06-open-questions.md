@@ -56,19 +56,19 @@ below), but the **durable design is PolarFire**.
 
 ## Q0c — SDI-rate scope vs cost *(DECIDED: stay dual-4K60/12G)*
 **DECISION: keep dual-4K60/12G** (the full spec) — not scoped down. FPGA plan of
-record **MPF200T-FCG484I ($345)**, cost-down to **MPF100T ($174)** if the design
+record **MPF200T-FCG484I ($286)**, cost-down to **MPF100T ($174)** if the design
 fits its logic. Cost accepted as the price of the high-end spec; the analysis
 below is retained as the rationale + the lower-rate fallback if economics force it.
 
 The FPGA cost is driven by the **dual-4K60/12G** ambition, and it's a heavy BOM
-line at any size: MPF100T **$174** (logic tight), MPF200T **$345**, MPF300T
+line at any size: MPF100T **$174** (logic tight), MPF200T **$286**, MPF300T
 **~$600** (qty-1; ~30–50% less at volume) — **plus** the DP-RX IP license. For a
 sub-$600–900-retail product that's tough. **The biggest cost lever is the SDI
 rate, not the part number:**
 
 | Target | SDI rate | Silicon | Rel. FPGA cost |
 |---|---|---|---|
-| Dual **4K60** | 12G | MPF100T/200T+ | $174–345+ |
+| Dual **4K60** | 12G | MPF100T/200T+ | $174–286+ |
 | Dual **4K30** | 6G | smaller PolarFire / **Lattice CertusPro-NX** (10.3G OK for 6G) | much less (~$30–80) |
 | Dual **1080p60** | 3G | small PolarFire / cheap FPGA | least |
 
