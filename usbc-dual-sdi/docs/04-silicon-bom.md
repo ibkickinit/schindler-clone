@@ -58,10 +58,13 @@ entire FPGA + DP-MST-IP + 12G-SDI-IP problem on the *conversion* side.
   PLL/redriver/driver parts** and seeds the gen-1 conversion subsystem — "adapt
   the RDK + add MST hub + MCU," not design SDI from scratch. (Other flavors:
   `-S2H00` SDI→HDMI, `-S2S00` gearbox.)
-- ⚠️ **TOP RISK — lifecycle:** one source flags GS12170 EOL/NRND while it remains
-  stocked. **Confirm with Semtech before designing in.** Fallback if EOL = small-
-  FPGA recipe (HDMI RX + Lattice ECP5/Artix + SDI IP + GS12281) — more work, the
-  thing the bridge was built to avoid.
+- ⚠️ **TOP RISK — lifecycle + SOLE SOURCE:** one source flags GS12170 EOL/NRND
+  while it remains stocked. **Confirm with Semtech before designing in.** It is
+  effectively **sole-source** — Semtech's "first SDI/HDMI bridge ASIC," and the
+  rest of the catalog (GS122xx/GS123xx/GS34xx) is **SDI-PHY-only** (drivers,
+  equalizers, reclockers — no HDMI), so **there is no drop-in bridge replacement**.
+  Fallback if EOL = the small-FPGA recipe (HDMI RX + Lattice ECP5/Artix + SDI IP +
+  GS12281) — where those SDI-PHY parts become the FPGA's output stage.
 - Only the **GS12170** does HDMI 2.0 → 12G-SDI single-chip; older Gennum SDI
   parts (GS2972/GS2971A) are SDI-only and cap at 3G.
 
