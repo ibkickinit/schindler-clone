@@ -751,7 +751,24 @@ create_bd_cell -type module -reference vsync_cdc_pulse s2mm_fsync_pulse_gen
 connect_bd_net $pclk_in                                      [get_bd_pins s2mm_fsync_pulse_gen/dst_clk]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]      [get_bd_pins s2mm_fsync_pulse_gen/dst_rstn]
 connect_bd_net [get_bd_pins dvi2rgb_0/vid_pVSync]            [get_bd_pins s2mm_fsync_pulse_gen/vsync_async]
-connect_bd_net [get_bd_pins s2mm_fsync_pulse_gen/pulse_out]  [get_bd_pins axi_vdma_0/s2mm_fsync]
+
+# Path B fsync fix (2026-06-25): the s2mm_fsync SOURCE depends on the write-leg layout.
+#   * NON-Path-B (RASTER_TO_TILE=0): S2MM stores raster; its frame boundary == source vsync. Drive
+#     s2mm_fsync from the source-vsync pulse (the iter6 fix, unchanged).
+#   * Path B (RASTER_TO_TILE=1): pg_raster_to_tile buffers a 16-row band before emitting any tile, so its
+#     OUTPUT frame boundary LAGS source vsync by up to one band. Driving s2mm_fsync from raw source vsync
+#     fires mid-stream (tiler still emitting the previous frame's last band) -> EOLEarly + scrambled tiled
+#     master. Drive s2mm_fsync from raster_to_tile_0/m_sof instead: a 1-cyc pclk_in-domain pulse on the first
+#     emitted beat of tile(0,0) of each frame, so the VDMA frame boundary coincides with the tiler starting a
+#     new tiled frame and exactly TILES_X*TILES_Y(=8040) tiles land between consecutive fsyncs.
+# raster_to_tile_0/m_sof is already pclk_in-domain (raster_to_tile_0/aclk = $pclk_in == s_axis_s2mm_aclk), so
+# it drives s2mm_fsync directly without CDC, same as the source-vsync pulse it replaces.
+if {[info exists RASTER_TO_TILE] && $RASTER_TO_TILE} {
+    connect_bd_net [get_bd_pins raster_to_tile_0/m_sof]         [get_bd_pins axi_vdma_0/s2mm_fsync]
+    puts "BUILD: Path B s2mm_fsync = raster_to_tile_0/m_sof (tiler output frame boundary)"
+} else {
+    connect_bd_net [get_bd_pins s2mm_fsync_pulse_gen/pulse_out] [get_bd_pins axi_vdma_0/s2mm_fsync]
+}
 
 # =============================================================================
 # LED composition: leds = {hdmi_tx_hpd, vid_out_locked, rx_locked, mmcm_locked}

@@ -12,9 +12,14 @@
 // and VSIZE=TILES_X*TILES_Y so each per-tile tlast == one S2MM "line", storing the frame contiguously at
 // frame_base + (ty*TILES_X+tx)*768 — exactly where pg_tile_dma's TILED branch reads it.
 //
-// The output carries NO tuser to S2MM: with hardware s2mm_fsync (source vsync) the VDMA restarts the frame
-// each vsync, so SOF framing comes from fsync, not AXIS tuser. m_axis_tlast is the per-tile (per-S2MM-line)
-// EOL the VDMA needs to advance its line/stride counter.
+// The output carries NO tuser to S2MM. SOF framing comes from the hardware s2mm_fsync. CRITICAL (Path B fsync
+// fix, 2026-06-25): s2mm_fsync MUST be driven by m_sof (this wrapper's frame-sync output), NOT the raw source
+// vsync. The tiler buffers a 16-row band before emitting, so its output frame boundary LAGS source vsync by
+// up to one band; driving s2mm_fsync from source vsync fired mid-stream (tiler still emitting the previous
+// frame's last band) -> EOLEarly + a misaligned/garbage tiled master. m_sof pulses for exactly one aclk
+// cycle on the FIRST emitted beat of tile(0,0) of each frame, so the VDMA frame boundary coincides with the
+// tiler starting a new tiled frame. Wire raster_to_tile_0/m_sof -> axi_vdma_0/s2mm_fsync (see build_phase_b.tcl
+// RASTER_TO_TILE block). m_axis_tlast is the per-tile (per-S2MM-line) EOL the VDMA needs to advance lines.
 
 `default_nettype none
 `timescale 1ns / 1ps
@@ -37,7 +42,10 @@ module pg_raster_to_tile_bd #(
     output wire [23:0] m_axis_tdata,
     output wire        m_axis_tvalid,
     input  wire        m_axis_tready,
-    output wire        m_axis_tlast                   // last beat of each 16x16 tile (= one S2MM line)
+    output wire        m_axis_tlast,                  // last beat of each 16x16 tile (= one S2MM line)
+
+    // output frame-sync — drive axi_vdma_0/s2mm_fsync from THIS, not raw source vsync (see header)
+    output wire        m_sof                          // 1-cyc pulse on first beat of tile(0,0) of each frame
 );
     pg_raster_to_tile #(.IN_W(IN_W), .LTILE(LTILE)) u_core (
         .clk     (aclk),
@@ -50,7 +58,8 @@ module pg_raster_to_tile_bd #(
         .m_tdata (m_axis_tdata),
         .m_tvalid(m_axis_tvalid),
         .m_tready(m_axis_tready),
-        .m_tlast (m_axis_tlast)
+        .m_tlast (m_axis_tlast),
+        .m_sof   (m_sof)
     );
 endmodule
 
