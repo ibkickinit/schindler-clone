@@ -40,10 +40,17 @@ below), but the **durable design is PolarFire**.
   at 4K30; the **DisplayPort RX IP** does HBR3/SST → **4K60**. So the hub must
   output **DP** (PS8650/VMM5330), and we validate 4K60 over DP-RX. *Confirmed from
   Microchip IP docs; bench-verify.*
-- **Q0b — 2-channel resource/timing fit + DP-RX IP cost.** The DG0889 12G-SDI demo
-  is single-channel; confirm 2× DP-RX + 2× SDI-TX + Mi-V fit + close timing in
-  MPF300 (300K LE). SDI IP is free; **confirm DP-RX IP license** (Microchip CoreDP
-  or Bitec).
+  - **Clarification (the 12G output is NOT the issue):** PolarFire's transceivers
+    (12.7G) + free SDI TX IP do **single AND dual 12G-SDI out** fine. The 4K30 cap
+    is purely on the **HDMI input** (limits a HDMI source to 6G out); it says
+    nothing about SDI output. And the video kit's on-board **3G** SDI is an
+    **eval-board** limit — 12G needs the `VIDEO-DC-SDI` FMC; the chip is unaffected.
+- **Q0b — 2-channel resource/timing fit + DP-RX IP cost + package transceivers.**
+  The DG0889 12G-SDI demo is single-channel; confirm 2× DP-RX + 2× SDI-TX + Mi-V
+  fit + close timing in MPF300 (300K LE), and that the chosen **package exposes
+  enough transceiver lanes** (≈2× DP-RX lanes + 2× SDI-TX lanes — the kit's
+  1152-ball part has plenty; smaller packages may not). SDI IP is free; **confirm
+  DP-RX IP license** (Microchip CoreDP or Bitec).
 - **Bench needs `VIDEO-DC-SDI` FMC** for 12G (the video kit's on-board SDI is
   HD/3G only).
 
