@@ -46,6 +46,7 @@ module pg_raster_to_tile #(
 
     // ---- WRITE: raster -> the buffer wsel ----
     reg        wsel; reg [11:0] wrow, wcol;
+    reg        row_full;                               // this band-row hit in_w cols, dropping extra beats until EOL
     wire wfree = wsel ? !full1 : !full0;
     assign s_tready = wfree;
     wire wbeat = s_tvalid && s_tready;
@@ -66,23 +67,37 @@ module pg_raster_to_tile #(
 
     always @(posedge clk) begin
         if(!rstn) begin
-            wsel<=0; wrow<=0; wcol<=0; full0<=0; full1<=0; sof0<=0; sof1<=0; wband_sof<=0;
+            wsel<=0; wrow<=0; wcol<=0; row_full<=0; full0<=0; full1<=0; sof0<=0; sof1<=0; wband_sof<=0;
             esel<=0; e_act<=0; etx<=0; er<=0; ec<=0; sof_armed<=0;
             s1_v<=0; s1_sof<=0; m_tvalid<=0; m_tlast<=0; m_sof<=0;
         end else begin
             m_sof <= 1'b0;                                          // default; pulsed for 1 cyc below
-            // ---------- WRITE (SOF beat = (0,0), then advance) ----------
+            // ---------- WRITE (tile-row-major fill, ROW-ALIGNED TO THE SCALER's EOL s_tlast) ----------
+            // Each band-row maps to exactly ONE source row, delimited by the scaler's m_axis_tlast — NOT by
+            // counting in_w beats. This makes the tiler immune to the scaler emitting != in_w valid beats per
+            // row (the dest-res 640-seam DRIFT root cause): a SHORT row (EOL before in_w) leaves its tail cols
+            // stale (matte); a LONG row (extra beats past in_w-1) DROPS the extras. Either way every band-row
+            // stays exactly in_w wide and aligned to the source rows, so the tiling can never shear.
             if(sof_beat) wband_sof <= 1'b1;                         // mark the in-fill band as a frame-start band
             if(wbeat) begin
-                if(wsel==0) band0[waddr]<=s_tdata; else band1[waddr]<=s_tdata;
-                if(ecol==in_w-1) begin wcol<=0;
-                    if(erow==TILE-1) begin wrow<=0;
-                        // band done -> hand off (+ carry its frame-start flag) + swap; clear the in-fill flag
+                // write the pixel unless clamped past in_w (sof beat always writes a fresh col-0 pixel)
+                if(sof_beat || !row_full) begin
+                    if(wsel==0) band0[waddr]<=s_tdata; else band1[waddr]<=s_tdata;
+                end
+                if(s_tlast) begin                                  // SCALER EOL -> roll the band-row (the anchor)
+                    wcol<=0; row_full<=1'b0;
+                    if(erow==TILE-1) begin wrow<=0;                // 16th row's EOL -> band complete, hand off + swap
                         if(wsel==0) begin full0<=1'b1; sof0<=wband_sof; end
                         else        begin full1<=1'b1; sof1<=wband_sof; end
                         wsel<=~wsel; wband_sof<=1'b0;
                     end else wrow<=erow+1'b1;
-                end else begin wcol<=ecol+1'b1; wrow<=erow; end
+                end else if(sof_beat) begin                        // fresh frame, no EOL: advance to col 1
+                    wcol<=12'd1; wrow<=12'd0; row_full<=1'b0;
+                end else if(!row_full) begin
+                    if(ecol==in_w-1) row_full<=1'b1;               // reached width before EOL -> clamp, drop extras
+                    else begin wcol<=ecol+1'b1; wrow<=erow; end
+                end
+                // (row_full && !s_tlast && !sof_beat): drop the beat — hold position, wait for EOL
             end
 
             // ---------- EMIT (S1 read -> OUT, 1-cycle BRAM-read pipeline) ----------

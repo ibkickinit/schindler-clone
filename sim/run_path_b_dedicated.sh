@@ -28,6 +28,9 @@ run pg_tiled_roundtrip_tb         $H/pg_raster_to_tile.v $H/pg_tile_dma.v $S/pg_
 # 3) fsync alignment (regression: m_sof drives the command exactly once/frame)
 run pg_raster_to_tile_fsync_tb    $H/pg_raster_to_tile.v $S/pg_raster_to_tile_fsync_tb.v
 
+# 3b) TLAST-misalignment immunity (dest-res 640-seam fix): rows with extra beats past in_w must NOT drift
+run pg_raster_to_tile_misalign_tb $H/pg_raster_to_tile.v $S/pg_raster_to_tile_misalign_tb.v
+
 # 4) DEDICATED-DMA end-to-end: raster->tile->pack64->[S2MM model]->TILED read, multi-frame, slot advance
 run pg_dedicated_dma_roundtrip_tb $H/pg_raster_to_tile.v $H/pg_tile_pack64.v $H/pg_tile_s2mm_cmd.v \
                                   $H/pg_tile_dma.v $S/pg_dedicated_dma_roundtrip_tb.v
