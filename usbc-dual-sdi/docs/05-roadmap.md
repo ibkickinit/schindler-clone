@@ -8,7 +8,9 @@ parallel.
 
 ## Phase 0 — Tooling, IP, and the bench
 - **Order the kit:** `MPF300-VIDEO-KIT-NS` (Newark #66AH4313) **+ `VIDEO-DC-SDI`
-  SDI FMC daughtercard** (required for 12G — the kit's on-board SDI is HD/3G only).
+  SDI FMC** (12G; kit's on-board SDI is HD/3G only) **+ `VIDEO-DC-DP` DisplayPort
+  FMC** (DP-in for 4K60; the kit has no DP connector). ⚠️ The kit has **one** HPC
+  FMC slot — the two FMCs swap, not coexist (see Phase 2).
 - **Install Libero**; pull the **free 12G-SDI IP** + **DG0889** 12G-SDI reference
   design; identify the **DP-RX IP** (Microchip CoreDP-RX or Bitec) and **confirm
   its license cost** (`06` Q0b).
@@ -29,10 +31,18 @@ Prove the SDI chain cheaply before touching DP-RX or 12G.
 
 ## Phase 2 — 12G + break the 4K30 cap (move input to DP-RX)
 - Add the **`VIDEO-DC-SDI` FMC** → push the SDI TX to **2160p / 12G** via the free
-  SDI IP; validate the **12G eye/jitter** out of the GS12281 over real coax.
-- **Bring up the DP-RX path** (DP source → PolarFire DisplayPort RX IP, HBR3/SST)
-  to reach **4K60** — the HDMI-RX path can't (`06` Q0a). This is the key new
-  bring-up vs the old bridge design.
+  SDI IP; validate the **12G eye/jitter** out of the GS12281 over real coax. Drive
+  it from an **internal 2160p60 test-pattern generator** so the 12G-TX half is
+  provable **without** a 4K60 input.
+- **Bring up the DP-RX path** with the **`VIDEO-DC-DP` DisplayPort FMC** (Microchip,
+  Bitec-based): plug a DP cable into the FMC → DP lanes → PolarFire transceivers
+  (DisplayPort RX IP, HBR3/SST) → **4K60** capture; verify via frame readback or
+  the on-board HDMI TX.
+- ⚠️ **One HPC FMC slot:** `VIDEO-DC-DP` and `VIDEO-DC-SDI` **can't co-reside**, so
+  the full **DP-4K60-in → 12G-SDI-out** chain is **not** benchable on the single
+  kit — validate the two **halves separately** (above), then integrate on the
+  custom board (Phase 5). Production has no FMC: hub DP → transceiver pins
+  directly; transceivers → GS12281 → BNC.
 
 ## Phase 3 — Two channels + the real front-end hub (+ MST-vs-USB4)
 - Instantiate the **second channel** (2× DP-RX + 2× SDI-TX); confirm **resource +

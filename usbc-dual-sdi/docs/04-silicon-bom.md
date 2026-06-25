@@ -50,9 +50,14 @@ Per channel, inside one PolarFire MPF300:
 - **`MPF300-VIDEO-KIT-NS`** (Newark #66AH4313) — MPF300T + DDR4 + SPI flash, HDMI
   2.0 (RX ≤4K30) + **HD/3G-SDI on-board**. Validates the chain at **1080p59.94 /
   3G** with *just the kit*.
-- **`VIDEO-DC-SDI`** (SDI FMC daughtercard) — **required to reach 12G-SDI** (the
-  kit's on-board SDI is HD/3G only; 12G goes over the FMC). Order alongside.
-- Phased: kit (HDMI→3G) → add SDI FMC (→12G) → DP-RX input (→4K60). See `05`.
+- **`VIDEO-DC-SDI`** (SDI FMC) — required for **12G-SDI** (kit on-board SDI is
+  HD/3G only).
+- **`VIDEO-DC-DP`** (DisplayPort FMC, Microchip/Bitec) — required for **DP-RX
+  4K60 input** (the kit has no DP connector; DP rides the FMC → transceivers).
+- ⚠️ **One HPC FMC slot** → the SDI FMC and DP FMC **swap, not coexist**; validate
+  the DP-RX and 12G-SDI-TX halves separately, integrate on the custom board (`05`
+  Phase 2/5). **Production has no FMC:** hub DP traces → transceiver pins; other
+  transceivers → GS12281 → BNC (controlled-impedance ~100Ω diff, length-matched).
 
 ### Block 1b — 12G-SDI cable driver
 Use a **reclocking** cable driver, one per BNC, after the FPGA SDI transceiver
