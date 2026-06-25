@@ -28,15 +28,37 @@ Mac broadcast/production → USB4. **Open / to verify:**
 either front end, so Phase 1 proceeds on MST; this is a *production front-end*
 decision (`02` §2, `04` Block 2, `05` Phase 3).
 
-## Q0 — GS12170 lifecycle *(HIGHEST — the v1 architecture hinges on it)*
-v1 removes the FPGA by using the **Semtech GS12170** HDMI→12G-SDI bridge ASIC
-(`02` §3, `04` Block 1). One source flags it **EOL/NRND**, yet it's still
-**stocked** (DigiKey/Mouser/Arrow/LCSC, ~$73) — contradictory. **Resolve directly
-with Semtech before committing the design.**
-- If active/supported → proceed with the dumb design as the baseline.
-- If truly EOL → fall back to the **small-FPGA conversion recipe** (HDMI RX +
-  Lattice ECP5/Artix + SDI IP + GS12281), which is more engineering and reintro-
-  duces a (small, raw-chip) FPGA — still no SOM/DDR for passthrough.
+## Q0 — GS12170 EOL *(CONFIRMED EOL Feb 2025 — the no-FPGA design has lost its keystone)*
+**CONFIRMED: the GS12170 is End-of-Life as of Feb 2025** (Semtech PCN
+**EOL-000308**). The dumb/no-FPGA architecture rested entirely on this one chip,
+and **there is NO single-chip replacement from any vendor** — Semtech's was "the
+industry's first" and stayed the only HDMI↔12G-SDI bridge ASIC (the rest of the
+catalog is SDI-PHY-only; no TI/Macnica/etc. equivalent exists). So this is a
+**keystone failure, not a part swap.**
+
+**Implication — the dumb-vs-smart distinction has largely collapsed:**
+- 12G-SDI needs **12G-class transceivers**, so the "small-FPGA fallback" is *not*
+  small — it's **PolarFire-class** (12.7G SERDES; its 12G-SDI IP is **free**) or
+  UltraScale+. Conversion now genuinely **requires a real FPGA** for a sustainable
+  12G product.
+- Once a PolarFire is on the board for conversion, the *same chip* can also do the
+  MST split (Parretto IP) and the smart features — so the shelved FPGA design is
+  now the realistic V1 path, not a V2.
+
+**Three paths (user decision pending):**
+1. **Last-time-buy gen-1 on remaining GS12170 stock** — viable *only if enough
+   stock exists* (EOL was 16 mo ago; LTB window likely closed → depends on
+   distributor/broker stock + quality risk). Ships a fixed-function gen-1 to
+   validate market while building the FPGA gen-2.
+2. **FPGA (PolarFire) conversion now** — sustainable; more HDL, but PolarFire
+   SDI IP is free.
+3. **Full smart product** — since the FPGA is needed anyway, fold in frame
+   conversion / color / genlock (the "V2 we'd be game for" becomes V1).
+2b. **OEM converter module** (e.g. Digital Forecast HDMI→12G-SDI) — keeps *our*
+   design FPGA-free at BOM/size cost; only if the module isn't itself GS12170-based.
+
+**Next checks:** (a) current GS12170 stock for an LTB-size estimate; (b) whether
+a non-GS12170 OEM module exists. Then re-baseline `01/02/04/05`.
 **Action:** Semtech lifecycle inquiry + get the GS12170 eval board (Phase 0).
 
 ## Q1 — MST hub: still required, sourcing per `07` *(dumb design uses a discrete hub, not FPGA-MST)*
