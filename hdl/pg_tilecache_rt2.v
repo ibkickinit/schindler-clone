@@ -344,7 +344,14 @@ module pg_tilecache_rt2 #(
     reg [2*HT-1:0] fcw; integer pj;
     wire fill_pop = !pf_empty && fill_valid && fill_last;
     // demand uses the REGISTERED victim (computed in the VICT stage); prefetch uses the plain FIFO victim.
-    wire [WAYW-1:0] ua_way = issue_dem ? ua_way_r : vict(iss_set);
+    // TIMING FIX (2026-06-24): prefetch victim off the REGISTERED s3 set (ua_set), NOT iss_set. iss_set =
+    // issue_dem?cd_set_r:ua_set, so feeding vict(iss_set) put the dem_iss FF in front of the deep vict() scan
+    // -> dem_iss_reg/C -> ...vict()... -> tagset RAMD64E write was the worst path. On a DEMAND issue ua_way_r
+    // (registered) is selected and pf_way is a dead mux input; on a PREFETCH issue iss_set==ua_set so
+    // vict(ua_set)==vict(iss_set). Functionally bit-identical (faithful-TB verified), but dem_iss no longer
+    // fans into vict() -> ~4-6 LUT levels off the demand write path.
+    wire [WAYW-1:0] pf_way = vict(ua_set);               // prefetch victim, off registered s3 set (no dem_iss)
+    wire [WAYW-1:0] ua_way = issue_dem ? ua_way_r : pf_way;
     wire [SLW-1:0] ua_slot = {iss_set, ua_way};
     wire [BAW-1:0] fwa = (pf_slot[pf_rd]<<(2*HT)) | fcw;  // fills route to the pending-FIFO head slot
     wire [SETW-1:0] fl_set = pf_slot[pf_rd][SLW-1:WAYW];  // fill-complete slot -> {set,way} for wide writes

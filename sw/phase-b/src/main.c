@@ -993,6 +993,54 @@ static int warp_sin(int d) {           /* sin(d deg)*4096, any integer d */
 static int warp_cos(int d) { return warp_sin(d + 90); }
 static int g_warp_deg = 0, g_warp_invx = 4096, g_warp_invy = 4096;  /* Q12 inverse-scale */
 static int g_warp_panx = 0, g_warp_pany = 0;                        /* pan / shift, OUTPUT px (signed) */
+static unsigned g_warp_anchor = 0;          /* scale anchor: 0 = image center (default), 1 = top-left corner */
+static unsigned g_warp_lod = 0;             /* LOD mip level for current geometry (0=full,1=half,2=quarter) */
+static unsigned g_mip_valid = 0;            /* 1 once the L1/L2 mip rings are filled ('M' cmd); gates LOD>0 */
+
+/* ---- LOD mip DDR layout — MUST match pg_tile_dma.v per-LOD constants EXACTLY (sim-verified) ----
+ * L0 1920x1080 @ base; L1 960x540 @ base+7*SLOT_L0; L2 480x270 @ L1+7*SLOT_L1. 3 B/px, row stride W*3,
+ * slot stride = W*H*3 + W*3 (one padding row, matches L0). Same gray rd_slot indexes every ring. */
+#define MIP_L0_BASE  0x10000000u
+#define MIP_L1_BASE  (0x10000000u + 43585920u)   /* 7*6226560  = 0x12991180 */
+#define MIP_L1_SLOT  1558080u                     /* 960*540*3 + 960*3 */
+#define MIP_L2_BASE  (0x10000000u + 54492480u)   /* +7*1558080 = 0x133F7D40 */
+#define MIP_L2_SLOT  390240u                       /* 480*270*3 + 480*3 */
+
+/* 2x2 box-average src (sw x sh, 3 B/px raster) -> dst (sw/2 x sh/2). Byte-channel-independent, so the
+ * R-B-G pipeline byte order is irrelevant (each of the 3 bytes is averaged across the 2x2 footprint). */
+static void mip_downsample(u32 src_base, int sw, int sh, u32 dst_base)
+{
+    int dw = sw / 2, dh = sh / 2;
+    u32 ss = (u32)sw * 3, ds = (u32)dw * 3;
+    for (int dy = 0; dy < dh; dy++) {
+        volatile u8 *r0 = (volatile u8 *)(uintptr_t)(src_base + (u32)(2 * dy)     * ss);
+        volatile u8 *r1 = (volatile u8 *)(uintptr_t)(src_base + (u32)(2 * dy + 1) * ss);
+        volatile u8 *d  = (volatile u8 *)(uintptr_t)(dst_base + (u32)dy * ds);
+        for (int dx = 0; dx < dw; dx++) {
+            int s0 = 6 * dx, s1 = 6 * dx + 3;   /* two source px = 6 bytes */
+            for (int c = 0; c < 3; c++)
+                d[3 * dx + c] = (u8)((r0[s0 + c] + r0[s1 + c] + r1[s0 + c] + r1[s1 + c] + 2) >> 2);
+        }
+    }
+}
+
+/* PHASE-1 STATIC mip fill ('M' command): snapshot the current L0 frame into the L1+L2 mip rings. The
+ * source MUST be static (e.g. SMPTE bars) — this is a one-shot CPU box-average, not a live generator
+ * (that's the HW Phase-2 job). Fills all 7 slots (a static source has identical content in every slot). */
+static void mip_fill_static(void)
+{
+    Xil_DCacheInvalidateRange((INTPTR)MIP_L0_BASE, 1920u * 1080u * 3u);   /* L0 was DMA-written; read fresh */
+    mip_downsample(MIP_L0_BASE, 1920, 1080, MIP_L1_BASE);                 /* L0 -> L1 (slot 0) */
+    mip_downsample(MIP_L1_BASE, 960, 540, MIP_L2_BASE);                   /* L1 -> L2 (slot 0) */
+    for (unsigned s = 1; s < 7; s++) {                                    /* replicate slot 0 -> 1..6 */
+        memcpy((void *)(uintptr_t)(MIP_L1_BASE + s * MIP_L1_SLOT), (void *)(uintptr_t)MIP_L1_BASE, 960u * 540u * 3u);
+        memcpy((void *)(uintptr_t)(MIP_L2_BASE + s * MIP_L2_SLOT), (void *)(uintptr_t)MIP_L2_BASE, 480u * 270u * 3u);
+    }
+    Xil_DCacheFlushRange((INTPTR)MIP_L1_BASE, 7u * MIP_L1_SLOT);          /* push mip data to DDR for the DataMover */
+    Xil_DCacheFlushRange((INTPTR)MIP_L2_BASE, 7u * MIP_L2_SLOT);
+    g_mip_valid = 1;
+    xil_printf("MIP: filled L1(960x540)+L2(480x270) x7 slots; LOD now armed\r\n");
+}
 static unsigned g_warp_lead_ovr = 0;        /* UART 'L <n>' manual lead; 0 = auto per-geometry */
 static unsigned g_warp_lead = 0;            /* last lead actually written (for status / 'L' query) */
 #ifdef PROJECTIVE_BUILD
@@ -1026,7 +1074,18 @@ static unsigned warp_calc_lead(int deg, int invx, int invy)
      * shallow 1280 they STARVE (90deg eol 442; bench), at L=4096 every 10deg angle is FULL FRAME (verified
      * 30/40/90/130/160/20/70deg). So 4096 is the single rotation lead that covers transpose-starvation
      * without eviction. (Downscale mx>4096 still wants ~24576; deferred with scale<100%.) */
-    unsigned lead = (d180 == 0 && mx <= 4096u) ? 8192u : 4096u;
+    /* DOWNSCALE (mx>4096, scale below whole-frame fit): SILICON-MEASURED lead (opix/frame sweep via the
+     * live 'L' override, 2026-06-24). The cycle model (tools/warp_lod_throughput.py) MISPREDICTED the
+     * direction — it does NOT capture the real demand-fetch/victim dynamics. On hardware:
+     *   - fit 1.5x  : full frame (921600) needs lead >= 24576; a shorter lead STARVES (8192 -> 344k).
+     *   - 2x (75%)  : best ~866k at lead 32768 (marginal, ~94%).
+     *   - 3x (50%)  : STARVES at every lead (max ~770k/83% at 16384) -> genuine cache-CAPACITY wall;
+     *                 only the half-res LOD mip (task #28, docs/lod-mip-design.md) makes 50% full.
+     * 24576 keeps fit clean (the operating point); deeper downscale is the mip's job, not the lead's. */
+    unsigned lead;
+    if (mx > 4096u)        lead = 24576u;   /* downscale: deep lead -> fit (1.5x) full frame, silicon-verified */
+    else if (d180 == 0)    lead = 8192u;    /* axis-aligned zoom-in / identity throughput floor */
+    else                   lead = 4096u;    /* rotations: 10deg-clamp+(1,33) hash, covers transpose-starve */
     return lead > 0x000FFFFFu ? 0x000FFFFFu : lead;
 }
 
@@ -1080,11 +1139,12 @@ static void warp_apply_homography(int a20,int b20,int c20,int d20,int e20,int f2
     gh_write40(0, g36, h36);
 #ifdef LEAD_GPIO_BASE
     g_warp_lead = lead;
-    Xil_Out32(LEAD_GPIO_BASE, g_warp_lead);
+    u32 ldw = (g_warp_lead & 0xFFFFFu);
+    Xil_Out32(LEAD_GPIO_BASE, ldw);
     /* soft-reset pulse (lead_cfg[31]) -> clean cache start on the new geometry, no transition wedge. */
-    Xil_Out32(LEAD_GPIO_BASE, (1u << 31) | (g_warp_lead & 0xFFFFFu));
+    Xil_Out32(LEAD_GPIO_BASE, (1u << 31) | ldw);
     for (volatile int d = 0; d < 30000; d++) { }
-    Xil_Out32(LEAD_GPIO_BASE, g_warp_lead & 0xFFFFFu);
+    Xil_Out32(LEAD_GPIO_BASE, ldw);
 #else
     (void)lead;
 #endif
@@ -1133,7 +1193,22 @@ static int warp_solve_cornerpin(const double sx[4], const double sy[4])
         }
     }
     double a=M[0][8],b=M[1][8],c=M[2][8],d=M[3][8],e=M[4][8],f=M[5][8],g=M[6][8],h=M[7][8];
-    unsigned lead = 8192u;   /* deep lead: keystone concentrates reads at the foreshortened edge */
+    /* LEAD must track the DOWNSCALE this quad implies. A source quad BIGGER than the output raster (e.g. the
+     * whole-frame 1920×1080 identity into 720p = 1.5×) re-reads each tile across many rows and UNDERRUNS at a
+     * shallow lead -> scramble (bench 2026-06-24: factory-reset cornerpin landed at fit with the old hardcoded
+     * 8192 and scrambled; a warp.set at the same 1.5× with warp_calc_lead's 24576 was clean). Estimate the
+     * max downscale from the quad's source extent and reuse the affine lead heuristic so cornerpin + keystone
+     * get the SAME deep lead as warp.set at the same shrink. */
+    double sw_top = sx[1]-sx[0], sw_bot = sx[2]-sx[3];   /* top / bottom edge widths  */
+    double sh_lft = sy[3]-sy[0], sh_rgt = sy[2]-sy[1];   /* left / right edge heights */
+    double src_w  = (sw_top > sw_bot ? sw_top : sw_bot); if (src_w < 0) src_w = -src_w;
+    double src_h  = (sh_lft > sh_rgt ? sh_lft : sh_rgt); if (src_h < 0) src_h = -src_h;
+    double rx = src_w / (double)OUT_RASTER_W, ry = src_h / (double)OUT_RASTER_H;
+    double ratio = (rx > ry ? rx : ry);
+    int invx_eq = (int)(ratio * 4096.0 + 0.5);           /* affine-equivalent inverse-scale */
+    unsigned lead = warp_calc_lead(0, invx_eq, invx_eq); /* deep for >1.0× shrink, like warp.set */
+    /* LOD: fetch from a mip so the cache sees effective <=1.5x (silicon-clean). L0<=1.5x, L1<=3x, else L2. */
+    g_warp_lod = (invx_eq <= 6144) ? 0u : (invx_eq <= 12288) ? 1u : 2u;
     warp_apply_homography(to_q20(a),to_q20(b),to_q20(c),to_q20(d),to_q20(e),to_q20(f),
                           to_q36(g),to_q36(h), lead);
     xil_printf("PROJ cornerpin: a=%dE-6 c=%d f=%d (q20) g/h=Q36\r\n",
@@ -1141,22 +1216,29 @@ static int warp_solve_cornerpin(const double sx[4], const double sy[4])
     return 1;
 }
 
-/* Symmetric H/V keystone -> 4 source corners -> cornerpin solver. h_amt/v_amt are PERCENT*10 of the far-
- * edge shrink (so '200' = 0.20). Matches the golden's keystone_homography source-trapezoid construction
- * (TL,TR shrunk by h_amt horizontally; left edge shrunk by v_amt vertically), so the same K args reproduce
- * the same H the sim validated. */
+/* SIGNED H/V keystone -> 4 source corners -> cornerpin solver. h_amt/v_amt are PERCENT*10 of the far-edge
+ * shrink, now SIGNED (so '200' = +0.20, '-200' = -0.20).
+ *   H keystone: +h shrinks the TOP edge width (top-narrow trapezoid); -h shrinks the BOTTOM edge width.
+ *   V keystone: +v shrinks the LEFT edge height (left-short trapezoid); -v shrinks the RIGHT edge height.
+ * The V axis is a REAL trapezoid (left/right edge heights differ) — the old formula moved BOTH top corners
+ * together, which is a uniform vertical SCALE, not a keystone (bench 2026-06-24: "+V just stretches taller").
+ * sw/sh = 0.5 so the h=v=0 identity is the FULL 1920×1080 raster = whole-frame fit (consistent with scale
+ * 100% / cornerpin identity). Both axes compose (H drives sx, V drives sy). */
 static void warp_set_keystone(int h_amt_e3, int v_amt_e3)
 {
     double h = h_amt_e3 / 1000.0, v = v_amt_e3 / 1000.0;
-    if (h < 0) h = 0;
-    if (h > 0.9) h = 0.9;
-    if (v < 0) v = 0;
-    if (v > 0.9) v = 0.9;
-    double mx = FRAME_W * 0.5, my = FRAME_H * 0.5;
-    double sw = FRAME_W * 0.48, sh = FRAME_H * 0.48;
-    /* TL,TR,BR,BL — identical formula to the golden. */
-    double sx[4] = { mx - sw*(1.0-h), mx + sw*(1.0-h), mx + sw,        mx - sw };
-    double sy[4] = { my - sh*(1.0-v), my - sh*(1.0-v), my + sh,        my + sh };
+    if (h < -0.9) h = -0.9; if (h > 0.9) h = 0.9;
+    if (v < -0.9) v = -0.9; if (v > 0.9) v = 0.9;
+    /* half-extents about center use FRAME-1 so the h=v=0 identity corners are exactly (0,0)..(1919,1079),
+     * matching the cornerpin full-raster identity (no off-by-one source-edge matte line). */
+    double mx = (FRAME_W - 1) * 0.5, my = (FRAME_H - 1) * 0.5;
+    double sw = (FRAME_W - 1) * 0.5, sh = (FRAME_H - 1) * 0.5;
+    double ht = h > 0 ? h : 0.0, hb = h < 0 ? -h : 0.0;   /* H: top vs bottom edge shrink */
+    double vl = v > 0 ? v : 0.0, vr = v < 0 ? -v : 0.0;   /* V: left vs right edge shrink */
+    /* TL,TR,BR,BL. sx: top edge (TL,TR) shrunk by ht, bottom edge (BL,BR) by hb.
+     *               sy: left edge (TL,BL) shrunk by vl, right edge (TR,BR) by vr. */
+    double sx[4] = { mx - sw*(1.0-ht), mx + sw*(1.0-ht), mx + sw*(1.0-hb), mx - sw*(1.0-hb) };
+    double sy[4] = { my - sh*(1.0-vl), my - sh*(1.0-vr), my + sh*(1.0-vr), my + sh*(1.0-vl) };
     g_proj_kh = h_amt_e3; g_proj_kv = v_amt_e3;
     if (!warp_solve_cornerpin(sx, sy))
         xil_printf("PROJ keystone: degenerate, ignored\r\n");
@@ -1183,8 +1265,23 @@ static void warp_set_rotation(int deg, int invx, int invy, int panx, int pany)
     int m_b =  (int)(((long long)si * invx) >> 12);
     int m_d = -(int)(((long long)si * invy) >> 12);
     int m_e =  (int)(((long long)co * invy) >> 12);
-    int m_c = cxs * 4096 - m_a * cxo - m_b * cyo;
-    int m_f = cys * 4096 - m_d * cxo - m_e * cyo;
+    /* Translation = where output (0,0) maps in source. CENTER anchor (default): output-center maps to
+     * source-center, so zoom/rotation pivot about the middle. TOP-LEFT anchor: output (0,0) maps to the
+     * identity top-left source point (the center-crop origin (FRAME-OUT)/2), so zoom/rotation pivot about
+     * the top-left corner and the image grows toward bottom-right. At identity (m_a=4096) both give the
+     * same 1:1 center crop; they only differ once invx/invy or deg move. */
+    int m_c, m_f;
+    if (g_warp_anchor) {
+        /* TOP-LEFT anchor: fix output(0,0) -> source(0,0) = the whole-frame identity's top-left corner.
+         * (Under the whole-frame-fit "100%" model the image origin is source 0,0, NOT the old center-crop
+         * origin 320,180 — that stale offset made the anchor shift the image by ~212,119 output px.) At the
+         * fit baseline this equals the center anchor (both -> source 0,0); they only diverge under zoom. */
+        m_c = 0;
+        m_f = 0;
+    } else {
+        m_c = cxs * 4096 - m_a * cxo - m_b * cyo;
+        m_f = cys * 4096 - m_d * cxo - m_e * cyo;
+    }
     /* PAN (Shift X/Y): move the image by (panx,pany) OUTPUT px on screen. Applied THROUGH the affine
      * (subtract the shift from the output coord before mapping) so it stays SCREEN-space at any
      * rotation/zoom; the image leaves the frame and matte fills the opposite edge. +panx = image right. */
@@ -1192,6 +1289,10 @@ static void warp_set_rotation(int deg, int invx, int invy, int panx, int pany)
     m_f -= m_d * panx + m_e * pany;
     g_warp_deg = deg; g_warp_invx = invx; g_warp_invy = invy; g_warp_panx = panx; g_warp_pany = pany;
     unsigned lead = g_warp_lead_ovr ? g_warp_lead_ovr : warp_calc_lead(deg, invx, invy);
+    /* LOD select from the shrink factor (max inverse-scale). L0<=1.5x (mx<=6144), L1<=3x (<=12288), else L2.
+     * The HDL shifts the source coord >>L and fetches the pre-shrunk mip so the cache sees effective <=1.5x. */
+    { unsigned mxl = (unsigned)(invx > invy ? invx : invy);
+      g_warp_lod = (mxl <= 6144u) ? 0u : (mxl <= 12288u) ? 1u : 2u; }
 #ifdef PROJECTIVE_BUILD
     /* PROJECTIVE build: the engine numerator is Q12.20 (FB=20), not Q.12. Rotation/zoom/pan are the affine
      * sub-case (g=h=0). m_a..m_e here are co/si*invx >> 12 = Q.12 ratios; shift them << 8 to Q.20. The
@@ -1476,13 +1577,17 @@ static void uart_dispatch(const char *line)
          *   W               — query current. The prefetch LEAD auto-tracks the geometry
          *   (warp_calc_lead); use 'L <n>' to override live if an angle thrashes/underruns. */
 #ifdef WARP_BUILD
-        /* W <deg> [invx] [invy] [panx] [pany] [hf] [vf] — daemon sends all 7; firmware uses deg/inv/pan
-         * (hf/vf parsed-and-ignored for now: flip not yet wired into the warp affine). pan = OUTPUT px. */
-        int deg, px = 0, py = 0; unsigned ivx = 4096, ivy = 4096, t;
+        /* W <deg> [invx] [invy] [panx] [pany] [hf] [vf] [anchor] — daemon sends 8; firmware uses
+         * deg/inv/pan/anchor (hf/vf parsed-and-ignored for now: flip not yet wired into the warp affine).
+         * pan = OUTPUT px. anchor: 0 = scale about center (default), 1 = top-left corner. */
+        int deg, px = 0, py = 0; unsigned ivx = 4096, ivy = 4096, t, hf = 0, vf = 0, anc = 0;
         if (parse_int(&p, &deg)) {
             if (parse_uint(&p, &t) && t >= 256u) ivx = t;
             if (parse_uint(&p, &t) && t >= 256u) ivy = t;
             parse_int(&p, &px); parse_int(&p, &py);   /* optional pan (output px, signed); default 0 */
+            parse_uint(&p, &hf); parse_uint(&p, &vf); /* hf/vf: parsed, not yet applied */
+            if (parse_uint(&p, &anc)) g_warp_anchor = anc ? 1u : 0u;  /* optional anchor (0=center,1=TL) */
+            (void)hf; (void)vf;
             warp_set_rotation(deg, (int)ivx, (int)ivy, px, py);
         } else {
             xil_printf("WARP rot=%d invx=%d invy=%d lead=%u\r\n",
@@ -1506,6 +1611,23 @@ static void uart_dispatch(const char *line)
         }
 #else
         xil_printf("UART: 'L' is warp-only; no warp engine in this build\r\n");
+#endif
+    } else if (op == 'M') {
+        /* LOD mip fill (PHASE 1, STATIC source): snapshot the current frame into the L1/L2 mip rings, then
+         * arm LOD so downscale below fit fetches the pre-shrunk copy (clean 51-100% / 50%). Source must be
+         * static (SMPTE bars) — this is a one-shot CPU box-average, not a live generator. 'M 0' disarms. */
+#if defined(WARP_BUILD) && defined(LEAD_GPIO_BASE)
+        unsigned a;
+        if (parse_uint(&p, &a) && a == 0u) {
+            g_mip_valid = 0;
+            warp_set_rotation(g_warp_deg, g_warp_invx, g_warp_invy, g_warp_panx, g_warp_pany); /* re-apply -> L0 */
+            xil_printf("MIP: disarmed (LOD forced to L0)\r\n");
+        } else {
+            mip_fill_static();
+            warp_set_rotation(g_warp_deg, g_warp_invx, g_warp_invy, g_warp_panx, g_warp_pany); /* re-apply -> LOD now live */
+        }
+#else
+        xil_printf("UART: 'M' is warp-only; no warp engine in this build\r\n");
 #endif
     } else if (op == 'K') {
         /* PROJECTIVE keystone: K <h> <v>  — symmetric H/V trapezoid. h,v are 1/1000 units of far-edge

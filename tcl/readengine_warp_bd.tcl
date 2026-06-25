@@ -26,7 +26,14 @@ set_property -dict [list \
 create_bd_cell -type ip -vlnv xilinx.com:ip:smartconnect axi_sc_mem2
 set_property -dict [list CONFIG.NUM_SI {1} CONFIG.NUM_MI {1} CONFIG.NUM_CLKS {1}] [get_bd_cells axi_sc_mem2]
 connect_bd_intf_net [get_bd_intf_pins re_datamover/M_AXI_MM2S] [get_bd_intf_pins axi_sc_mem2/S00_AXI]
-connect_bd_intf_net [get_bd_intf_pins axi_sc_mem2/M00_AXI]     [get_bd_intf_pins zynq_ps/S_AXI_HP1]
+# TIMING FIX (2026-06-24): the SmartConnect->HP1 path (artrans_cntr -> SAXIHP1ARSIZE) was the binding
+# worst path at FCLK_CLK1 (143 MHz), 79% ROUTING (4.8ns) -> a long route to the PS HP1 port, not logic.
+# A fully-registered AXI register slice between the SmartConnect and HP1 splits that route in half and
+# registers the AR/AW/W/R/B channels, breaking the path. +1 cycle latency on burst reads = negligible.
+create_bd_cell -type ip -vlnv xilinx.com:ip:axi_register_slice re_hp1_rs
+set_property -dict [list CONFIG.REG_AR {1} CONFIG.REG_AW {1} CONFIG.REG_W {1} CONFIG.REG_R {1} CONFIG.REG_B {1}] [get_bd_cells re_hp1_rs]
+connect_bd_intf_net [get_bd_intf_pins axi_sc_mem2/M00_AXI] [get_bd_intf_pins re_hp1_rs/S_AXI]
+connect_bd_intf_net [get_bd_intf_pins re_hp1_rs/M_AXI]     [get_bd_intf_pins zynq_ps/S_AXI_HP1]
 # OPTION (b) 2026-06-23: run the WHOLE DataMover (M_AXI mem side + cmd/data/status stream side) at
 # FCLK_CLK1 (142.86 MHz) -> ~1.92x read-issue rate vs pclk (the fetch-bandwidth wall behind 45deg
 # scramble + 1080 underrun + the 0.8% starvation floor). rst_mem is the FCLK_CLK1-synced reset
@@ -36,6 +43,8 @@ set rst143 [get_bd_pins rst_mem/peripheral_aresetn]
 connect_bd_net $fclk1  [get_bd_pins zynq_ps/S_AXI_HP1_ACLK]
 connect_bd_net $fclk1  [get_bd_pins axi_sc_mem2/aclk]
 connect_bd_net $rst143 [get_bd_pins axi_sc_mem2/aresetn]
+connect_bd_net $fclk1  [get_bd_pins re_hp1_rs/aclk]
+connect_bd_net $rst143 [get_bd_pins re_hp1_rs/aresetn]
 connect_bd_net $fclk1  [get_bd_pins re_datamover/m_axi_mm2s_aclk]
 connect_bd_net $fclk1  [get_bd_pins re_datamover/m_axis_mm2s_cmdsts_aclk]
 connect_bd_net $rst143 [get_bd_pins re_datamover/m_axi_mm2s_aresetn]
@@ -201,6 +210,13 @@ connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn] [get_bd_pins axi_gpio_12
 re_slice sl_sel axi_gpio_12 gpio_io_o 0 0
 connect_bd_net [get_bd_pins sl_sel/Dout] [get_bd_pins re_mux/sel]
 # ch2 = runtime per-geometry prefetch LEAD -> pg_warp_top lead_cfg (full 32-bit; top uses [19:0]).
+#   lead_cfg field map (firmware writes the whole 32-bit word to axi_gpio_12 ch2 @ +0x08):
+#     [19:0]  = prefetch LEAD (0 -> build LEAD)
+#     [22:20] = LOD mip level (0=full,1=half,2=quarter) — NEW (read-path mip downscale; Phase 1).
+#               L0 == byte-identical to pre-LOD. Mip DATA assumed present in DDR (filled by a later phase).
+#               OVERLAPS the legacy [23:20] dbg_sel telemetry-view field; the two are mutually exclusive in
+#               use (production LOD vs bring-up dbg view). No new IP/wiring — LOD rides this existing GPIO.
+#     [31]    = SOFT-RESET request (geometry change)
 connect_bd_net [get_bd_pins axi_gpio_12/gpio2_io_o] [get_bd_pins pg_re_0/lead_cfg]
 
 # BRING-UP DIAG: route the warp engine's activity counters to axi_gpio_2 (firmware readback)
