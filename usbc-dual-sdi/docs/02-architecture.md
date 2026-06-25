@@ -21,6 +21,7 @@ flowchart LR
         CC["USB-C port 1\n(DP Alt Mode 4-lane +\nUSB2 sideband)"]
         PWR["USB-C port 2\n(PD power-in only)"]
         MST["DP1.4 MST hub\n1 link -> 2x HDMI 2.0"]
+        PLL["Si534x PLL\n(SDI clock for HDMI->SDI mode)"]
         subgraph CH1[Channel 1 — fixed function]
             RDR1[HDMI redriver]
             BR1["GS12170\nHDMI->12G-SDI bridge\n(audio embed, ST352)"]
@@ -37,6 +38,7 @@ flowchart LR
     GPU -- "DP Alt Mode (4-lane HBR3)" --> CC --> MST
     MST -- "HDMI A" --> RDR1 --> BR1 --> DRV1 --> BNC1["BNC OUT 1"]
     MST -- "HDMI B" --> RDR2 --> BR2 --> DRV2 --> BNC2["BNC OUT 2"]
+    PLL -- "SDI clk" --> BR1 & BR2
     PWR -- "PD rail (ORing)" --> BOX
     APP <-- "USB2" --> CC <--> MCU
     MCU -- "EDID/DDC" --> MST
@@ -99,9 +101,14 @@ where EDID/frame-rate management lives, and it matters even in the dumb design
 > RTS5490 + real-M4-Mac evaluation.
 
 ### 3. Per-channel conversion — **Semtech GS12170 bridge ASIC (no FPGA)**
-One fixed-function chip per channel does the whole conversion:
-- **HDMI 2.0 in (≤4Kp60 4:2:2 10-bit) → 12G-SDI out**, software-selected
-  HDMI→SDI mode. Auto-spans HD-SDI / 3G / 6G / 12G (ST 292 → ST 2082-1).
+One fixed-function chip per channel does the whole conversion. The GS12170 is a
+**bidirectional** bridge (SDI→HDMI / HDMI→SDI / gearbox); we run it in **HDMI→SDI
+mode** — a first-class supported mode, even though the part is often *listed
+"SDI→HDMI" first*.
+- **HDMI 2.0 in (≤4Kp60 4:2:2 10-bit) → 12G-SDI out.** Auto-spans HD-SDI / 3G /
+  6G / 12G (ST 292 → ST 2082-1).
+- **Needs an external PLL (Si534x) in HDMI→SDI mode** to generate the SDI output
+  clock — a small, cheap clock chip shared across both bridges.
 - **Embeds audio** (up to 16 ch @ 48 kHz) and auto-builds the **ST 352 payload
   ID**; carries HDMI InfoFrames incl. HDR metadata.
 - 196-ball BGA, 12 × 12 mm, **< 2 W**. ~$73/ea qty 1 (less at volume).

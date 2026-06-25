@@ -24,6 +24,7 @@ ASIC** per channel. An FPGA only ever returns for the **smart/Pro variant**
 |---|---|---|
 | MST hub | VMM6210 / PS8650 / RTD2186 | 1 USB-C DP → 2× HDMI 2.0 (still required; the hard-to-source block) |
 | Conversion ×2 | **Semtech GS12170** | HDMI 2.0 → 12G-SDI bridge ASIC, audio embed, ST 352 — **no FPGA** |
+| PLL / clock ×1–2 | **Skyworks Si534x** | SDI output clock for GS12170 **HDMI→SDI mode** (required in this direction) |
 | Cable driver ×2 | Semtech **GS12281** | 12G reclocking driver → 75 Ω BNC |
 | HDMI redriver ×2 | TI/Diodes/Parade HDMI 2.0 redriver | clean TMDS into the GS12170 |
 | USB-C PD/DP | TI **TPS65987D** (+ CCG3PA on port 2) | 4-lane DP Alt negotiate + PD sink |
@@ -35,11 +36,19 @@ entire FPGA + DP-MST-IP + 12G-SDI-IP problem on the *conversion* side.
 
 ## Block-by-block
 
-### Block 1 — Conversion: Semtech GS12170 HDMI→SDI bridge (the FPGA-killer)
+### Block 1 — Conversion: Semtech GS12170 HDMI↔SDI bridge (the FPGA-killer)
+- **Bidirectional, 3 software-selectable modes:** SDI→HDMI, **HDMI→SDI** (the
+  mode we use), and SDI gearbox. ⚠️ It's often *listed/marketed "SDI→HDMI"
+  first* — but **HDMI→SDI is a first-class supported mode** (confirmed on
+  Semtech's product page + FAQ). Our direction works.
 - **One chip per channel:** HDMI 2.0 in (≤4Kp60 4:2:2 10-bit) → **12G-SDI out**,
   auto HD/3G/6G/12G; **embeds up to 16-ch audio** and builds the **ST 352
   payload ID**; carries HDR InfoFrames. 196-ball BGA, 12×12 mm, **<2 W**.
 - **~$73 qty 1** (GS12170-IBE3); stocked DigiKey/Mouser/Arrow/LCSC (*unverified*).
+- **⚠️ External PLL required in HDMI→SDI mode** — Semtech recommends an external
+  PLL / clock generator (**Skyworks Si534x** class) to produce the clean SDI
+  output clock in this direction. *(Was wrongly dropped from an earlier draft
+  that assumed the SDI→HDMI direction — it's back in the BOM.)*
 - **HDMI port is chip-to-chip TMDS** → needs an **HDMI redriver** on the cable
   input. Expects **unencrypted** TMDS, no HDCP — aligns with non-HDCP-sink (`06`
   Q11); ensure the MST hub upstream doesn't authenticate HDCP.
@@ -60,11 +69,11 @@ Use a **reclocking** cable driver, one per BNC, after the GS12170 SDI output.
 | Semtech GS12081-INE3 | no | Active | snippet showed **non-stocked, ~24-wk lead** | cost-down, risky |
 | TI LMH1208RTVR | no | *NRND-vs-active unverified* | listed | avoid until confirmed |
 
-- The **GS12281 reclocking** driver after the GS12170 covers SDI output jitter —
-  **no separate retimer and no external Si534x reference clock needed in the dumb
-  design** (the GS12170 generates the SDI bitstream; there's no FPGA GTH to
-  feed). *(The Si534x reference is only relevant to the Pro/FPGA variant, where
-  the transceiver reference is the dominant jitter source.)*
+- The **GS12281 reclocking** driver after the GS12170 covers SDI output jitter on
+  the line side; **no separate retimer IC** is needed. **However**, the GS12170
+  in **HDMI→SDI mode does need the external PLL** (Block 1, Si534x class) to
+  generate the SDI output clock — so the dumb design *does* carry one clock
+  generator (corrected from an earlier draft).
 - ⚠️ **3G-only parts that look tempting but are disqualified:** GS3490, LMH0307,
   LMH0394 — cannot do 12G.
 
@@ -219,6 +228,7 @@ DP mux/redriver routes the lanes.
 | Block | Typical | Note |
 |---|---|---|
 | 2× GS12170 bridge | ~3–4 W | <2 W ea |
+| PLL / clock (Si534x) | ~0.3–0.5 W | required in HDMI→SDI mode |
 | 2× GS12281 cable drivers | ~0.7 W | ~0.34 W ea |
 | 2× HDMI redrivers | ~0.4 W | |
 | MST hub | ~1–2 W | |
@@ -238,7 +248,8 @@ DP mux/redriver routes the lanes.
 
 | Block | Recommended | Obtainable? | ~Price (1–10) | Caveat |
 |---|---|---|---|---|
-| **Conversion ×2** | Semtech **GS12170** bridge ASIC | stocked (*lifecycle unverified*) | ~$73 ea | **the FPGA-killer; confirm EOL status w/ Semtech** |
+| **Conversion ×2** | Semtech **GS12170** bridge ASIC (HDMI→SDI mode) | stocked (*lifecycle unverified*) | ~$73 ea | **the FPGA-killer; confirm EOL status w/ Semtech** |
+| PLL / clock | Skyworks **Si534x** | yes | ~$3–8 | **required in HDMI→SDI mode** (generates SDI clock) |
 | 12G cable driver ×2 | Semtech **GS12281-INE3** | yes, stocked | ~$31 ea | reclocking; after each GS12170 |
 | HDMI redriver ×2 | TI/Diodes/Parade HDMI 2.0 redriver | yes | ~$2–6 ea | clean TMDS into the bridge |
 | DP MST hub | VMM6210 · PS8650 (Avnet, quote pending) · RTD2186 | design-win channel | hub chip cost | still required; `07` for sourcing |
