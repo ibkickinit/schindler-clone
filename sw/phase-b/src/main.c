@@ -66,7 +66,17 @@
  * (= VDMA/DDR master size) becomes 1920×1080, but the VTC output stays 720p
  * (see vtc_setup below — gated on OUTPUT_1080P, NOT this). Without it, S2MM
  * sized to 720p over a bypassed 1080p stream stores only the top-left crop. */
-#if defined(OUTPUT_1080P) || defined(READENGINE_FULLMASTER)
+#if defined(RASTER_TO_TILE)
+/* DEST-RES-MASTER (W1, 2026-06-25): the scaler (scaler_top) reduces the source to the OUTPUT-RES LOD
+ * (1280x720) BEFORE the tiler, so the DDR tiled master IS the LOD — not the full 1920x1080 source. FRAME_W/H
+ * therefore = the LOD = output res. Consequences: warp identity is a 1:1 map of the 720-line LOD onto the
+ * 720-line output (whole image at 100%, no center crop), and downscale is bounded (50% = 2x downscale of a
+ * 720 source = inside the clean envelope; reading the full 1080 master is what hit the BW wall). The tiler's
+ * runtime in_w + the cmd-gen frame_bytes/slot_stride (driven by xlconstants in build_phase_b.tcl) and
+ * pg_re_0 IN_W/IN_H (readengine_warp_bd.tcl) MUST all agree with this LOD. */
+#define FRAME_W           1280
+#define FRAME_H           720
+#elif defined(OUTPUT_1080P) || defined(READENGINE_FULLMASTER)
 #define FRAME_W           1920
 #define FRAME_H           1080
 #else
@@ -120,8 +130,11 @@
  * fixed by the 1920-wide DDR master that the warp engine reads. */
 #define TILE_PX           16
 #define TILE_BYTES        (TILE_PX * TILE_PX * BYTES_PP)   /* 768 */
-#define TILES_X_FULL      (1920 / TILE_PX)                 /* 120 */
-#define TILES_Y_FULL      (1080 / TILE_PX)                 /* 67  (floor; trailing 8-row band dropped) */
+/* Tile grid = the DDR master (= the LOD under dest-res). Derive from FRAME_W/H so it follows the LOD:
+ *   dest-res LOD 1280x720 -> 80 x 45 (720 is a clean multiple of 16, NO partial-band crop).
+ *   legacy full-master 1920x1080 -> 120 x 67 (integer div floors the trailing 8-row band, as before). */
+#define TILES_X_FULL      (FRAME_W / TILE_PX)              /* LOD:80  full:120 */
+#define TILES_Y_FULL      (FRAME_H / TILE_PX)              /* LOD:45  full:67(floor) */
 #define TILED_FRAME_TILES (TILES_X_FULL * TILES_Y_FULL)    /* 8040 (== VDMA VSIZE, < 8191 reg max) */
 #define TILED_FRAME_BYTES (TILED_FRAME_TILES * TILE_BYTES) /* 6,174,720  (<= FRAME_BYTES 6,220,800) */
 /* iter5-bisect-720p: NUM_FRAMES 5 → 3 to isolate scroll cause. Bisect shows

@@ -407,13 +407,32 @@ set RASTER_TO_TILE 0
 if {[info exists ::env(RASTER_TO_TILE)] && $::env(RASTER_TO_TILE) ne "0"} { set RASTER_TO_TILE 1 }
 puts "BUILD: RASTER_TO_TILE=$RASTER_TO_TILE (S2MM stores [expr {$RASTER_TO_TILE?{TILE-ROW-MAJOR (Path B)}:{raster}}])"
 if {$RASTER_TO_TILE} {
-    if {$SCALER_MODULE ne "scaler_bypass_1080p"} {
-        puts "ERROR: RASTER_TO_TILE=1 requires SCALER_MODULE=scaler_bypass_1080p (got $SCALER_MODULE) — the"
-        puts "       tile writer needs the full 1920x1080 source raster, not a downscaled frame."
+    # DEST-RES-MASTER (W1, 2026-06-25): the tiler geometry is now RUNTIME (pg_raster_to_tile in_w +
+    # pg_tile_s2mm_cmd frame_bytes/slot_stride). The tiled LOD follows the scaler output:
+    #   scaler_top          -> reduces source to the OUTPUT-RES LOD (1280x720) -> ring does 0.5-2.0x of it.
+    #   scaler_bypass_1080p -> legacy: tiler tiles the FULL 1920x1080 master (floor(1080/16)=67 bands).
+    # The old guard (RASTER_TO_TILE *requires* bypass) is obsolete now that in_w is runtime.
+    if {$SCALER_MODULE eq "scaler_top"} {
+        set LOD_W 1280 ; set LOD_H 720          ;# = scaler_top OUT_W/OUT_H (must match)
+    } elseif {$SCALER_MODULE eq "scaler_bypass_1080p"} {
+        set LOD_W 1920 ; set LOD_H 1080         ;# legacy full-master
+    } else {
+        puts "ERROR: RASTER_TO_TILE=1 needs SCALER_MODULE=scaler_top (dest-res LOD) or scaler_bypass_1080p"
+        puts "       (legacy full master); got '$SCALER_MODULE'."
         exit 1
     }
+    set LOD_TX [expr {$LOD_W/16}]
+    set LOD_TY [expr {$LOD_H/16}]
+    set LOD_FRAME_BYTES [expr {$LOD_TX*$LOD_TY*768}]
+    set LOD_SLOT_STRIDE 6226560              ;# keep the full-1080p ring stride (>= any LOD frame; MIP-base safe)
+    puts "BUILD: dest-res LOD=${LOD_W}x${LOD_H} -> ${LOD_TX}x${LOD_TY} tiles, frame_bytes=$LOD_FRAME_BYTES, slot_stride=$LOD_SLOT_STRIDE"
+
     create_bd_cell -type module -reference pg_raster_to_tile_bd raster_to_tile_0
-    set_property -dict [list CONFIG.IN_W {1920} CONFIG.LTILE {4}] [get_bd_cells raster_to_tile_0]
+    set_property -dict [list CONFIG.IN_W {1920} CONFIG.LTILE {4}] [get_bd_cells raster_to_tile_0]  ;# IN_W = BRAM-sizing MAX
+    # runtime active width -> in_w port (set-once boot value; xlconstant, not GPIO — axi_ic_lite is full)
+    create_bd_cell -type ip -vlnv xilinx.com:ip:xlconstant const_in_w
+    set_property -dict [list CONFIG.CONST_WIDTH {12} CONFIG.CONST_VAL $LOD_W] [get_bd_cells const_in_w]
+    connect_bd_net [get_bd_pins const_in_w/dout] [get_bd_pins raster_to_tile_0/in_w]
     # clock (pclk_in) + reset are fanned out alongside scaler_0's below (search RASTER_TO_TILE clk/rst).
     connect_bd_intf_net [get_bd_intf_pins scaler_0/m_axis]        [get_bd_intf_pins raster_to_tile_0/s_axis]
 
@@ -462,9 +481,15 @@ if {$RASTER_TO_TILE} {
 
     # S2MM command generator + ring slot + gray frame_ptr, pclk_in domain (consumes raster_to_tile_0/m_sof)
     create_bd_cell -type module -reference pg_tile_s2mm_cmd_bd wr_cmd
-    set_property -dict [list CONFIG.FRAME_BUF_BASE {0x10000000} CONFIG.NUM_FRAMES {7} \
-        CONFIG.SLOT_STRIDE {6226560} CONFIG.FRAME_BYTES {6174720}] [get_bd_cells wr_cmd]
+    set_property -dict [list CONFIG.FRAME_BUF_BASE {0x10000000} CONFIG.NUM_FRAMES {7}] [get_bd_cells wr_cmd]
     connect_bd_net [get_bd_pins raster_to_tile_0/m_sof] [get_bd_pins wr_cmd/m_sof]
+    # runtime tiled-frame geometry -> wr_cmd (BTT = whole LOD frame; ring-slot stride). xlconstants (set once).
+    create_bd_cell -type ip -vlnv xilinx.com:ip:xlconstant const_fbytes
+    set_property -dict [list CONFIG.CONST_WIDTH {23} CONFIG.CONST_VAL $LOD_FRAME_BYTES] [get_bd_cells const_fbytes]
+    connect_bd_net [get_bd_pins const_fbytes/dout] [get_bd_pins wr_cmd/frame_bytes]
+    create_bd_cell -type ip -vlnv xilinx.com:ip:xlconstant const_sstride
+    set_property -dict [list CONFIG.CONST_WIDTH {32} CONFIG.CONST_VAL $LOD_SLOT_STRIDE] [get_bd_cells const_sstride]
+    connect_bd_net [get_bd_pins const_sstride/dout] [get_bd_pins wr_cmd/slot_stride]
 
     # SmartConnect + registered AXI slice -> S_AXI_HP2 (mirror re_hp1_rs: split the long route to the PS port)
     create_bd_cell -type ip -vlnv xilinx.com:ip:smartconnect wr_sc

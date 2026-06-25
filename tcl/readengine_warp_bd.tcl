@@ -108,8 +108,20 @@ puts "BUILD: warp pg_re_0 OUT = ${WARP_OUT_W}x${WARP_OUT_H} (OUTPUT_MODE=[expr {
 # associativity the strided path did. 512->256 frees ~48 RAMB36 in the cache data store, which pays for
 # pg_raster_to_tile's two 16-row band buffers (~60 RAMB36 worst case at IN_W=1920). Net: ~115.5/140 - 48 + 60
 # = ~127.5/140 worst case -> FITS (WAY stays 4; budget has margin, so the proven 4-way hash is kept).
-set_property -dict [list CONFIG.IN_W {1920} CONFIG.IN_H {1072} CONFIG.OUT_W $WARP_OUT_W CONFIG.OUT_H $WARP_OUT_H \
-    CONFIG.SLOT_STRIDE {6226560} CONFIG.NUM_FRAMES {7} CONFIG.TILED {1} \
+# DEST-RES-MASTER (W1, 2026-06-25): the warp SOURCE = the tiled LOD that the scaler+tiler produced, NOT the
+# full 1920x1080 master. build_phase_b.tcl's RASTER_TO_TILE block sets LOD_W/LOD_H/LOD_SLOT_STRIDE; we follow
+# them here so writer TILES_X (=in_w/16) == reader TILES_X (=IN_W/16). A clean LOD height (720 -> 45 bands)
+# needs no 1072 fudge. Legacy (vars unset) keeps the 1920x1072 full master. IN_W must equal the tiler's in_w.
+if {[info exists LOD_W]} {
+    # IN_H clamps to whole 16-row bands (the tiler only emits complete bands): 720->720 (clean),
+    # 1080->1072 (drops the trailing 8-row partial band so the reader never requests the unwritten tile-row).
+    set RE_IN_W $LOD_W ; set RE_IN_H [expr {($LOD_H/16)*16}] ; set RE_SLOT_STRIDE $LOD_SLOT_STRIDE
+} else {
+    set RE_IN_W 1920 ; set RE_IN_H 1072 ; set RE_SLOT_STRIDE 6226560
+}
+puts "BUILD: warp pg_re_0 SOURCE = ${RE_IN_W}x${RE_IN_H} (TILES_X=[expr {$RE_IN_W/16}]), slot_stride=$RE_SLOT_STRIDE"
+set_property -dict [list CONFIG.IN_W $RE_IN_W CONFIG.IN_H $RE_IN_H CONFIG.OUT_W $WARP_OUT_W CONFIG.OUT_H $WARP_OUT_H \
+    CONFIG.SLOT_STRIDE $RE_SLOT_STRIDE CONFIG.NUM_FRAMES {7} CONFIG.TILED {1} \
     CONFIG.NTILE {256} CONFIG.WAY {4} CONFIG.PD {64} CONFIG.DREQ {64} CONFIG.LEAD {4096}] [get_bd_cells pg_re_0]
 
 # ---- PROJECTIVE front-end (P3, env PROJECTIVE_BUILD=1). DEFAULT OFF -> the affine BD is byte-identical.
