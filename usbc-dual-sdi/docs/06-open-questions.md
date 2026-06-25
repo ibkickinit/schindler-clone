@@ -59,6 +59,26 @@ catalog is SDI-PHY-only; no TI/Macnica/etc. equivalent exists). So this is a
 
 **Next checks:** (a) current GS12170 stock for an LTB-size estimate; (b) whether
 a non-GS12170 OEM module exists. Then re-baseline `01/02/04/05`.
+
+**Check results (2026-06):**
+- **Stock — not numerically resolvable remotely** (DigiKey/Mouser/Arrow/Octopart/
+  Findchips all 403 the crawler). But GS12170-IBE3 is still **listed "ships
+  today" at DigiKey, Mouser, Arrow 16 mo post-EOL** → residual authorized stock
+  likely exists. **User must check live qty** (sum across distributors vs
+  run-size ×2 chips/unit + margin) — that number decides if a last-buy gen-1 is
+  viable.
+- **OEM modules exist but = stopgap, not a foundation.** Finished HDMI→12G-SDI
+  converters: **Digital Forecast Bridge M_HS** (dual HDMI→dual 12G-SDI micro
+  module — closest to our back-end), **Blackmagic Micro Converter** (1→1, ~$149,
+  **FPGA-based → survives the EOL**), AJA **HA5-12G** (1→2 DA, not independent),
+  **SC&T SDI02E-12G** (likely GS12170-based → also doomed). Integrating finished
+  modules is bulky/costly/vendor-margin-laden and not the clean integrated
+  product. Only a cheap *board-level OEM* module would change that (needs vendor
+  BD).
+- **Key reframe:** the survey shows **everyone does this conversion in an FPGA**
+  (Blackmagic = Spartan/Artix). The GS12170 was the *anomaly* that skipped it;
+  its death just returns us to the industry-standard FPGA path. **PolarFire (free
+  12G-SDI IP) is the durable answer**, not a sad fallback.
 **Action:** Semtech lifecycle inquiry + get the GS12170 eval board (Phase 0).
 
 ## Q1 — MST hub: still required, sourcing per `07` *(dumb design uses a discrete hub, not FPGA-MST)*
