@@ -6,12 +6,14 @@
 cable and two BNC outputs — "Blackmagic Micro Converter" sized, not "HDMI
 dongle." We keep the *user mental model* of a dongle ("plug in, get two
 displays") while being honest about the physical size.
-**Architecture (decided):** the **fixed-function "dumb" design** — USB-C MST hub
-+ two **Semtech GS12170 HDMI→SDI bridge ASICs** + a small MCU for EDID. **No
-FPGA, no DDR, no SOM** (see `02`, `04`). This is literally "a USB-C MST dongle +
-two HDMI→SDI micro-converters, integrated into one box." An FPGA-based **smart
-variant** (active frame-rate conversion, color, genlock) is a documented future
-**Pro** option, not v1.
+**Architecture (decided):** **FPGA-based (Microchip PolarFire).** USB-C →
+DP-output hub → 2× DP-RX in a **PolarFire MPF300** (free 12G-SDI IP) → 2× BNC,
+with an MCU for EDID. The fixed-function bridge plan died with the **Semtech
+GS12170 (EOL Feb 2025, no replacement)** — conversion now lives in the FPGA, as it
+does across the industry (Blackmagic = Spartan/Artix). V1 is **conversion-only**
+(source-locked, no frame manipulation); the same FPGA unlocks the smart features
+(active FRC, color, genlock) later. **Raw FPGA on a 6–8 layer board, no SOM** (no
+DDR-heavy frame buffer in V1). See `02`, `04`, `06` Q0.
 
 ## The core promise
 

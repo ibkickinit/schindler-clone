@@ -45,23 +45,21 @@
    with no MST silicon, no sample request, no IP license. The $40 adapter *is*
    your prototype front end.
 
-### Production — pursue ONE track in parallel
-**Primary: MST-in-FPGA on Microchip PolarFire (MPF300T) + Parretto DP-MST IP +
-Microchip 12G-SDI IP.** It's the only path where **every piece is touchable
-without a sales gate**: Parretto IP is on GitHub (free eval) right now, Microchip's
-12G-SDI IP is in Libero, and the FPGA + kits are DigiKey-stocked with public
-datasheets. It also collapses **MST-RX + dual 12G-SDI-TX into one buyable chip**.
-- **The one assumption to de-risk first:** that **Parretto's MST RX runs on
-  PolarFire and delivers two independent 4K60 sink streams.** Confirm before
-  committing (Parretto lists UltraScale+/Artix-7/Cyclone 10 GX/Arria 10/CertusPro-NX;
-  **PolarFire support unverified**).
-- Also confirm the **Microchip 12G-SDI IP license tier/cost** (free at lower
-  rates; *12G tier "free" unverified*).
+### Production — the decided architecture (`02`, `04`, `06` Q0)
+**Discrete DP-output hub + PolarFire conversion.** *Not* MST-in-FPGA — the hub
+does the split; the FPGA does **DP-RX (SST) + free 12G-SDI IP**. This is simpler
+and cheaper than the Parretto/AMD MST-in-FPGA routes.
+- **Conversion: Microchip PolarFire MPF300** — 12G-SDI IP **free** (Libero), DP-RX
+  IP (CoreDP/Bitec), dev kit + DG0889 reference. **Use the DP-RX path for 4K60**
+  (HDMI-RX caps at 4K30). Confirm DP-RX IP license + 2-channel resource fit
+  (`06` Q0b).
+- **Front-end hub (DP output):** **Parade PS8650** (Avnet quote pending;
+  support@paradetech.com / Macnica for samples+EVB) or **Synaptics VMM5330**; or
+  **Realtek RTS5490 USB4 hub** if Mac independent-dual is a target (`06` Q-MAC).
 
-**Fallback (maturity over cost): AMD ZCU102 + DP1.4 RX Subsystem (PG300) +
-UHD-SDI IP.** Best-documented DP-MST-RX + 12G path; hardware-eval (timeout) IP
-license available now; production license is a paid call to AMD. Use if
-Parretto-on-PolarFire doesn't pan out.
+**Note — the old "MST-in-FPGA" debate (Parretto/AMD/Intel) is superseded.** We use
+a discrete hub, so we don't license DP-MST IP at all. AMD ZCU102 / Parretto-on-
+PolarFire remain only as theoretical all-in-one-chip alternatives, not the plan.
 
 **Discretes:** the only one worth an email is **Parade PS8650** (support@paradetech.com
 + Macnica) for samples + EVB — keep as a backup, but it's a DP-MST *hub* (DP/HDMI

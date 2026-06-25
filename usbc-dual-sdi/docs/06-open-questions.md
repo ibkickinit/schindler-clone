@@ -28,13 +28,32 @@ Mac broadcast/production → USB4. **Open / to verify:**
 either front end, so Phase 1 proceeds on MST; this is a *production front-end*
 decision (`02` §2, `04` Block 2, `05` Phase 3).
 
-## Q0 — GS12170 EOL *(CONFIRMED EOL Feb 2025 — the no-FPGA design has lost its keystone)*
-**CONFIRMED: the GS12170 is End-of-Life as of Feb 2025** (Semtech PCN
-**EOL-000308**). The dumb/no-FPGA architecture rested entirely on this one chip,
-and **there is NO single-chip replacement from any vendor** — Semtech's was "the
-industry's first" and stayed the only HDMI↔12G-SDI bridge ASIC (the rest of the
-catalog is SDI-PHY-only; no TI/Macnica/etc. equivalent exists). So this is a
-**keystone failure, not a part swap.**
+## Q0 — Conversion approach *(DECIDED 2026-06 → PolarFire FPGA; GS12170 dead)*
+**DECISION: do conversion in a Microchip PolarFire FPGA** (free 12G-SDI IP). The
+GS12170 fixed-function path is dead (CONFIRMED EOL Feb 2025, PCN **EOL-000308**,
+no replacement). User chose the FPGA path. New architecture in `02`/`04`. The
+fixed-function gen-1 last-buy option was left open pending a live stock check (see
+below), but the **durable design is PolarFire**.
+
+**New diligence items the FPGA path created (verify on the bench / with Microchip):**
+- **Q0a — HDMI-RX 4K30 cap → use DP-RX for 4K60.** Microchip HDMI RX IP tops out
+  at 4K30; the **DisplayPort RX IP** does HBR3/SST → **4K60**. So the hub must
+  output **DP** (PS8650/VMM5330), and we validate 4K60 over DP-RX. *Confirmed from
+  Microchip IP docs; bench-verify.*
+- **Q0b — 2-channel resource/timing fit + DP-RX IP cost.** The DG0889 12G-SDI demo
+  is single-channel; confirm 2× DP-RX + 2× SDI-TX + Mi-V fit + close timing in
+  MPF300 (300K LE). SDI IP is free; **confirm DP-RX IP license** (Microchip CoreDP
+  or Bitec).
+- **Bench needs `VIDEO-DC-SDI` FMC** for 12G (the video kit's on-board SDI is
+  HD/3G only).
+
+*(History below retained for the decision trail.)*
+
+**CONFIRMED EOL Feb 2025 — the no-FPGA design lost its keystone:** the GS12170 is
+End-of-Life (PCN EOL-000308), and **there is NO single-chip replacement from any
+vendor** — Semtech's was "the industry's first" and stayed the only HDMI↔12G-SDI
+bridge ASIC (rest of the catalog is SDI-PHY-only). A **keystone failure, not a
+part swap.**
 
 **Implication — the dumb-vs-smart distinction has largely collapsed:**
 - 12G-SDI needs **12G-class transceivers**, so the "small-FPGA fallback" is *not*

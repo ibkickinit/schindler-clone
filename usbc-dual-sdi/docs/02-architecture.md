@@ -1,13 +1,13 @@
 # 02 — System Architecture
 
-> **Baseline = the "dumb" fixed-function design (no FPGA, no SOM, no DDR).** The
-> product is an integrated *format converter*: HDMI/DP in → SDI out, ×2, in one
-> box — i.e. a USB-C MST dongle + two HDMI→SDI micro-converters collapsed onto one
-> board. A heavier **FPGA-based "smart" variant** (active frame-rate conversion,
-> color processing, genlock) is documented as a **future Pro option** at the end,
-> not v1.
+> **Architecture = FPGA-based (Microchip PolarFire).** The fixed-function bridge
+> design (Semtech GS12170) is dead — the part is EOL (Feb 2025) with no single-chip
+> replacement (`06` Q0). Conversion now lives in a **PolarFire FPGA** using
+> Microchip's **free 12G-SDI IP**. V1 is **conversion-only** (source-locked, no
+> frame manipulation); the FPGA also makes the future "smart" features (active
+> frame-rate conversion, color, genlock) an unlock rather than a respin.
 
-## Signal path, end to end (v1 baseline)
+## Signal path, end to end (V1)
 
 ```mermaid
 flowchart LR
@@ -18,202 +18,135 @@ flowchart LR
 
     subgraph BOX[the box]
         direction TB
-        CC["USB-C port 1\n(DP Alt Mode 4-lane +\nUSB2 sideband)"]
-        PWR["USB-C port 2\n(PD power-in only)"]
-        MST["DP1.4 MST hub\n1 link -> 2x HDMI 2.0"]
-        PLL["Si534x PLL\n(SDI clock for HDMI->SDI mode)"]
-        subgraph CH1[Channel 1 — fixed function]
-            RDR1[HDMI redriver]
-            BR1["GS12170\nHDMI->12G-SDI bridge\n(audio embed, ST352)"]
-            DRV1["GS12281\n12G cable driver"]
+        CC["USB-C port 1\n(DP Alt 4-lane / USB4)"]
+        PWR["USB-C port 2\n(PD power-in)"]
+        HUB["MST / USB4 hub\n1 link -> 2x DP 1.4 (HBR3)"]
+        subgraph FPGA["PolarFire MPF300 FPGA"]
+            DPRX1["DP RX IP #1 (SST, 4K60)"]
+            DPRX2["DP RX IP #2 (SST, 4K60)"]
+            MAP["video->SDI map\naudio embed (ST299)\nST352 payload ID"]
+            SDITX1["12G-SDI TX IP #1"]
+            SDITX2["12G-SDI TX IP #2"]
+            MIV["soft Mi-V / control"]
         end
-        subgraph CH2[Channel 2 — fixed function]
-            RDR2[HDMI redriver]
-            BR2["GS12170\nHDMI->12G-SDI bridge"]
-            DRV2["GS12281\n12G cable driver"]
-        end
-        MCU["MCU (STM32)\nEDID emulation\nUSB HID / status\nbridge config (I2C)"]
+        DDR["DDR4\n(IP working mem)"]
+        DRV1["GS12281 cable driver"]
+        DRV2["GS12281 cable driver"]
+        MCU["MCU (STM32) or Mi-V\nEDID emulation, USB HID"]
     end
 
-    GPU -- "DP Alt Mode (4-lane HBR3)" --> CC --> MST
-    MST -- "HDMI A" --> RDR1 --> BR1 --> DRV1 --> BNC1["BNC OUT 1"]
-    MST -- "HDMI B" --> RDR2 --> BR2 --> DRV2 --> BNC2["BNC OUT 2"]
-    PLL -- "SDI clk" --> BR1 & BR2
-    PWR -- "PD rail (ORing)" --> BOX
+    GPU -- "DP Alt / USB4" --> CC --> HUB
+    HUB -- "DP A" --> DPRX1 --> MAP
+    HUB -- "DP B" --> DPRX2 --> MAP
+    MAP --> SDITX1 --> DRV1 --> BNC1["BNC OUT 1"]
+    MAP --> SDITX2 --> DRV2 --> BNC2["BNC OUT 2"]
+    DDR <--> FPGA
+    PWR -- "PD rail" --> BOX
     APP <-- "USB2" --> CC <--> MCU
-    MCU -- "EDID/DDC" --> MST
-    MCU -- "config" --> BR1 & BR2
+    MCU -- "EDID/DDC" --> HUB
 ```
 
-**No FPGA. No DDR. No SOM.** A 4–6 layer board carries it; the only stringent
-routing is the **12G-SDI differential pair** and the **HDMI TMDS pairs**
-(controlled impedance, length-matched) — *not* a DDR bus, which is exactly the
-hard thing that made a SOM worth it on Schindler and which we don't have here.
+**No SOM.** PolarFire is a raw FPGA on the board (the MPF300 video kit proves the
+design; production is the bare `MPF300T-FCG484`/`1152` + DDR4 + SPI flash on a
+6–8 layer board). DDR is present for the SDI/Mi-V subsystem, **not** as a frame
+buffer for rate conversion — V1 stays source-locked (see Clocking).
 
 ## Block-by-block
 
 ### 1. USB-C front end
-- USB-C receptacle wired for **DisplayPort Alt Mode**; a USB-C **PD/Alt-Mode
-  controller** (TI TPS65987D class) negotiates **4-lane DP**.
-- **Why 4-lane:** two independent 4K streams don't fit in 2-lane DP (budget
-  below). 4-lane repurposes the SuperSpeed pairs for DP, leaving **USB 2.0** for
-  the management sideband (HID config) — all we need.
+USB-C DP Alt Mode (4-lane HBR3) or USB4, negotiated by a **TI TPS65987D**-class
+PD/Alt-Mode controller. USB 2.0 sideband → MCU for HID config.
 
-### 2. DP MST split (the "two displays" trick — still required)
-The one genuinely hard, sourcing-sensitive block — *unchanged by going FPGA-less.*
-A **DP 1.4 MST hub** splits the single DP link into **two independent HDMI 2.0
-streams**. Options + sourcing in `04` Block 2 / `07`:
-- Discrete hub: **Synaptics VMM6210** (integrates USB-C input), **Parade
-  PS8650**, **Realtek RTD2186**.
-- For prototyping, an **off-the-shelf USB-C→dual-HDMI MST adapter** stands in for
-  the hub (see `07`).
+### 2. Front-end hub — split one USB-C into two **DP** streams
+Still required; unchanged by the FPGA decision *except* that we now want **DP
+outputs** (to feed the PolarFire DP-RX, which does 4K60 — the HDMI-RX path caps
+at 4K30). See `04` Block 2 and the platform note below.
+- **DP-output hubs (preferred):** Parade **PS8650**, Synaptics **VMM5330**.
+- **USB4 hub** for Mac independent-dual: Realtek **RTS5490** (DP-tunneled out).
+- Each output owns an **EDID/DDC channel** the MCU controls (`03`).
 
-Each hub output owns an **EDID/DDC channel** the MCU controls — see §5, this is
-where EDID/frame-rate management lives, and it matters even in the dumb design
-(below).
-
-> ### ⚠️ HOST PLATFORM SUPPORT — the MST-vs-USB4 fork (defining decision, `06` Q-MAC)
-> **macOS does NOT support DP MST extended desktop — it mirrors** (hardware-locked
-> on Apple Silicon; verified current 2026, no fix coming). So an **MST** front end
-> gives **two independent outputs on Windows/Linux, but only two *identical*
-> (mirrored) outputs on Mac.** For a Mac-heavy broadcast/production market that is
-> a **dealbreaker** for the "two independent" promise (though dual-mirror is still
-> useful = one source → two SDI destinations, our twin-output mode).
->
-> Macs deliver independent dual-display via **Thunderbolt/USB4 DP tunneling**, not
-> MST. The good news: a **USB4 hub (Realtek RTS5490 — non-Intel, not TB-cert-
-> gated, fixed-function, NOT an FPGA)** can replace the MST hub and feed the same
-> `→ GS12170 → SDI` chain, giving **independent dual on Mac (M4+/Pro/Max) and
-> Windows** while staying "dumb." Caveats: pricier/more complex front end; may
-> require a USB4/TB host (could *narrow* cheap-DP-Alt-only-PC support — verify);
-> base **M1/M2/M3 Macs cap at one external display** regardless; and **"macOS
-> extends across RTS5490's two tunneled streams" is UNVERIFIED — must test on a
-> real M4/M5 Mac.**
->
-> | Front end | Win/Linux indep. | **Mac indep.** | Cheap DP-Alt PC | FPGA? | Cost |
-> |---|---|---|---|---|---|
-> | **MST hub** (baseline) | ✅ | ❌ mirror | ✅ | no | low |
-> | **USB4 hub (RTS5490)** | ✅ (USB4/TB) | ✅ (M4+/Pro/Max) | ⚠️ verify | no | higher |
->
-> **Decision is "who's the customer?":** Windows live-events/AV → MST is fine.
-> Mac broadcast/production → must go USB4. Prototype conversion on MST regardless
-> (the GS12170 chain is identical); gate the production front-end choice on an
-> RTS5490 + real-M4-Mac evaluation.
-
-### 3. Per-channel conversion — **Semtech GS12170 bridge ASIC (no FPGA)**
-One fixed-function chip per channel does the whole conversion. The GS12170 is a
-**bidirectional** bridge (SDI→HDMI / HDMI→SDI / gearbox); we run it in **HDMI→SDI
-mode** — a first-class supported mode, even though the part is often *listed
-"SDI→HDMI" first*.
-- **HDMI 2.0 in (≤4Kp60 4:2:2 10-bit) → 12G-SDI out.** Auto-spans HD-SDI / 3G /
-  6G / 12G (ST 292 → ST 2082-1).
-- **Needs an external PLL (Si534x) in HDMI→SDI mode** to generate the SDI output
-  clock — a small, cheap clock chip shared across both bridges.
-- **Embeds audio** (up to 16 ch @ 48 kHz) and auto-builds the **ST 352 payload
-  ID**; carries HDMI InfoFrames incl. HDR metadata.
-- 196-ball BGA, 12 × 12 mm, **< 2 W**. ~$73/ea qty 1 (less at volume).
-- **Companions (small, cheap):** an **HDMI redriver/retimer** on the cable input
-  (the GS12170 HDMI port is chip-to-chip TMDS), and a **GS12281 12G reclocking
-  cable driver** on the SDI output to the 75 Ω BNC.
-- **HDCP:** the GS12170 expects **unencrypted** TMDS and does no HDCP — which
-  *aligns with our non-HDCP-sink posture* (`06` Q11). Ensure the MST hub upstream
-  passes unencrypted TMDS (does not authenticate as an HDCP sink).
-- ⚠️ **Lifecycle is the top risk** (`06`): one source flags the GS12170 as
-  EOL/NRND, yet it's stocked at DigiKey/Mouser/Arrow/LCSC — **confirm with Semtech
-  before designing it in.** Fallback if truly EOL = the FPGA recipe (small
-  ECP5/Artix + SDI IP + HDMI RX), i.e. the "smart variant" minus the smarts.
+### 3. Conversion — **PolarFire FPGA (DP-RX → 12G-SDI), no bridge chip**
+The EOL of the GS12170 moves conversion into the FPGA — which is how the rest of
+the industry already builds these (Blackmagic = Spartan/Artix). Per channel:
+1. **DisplayPort RX IP** (DP 1.4, **HBR3 8.1 Gb/s/lane, SST → 4K60 4:2:2**).
+   ⚠️ Use DP, **not** HDMI: Microchip's HDMI RX IP caps at **4K30** (`06` Q0a).
+2. Map recovered video → SMPTE serial-digital raster; **embed audio (ST 299)**;
+   insert **ST 352 payload ID**.
+3. **12G-SDI TX IP** (Microchip, **free**; SMPTE 1.5G/3G/6G/12G, ST 2082-1) →
+   serial out.
+- One **MPF300 (300K LE)** hosts **both** channels (2× DP-RX + 2× SDI-TX) + a soft
+  **Mi-V** control core. Resource fit at 2 channels is a **diligence item** (`06`).
+- **HDCP:** we ship as a **non-HDCP sink** (`06` Q11) — the DP-RX must be
+  configured to not authenticate HDCP, so it only ever sees unprotected streams.
 
 ### 4. SDI cable driver
-- **Semtech GS12281** 12G **reclocking** cable driver per output → 75 Ω BNC. The
-  reclocking stage cleans jitter to meet SMPTE ST 2082 over real coax. (In the
-  dumb design the SDI bit-clock is **derived from the incoming HDMI pixel clock**
-  — output is genlocked to the source, not house sync; fine for passthrough.)
+**Semtech GS12281** 12G reclocking driver per output → 75 Ω BNC (survives; it's an
+SDI-PHY part, not the dead bridge). Cleans the FPGA transceiver's SDI output to
+meet ST 2082 over coax.
 
-### 5. Management MCU (EDID is still the value-add)
-A small **STM32** (no FPGA needed):
-- **EDID emulation** on both MST-hub DDC channels (writable, profile store).
-- **USB HID** endpoint for the optional config app; **status LEDs / OLED**.
-- **Bridge + hub config** over I²C.
+### 5. Management MCU / control
+EDID emulation on the hub DDC channels + USB HID + status. Either a discrete
+**STM32** or a **soft Mi-V** core inside the PolarFire (the SDI demo already
+instantiates a Mi-V). Discrete MCU = simpler bring-up; Mi-V = fewer parts.
 
-**Why EDID still matters in the dumb design:** the GS12170 only accepts a **valid
-SMPTE raster** (e.g. exactly 1080p/2160p at SMPTE rates incl. /1.001 fractional
-rates) — arbitrary VESA/PC timings won't map to a legal SDI format. So the
-EDID-driven **resolution / frame-rate management** the product was always meant
-to have (`03`) isn't a luxury here — it's how we **force the laptop to emit
-SDI-legal timings** so the bridge produces clean output. This is *passive*
-(EDID-nudged, source-locked) management; **active** rate conversion (60.00→59.94)
-is the FPGA-only Pro feature.
+## Host platform support — the MST-vs-USB4 fork (defining, `06` Q-MAC)
+Unchanged by the FPGA move. **macOS does not do MST extended (mirrors)** — so an
+**MST** hub gives two-independent on Windows but mirror-only on Mac; **USB4
+(RTS5490)** gives independent dual on Mac (M4+/Pro/Max) and Windows. The market
+moat is the "presents-as-displays" behavior **and** Mac support (`01`).
+
+| Front end | Win/Linux indep. | Mac indep. | FPGA input | 
+|---|---|---|---|
+| MST hub (PS8650/VMM5330) | ✅ | ❌ mirror | DP → DP-RX |
+| USB4 hub (RTS5490) | ✅ | ✅ (M4+) | DP-tunneled → DP-RX |
 
 ## Link-bandwidth budget (DP/host side — unchanged)
+DP 1.4 HBR3, 4 lanes = **25.92 Gb/s usable**, shared across both streams.
 
-**DP 1.4 HBR3, 4 lanes:** 4 × 8.1 Gbit/s = 32.4 raw → ×0.8 = **25.92 Gbit/s
-usable**, shared across both MST streams.
-
-| Format | Rate/stream | **Two streams** | Fits 4-lane HBR3? |
+| Format | Rate/stream | Two streams | Fits 4-lane HBR3? |
 |---|---|---|---|
-| 1080p59.94 4:2:2 10b | 2.49 Gb/s | 4.97 Gb/s | ✅ trivially |
-| 2160p30 4:2:2 10b | 4.97 Gb/s | 9.95 Gb/s | ✅ easily |
-| 2160p59.94 4:2:2 10b | 9.95 Gb/s | **19.9 Gb/s** | ✅ with blanking margin |
-| 2160p59.94 4:4:4 8b | 11.94 Gb/s | 23.9 Gb/s | ⚠️ needs DSC or 4:2:2 |
+| 1080p59.94 4:2:2 10b | 2.49 Gb/s | 4.97 Gb/s | ✅ |
+| 2160p30 4:2:2 10b | 4.97 Gb/s | 9.95 Gb/s | ✅ |
+| 2160p59.94 4:2:2 10b | 9.95 Gb/s | 19.9 Gb/s | ✅ with blanking margin |
 
-**Headline:** two independent outputs up to **2160p59.94 4:2:2 10-bit** — exactly
-what 12G-SDI carries (ST 2082-10), and what the GS12170 accepts on its HDMI side.
+Headline: two independent outputs up to **2160p59.94 4:2:2 10-bit** = exactly
+what 12G-SDI carries (ST 2082-10).
 
 ### Graceful degradation ladder (host/link-driven, via EDID)
-1. **Dual 2160p59.94** — full capability (needs 4-lane DP + adequate power).
-2. **Single 2160p, mirrored to both BNCs** — preserves a 4K feed when the
-   link/power can't sustain two independent 4K streams.
-3. **Dual 1080p59.94** (independent HD).
-4. **Single 1080p, mirrored** — last-resort guaranteed-good state.
+1. Dual 2160p59.94 → 2. Single 2160p mirrored → 3. Dual 1080p59.94 →
+4. Single 1080p mirrored. Advertised via EDID; operator can pin a rung.
 
-Advertised via EDID so the host picks a supported rung; operator can pin one.
+## Clocking — source-locked, NO frame repeat/drop (V1)
+Even with an FPGA + DDR, **V1 is genlocked to the source**: the SDI output clock
+is locked to the recovered DP link clock, so input/output rates match and **no
+frame is doubled or dropped**. DDR here is IP/Mi-V working memory and (optionally)
+a line/CDC buffer — **not** a frame store for rate conversion. Pure passthrough is
+a *design choice we hold for V1*; unlike the GS12170 (where it was physically
+guaranteed by having no memory), here it's enforced by keeping the output
+genlocked and not inserting a frame buffer. Frame repeat/drop + true FRC
+(60.00→59.94, 50↔60) is the **smart variant**, which deliberately adds an
+asynchronous output clock + DDR frame buffer.
 
-**SDI capacities (per output, single-link, auto in GS12170):** 12G (2160p
-50/59.94/60) · 6G (2160p ≤30) · 3G (1080p 50/59.94/60) · HD (1080i/720p).
+## Power (FPGA design)
+| Block | Typical |
+|---|---|
+| PolarFire MPF300 (2 video pipes + 4 transceivers) | ~3–6 W |
+| 2× GS12281 drivers | ~0.7 W |
+| MST/USB4 hub | ~1–2 W |
+| DDR4 + PD + MCU | ~1–2 W |
+| **Total** | **~6–10 W** |
 
-## Power (lower than the FPGA design)
-Per channel ≈ GS12170 (<2 W) + GS12281 (~0.3 W) + redriver (~0.2 W). Two channels
-+ MST hub + PD/MCU ≈ **~5–7 W** worst-case dual-4K (no FPGA load). Still likely
-above bare bus power, so:
-- Negotiate **USB PD** from the host where available.
-- **Secondary USB-C power-in port** (PD sink only, no data) accepting **another
-  USB-C port or a standard USB-C PD PSU**; prefer host PD, fall back to aux,
-  **degrade** rather than brown out. Per-rung wattage TBD (`06` Q3).
-
-## Clocking — source-locked, NO frame repeat/drop (important)
-The dumb design is **genlocked to the source**: the external PLL (Si534x) takes
-the **recovered HDMI clock as its reference and locks to it**, then outputs a
-clean, low-jitter SDI clock *at the same locked frequency*. It is **not** a free-
-running oscillator — so input and output rates are identical and **no frame is
-ever doubled or dropped.**
-
-Why a PLL is still needed even though the source provides the timing:
-1. **Jitter attenuation** — the HDMI-recovered clock is far too jittery to meet
-   SDI's SMPTE ST 2082 jitter spec; the Si534x cleans it (locked to source).
-2. **Frequency synthesis** — derives the exact SDI bit-clock rates from that
-   reference.
-
-**Structural guarantee:** the GS12170 has **no frame buffer** (no DRAM; a <2 W
-line-based bridge), so frame doubling/dropping is *physically impossible* — pure
-passthrough is baked in, not a setting. The only buffering is a small line/FIFO
-for phase alignment, which never over/underflows because the output is locked to
-the source. **Consequence:** output frame-rate accuracy is *inherited from the
-laptop* — which is exactly why EDID management (`03`) matters: it makes the laptop
-emit the broadcast-legal rate, and the converter passes it cadence-for-cadence.
-
-Frame repeat/drop only exists in the **Pro/FPGA variant**, which deliberately adds
-a DDR frame buffer + an **asynchronous** output clock to do true frame-rate
-conversion (60.00→59.94, 50↔60). That is the opt-in opposite of this design.
+Above bare bus power → **USB PD required** (≥18 W contract), plus the secondary
+USB-C power-in port (`06` Q3). Confirm against Libero power estimation once the
+design is sized.
 
 ## Latency
-Fixed-function line-based conversion is **sub-frame**, source-locked. (Active FRC
-— the Pro variant — adds ≥1 frame of buffering by definition; opt-in only.)
+Source-locked line-based conversion is **sub-frame**. (The smart variant's active
+FRC adds ≥1 frame by definition; opt-in.)
 
-## Future "smart" / Pro variant (NOT v1)
-Swap the two GS12170 bridges for a single **FPGA** (+ DDR) to add: **active
-frame-rate conversion** (host 60.00 → SDI 59.94, 50↔60), **color/range
-processing**, and **genlock to house reference**. This is the only thing that
-justifies an FPGA + DDR here, and it mirrors Schindler's Mini/Pro split: same
-front end (USB-C + MST hub + MCU), different conversion core. The v1 PCB can
-leave the door open but should not stuff it.
+## Future "smart" / Pro variant
+Same chip. Add a **DDR frame buffer + asynchronous output clock** for active
+frame-rate conversion, plus color/range processing and **genlock to house
+reference** (REF-IN BNC). The FPGA choice makes this a firmware/stuffing upgrade,
+not a redesign — mirroring Schindler's Mini/Pro split.
 </content>

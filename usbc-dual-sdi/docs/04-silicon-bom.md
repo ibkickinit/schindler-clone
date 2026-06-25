@@ -10,66 +10,53 @@
 > snapshots + manufacturer selector guides. **Verify in a live cart before
 > committing.** Anything uncorroborated is marked *unverified*.
 
-## Architecture baseline: fixed-function, NO FPGA (decided)
+## Architecture baseline: FPGA (Microchip PolarFire) — decided
 
-v1 is the **"dumb" design** — pure HDMI→SDI format passthrough, no frame buffer,
-no FPGA, no SOM, no DDR. The conversion is done by a **fixed-function bridge
-ASIC** per channel. An FPGA only ever returns for the **smart/Pro variant**
-(active frame-rate conversion / color / genlock — Blocks 2-Family-B & 3 below are
-*Pro-only*).
+The fixed-function GS12170 design is **dead** (EOL Feb 2025, no replacement — `06`
+Q0). Conversion moves into a **PolarFire FPGA** with Microchip's **free 12G-SDI
+IP** — how the industry already builds these. V1 is **conversion-only**
+(source-locked); the FPGA makes the smart features a later unlock.
 
-**v1 dumb BOM (per box):**
+**V1 BOM (per box):**
 
 | Block | Part | Role |
 |---|---|---|
-| MST hub | VMM6210 / PS8650 / RTD2186 | 1 USB-C DP → 2× HDMI 2.0 (still required; the hard-to-source block) |
-| Conversion ×2 | **Semtech GS12170** | HDMI 2.0 → 12G-SDI bridge ASIC, audio embed, ST 352 — **no FPGA** |
-| PLL / clock ×1–2 | **Skyworks Si534x** | SDI output clock for GS12170 **HDMI→SDI mode** (required in this direction) |
+| Front-end hub | Parade **PS8650** / Synaptics **VMM5330** (DP out) · or **RTS5490** (USB4, Mac) | 1 USB-C → 2× **DP 1.4** (DP, not HDMI — see Block 1) |
+| FPGA | Microchip **PolarFire MPF300** + DDR4 + SPI flash | 2× DP-RX + SDI map + 2× 12G-SDI TX (free IP) + Mi-V |
 | Cable driver ×2 | Semtech **GS12281** | 12G reclocking driver → 75 Ω BNC |
-| HDMI redriver ×2 | TI/Diodes/Parade HDMI 2.0 redriver | clean TMDS into the GS12170 |
-| USB-C PD/DP | TI **TPS65987D** (+ CCG3PA on port 2) | 4-lane DP Alt negotiate + PD sink |
-| MCU | ST **STM32H723** | EDID emulation, USB HID, status, I²C config |
-
-Getting two displays from one USB-C **still requires the MST hub** — going
-FPGA-less does not remove that (see Block 2 / `07`). What it removes is the
-entire FPGA + DP-MST-IP + 12G-SDI-IP problem on the *conversion* side.
+| USB-C PD/DP | TI **TPS65987D** (+ CCG3PA on port 2) | DP Alt / USB4 + PD sink |
+| MCU | ST **STM32** *or* soft **Mi-V** in the FPGA | EDID emulation, USB HID, status |
 
 ## Block-by-block
 
-### Block 1 — Conversion: Semtech GS12170 HDMI↔SDI bridge (the FPGA-killer)
-- **Bidirectional, 3 software-selectable modes:** SDI→HDMI, **HDMI→SDI** (the
-  mode we use), and SDI gearbox. ⚠️ It's often *listed/marketed "SDI→HDMI"
-  first* — but **HDMI→SDI is a first-class supported mode** (confirmed on
-  Semtech's product page + FAQ). Our direction works.
-- **One chip per channel:** HDMI 2.0 in (≤4Kp60 4:2:2 10-bit) → **12G-SDI out**,
-  auto HD/3G/6G/12G; **embeds up to 16-ch audio** and builds the **ST 352
-  payload ID**; carries HDR InfoFrames. 196-ball BGA, 12×12 mm, **<2 W**.
-- **~$73 qty 1** (GS12170-IBE3); stocked DigiKey/Mouser/Arrow/LCSC (*unverified*).
-- **⚠️ External PLL required in HDMI→SDI mode** — Semtech recommends an external
-  PLL / clock generator (**Skyworks Si534x** class) to produce the clean SDI
-  output clock in this direction. *(Was wrongly dropped from an earlier draft
-  that assumed the SDI→HDMI direction — it's back in the BOM.)*
-- **HDMI port is chip-to-chip TMDS** → needs an **HDMI redriver** on the cable
-  input. Expects **unencrypted** TMDS, no HDCP — aligns with non-HDCP-sink (`06`
-  Q11); ensure the MST hub upstream doesn't authenticate HDCP.
-- **Eval / reference design: `RDK-GS12170-H2S00`** (HDMI→SDI flavor; Newark
-  #90AJ5039, Symmetry, Utmel) — a **complete reference design** (HDMI redriver +
-  GS12170 + external PLL + GS12281 + BNC). Its schematic/BOM **specifies the exact
-  PLL/redriver/driver parts** and seeds the gen-1 conversion subsystem — "adapt
-  the RDK + add MST hub + MCU," not design SDI from scratch. (Other flavors:
-  `-S2H00` SDI→HDMI, `-S2S00` gearbox.)
-- ⚠️ **TOP RISK — lifecycle + SOLE SOURCE:** one source flags GS12170 EOL/NRND
-  while it remains stocked. **Confirm with Semtech before designing in.** It is
-  effectively **sole-source** — Semtech's "first SDI/HDMI bridge ASIC," and the
-  rest of the catalog (GS122xx/GS123xx/GS34xx) is **SDI-PHY-only** (drivers,
-  equalizers, reclockers — no HDMI), so **there is no drop-in bridge replacement**.
-  Fallback if EOL = the small-FPGA recipe (HDMI RX + Lattice ECP5/Artix + SDI IP +
-  GS12281) — where those SDI-PHY parts become the FPGA's output stage.
-- Only the **GS12170** does HDMI 2.0 → 12G-SDI single-chip; older Gennum SDI
-  parts (GS2972/GS2971A) are SDI-only and cap at 3G.
+### Block 1 — Conversion: PolarFire FPGA (DP-RX → 12G-SDI)
+Per channel, inside one PolarFire MPF300:
+- **DisplayPort RX IP** — DP 1.4, **HBR3 8.1 Gb/s/lane, SST**, carries **4K60
+  4:2:2**. ⚠️ **Feed it DP, not HDMI:** Microchip's **HDMI RX IP caps at 4K30**
+  (1080p60 1-pixel / 4K30 4-pixel) — confirmed; the DP-RX path is how we reach
+  4K60. (So the hub must output DP — Block 2.)
+- **video → SDI mapping** + **ST 299 audio embed** + **ST 352 payload ID** in
+  fabric.
+- **12G-SDI TX IP** — Microchip, **FREE** (1.5G/3G/6G/12G, ST 2082-1; Jan-2026
+  release; demo **DG0889**). Drives the transceiver → GS12281.
+- **One MPF300 (300K LE)** targets **both** channels (2× DP-RX + 2× SDI-TX) + soft
+  **Mi-V**. ⚠️ **Resource/timing fit at 2 channels is a diligence item** (`06`
+  Q0b) — the DG0889 demo is single-channel; budget LE/transceiver/DDR for two.
+- **HDCP:** configure DP-RX to **not authenticate** → non-HDCP sink (`06` Q11).
+- **IP cost:** SDI IP free; **DP-RX IP** is Microchip CoreDP (SST) or **Bitec** —
+  confirm license cost (`06` Q0b). No AMD-style ~$16k AV/DP bundle here.
+
+#### Eval / bench (what to order)
+- **`MPF300-VIDEO-KIT-NS`** (Newark #66AH4313) — MPF300T + DDR4 + SPI flash, HDMI
+  2.0 (RX ≤4K30) + **HD/3G-SDI on-board**. Validates the chain at **1080p59.94 /
+  3G** with *just the kit*.
+- **`VIDEO-DC-SDI`** (SDI FMC daughtercard) — **required to reach 12G-SDI** (the
+  kit's on-board SDI is HD/3G only; 12G goes over the FMC). Order alongside.
+- Phased: kit (HDMI→3G) → add SDI FMC (→12G) → DP-RX input (→4K60). See `05`.
 
 ### Block 1b — 12G-SDI cable driver
-Use a **reclocking** cable driver, one per BNC, after the GS12170 SDI output.
+Use a **reclocking** cable driver, one per BNC, after the FPGA SDI transceiver
+output (this SDI-PHY part survives the GS12170 EOL).
 
 | Part | Reclock | Lifecycle | Stock / ~price | Note |
 |---|---|---|---|---|
@@ -78,37 +65,36 @@ Use a **reclocking** cable driver, one per BNC, after the GS12170 SDI output.
 | Semtech GS12081-INE3 | no | Active | snippet showed **non-stocked, ~24-wk lead** | cost-down, risky |
 | TI LMH1208RTVR | no | *NRND-vs-active unverified* | listed | avoid until confirmed |
 
-- The **GS12281 reclocking** driver after the GS12170 covers SDI output jitter on
-  the line side; **no separate retimer IC** is needed. **However**, the GS12170
-  in **HDMI→SDI mode does need the external PLL** (Block 1, Si534x class) to
-  generate the SDI output clock — so the dumb design *does* carry one clock
-  generator (corrected from an earlier draft).
+- The **GS12281 reclocking** driver after the FPGA covers SDI output jitter on the
+  line side; **no separate retimer IC** is needed.
+- **Low-jitter reference clock (Skyworks Si534x) required** to feed the PolarFire
+  **transceiver reference** — the SDI TX serial jitter is dominated by the
+  transceiver refclk, so a clean reference is mandatory for ST 2082 compliance.
+  (This is the original FPGA-path reasoning, back in force now that conversion is
+  in the FPGA.)
 - ⚠️ **3G-only parts that look tempting but are disqualified:** GS3490, LMH0307,
   LMH0394 — cannot do 12G.
 
 ### Block 2 — Front-end hub: split one USB-C into two displays (still required)
-Unchanged by the FPGA-less decision — you still need a hub to get two displays
-from one USB-C, feeding the two **GS12170 bridges** (HDMI 2.0). **Two hub
+Still required — and now it should output **DP** (to feed the PolarFire **DP-RX**,
+which reaches **4K60**; the HDMI-RX path caps at 4K30, Block 1). **Two hub
 technologies, and the choice decides Mac support** (`06` Q-MAC, `02` §2):
 
 **Option 1 — DP MST hub (Windows-independent / Mac-mirror).** Cheapest; works on
-any DP-Alt host; but **macOS mirrors** (no MST extended). Discrete options, best
-first:
-- **Synaptics VMM6210** (USB-C/DP-Alt in → 1× HDMI 2.1 + 1× DP 1.4, dual-4K60) /
-  **VMM5330** (DP1.4 MST hub, ≤3 TX). VMM6210 **integrates the USB-C input** —
-  fewest parts. **Datasheet obtained (2026-06-24, vault `_Projects/USB_DualSDI`)**
-  — spec review unblocked; procurement quote still pending (stock 403-blocked).
-- **Parade PS8650** — DP2.1a→DP1.4 **MST hub, 1 in → 4 out**, 4K60+HDR/stream.
-  Orderable MPN **PS8650BGA274GTR-A0** (BGA-274), US distributor **Avnet** —
-  **quote requested 2026-06-24, pending**. Needs a separate USB-C DP-Alt/PD front
-  stage (takes a DP input).
-- **Realtek RTD2186** *(new find)* — DP1.4 RX **SST/MST (≤7 in, out to 4
-  displays)**, **HDMI 2.0b 4K60** per output (no DSC). Single-chip DP-MST-RX →
-  4× HDMI 2.0; Chinese reference designs (schematic + PCB) exist. Low-volume
-  obtainability **unverified** — but a credible 3rd discrete hub.
-- **Analogix ANX6470** *(new find, marginal)* — real MST hub but **DP1.2/HBR2
-  only** (1 in → 3 streams, 21.6 Gb/s total), so dual-4K60 is tight/not
-  guaranteed. Listed for completeness; lower priority.
+any DP-Alt host; but **macOS mirrors** (no MST extended). **Prefer DP-output
+hubs.** Discrete options, best first:
+- **Parade PS8650** ★ — DP2.1a→DP1.4 **MST hub, 1 in → 4 DP out**, 4K60+HDR/stream.
+  **DP outputs feed the DP-RX directly** — best fit. Orderable MPN
+  **PS8650BGA274GTR-A0** (BGA-274), **Avnet** quote pending. Needs a USB-C
+  DP-Alt/PD front stage.
+- **Synaptics VMM5330** — DP1.4 MST hub, ≤3 **DP** TX. Also DP-out → good fit.
+  (VMM6210 gives 1× HDMI 2.1 + only 1× DP — fewer DP outs; less ideal now.)
+  Datasheet in hand (vault `_Projects/USB_DualSDI`); quote pending.
+- **Realtek RTD2186** — DP1.4 MST → **4× HDMI 2.0** out. ⚠️ **HDMI output now
+  disfavored** (would hit the FPGA's 4K30 HDMI-RX cap, or need an HDMI→DP stage).
+  Keep only if a 4K30 ceiling is acceptable. Low-volume sourcing unverified.
+- **Analogix ANX6470** — real MST hub but **DP1.2/HBR2 only**, so dual-4K60 is
+  tight. Lower priority.
 - ⚠️ Parade PS176-class / ITE / Algoltek / Realtek **RTD2173**-class are
   single-stream converters, **not** MST splitters.
 
@@ -126,79 +112,47 @@ FPGA.*
 - Caveat: base **M1/M2/M3 Macs cap at 1 external** regardless; only M4+/Pro/Max
   do independent dual.
 
-**Family B — DP MST RX inside the FPGA (PRO/SMART VARIANT ONLY — not v1).** Only
-relevant if you build the FPGA-based smart variant (active FRC/color/genlock),
-where the FPGA does both the MST split and the conversion. No scarce hub chip;
-the cost is IP. Three IP routes, not just AMD:
-- **AMD DP1.4 RX Subsystem (PG300)** on Zynq/Artix US+ — MST sink, proven, but
-  **paid IP** (~$5k DP + ~$11k AV bundle) and **pins to AMD**.
-- **Intel/Altera DisplayPort FPGA IP** *(new find)* — has a true **MST sink (up
-  to 4 streams, HBR3)**, and Intel FPGAs with ≥12.5G transceivers
-  (**Arria 10 GX, Cyclone 10 GX, Agilex 7 F-Tile**) also have first-party **12G-
-  SDI II IP** → a **complete non-AMD single-chip** equivalent of the AMD path.
-  Intel IP pricing not public (*"cheaper than AMD" unverified*).
-- **Third-party MST IP on a cheap FPGA** *(new find — softens the cost wall)* —
-  **Parretto** (vendor-neutral MST IP: AMD/Intel/Lattice/Microchip; on GitHub +
-  commercial) or **Bitec DP1.4a** (MST "on request"). These let us run **MST sink
-  on a low-cost Microchip PolarFire** (whose own DP RX is SST-only) **alongside
-  PolarFire's FREE 12G-SDI IP** — i.e. MST-in-FPGA **without** AMD's ~$16k NRE.
-  Stream-count/HBR3 details need confirming (vendor pages 403).
+> **We do the MST split in a *discrete hub*, NOT in the FPGA.** The FPGA does
+> **DP-RX (SST) + SDI**, not MST sink — so the AMD/Intel/Parretto MST-IP debate is
+> moot for our architecture. (MST-in-FPGA stays a theoretical alternative for an
+> all-in-one-chip Pro variant: AMD DP RX Subsystem ~$16k, Intel DP-MST, or
+> Parretto/Bitec MST IP on PolarFire. Not pursued — the discrete hub is cheaper
+> and simpler.)
 
-**Development path — decouple sourcing from progress (do this regardless).** A
-commercial **USB-C → dual-HDMI-2.0 MST adapter** (StarTech **MST14CD122HD**,
-Plugable **USBC-MSTH2**) outputs two independent 4K60 HDMI streams *today* → feed
-the FPGA HDMI RX and bring up the **whole SDI chain** now. Caveats: dual-4K60
-needs a **host with DP1.4 + DSC + HBR3** (else it drops to 4K30); **macOS mirrors
-only — use Windows/Linux**; **don't** accidentally buy a DisplayLink dock
-(compressed, driver-based). This *bypasses* (doesn't *validate*) our own MST
-sink — but it unblocks all the SDI-TX work. Eval boards for the real MST sink:
-**AMD ZCU102** ships a 4-stream-over-one-DP MST example; Intel dev kits
-(Cyclone 10 GX) have DP + 12G-SDI examples; PS8650 EVB via Macnica.
+**Prototyping note (still valid):** a commercial **USB-C→dual-HDMI MST adapter**
+(Plugable **USBC-MSTH2**) can feed the bench *today* — but our FPGA input is
+**DP**, and the adapter outputs **HDMI** (→ 4K30 cap on PolarFire HDMI-RX), so the
+adapter is only good for the **initial 3G / ≤4K30 chain bring-up** on the video
+kit's HDMI input. Full 4K60 needs a **DP source** into the DP-RX (the real hub, or
+a DP test source). See `05`.
 
-**Thunderbolt / USB4 — evaluated, no Asian single-chip.** Only **Intel Goshen
-Ridge JHL8440** receives both tunneled DP streams → dual independent DP
-(dual-4K60), but it's Intel and **TB-cert/firmware-gated**. Asian USB4 parts
-don't replace the splitter (ASMedia ASM2464PD = storage-only; ASM4242 =
-host-side; VIA VL830/VL832 = single-DP-out). Not for v1 unless TB-only host
-support is required.
+**Thunderbolt / USB4:** the **RTS5490** USB4 hub (Block 2 Option 2) is the Mac
+path; it outputs DP-tunneled → feeds the DP-RX. Intel Goshen Ridge JHL8440 is the
+only other dual-DP-tunnel breakout (cert-gated). ⚠️ Parade PS176-class / ITE /
+Algoltek / RTD2173-class are single-stream converters, **not** MST splitters.
 
-⚠️ **Not** MST splitters (single-stream converters — can't do the split):
-Parade **PS176**-class, ITE, Algoltek, and Realtek's **RTD2173**-class converters.
-Don't confuse them with the real MST hubs above (PS8650, RTD2186).
+### Block 3 — FPGA: Microchip PolarFire (the V1 conversion core)
+The GS12170 EOL makes the FPGA the V1 conversion engine. **PolarFire MPF300** is
+the choice: **free 12G-SDI IP**, 12.7G transceivers, DP-RX IP (SST/HBR3/4K60), and
+a complete dev kit (`MPF300-VIDEO-KIT-NS` + `VIDEO-DC-SDI` FMC for 12G).
 
-### Block 3 — FPGA *(NOT IN v1 — Pro/smart variant only)*
-**v1 has no FPGA** (the GS12170 bridges do the conversion). This block applies
-only if/when the **smart variant** is built (active FRC / color / genlock), where
-one FPGA replaces both bridges and does the MST split too. Options, if that day
-comes:
-- **Discrete hub + cheap FPGA:** **Microchip PolarFire** (free 12G-SDI IP) doing
-  DP/HDMI SST RX + 12G-SDI TX after a hub split — plus DDR for the frame buffer.
-- **MST-in-FPGA:** **no longer AMD-only** — AMD first-party, **Intel/Altera**
-  first-party (DP-MST sink + 12G-SDI II on Arria 10 / Cyclone 10 GX / Agilex 7),
-  or **third-party MST IP (Parretto/Bitec) on PolarFire** (MST-in-FPGA without
-  AMD's ~$16k NRE, pairs with PolarFire's free SDI IP).
+**What PolarFire gives us:**
+- **12G-SDI RX/TX IP — FREE** (1.5G/3G/6G/12G, ST 2082-1; demo DG0889).
+- **DisplayPort RX IP** — DP 1.4 **HBR3/SST → 4K60** (Microchip CoreDP or Bitec).
+- 12.7G transceivers; MPF300T (300K LE) + DDR4 + SPI flash; stocked (~$150–300).
 
-| Family/role | SerDes max | 12G-SDI | DP/HDMI RX MST | IP cost | Obtainable |
-|---|---|---|---|---|---|
-| **AMD Zynq US+ XCZU4EV/ZU3EG** ★(B) | PL GTH **12.5G** | yes (GTH) | **DP1.4 MST + HDMI2.0 4K60** (1st-party) | ~$11k AV +$5k DP | yes, stocked (~$150–400) |
-| **Intel Arria10/Cyclone10 GX**(B) | **12.5G** | yes (SDI II IP) | **DP MST sink (≤4, HBR3)** 1st-party | paid (*unverified*) | yes |
-| **Microchip PolarFire MPF300T** ★(A, or B via 3rd-party IP) | 12.7G | **free** 12G IP | native SST only; **MST via Parretto/Bitec** | free / 3rd-party IP | yes |
-| Lattice CertusPro-NX | **10.3G** | **NO — disqualified** | — | — | — |
-| Lattice Avant | 12.5G | no turnkey 12G IP | MST via Parretto (prelim) | mixed | eval only |
+**Diligence items before committing (`06` Q0b):**
+- ⚠️ **HDMI-RX caps at 4K30** — must use the **DP-RX** path for 4K60 (drives the
+  DP-output-hub choice, Block 2).
+- ⚠️ **Resource/timing fit for 2 channels** — DG0889 is single-channel; confirm
+  2× DP-RX + 2× SDI-TX + Mi-V fit in MPF300 (300K LE) with timing closure.
+- ⚠️ **DP-RX IP license cost** — confirm Microchip CoreDP-RX (or Bitec) terms; SDI
+  IP is free, DP-RX may not be.
 
-- **Cheapest overall: Family A + PolarFire** — discrete hub (VMM/PS8650/RTD2186)
-  + PolarFire (free 12G-SDI IP), **no MST IP NRE at all**. Gated on hub
-  procurability (Block 2 / `06` Q1).
-- **If no hub sources out: Family B no longer means a forced ~$16k AMD bill.**
-  Two cheaper-than-AMD routes now exist: **Intel** first-party DP-MST + SDI II,
-  or **Parretto/Bitec MST IP on PolarFire** (keeps the free SDI IP). AMD remains
-  the most-proven but most-expensive Family-B option.
-- **CertusPro-NX disqualified** (SerDes capped at 10.3G < 12G) everywhere.
-- **Net:** the architecture is **no longer a binary "cheap-but-gated vs
-  expensive-AMD."** Best case = discrete hub + PolarFire (no IP NRE); if hubs
-  fall through, MST-in-PolarFire via Parretto/Bitec, or an Intel FPGA, both beat
-  the AMD NRE. AMD is now the *fallback-of-last-resort*, not the default.
-  **Decision still gated on the Block-2 sourcing/quote results.**
+**Alternatives (only if PolarFire doesn't fit):** AMD Zynq US+ (DP+SDI IP, but
+~$16k AV/DP NRE) or Intel Arria10/Cyclone10 GX (DP + free-eval SDI II IP). Both
+do everything PolarFire does at higher IP cost — fallbacks, not the plan.
+**Lattice CertusPro-NX disqualified** (SerDes 10.3G < 12G).
 
 ### Block 4 — USB-C PD + DP Alt-Mode controller
 The box is a **DP Alt-Mode sink (UFP_D)** wanting **4-lane DP (pin assignment
@@ -232,18 +186,16 @@ DP mux/redriver routes the lanes.
   (no FPGA), so no large flash / OCTOSPI needed.
 - **USB-FS (12 Mbps) is plenty** for HID — no external HS PHY.
 
-### Block 6 — Power budget (dumb design, dual-4K60 worst case)
+### Block 6 — Power budget (FPGA design, dual-4K60 worst case)
 
 | Block | Typical | Note |
 |---|---|---|
-| 2× GS12170 bridge | ~3–4 W | <2 W ea |
-| PLL / clock (Si534x) | ~0.3–0.5 W | required in HDMI→SDI mode |
+| PolarFire MPF300 (2 pipes + 4 transceivers) | ~3–6 W | confirm via Libero power estimator |
+| PLL / clock (Si534x) | ~0.3–0.5 W | transceiver reference |
 | 2× GS12281 cable drivers | ~0.7 W | ~0.34 W ea |
-| 2× HDMI redrivers | ~0.4 W | |
-| MST hub | ~1–2 W | |
-| USB-C PD + MCU + LEDs | ~1 W | |
-| DC-DC losses (~85%) | +~1 W | |
-| **Total realistic** | **~6–9 W** | lower than the FPGA design — no big-FPGA load |
+| MST/USB4 hub | ~1–2 W | |
+| DDR4 + USB-C PD + MCU/LEDs | ~1–2 W | |
+| **Total realistic** | **~6–10 W** | FPGA is the dominant load |
 
 - **Verdict: still above bare bus power — PD recommended.** A single PD contract
   at **9 V/2 A (18 W)** covers it comfortably.
@@ -251,45 +203,39 @@ DP mux/redriver routes the lanes.
   video port, or feed Port 2 from a USB-C charger; **degrade** rather than brown
   out on a stingy host.
 
-## Summary recommendation table
-
-**v1 dumb design** (FPGA/IP rows are Pro-variant only):
+## Summary recommendation table (V1 FPGA design)
 
 | Block | Recommended | Obtainable? | ~Price (1–10) | Caveat |
 |---|---|---|---|---|
-| **Conversion ×2** | Semtech **GS12170** bridge ASIC (HDMI→SDI mode) | stocked (*lifecycle unverified*) | ~$73 ea | **the FPGA-killer; confirm EOL status w/ Semtech** |
-| PLL / clock | Skyworks **Si534x** | yes | ~$3–8 | **required in HDMI→SDI mode** (generates SDI clock) |
-| 12G cable driver ×2 | Semtech **GS12281-INE3** | yes, stocked | ~$31 ea | reclocking; after each GS12170 |
-| HDMI redriver ×2 | TI/Diodes/Parade HDMI 2.0 redriver | yes | ~$2–6 ea | clean TMDS into the bridge |
-| DP MST hub | VMM6210 · PS8650 (Avnet, quote pending) · RTD2186 | design-win channel | hub chip cost | still required; `07` for sourcing |
-| USB-C PD/DP | TI **TPS65987D** + CCG3PA (port 2) | yes (*stock unverified*) | ~$5–8 | 4-lane DP + PD sink |
-| MCU | ST **STM32H723** (or smaller G0/G4/L4) | yes, in stock | ~$3–12 | EDID + HID + config; FS USB fine |
-| Power | PD ~18 W (+ 2nd USB-C port) | — | — | ~6–9 W load; bus power marginal |
-| *FPGA + DP/SDI IP* | *Pro/smart variant only — see Block 3* | — | — | *not in v1* |
+| **FPGA (conversion)** | Microchip **PolarFire MPF300** + DDR4 | yes, stocked | ~$150–300 | **free 12G-SDI IP**; DP-RX via DP (HDMI-RX caps 4K30) |
+| SDI IP / DP-RX IP | Microchip 12G-SDI (free) + CoreDP-RX / Bitec | — | SDI free; DP-RX *TBD* | confirm DP-RX license cost (`06` Q0b) |
+| PLL / clock | Skyworks **Si534x** | yes | ~$3–8 | transceiver reference clock |
+| 12G cable driver ×2 | Semtech **GS12281-INE3** | yes, stocked | ~$31 ea | reclocking; after FPGA TX |
+| Front-end hub (DP out) | **PS8650** (Avnet, pending) / **VMM5330** / **RTS5490** (USB4/Mac) | design-win channel | hub chip cost | DP output (feeds DP-RX); `07` |
+| USB-C PD/DP | TI **TPS65987D** + CCG3PA (port 2) | yes (*stock unverified*) | ~$5–8 | DP Alt / USB4 + PD sink |
+| MCU | ST **STM32** *or* soft **Mi-V** | yes / in-fabric | ~$3–12 | EDID + HID; or fold into FPGA |
+| Power | PD ~18 W (+ 2nd USB-C port) | — | — | ~6–10 W load |
+| Bench | `MPF300-VIDEO-KIT-NS` + `VIDEO-DC-SDI` (12G FMC) | yes | kit ~$1–1.5k | kit alone = HDMI≤4K30 + HD/3G; FMC for 12G |
 
-## Top sourcing risks (ranked)
+## Top diligence / sourcing items (ranked)
 
-1. **GS12170 lifecycle — HIGHEST.** The single chip that removes the FPGA may be
-   **EOL/NRND** (one source) while still **stocked** at DigiKey/Mouser/Arrow/LCSC
-   (~$73). **Confirm status directly with Semtech before designing it in.**
-   Fallback if truly EOL = the small-FPGA conversion recipe (HDMI RX +
-   ECP5/Artix + SDI IP + GS12281) — more engineering, the thing the bridge
-   avoided. **Action:** Semtech lifecycle inquiry; identify a second-source
-   bridge or commit to the FPGA-recipe fallback early.
-2. **DP MST hub sourcing — MODERATE.** Still required; all hubs are design-win-
-   channel parts. *Decoupled from development* by an off-the-shelf MST adapter
-   (`07`). **Parade PS8650** (Avnet quote pending), **VMM6210** (datasheet in
-   hand), **RTD2186** are the candidates.
-3. **PD controller config/stock — LOW-MODERATE.** Active + listed; needs a
-   firmware/EEPROM config flow. Avoid NRND TPS65988.
-4. **MCU — LOWEST.** STM32 family, in stock; FS-USB is fine for HID.
+1. **HDMI-RX 4K30 cap → use DP-RX — HIGHEST design item.** PolarFire HDMI RX IP
+   tops out at 4K30; 4K60 requires the **DP-RX** path → **DP-output hub** (PS8650/
+   VMM5330). Validate 4K60 over DP-RX on the bench. (`06` Q0b)
+2. **FPGA resource/timing fit for 2 channels.** DG0889 is single-channel; confirm
+   2× DP-RX + 2× SDI-TX + Mi-V close timing in MPF300 (300K LE). May push to a
+   larger PolarFire if tight.
+3. **DP-RX IP license cost.** SDI IP free; confirm Microchip CoreDP-RX or Bitec
+   DP-RX terms.
+4. **Front-end hub sourcing.** DP-output hub (PS8650 Avnet quote pending / VMM5330
+   / RTS5490 for Mac). Design-win channel parts.
+5. **PD controller** config/stock (avoid NRND TPS65988); **MCU** lowest risk.
 
-## Make-vs-buy note (decided: buy fixed-function)
-Earlier drafts argued an FPGA was "non-negotiable for the managed-EDID/FRC/color
-thesis." **That was scope creep.** The features the product actually needs —
-EDID-driven resolution/frame-rate management + format conversion + embedded audio
-— are delivered by the **MCU (EDID) + the GS12170 bridge (conversion/audio)**
-with **no FPGA**. Only *active* frame-rate conversion, color processing, and
-genlock genuinely need an FPGA + DDR, and those are deferred to the **Pro
-variant**. So v1 = **buy fixed-function** (GS12170), keep the FPGA design
-documented as the Pro upgrade path (Blocks 2-Family-B & 3).
+## Make-vs-buy note (FPGA forced by GS12170 EOL)
+We briefly had a true fixed-function path (the GS12170 bridge) that needed **no
+FPGA** — but it's **EOL with no replacement** (`06` Q0), so an FPGA is now
+unavoidable for 12G conversion (as it is for the whole industry). The mitigations:
+**PolarFire's 12G-SDI IP is free**, the dev kit + reference design exist, and the
+*same* FPGA that does V1 conversion also unlocks the smart features (FRC/color/
+genlock) later — so the FPGA is a foundation, not a detour. The real cost is
+**HDL development effort + the DP-RX IP license**, not silicon or SDI IP.

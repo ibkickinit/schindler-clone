@@ -56,11 +56,12 @@ Target users:
 
 ## Architecture (decided)
 
-**Fixed-function — no FPGA, no SOM.** USB-C MST hub → two **Semtech GS12170
-HDMI→SDI bridge ASICs** → two BNCs, with a small MCU for EDID. Effectively a
-USB-C MST dongle + two HDMI→SDI micro-converters integrated into one box. An
-FPGA-based "smart" variant (active frame-rate conversion, color, genlock) is a
-documented future **Pro** option, not v1. See [`docs/02-architecture.md`](docs/02-architecture.md).
+**FPGA-based — Microchip PolarFire (raw chip, no SOM).** USB-C → DP-output hub →
+2× DP-RX in a **PolarFire MPF300** (free 12G-SDI IP) → 2× BNC, with an MCU for
+EDID. The fixed-function bridge plan (Semtech GS12170) is dead — **EOL Feb 2025
+with no replacement** — so conversion moved into the FPGA, as the industry already
+builds these. V1 is conversion-only; the same FPGA unlocks smart features (active
+frame-rate conversion, color, genlock) later. See [`docs/02-architecture.md`](docs/02-architecture.md), [`docs/06` Q0](docs/06-open-questions.md). See [`docs/02-architecture.md`](docs/02-architecture.md).
 
 ## Status
 
