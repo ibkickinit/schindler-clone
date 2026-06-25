@@ -116,6 +116,16 @@ Status: ☐ todo · ◐ in progress · ✅ done · 🔬 needs verification
   scaler reduces master → this engine's output-res LOD → `raster_to_tile` tiles the LOD → ring does
   0.5–2.0× of it. Make **LOD size, tile-frame geometry (currently hardwired 1920×1080/8040 tiles),
   and warp source dims** runtime params. This delivers clean 50% and retires the mip.
+  - **W1-A ✅ Runtime tiler geometry (sim-proven, commit `6eab0fb`).** `pg_raster_to_tile` IN_W → BRAM-
+    sizing MAX + new runtime `in_w` input drives address math/tiles_x (height was already band-runtime).
+    `pg_tile_s2mm_cmd` FRAME_BYTES (BTT) + SLOT_STRIDE → runtime inputs. BD wrappers pass them through.
+    `sim/run_path_b_dedicated.sh` all PASS incl. runtime-width proof (tiler synth max 64, active in_w=32,
+    8-frame ring-wrap bit-exact). 
+  - **W1-B ☐ BD/tcl + firmware GPIO wiring.** Drive `in_w`/`frame_bytes`/`slot_stride` from a firmware
+    GPIO computed from the engine LOD dims; switch build from `scaler_bypass_1080p` to scaler-reduces-to-
+    LOD; set `pg_re_0` source dims = LOD. Then build + bench clean 50% at 720p (LOD=720).
+  - **W1-C ☐ Warp read-engine source dims runtime** (`pg_re_0`/`pg_warp_top` IN_W/IN_H = LOD) — may
+    already be GPIO-driven (readengine_warp_bd.tcl IN_H); verify + extend.
 - **W2 ☐ Two-engine bandwidth clamp table.** Given Engine A = HDMI/VGA (HD), Engine B = Composite/
   Component (mostly SD/ED) + assignable SDI, produce the **table of legal (A res/fps, B res/fps)
   combos** that fit aggregate DDR/HP bandwidth (operator OK'd clamping). PHY-disable rule applies.
