@@ -10,9 +10,9 @@ desktop — it **mirrors** (hardware-locked on Apple Silicon, no fix coming). So
   **dealbreaker** for the "two independent" promise (dual-mirror still serves
   one-source→two-destinations, our twin-output mode).
 - Macs do independent dual via **Thunderbolt/USB4 DP tunneling**, not MST. A
-  **USB4 hub (Realtek RTS5490** — non-Intel, **not** TB-cert-gated, fixed-
-  function, **no FPGA)** can replace the MST hub → same GS12170 chain → Mac
-  *and* Windows independent dual, still "dumb."
+  **USB4 hub (Realtek RTS5490** — non-Intel, **not** TB-cert-gated) can replace
+  the MST hub; its DP-tunneled outputs feed the **same PolarFire DP-RX** → Mac
+  *and* Windows independent dual.
 
 **The decision is "who's the customer?"** Windows live-events/AV → MST (cheapest).
 Mac broadcast/production → USB4. **Open / to verify:**
@@ -24,9 +24,9 @@ Mac broadcast/production → USB4. **Open / to verify:**
   **M4/M5 base + Pro/Max = 2+**. A real support-matrix caveat either way.
 - RTS5490 sourcing (low-volume) and cost vs an MST hub.
 
-**Does not block the prototype:** the GS12170 conversion chain is identical for
-either front end, so Phase 1 proceeds on MST; this is a *production front-end*
-decision (`02` §2, `04` Block 2, `05` Phase 3).
+**Does not block the prototype:** the PolarFire conversion is identical for either
+front end (both deliver DP to the DP-RX), so bring-up proceeds regardless; this is
+a *production front-end* decision (`02` §2, `04` Block 2, `05` Phase 3).
 
 ## Q0 — Conversion approach *(DECIDED 2026-06 → PolarFire FPGA; GS12170 dead)*
 **DECISION: do conversion in a Microchip PolarFire FPGA** (free 12G-SDI IP). The
@@ -132,17 +132,17 @@ a non-GS12170 OEM module exists. Then re-baseline `01/02/04/05`.
   12G-SDI IP) is the durable answer**, not a sad fallback.
 **Action:** Semtech lifecycle inquiry + get the GS12170 eval board (Phase 0).
 
-## Q1 — MST hub: still required, sourcing per `07` *(dumb design uses a discrete hub, not FPGA-MST)*
-Going FPGA-less does **not** remove the MST hub — you still need it to get two
-displays from one USB-C. In the dumb design the hub feeds the two GS12170 bridges
-(HDMI 2.0). Sourcing playbook + decision in **`07-sourcing-playbook.md`**:
+## Q1 — Front-end hub: still required (discrete DP-output hub feeds the FPGA DP-RX)
+The FPGA does **conversion**, not the MST split — you still need a hub to get two
+displays from one USB-C. It should output **DP** (to feed the PolarFire DP-RX at
+4K60; the HDMI-RX path caps at 4K30 — Q0a). Sourcing in **`07`**:
 - **Prototype:** a **$40 off-the-shelf USB-C→dual-HDMI MST adapter** (Plugable
-  USBC-MSTH2) — offloads the hub to a commodity part; build the conversion now.
-- **Production:** a discrete hub — **Parade PS8650** (Avnet quote pending),
-  **Synaptics VMM6210** (datasheet in hand), or **Realtek RTD2186**. All are
-  design-win-channel parts; chase quotes in parallel with the build.
-- *(MST-in-FPGA — Parretto/AMD/Intel — is only relevant to the Pro/smart variant,
-  which has no separate bridge chip. See `04` Block 2 Family B.)*
+  USBC-MSTH2) for the HDMI-in / ≤4K30 bring-up; a DP source/hub for 4K60.
+- **Production (DP output):** **Parade PS8650** (Avnet quote pending), **Synaptics
+  VMM5330**, or **Realtek RTS5490** (USB4, for Mac — Q-MAC). Design-win-channel
+  parts; chase quotes in parallel with the build.
+- *(MST-in-FPGA — Parretto/AMD/Intel — is NOT used; the discrete hub does the
+  split. It survives only as a theoretical all-in-one-chip alternative, `04`.)*
 
 ## Q2 — Does the target laptop give 4-lane DP Alt Mode? *(measurement, not a fork)*
 Dual-4K60 needs 4 DP lanes. Many USB-C ports drop to **2-lane** DP when
@@ -171,12 +171,13 @@ video stays driverless, the helper only improves determinism. This de-risks v1
 without needing active FRC. The per-OS reliability measurement (Phase 4) still
 decides whether full **Tier-2 active FRC** is ever warranted.
 
-## Q10 — FPGA IP-licensing NRE *(MOOT for v1 — Pro/smart variant only)*
-**Not a v1 concern** — the dumb design has no FPGA and no IP licensing. This only
-matters if the **Pro/smart variant** is built. For reference: AMD MST-in-FPGA
-carries ~$11k AV + ~$5k DP IP; **Intel** first-party or **Parretto/Bitec on
-PolarFire** are cheaper Pro routes (`04` Block 3). **HDCP entitlement is never
-needed** (non-HDCP sink, Q11).
+## Q10 — FPGA IP licensing *(V1 = just the DP-RX IP; the big MST NRE is avoided)*
+V1 uses PolarFire, but because the **discrete hub does the MST split**, we **do
+not** license DP-MST IP — sidestepping the ~$16k AMD AV/DP NRE entirely. V1's only
+IP question is the **DP-RX IP** (Microchip CoreDP-RX or Bitec) — the **12G-SDI IP
+is free** — tracked in **Q0b**. **No HDCP entitlement** (non-HDCP sink, Q11). The
+~$16k AMD MST-in-FPGA route only matters for a theoretical all-in-one-chip Pro
+variant (`04` Block 3) — not pursued.
 
 ## Q5 — DSC: in or out for v1?
 Dual-4K60 **4:4:4** needs DP DSC; dual-4K60 **4:2:2 10-bit** (what SDI carries)

@@ -1,94 +1,79 @@
-# 07 — MST Front-End Sourcing Playbook
+# 07 — Sourcing & Bench Playbook
 
-> **Why this doc exists:** the MST options had piled up and *none of the discrete
-> hub chips are actually small-shop-buyable* — they're NDA/design-win parts sold
-> to dock/monitor OEMs. That frustration is correct and structural. This doc
-> stops the option-sprawl and gives **one prototype path + one production track**,
-> with concrete next actions. Distributor stock / prices / IP-tier costs marked
-> *unverified* were search-snippet-derived (live pages 403-blocked) — confirm in
-> a cart / with a rep before committing.
+> Concrete "what to order and how to get it" for the **decided architecture**
+> (`02`/`04`/`06` Q0): **discrete DP-output hub → PolarFire FPGA (DP-RX + free
+> 12G-SDI IP) → GS12281 → BNC.** Prices/stock marked *unverified* were
+> search-snippet-derived (distributor pages 403 the crawler) — confirm on the cart.
 
-## The reframe that un-sticks it
+## What's easy vs hard to source
 
-**Don't shop for discrete MST silicon.** Split the problem:
-- **Prototype (this week, ~$40 + a video kit):** a commodity USB-C→dual-HDMI MST
-  adapter offloads the entire MST hub to a $40 part; feed its two HDMI streams
-  into an FPGA HDMI-RX and build the *actual hard part* (HDMI/DP-RX → 12G-SDI-TX).
-- **Production (parallel, weeks):** pursue **one** FPGA+IP silicon track. Don't
-  chase NDA-gated hub chips.
+- **Easy (off-the-shelf, stocked):** the **PolarFire FPGA** and its **dev kit +
+  FMCs**, the **GS12281** SDI driver, the **TPS65987D** PD/Alt-Mode controller,
+  the **STM32** MCU, and a **$40 MST adapter** for early bring-up.
+- **Hard (design-win channel):** the **DP-output hub** (Parade PS8650, Synaptics
+  VMM5330, Realtek RTS5490) — all sold to dock/monitor OEMs, not openly stocked.
+  This is the one sourcing thread that needs a vendor conversation. Mitigated for
+  *development* by the off-the-shelf adapter (you don't need the production hub to
+  start).
 
-## Ease-of-sourcing ranking (easiest first)
+## Bench shopping list (order to start)
 
-| Option | Ease | Fastest hands-on | ~Cost to first bench |
-|---|---|---|---|
-| **Off-the-shelf MST adapter → FPGA HDMI-RX** | **Easy** | StarTech MST14CD122HD / Plugable USBC-MSTH2 on Amazon | **~$40** + FPGA board |
-| AMD Zynq US+ (ZCU102) + DP1.4 RX + UHD-SDI IP | Medium | Buy ZCU102 on DigiKey; eval IP in Vivado | ~$3.0–3.7k board |
-| **Microchip PolarFire Video Kit + Parretto MST IP + free SDI IP** | Medium | Buy MPF300-VIDEO-KIT-NS on DigiKey; clone Parretto from GitHub | ~$1.0–1.5k board |
-| Intel Cyclone 10 GX + DP IP + SDI II IP | Medium | C10GX dev kit via Altera eStore/DigiKey; OpenCore Plus eval | ~$3k+ board |
-| Parade PS8650 (discrete) | Medium-Hard | Email Parade/Macnica for samples + EVB | samples free-ish; EVB *unverified* |
-| Synaptics VMM6210/5330 (discrete) | Hard | FAE / design-win only; NDA datasheet | gated, no easy path |
-| Realtek RTD2186 (discrete) | Hard | LCSC/broker for chip; config tooling NDA-gated | chip cheap but a brick w/o tooling |
-| Analogix ANX6470 (discrete, DP1.2) | Very hard | vendor sales only; legacy | gated **+ DP1.2-marginal → drop** |
+| Item | Part | Where | ~Cost | Purpose |
+|---|---|---|---|---|
+| FPGA dev kit | `MPF300-VIDEO-KIT-NS` | Newark #66AH4313 | ~$1–1.5k | MPF300T + DDR4; HDMI 2.0 + HD/3G SDI on-board |
+| SDI FMC | `VIDEO-DC-SDI` | Microchip | — | adds **12G-SDI** (kit on-board SDI is HD/3G) |
+| DP FMC | `VIDEO-DC-DP` | Microchip (Bitec) | — | **DP-RX 4K60 input** (kit has no DP jack) |
+| MST adapter | Plugable **USBC-MSTH2** | Amazon | ~$40 | early HDMI-in bring-up (≤4K30) |
+| Analyzer | 12G SDI analyzer / known-good monitor | — | — | SDI compliance — non-negotiable |
 
-## ▶ The recommendation
+⚠️ The kit has **one** HPC FMC slot → the SDI and DP FMCs **swap, not coexist**;
+validate the 12G-TX and DP-RX halves separately, integrate on the custom board
+(`05` Phase 2).
 
-### Prototype — do this now (~$40 + a video kit, zero NDA)
-1. **Buy a Plugable USBC-MSTH2 (~$39.95, Amazon) today** + a StarTech MST14CD122HD
-   as backup. Both are *true MST* hubs that present **two independent** 4K60
-   displays (not mirrored) — provided the host does MST. **Test on a Windows/Linux
-   laptop with DP1.4 + DSC + HBR3** (macOS mirrors only; weak hosts drop to 4K30).
-2. Feed each HDMI output into an **FPGA HDMI2.0-RX**. Cheapest board that also has
-   a 12G-SDI-TX path: **Microchip MPF300-VIDEO-KIT-NS** (HDMI2.0 + SDI on one
-   PolarFire kit, DigiKey-stocked). If you're already an AMD shop, **ZCU102** is
-   the most turnkey but ~$3.5k.
-3. This proves the **HDMI/DP-RX → 12G-SDI-TX** core — the real engineering —
-   with no MST silicon, no sample request, no IP license. The $40 adapter *is*
-   your prototype front end.
+> Note: the dev kit uses the 300K-LE MPF300T; **production uses the cheaper
+> MPF200T-FCG484I ($286)** — see below. The kit is for bring-up + the free
+> reference design (DG0889), not the production part.
 
-### Production — the decided architecture (`02`, `04`, `06` Q0)
-**Discrete DP-output hub + PolarFire conversion.** *Not* MST-in-FPGA — the hub
-does the split; the FPGA does **DP-RX (SST) + free 12G-SDI IP**. This is simpler
-and cheaper than the Parretto/AMD MST-in-FPGA routes.
-- **Conversion: Microchip PolarFire MPF300** — 12G-SDI IP **free** (Libero), DP-RX
-  IP (CoreDP/Bitec), dev kit + DG0889 reference. **Use the DP-RX path for 4K60**
-  (HDMI-RX caps at 4K30). Confirm DP-RX IP license + 2-channel resource fit
-  (`06` Q0b).
-- **Front-end hub (DP output):** **Parade PS8650** (Avnet quote pending;
-  support@paradetech.com / Macnica for samples+EVB) or **Synaptics VMM5330**; or
-  **Realtek RTS5490 USB4 hub** if Mac independent-dual is a target (`06` Q-MAC).
+## Production silicon
 
-**Note — the old "MST-in-FPGA" debate (Parretto/AMD/Intel) is superseded.** We use
-a discrete hub, so we don't license DP-MST IP at all. AMD ZCU102 / Parretto-on-
-PolarFire remain only as theoretical all-in-one-chip alternatives, not the plan.
+| Block | Part | Obtainable | ~Price | Note |
+|---|---|---|---|---|
+| FPGA | **MPF200T-FCG484I** (MPF100T cost-down if it fits) | DigiKey, stocked | **$286** / $174 | free 12G-SDI IP; DP-RX IP TBD (`06` Q0b) |
+| Front-end hub (DP out) | **Parade PS8650** / Synaptics VMM5330 / **RTS5490** (USB4/Mac) | design-win channel | hub cost | the one hard part — see below |
+| SDI driver ×2 | Semtech **GS12281-INE3** | DigiKey, stocked | ~$31 ea | reclocking; after FPGA TX |
+| Ref clock | Skyworks **Si534x** | stocked | ~$3–8 | transceiver reference |
+| USB-C PD/DP | TI **TPS65987D** (+ CCG3PA port 2) | stocked (*unverified*) | ~$5–8 | DP Alt / USB4 + PD sink |
+| MCU | ST **STM32** (or soft Mi-V) | stocked | ~$3–12 | EDID + HID |
 
-**Discretes:** the only one worth an email is **Parade PS8650** (support@paradetech.com
-+ Macnica) for samples + EVB — keep as a backup, but it's a DP-MST *hub* (DP/HDMI
-out), so it still needs a downstream DP/HDMI-RX→SDI stage. **Drop Synaptics,
-Realtek, Analogix** for a small shop (NDA/design-win gated, no buyable eval; ANX
-also DP1.2).
+## The hub — the one design-win conversation
 
-### One-line decision
-**Order a $40 Plugable MST adapter + the PolarFire Video Kit this week, clone
-Parretto's GitHub DP IP, and email Parretto to confirm PolarFire MST dual-4K60
-support** — that single sequence un-sticks both the prototype and the production
-track for under ~$1.5k with zero NDAs.
+DP-output MST/USB4 hubs are sold to dock OEMs, not on DigiKey. Chase in parallel
+with the build (the adapter unblocks development):
+- **Parade PS8650** (`PS8650BGA274GTR-A0`) — **Avnet (US) quote requested
+  2026-06-24, pending**; samples/EVB via support@paradetech.com / Macnica.
+- **Synaptics VMM5330** — datasheet in hand (vault); quote via Synaptics FAE.
+- **Realtek RTS5490** (USB4) — only if Mac independent-dual is a target (`06`
+  Q-MAC); verify on a real M4/M5 Mac before committing.
 
 ## Concrete links / contacts
-- Plugable USBC-MSTH2 — amazon.com (≈$39.95) / plugable.com
-- StarTech MST14CD122HD — amazon.com (≈$60–90, *unverified*)
-- Microchip **MPF300-VIDEO-KIT-NS** — DigiKey #10315239
-- AMD **ZCU102** (EK-U1-ZCU102-G) — DigiKey #7035245 (≈$3.5k, *unverified*)
-- Intel **Cyclone 10 GX** dev kit (DK-DEV-10CX220-A) — Altera eStore / DigiKey
-- **Parretto** DP IP — github.com/Parretto/DisplayPort ; parretto.com/dp ; reseller Microtronix (sales@microtronix.com)
-- **Bitec** DP1.4a IP (MST/HDCP on request) — bitec-dsp.com
-- **Parade PS8650** (PS8650BGA274GTR-A0) — support@paradetech.com / Avnet Americas / Macnica
-- Microchip 12G-SDI IP / demo **DG0889** — microchip.com (Jan-2026 SDI IP expansion)
+- Microchip **MPF300-VIDEO-KIT-NS** (Newark #66AH4313); FMCs **VIDEO-DC-SDI**,
+  **VIDEO-DC-DP**; 12G-SDI IP + demo **DG0889** — microchip.com.
+- FPGA **MPF200T-FCG484I** / **MPF100T-FCG484I** — DigiKey.
+- **Bitec** DP IP / DP FMC — bitec-dsp.com.
+- **Parade PS8650** — support@paradetech.com / Avnet Americas / Macnica.
+- Plugable **USBC-MSTH2** — amazon.com (~$40).
 
 ## Open verifications (carry-forward)
-- Live distributor stock for PS8650 (Avnet) and VMM-series.
-- ZCU102 / C10GX current prices (DigiKey 403; figures approximate).
-- Microchip 12G-SDI IP license *free at the 12G tier?*
-- **Parretto on PolarFire: device support + MST dual-4K60 sink behavior** ← the
-  primary-track gating assumption.
-- StarTech current street price.
+- **DP-RX IP license** cost (Microchip CoreDP-RX or Bitec); 12G-SDI IP confirmed
+  free.
+- **2-channel logic fit** in MPF200T (port-down to MPF100T) — `06` Q0b.
+- **DP-output hub** live stock/quote (PS8650 via Avnet; VMM5330).
+- **RTS5490 + macOS** two-independent on a real M4/M5 Mac — `06` Q-MAC.
+- Live distributor stock/qty for the FPGA, GS12281, TPS65987D.
+
+## One-line next action
+**Order `MPF300-VIDEO-KIT-NS` + `VIDEO-DC-SDI` + `VIDEO-DC-DP` + a $40 Plugable
+adapter; in Libero pull the free 12G-SDI IP + DG0889 and price the DP-RX IP** —
+that gets the whole conversion bench running while the hub quote (Avnet/PS8650)
+proceeds in parallel.
 </content>

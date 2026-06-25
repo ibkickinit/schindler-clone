@@ -26,7 +26,7 @@ DDR-heavy frame buffer in V1). See `02`, `04`, `06` Q0.
 > **⚠️ Platform caveat (defining, `06` Q-MAC):** with an **MST** front end, "two
 > independent displays" is true on **Windows/Linux** but **Mac mirrors** (macOS
 > has no MST extended; hardware-locked on Apple Silicon). Independent-dual on Mac
-> requires a **USB4 front end (Realtek RTS5490 — still no FPGA)**. The choice is a
+> requires a **USB4 front end (Realtek RTS5490)**. The choice is a
 > who's-the-customer decision; see `02` §2.
 
 ### Tier 0 — must-ship (v1 MVP)
@@ -36,13 +36,13 @@ DDR-heavy frame buffer in V1). See `02`, `04`, `06` Q0.
   MST mirrors on Mac).
 - **Two 12G-SDI outputs**, each auto-negotiating 12G / 6G / 3G / HD / SD.
 - Per-output formats up to **2160p59.94 4:2:2 10-bit** (4K UHD).
-- **Embedded audio** (HDMI LPCM → SMPTE-embedded SDI audio, up to 16 ch — done
-  in the GS12170 bridge).
+- **Embedded audio** (DP/HDMI LPCM → SMPTE ST 299 embedded SDI audio — done in
+  the FPGA).
 - **Managed EDID** per output with selectable profiles (in the MCU).
 - **EDID-forced frame-rate management** (true fractional rates 23.98 / 29.97 /
   59.94 advertised so the GPU emits broadcast cadence). *Passive* (EDID-nudged,
   source-locked) — this is also **required** to keep the laptop emitting
-  SDI-legal SMPTE rasters the bridge can convert (`02` §5). *Active* rate
+  SDI-legal SMPTE rasters the FPGA can convert (`02` §5). *Active* rate
   conversion is a Pro feature.
 - **Plug-and-play video** — no host driver required for the SDI to work.
 - **Graceful degradation ladder** — when the host link or power can't sustain
@@ -60,16 +60,16 @@ DDR-heavy frame buffer in V1). See `02`, `04`, `06` Q0.
 - Small on-device **OLED + button** for standalone status / profile cycling.
 - SDI **payload ID (ST 352)** and **format flip** confidence on the OLED.
 
-### Tier 2 — Pro / v2 (FPGA-based "smart" variant — NOT v1)
-This is the **only** thing that justifies adding an FPGA + DDR, and it mirrors
-Schindler's Mini/Pro split (same front end, different conversion core):
-- **Active frame-rate conversion** with a DDR frame buffer (host 60.00 → SDI
-  59.94, 50↔60 region conversion) instead of EDID coaxing.
+### Tier 2 — Pro / v2 ("smart" features — NOT v1)
+V1 already uses the FPGA for conversion (source-locked); the Pro variant adds a
+**DDR frame buffer + asynchronous output clock** on the *same* FPGA to unlock:
+- **Active frame-rate conversion** (host 60.00 → SDI 59.94, 50↔60) instead of
+  EDID coaxing.
 - **Color / range processing** and **genlock to house reference** (tri-level /
   black-burst REF IN BNC).
 - **SDI loop / second source** or HDMI confidence out.
-- Replaces the two GS12170 bridges with one FPGA + DDR. Out of scope for v1; the
-  v1 PCB need not pre-stuff it.
+- A firmware/stuffing upgrade on the same silicon — mirrors Schindler's Mini/Pro
+  split. Out of scope for v1.
 
 ## Explicit non-goals (v1)
 - **Not a capture device.** This is SDI *out* from the laptop, not SDI *in*. (A
@@ -127,19 +127,18 @@ exhaustively checked — treat as "white space among the majors."*
 ## Key risks (see `06-open-questions.md`)
 1. **MST vs USB4 front end / Mac support (DEFINING — `06` Q-MAC)** — MST gives
    independent-dual on Windows but **mirror-only on Mac**; a Mac-heavy target
-   forces the **USB4 (RTS5490)** front end. Still no FPGA either way, but it
-   reshapes the front-end BOM and host compatibility. **Verify RTS5490 macOS
-   independent-dual on a real M4 Mac.**
-2. **DP MST / USB4 hub sourcing** — the front-end hub (VMM6210 / PS8650 /
-   RTD2186 / RTS5490) is a design-win-channel part. *Mitigated* for development
-   by an off-the-shelf adapter (`07`).
-2. **GS12170 lifecycle** — the bridge ASIC that removes the FPGA may be EOL/NRND
-   (still stocked; conflicting signals). **Confirm with Semtech before designing
-   in.** Fallback = small-FPGA conversion recipe (`06`, `04`).
-3. **2-lane vs 4-lane DP Alt Mode** on the host — dual 4K needs 4 lanes;
+   forces the **USB4 (RTS5490)** front end. Reshapes the front-end BOM and host
+   compatibility. **Verify RTS5490 macOS independent-dual on a real M4 Mac.**
+2. **FPGA fit / IP cost** — design to **MPF200T** ($286); confirm 2-channel logic
+   fit (port down to MPF100T if it fits) and the **DP-RX IP license** cost (SDI IP
+   is free). `06` Q0b.
+3. **DP-output hub sourcing** — the front-end hub (PS8650 / VMM5330 / RTS5490) is
+   a design-win-channel part. *Mitigated* for development by an off-the-shelf
+   adapter (`07`).
+4. **2-lane vs 4-lane DP Alt Mode** on the host — dual 4K needs 4 lanes;
    *mitigated* by the degradation ladder; host-lane behavior needs measurement.
-4. **GPU honoring fractional-rate EDID** — 23.98/24 from laptops is historically
+5. **GPU honoring fractional-rate EDID** — 23.98/24 from laptops is historically
    flaky; *mitigated* by the optional host-side helper (`03`).
 
-(Decided: fixed-function/no-FPGA architecture; secondary USB-C power-in;
-non-HDCP-sink. Per-rung wattage still open — `06` Q3.)
+(Decided: **PolarFire FPGA** conversion (GS12170 EOL); dual-4K60/12G scope;
+secondary USB-C power-in; non-HDCP-sink. Per-rung wattage open — `06` Q3.)

@@ -103,10 +103,9 @@ hubs.** Discrete options, best first:
 - ⚠️ Parade PS176-class / ITE / Algoltek / Realtek **RTD2173**-class are
   single-stream converters, **not** MST splitters.
 
-**Option 2 — USB4 hub (Mac AND Windows independent-dual; still no FPGA).** Uses
-Thunderbolt/USB4 DP tunneling instead of MST, so **macOS extends** (not mirrors).
-Replaces the MST hub, feeds the same GS12170 chain — *fixed-function, not an
-FPGA.*
+**Option 2 — USB4 hub (Mac AND Windows independent-dual).** Uses Thunderbolt/USB4
+DP tunneling instead of MST, so **macOS extends** (not mirrors). Replaces the MST
+hub; its **DP-tunneled outputs feed the PolarFire DP-RX** just like a DP MST hub.
 - **Realtek RTS5490** — **USB4 hub** (DP2.1 tunneling, multi-display, PD), **not**
   Thunderbolt-cert-gated, non-Intel; shipping in the 2025 MS Surface USB4 Dock.
   The cost-down vs Intel **Barlow Ridge JHL9480** (TB5, premium, cert-gated) or
@@ -137,9 +136,10 @@ only other dual-DP-tunnel breakout (cert-gated). ⚠️ Parade PS176-class / ITE
 Algoltek / RTD2173-class are single-stream converters, **not** MST splitters.
 
 ### Block 3 — FPGA: Microchip PolarFire (the V1 conversion core)
-The GS12170 EOL makes the FPGA the V1 conversion engine. **PolarFire MPF300** is
-the choice: **free 12G-SDI IP**, 12.7G transceivers, DP-RX IP (SST/HBR3/4K60), and
-a complete dev kit (`MPF300-VIDEO-KIT-NS` + `VIDEO-DC-SDI` FMC for 12G).
+The GS12170 EOL makes the FPGA the V1 conversion engine. **PolarFire** is the
+family: **free 12G-SDI IP**, 12.7G transceivers, DP-RX IP (SST/HBR3/4K60). The
+**MPF300** dev kit (`MPF300-VIDEO-KIT-NS`) is for bring-up; **production uses the
+cheaper MPF200T-FCG484I** (part selection below).
 
 **What PolarFire gives us:**
 - **12G-SDI RX/TX IP — FREE** (1.5G/3G/6G/12G, ST 2082-1; demo DG0889).
@@ -199,14 +199,14 @@ DP mux/redriver routes the lanes.
 - Live stock/price *unverified (403)* — confirm TPS65987DDHRSHR and CYPD6227 on
   DigiKey before committing.
 
-### Block 5 — Management MCU
-- The dumb design has light MCU duties, so it can be **smaller/cheaper than the
-  H723**. **ST STM32H723ZGT6** is fine and over-provisioned; an **STM32G0/G4 or
-  L4** class part with **≥3 I²C** (two DDC/EDID slave channels + bridge/hub
-  config) and **USB-FS device** (HID) would do and cut cost. Pick in layout.
-- Duties: **EDID emulation** on the two MST-hub DDC channels, **USB HID** config,
-  **status LEDs/OLED**, **GS12170 + hub config** over I²C. No bitstream staging
-  (no FPGA), so no large flash / OCTOSPI needed.
+### Block 5 — Management MCU / control
+- **Option A — discrete MCU:** an **STM32G0/G4/L4** (or H7) with **≥3 I²C** (two
+  DDC/EDID slave channels + hub config) and **USB-FS device** (HID). Simplest
+  bring-up + isolation from the FPGA.
+- **Option B — soft Mi-V** RISC-V inside the PolarFire (the SDI demo already
+  instantiates one) — fewer parts, but the EDID/USB duties move into the FPGA.
+- Duties (either way): **EDID emulation** on the two hub DDC channels, **USB HID**
+  config, **status LEDs/OLED**, **hub config** over I²C.
 - **USB-FS (12 Mbps) is plenty** for HID — no external HS PHY.
 
 ### Block 6 — Power budget (FPGA design, dual-4K60 worst case)
