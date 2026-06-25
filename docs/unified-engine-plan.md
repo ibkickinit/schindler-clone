@@ -112,7 +112,7 @@ true worst case → likely both ≤30p, or one HD + one SD.
 Status: ☐ todo · ◐ in progress · ✅ done · 🔬 needs verification
 **Priority (operator-set 2026-06-25):** W1 is the lead (delivers clean 50%). W3 (UI) PARKED — not needed now.
 
-- **W1 ◐ Dest-res-master build (the main change).** Move the scaler in FRONT of the tile-writer:
+- **W1 ✅ Dest-res-master — clean 50% BENCH-VALIDATED (2026-06-25).** Move the scaler in FRONT of the tile-writer:
   scaler reduces master → this engine's output-res LOD → `raster_to_tile` tiles the LOD → ring does
   0.5–2.0× of it. Make **LOD size, tile-frame geometry (currently hardwired 1920×1080/8040 tiles),
   and warp source dims** runtime params. This delivers clean 50% and retires the mip.
@@ -121,11 +121,18 @@ Status: ☐ todo · ◐ in progress · ✅ done · 🔬 needs verification
     `pg_tile_s2mm_cmd` FRAME_BYTES (BTT) + SLOT_STRIDE → runtime inputs. BD wrappers pass them through.
     `sim/run_path_b_dedicated.sh` all PASS incl. runtime-width proof (tiler synth max 64, active in_w=32,
     8-frame ring-wrap bit-exact). 
-  - **W1-B ☐ BD/tcl + firmware GPIO wiring.** Drive `in_w`/`frame_bytes`/`slot_stride` from a firmware
-    GPIO computed from the engine LOD dims; switch build from `scaler_bypass_1080p` to scaler-reduces-to-
-    LOD; set `pg_re_0` source dims = LOD. Then build + bench clean 50% at 720p (LOD=720).
-  - **W1-C ☐ Warp read-engine source dims runtime** (`pg_re_0`/`pg_warp_top` IN_W/IN_H = LOD) — may
-    already be GPIO-driven (readengine_warp_bd.tcl IN_H); verify + extend.
+  - **W1-B ✅ BENCH-VALIDATED 2026-06-25 (commit `32e66fb`, artifact `unified-engine-destres-720p-
+    scaler_top-enable-32e66fb`).** scaler_top reduces source→1280×720 LOD; tiler tiles the LOD (in_w/
+    frame_bytes/slot_stride driven by xlconstants); pg_re_0 source=1280×720 (TILES_X=80 writer==reader).
+    **DEST-RES DELIVERS CLEAN 50%:** uniform downscale opix/frame=921600 (full) at 100/80/67/57/**50%**,
+    margin to 40%, falls off only at 33% (beyond spec). Upscale 133/200% + rot 30/90 all 921600. The
+    full-master path teetered at 67%/50% (82k–845k); reading the pre-scaled 720 LOD bounds the working
+    set. **SPEC (0.5–2.0×) MET on silicon.** WNS=+0.0035 (met, razor-thin — scaler_top adds logic;
+    margin is a follow-up). Identity is now a 1:1 LOD→output map = whole image (visual check owed).
+  - **W1-C ◐ Runtime per-engine LOD (deferred to multi-engine).** Today LOD is build-time (xlconstants +
+    pg_re_0 CONFIG + scaler_top fixed OUT_W/H + firmware FRAME_W/H). True runtime per-engine res needs:
+    xlconstants→GPIO (firmware-set), scaler_top OUT_W/H made runtime, firmware LOD from a define/GPIO.
+    Folds into W2 (two engines, each runtime res). Not needed for the clean-50% goal.
 - **W2 ☐ Two-engine bandwidth clamp table.** Given Engine A = HDMI/VGA (HD), Engine B = Composite/
   Component (mostly SD/ED) + assignable SDI, produce the **table of legal (A res/fps, B res/fps)
   combos** that fit aggregate DDR/HP bandwidth (operator OK'd clamping). PHY-disable rule applies.
