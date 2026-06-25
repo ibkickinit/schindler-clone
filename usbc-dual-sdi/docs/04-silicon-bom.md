@@ -152,14 +152,12 @@ any). DigiKey qty-1 prices:
 | **MPF100T-FCG484I** | 109K | 8 | **$174** | cheapest viable; **logic TIGHT** (~110–130K needed) — may not fit two full channels |
 | MPF050T | 50K | few | less | too small for two 4K60 channels |
 
-- **Recommended: start design on `MPF100T-FCG484I` ($174), fall back to
-  `MPF200T-FCG484I` ($345) if it doesn't fit.** Transceivers are fine on MPF100T
-  (4 DP-RX + 2 SDI-TX = 6 of 8); the gate is **logic-element fit** — a Phase-3
-  bench item (`06` Q0b).
+- **PLAN OF RECORD: `MPF200T-FCG484I` ($345)** — 192K LE / 16 xcvr, comfortable
+  for two 4K60 channels. **Cost-down target: `MPF100T-FCG484I` ($174)** if the
+  design fits its 109K LE (transceivers already fine — 6 of 8). The MPF100T fit is
+  a **Phase-3 bench item** (`06` Q0b); design to MPF200T, port down if it fits.
 - Volume pricing drops ~30–50%; verify live qty/price on the cart (403 remotely).
-- **⚠️ Cost reality (`06` Q0c):** even the cheapest, the FPGA is $100–175 + the
-  DP-RX IP license — a heavy BOM line. The real lever is **SDI-rate scope**: dual
-  4K30/6G or dual 1080p/3G need far cheaper silicon. See Q0c.
+- Scope **decided**: dual-4K60/12G retained (not scoped down) — `06` Q0c.
 
 **Diligence items before committing (`06` Q0b):**
 - ⚠️ **HDMI-RX caps at 4K30** — must use the **DP-RX** path for 4K60 (drives the

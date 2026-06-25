@@ -54,7 +54,12 @@ below), but the **durable design is PolarFire**.
 - **Bench needs `VIDEO-DC-SDI` FMC** for 12G (the video kit's on-board SDI is
   HD/3G only).
 
-## Q0c — SDI-rate scope vs cost *(GATING product-economics decision)*
+## Q0c — SDI-rate scope vs cost *(DECIDED: stay dual-4K60/12G)*
+**DECISION: keep dual-4K60/12G** (the full spec) — not scoped down. FPGA plan of
+record **MPF200T-FCG484I ($345)**, cost-down to **MPF100T ($174)** if the design
+fits its logic. Cost accepted as the price of the high-end spec; the analysis
+below is retained as the rationale + the lower-rate fallback if economics force it.
+
 The FPGA cost is driven by the **dual-4K60/12G** ambition, and it's a heavy BOM
 line at any size: MPF100T **$174** (logic tight), MPF200T **$345**, MPF300T
 **~$600** (qty-1; ~30–50% less at volume) — **plus** the DP-RX IP license. For a
