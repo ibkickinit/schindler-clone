@@ -434,7 +434,17 @@ if {$RASTER_TO_TILE} {
     set_property -dict [list CONFIG.CONST_WIDTH {12} CONFIG.CONST_VAL $LOD_W] [get_bd_cells const_in_w]
     connect_bd_net [get_bd_pins const_in_w/dout] [get_bd_pins raster_to_tile_0/in_w]
     # clock (pclk_in) + reset are fanned out alongside scaler_0's below (search RASTER_TO_TILE clk/rst).
-    connect_bd_intf_net [get_bd_intf_pins scaler_0/m_axis]        [get_bd_intf_pins raster_to_tile_0/s_axis]
+    # SCALER->TILER decoupling FIFO (W1-B fix, 2026-06-25). scaler_v's emit STALLS when m_axis_tready is low
+    # (pipe_advance = !tvalid || tready); if the tiler back-pressures long enough, the next v_cross arrives
+    # mid-emit and CLOBBERS the in-progress output row -> structured scramble (the 640-seam artifact). The VDMA
+    # path never hit this (its deep S2MM FIFO rarely back-pressured the scaler). This AXIS FIFO restores that:
+    # it holds tready HIGH to the scaler (until full) so every emit completes uninterrupted, then drains to the
+    # tiler at the tiler's bursty pace. 4096-deep absorbs the band-swap transients; passes TLAST + TUSER(SOF).
+    create_bd_cell -type ip -vlnv xilinx.com:ip:axis_data_fifo scaler_tile_fifo
+    set_property -dict [list CONFIG.TDATA_NUM_BYTES {3} CONFIG.HAS_TLAST {1} CONFIG.TUSER_WIDTH {1} \
+        CONFIG.FIFO_DEPTH {4096} CONFIG.IS_ACLK_ASYNC {0} CONFIG.HAS_TKEEP {0} CONFIG.HAS_TSTRB {0}] [get_bd_cells scaler_tile_fifo]
+    connect_bd_intf_net [get_bd_intf_pins scaler_0/m_axis]        [get_bd_intf_pins scaler_tile_fifo/S_AXIS]
+    connect_bd_intf_net [get_bd_intf_pins scaler_tile_fifo/M_AXIS] [get_bd_intf_pins raster_to_tile_0/s_axis]
 
     # =========================================================================================================
     # Path B DEDICATED WRITE DataMover (2026-06-25) — replaces the VDMA S2MM for the tiled write leg.
@@ -705,6 +715,7 @@ connect_bd_net $pclk_in  [get_bd_pins axi_vdma_0/s_axis_s2mm_aclk]
 connect_bd_net $pclk_in  [get_bd_pins scaler_0/aclk]
 if {[info exists RASTER_TO_TILE] && $RASTER_TO_TILE} {        ;# RASTER_TO_TILE clk: same S2MM-write pclk_in domain
     connect_bd_net $pclk_in [get_bd_pins raster_to_tile_0/aclk]
+    connect_bd_net $pclk_in [get_bd_pins scaler_tile_fifo/s_axis_aclk]   ;# scaler->tiler decoupling FIFO (pclk_in)
     # NOTE: the dedicated WRITE DataMover clock+reset wiring lives AFTER the reset
     # infrastructure (rst_axi/rst_mem) is created — search "Path B dedicated WRITE
     # DataMover clocking + reset". rst_axi/rst_mem don't exist yet at this point.
@@ -860,6 +871,7 @@ connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]        [get_bd_pins v_vi
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]        [get_bd_pins scaler_0/aresetn]
 if {[info exists RASTER_TO_TILE] && $RASTER_TO_TILE} {         ;# RASTER_TO_TILE rst: same domain as scaler_0/v_vid_in_axi4s_0
     connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]    [get_bd_pins raster_to_tile_0/aresetn]
+    connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]    [get_bd_pins scaler_tile_fifo/s_axis_aresetn]
 }
 # iter5-bisect-iter4d3: AXIS FIFO removed — reset wire not needed
 
