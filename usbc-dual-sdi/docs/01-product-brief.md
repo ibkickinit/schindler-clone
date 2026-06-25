@@ -81,18 +81,46 @@ Schindler's Mini/Pro split (same front end, different conversion core):
   sink** (like Blackmagic/AJA): unprotected sources convert; protected sources
   blank at the source. No "override" toggle — stripping is illegal (`06` Q11).
 
-## Competitive landscape
+## Competitive landscape & white space *(market check, 2026)*
 
-| Product | Host I/F | Channels | Direction | Notes |
-|---|---|---|---|---|
-| Blackmagic UltraStudio Monitor 3G | Thunderbolt/USB-C | 1 | out | desktop box, 3G only |
-| Blackmagic Micro Converter HDMI→SDI | HDMI | 1 | out | needs an HDMI dongle to reach USB-C; 3G/6G |
-| AJA U-TAP SDI | USB 3 | 1 | **in** (capture) | opposite direction |
-| Magewell Pro Convert | network/HDMI | 1 | varies | not USB-C display-native |
-| **Crossover (this)** | **USB-C DP Alt Mode** | **2** | **out** | **dual 12G, presents as two displays, managed EDID/FRC** |
+**Verified: no shipping product is simultaneously (a) USB-C/Thunderbolt-native,
+(b) two *independent* SDI out, and (c) presents as plain OS displays.** The market
+splits into two camps that each miss the key bit (HIGH confidence among the
+majors; MEDIUM on "zero competitors worldwide" — not every regional/Chinese brand
+was exhaustively checked).
 
-The gap we fill: **dual-channel, USB-C-display-native, broadcast-legal SDI out
-with deliberate EDID/frame-rate control.** Nobody is sitting exactly here.
+| Product | Host I/F | Dir. | SDI out | Presents as a **display**? | Price | The gap |
+|---|---|---|---|---|---|---|
+| BMD **UltraStudio 4K Mini** | TB3 | out+capture | **2× 12G** | **No** — DeckLink, app-driven; dual is fill+key | ~$1,199 | not a display; needs NLE/Resolve |
+| AJA **T-TAP Pro** | TB3 | out | 1× 12G (+HDMI) | **No** — "not like another monitor" | ~$1,145 | single; not a display |
+| BMD **UltraStudio Monitor 3G** | TB3 | out | 1× 3G | **No** — app-driven | ~$500–600 | single, 3G, not a display |
+| AJA **U-TAP / Magewell** | USB | **in** (capture) | — | — | ~$300+ | wrong direction |
+| **DIY: USB-C MST hub + 2× HDMI→SDI** | USB-C DP-Alt | out | 2 indep | **Yes** | ~$380–450 | 3 boxes; **Windows-only**; no unified EDID/format mgmt |
+| **This product** | **USB-C / USB4** | **out** | **2× 12G** | **Yes** | target **$600–900** | — |
+
+**The moat is "presents as displays," not "dual 12G SDI."** Dual-12G-out already
+exists (UltraStudio 4K Mini). What nobody ships is a box that **behaves like two
+ordinary monitors from any app / the desktop** *and* outputs SDI. Every pro
+SDI-out box is **app-driven** (needs Premiere/Resolve/Control Room; AJA documents
+T-TAP Pro is "not like another monitor"). The only "acts-as-a-display" path today
+is the **3-box DIY chain — and it's Windows-only** (no Mac MST). **Demand is
+proven** by the NDI/Syphon/BetterDisplay "virtual-display → mirror-to-DeckLink"
+hacks people use to fake exactly this.
+
+**Positioning consequences:**
+- Lead with **"two SDI outputs that just work as displays, from any app, on Mac
+  and PC"** — not "dual 12G-SDI out" (table stakes).
+- **Mac support is a competitive weapon**, not just a risk: the DIY status quo is
+  Windows-only, so "works on Mac too" (the USB4/RTS5490 path, `06` Q-MAC) is a
+  differentiator nobody offers.
+- **Target:** live events / playout / signage / feeding switchers — buyers who
+  want display-like SDI. **Not** color-critical finishing (that crowd wants the
+  NLE/Mercury-Transmit path, so generic-display behavior is a non-feature).
+- **Pricing room:** ~$600–900 integrated undercuts the ~$1,200 pro boxes and
+  beats the DIY chain on platform support, cable count, and EDID/format mgmt.
+
+*Caveat: aja.com 403'd (specs via resellers); regional/Chinese brands not
+exhaustively checked — treat as "white space among the majors."*
 
 ## Key risks (see `06-open-questions.md`)
 1. **MST vs USB4 front end / Mac support (DEFINING — `06` Q-MAC)** — MST gives

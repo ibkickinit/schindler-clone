@@ -27,6 +27,13 @@ dongle, or a PCIe card in a tower. There is **no small, bus-friendly, USB-C-
 native device that presents as two displays and emits two channels of 12G-SDI**
 with deliberate EDID / frame-rate control.
 
+**Market check (2026, verified — see [`docs/01`](docs/01-product-brief.md)):** no
+shipping product combines USB-C-native + two *independent* SDI out + **presents as
+OS displays**. The pro boxes (AJA T-TAP Pro, Blackmagic UltraStudio) are
+**app-driven, not displays** ("not like another monitor"); the only "acts-as-a-
+display" path is a clunky **Windows-only 3-box DIY chain**. The moat is the
+**display behavior** (and Mac support), not the SDI count.
+
 Target users:
 
 - **Live events / corporate AV** — drive two SDI monitors, a switcher input,
