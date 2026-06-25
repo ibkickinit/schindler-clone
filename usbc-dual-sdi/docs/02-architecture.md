@@ -180,6 +180,31 @@ above bare bus power, so:
   USB-C port or a standard USB-C PD PSU**; prefer host PD, fall back to aux,
   **degrade** rather than brown out. Per-rung wattage TBD (`06` Q3).
 
+## Clocking — source-locked, NO frame repeat/drop (important)
+The dumb design is **genlocked to the source**: the external PLL (Si534x) takes
+the **recovered HDMI clock as its reference and locks to it**, then outputs a
+clean, low-jitter SDI clock *at the same locked frequency*. It is **not** a free-
+running oscillator — so input and output rates are identical and **no frame is
+ever doubled or dropped.**
+
+Why a PLL is still needed even though the source provides the timing:
+1. **Jitter attenuation** — the HDMI-recovered clock is far too jittery to meet
+   SDI's SMPTE ST 2082 jitter spec; the Si534x cleans it (locked to source).
+2. **Frequency synthesis** — derives the exact SDI bit-clock rates from that
+   reference.
+
+**Structural guarantee:** the GS12170 has **no frame buffer** (no DRAM; a <2 W
+line-based bridge), so frame doubling/dropping is *physically impossible* — pure
+passthrough is baked in, not a setting. The only buffering is a small line/FIFO
+for phase alignment, which never over/underflows because the output is locked to
+the source. **Consequence:** output frame-rate accuracy is *inherited from the
+laptop* — which is exactly why EDID management (`03`) matters: it makes the laptop
+emit the broadcast-legal rate, and the converter passes it cadence-for-cadence.
+
+Frame repeat/drop only exists in the **Pro/FPGA variant**, which deliberately adds
+a DDR frame buffer + an **asynchronous** output clock to do true frame-rate
+conversion (60.00→59.94, 50↔60). That is the opt-in opposite of this design.
+
 ## Latency
 Fixed-function line-based conversion is **sub-frame**, source-locked. (Active FRC
 — the Pro variant — adds ≥1 frame of buffering by definition; opt-in only.)
