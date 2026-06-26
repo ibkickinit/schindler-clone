@@ -572,7 +572,8 @@ static void cmd_help(void)
 #ifdef WARP_BUILD
     xil_printf("  W <deg> [ix iy [px py]]  warp rotation/zoom/pan\r\n"
                "  L <n>           warp prefetch lead override (0=auto)\r\n"
-               "  Z <pct>         scale 10-200%% (<100 scaler-decimate, >=100 warp-zoom)\r\n");
+               "  Z <pct>         scale 10-200%% (<100 scaler-decimate, >=100 warp-zoom)\r\n"
+               "  R <720|1080>    runtime output-res switch (1080p builds only)\r\n");
 #endif
 #ifdef PROJECTIVE_BUILD
     xil_printf("  K <h> <v>       keystone (h,v = far-edge shrink, 1/1000; K 200 0 = 0.20 H)\r\n"
@@ -1067,6 +1068,16 @@ static int g_warp_panx = 0, g_warp_pany = 0;                        /* pan / shi
  * SOURCE center so a sub-LOD auto-centers in the output (no pan, no DDR matte —
  * the warp's own out-of-window matte fills the border). */
 static unsigned g_lod_w = OUT_RASTER_W, g_lod_h = OUT_RASTER_H;
+/* RUNTIME OUTPUT (2026-06-26): the live output raster = VTC active res = warp
+ * OUT_W/OUT_H (out_w_rt/out_h_rt GPIO). Switched 720<->1080 by the 'R' command.
+ * Default = the build OUT_RASTER (this build's VTC boot mode). */
+static unsigned g_out_w = OUT_RASTER_W, g_out_h = OUT_RASTER_H;
+/* Runtime output-mode switch (defined after vtc_setup; forward-declared for the
+ * 'R' UART command). target_h 1080 -> 1080p30, else 720p60. Re-VTCs, sets the
+ * warp output raster (gpio_12 ch1 spare bits), and re-applies the scale. */
+#if defined(WARP_BUILD) && defined(OUTPUT_1080P)
+static void set_output_mode(unsigned target_h);
+#endif
 static unsigned g_warp_anchor = 0;          /* scale anchor: 0 = image center (default), 1 = top-left corner */
 static unsigned g_warp_lod = 0;             /* LOD mip level for current geometry (0=full,1=half,2=quarter) */
 static unsigned g_mip_valid = 0;            /* 1 once the L1/L2 mip rings are filled ('M' cmd); gates LOD>0 */
@@ -1348,7 +1359,7 @@ static void warp_set_rotation(int deg, int invx, int invy, int panx, int pany)
      * eviction. Snap the requested angle to the nearest 10deg so off-grid angles can't thrash the cache. */
     { int m = deg % 360; if (m < 0) m += 360; m = ((m + 5) / 10) * 10; if (m >= 360) m -= 360; deg = m; }
     int co = warp_cos(deg), si = warp_sin(deg);          /* Q12 */
-    int cxo = OUT_RASTER_W / 2, cyo = OUT_RASTER_H / 2;   /* output center */
+    int cxo = (int)g_out_w / 2, cyo = (int)g_out_h / 2;   /* output center = runtime VTC raster */
     /* DYNAMIC RING: source center = the runtime LOD center, so a sub-LOD maps
      * its center to the output center = auto-centered. At 100% g_lod = OUT_RASTER
      * so this is the old FRAME/2 (bit-identical). */
@@ -1522,7 +1533,7 @@ static void apply_scale(unsigned pct)
          * The warp grid is built one band taller (ceil, RE_IN_H=1088) so band 67
          * is addressable; its over-read past the content is clamped out of view.
          * Width stays /16 (stride/tile alignment; 1920/1280 already /16). */
-        g_lod_w = OUT_RASTER_W & ~15u; g_lod_h = OUT_RASTER_H & ~1u;
+        g_lod_w = g_out_w & ~15u; g_lod_h = g_out_h & ~1u;   /* LOD MAX = runtime output raster */
         scaler_kernel_for_ratio(g_lod_w, g_lod_h);   /* NN if 1:1 (bit-exact); filter if downscaling */
         s2mm_set_geometry(g_lod_w, g_lod_h);            /* full compact == full frame          */
         scaler_out_dims_write(g_lod_w, g_lod_h);        /* also drives warp in_w_rt (tied GPIO) */
@@ -1533,8 +1544,8 @@ static void apply_scale(unsigned pct)
         /* DOWNSCALE: scaler decimates to a compact LOD; warp reads it 1:1 and
          * auto-centers. Snap dims to /16 so the tile grid covers the LOD with no
          * partial-tile over-read (the 8-row crop at e.g. 360->352 is invisible). */
-        u32 ow = ((OUT_RASTER_W * pct) / 100u) & ~15u;   /* width /16 (stride/tile align) */
-        u32 oh = ((OUT_RASTER_H * pct) / 100u) & ~1u;    /* OVER-RES: exact even height, no /16 floor */
+        u32 ow = ((g_out_w * pct) / 100u) & ~15u;   /* width /16 (stride/tile align); rel. runtime output */
+        u32 oh = ((g_out_h * pct) / 100u) & ~1u;    /* OVER-RES: exact even height, no /16 floor */
         if (ow < 16u) ow = 16u;
         if (oh < 16u) oh = 16u;
         g_lod_w = ow; g_lod_h = oh;
@@ -1837,6 +1848,19 @@ static void uart_dispatch(const char *line)
         }
 #else
         xil_printf("UART: 'Z' is warp-only; no warp engine in this build\r\n");
+#endif
+    } else if (op == 'R') {
+        /* RUNTIME OUTPUT-RES SWITCH: R 720 | R 1080  (live, monitor re-syncs).
+         * Only valid in a MAX=1920x1080 build (OUTPUT_1080P). 'R' alone = query. */
+#if defined(WARP_BUILD) && defined(OUTPUT_1080P)
+        unsigned res;
+        if (parse_uint(&p, &res)) {
+            set_output_mode(res >= 1080u ? 1080u : 720u);
+        } else {
+            xil_printf("OUTPUT %ux%u (R 720|1080 to switch)\r\n", g_out_w, g_out_h);
+        }
+#else
+        xil_printf("UART: 'R' needs a MAX=1920x1080 (OUTPUT_1080P) warp build\r\n");
 #endif
     } else if (op == 'L') {
         /* WARP prefetch LEAD override: L <n> sets a manual lead (0 = auto per-geometry); L = query.
@@ -2619,7 +2643,7 @@ static void telemetry_loop(UINTPTR vdma_base)
                 unsigned eol  = (unsigned)((dv[7] >> 5) & 0x7FFu);
                 unsigned und  = (unsigned)(dv[8] & 0xFFFFu);
                 xil_printf("  OUT: opix/frame=%u (exp %u) eol/frame=%u (exp %u) starved=%u\r\n",
-                           opix, (unsigned)(OUT_RASTER_W * OUT_RASTER_H), eol, (unsigned)OUT_RASTER_H, und);
+                           opix, (unsigned)(g_out_w * g_out_h), eol, (unsigned)g_out_h, und);
 #endif
 #endif
                 /* DRAIN (2026-06-03): from axis_to_vid_io_0/predrain_snap, routed onto
@@ -2942,6 +2966,31 @@ static int vtc_setup(const vtc_mode_t *m)
 
     return XST_SUCCESS;
 }
+
+#if defined(WARP_BUILD) && defined(OUTPUT_1080P)
+/* RUNTIME OUTPUT-RES SWITCH (2026-06-26): live 720p60 <-> 1080p30 on the
+ * MAX=1920x1080 substrate. Both share the 74.25 MHz pixel clock, so NO clk
+ * reconfig — only the VTC timing, the warp output raster (out_w_rt/out_h_rt via
+ * axi_gpio_12 ch1 spare bits, mux sel = bit0 preserved), and the LOD change.
+ * Order: set warp OUT first (so it produces the new raster), then re-VTC, then
+ * re-apply the scale (recomputes LOD/scaler/warp-center + soft-resets the warp).
+ * The monitor briefly re-syncs, as any display mode change does. */
+static void set_output_mode(unsigned target_h)
+{
+    const vtc_mode_t *m;
+    if (target_h >= 1080u) { g_out_w = 1920u; g_out_h = 1080u; m = &MODE_1080P30; }
+    else                   { g_out_w = 1280u; g_out_h = 720u;  m = &MODE_720P60;  }
+
+    /* warp output raster -> axi_gpio_12 ch1: bit0=mux sel(=1 warp), [12:1]=out_w,
+     * [24:13]=out_h. Matches readengine_warp_bd sl_outw/sl_outh slices. */
+    u32 ch1 = 1u | ((g_out_w & 0xFFFu) << 1) | ((g_out_h & 0xFFFu) << 13);
+    Xil_Out32(INVW_GPIO_BASE, ch1);
+
+    vtc_setup(m);                 /* switch the output VTC timing (same pixel clock) */
+    apply_scale(g_scale_pct);     /* recompute LOD/scaler/warp for the new output + soft-reset */
+    xil_printf("OUTPUT MODE -> %ux%u (%s)\r\n", g_out_w, g_out_h, m->name);
+}
+#endif
 
 int main(void)
 {

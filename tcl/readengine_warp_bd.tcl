@@ -273,6 +273,17 @@ connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]          [get_bd_pins axi_gpio_12
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn] [get_bd_pins axi_gpio_12/s_axi_aresetn]
 re_slice sl_sel axi_gpio_12 gpio_io_o 0 0
 connect_bd_net [get_bd_pins sl_sel/Dout] [get_bd_pins re_mux/sel]
+# RUNTIME OUTPUT (2026-06-26): axi_gpio_12 ch1 (gpio_io_o) spare bits drive the
+# warp's runtime output raster (live 720<->1080 switch). bit0 = mux sel (above);
+# [12:1] = out_w (12b), [24:13] = out_h (12b). Firmware writes the packed ch1
+# word with the mux bit preserved. pg_re_0 out_w_rt/out_h_rt are 12-bit.
+if {[llength [get_bd_pins -quiet pg_re_0/out_w_rt]]} {
+    re_slice sl_outw axi_gpio_12 gpio_io_o 12 1
+    re_slice sl_outh axi_gpio_12 gpio_io_o 24 13
+    connect_bd_net [get_bd_pins sl_outw/Dout] [get_bd_pins pg_re_0/out_w_rt]
+    connect_bd_net [get_bd_pins sl_outh/Dout] [get_bd_pins pg_re_0/out_h_rt]
+    puts "RUNTIME OUTPUT: pg_re_0 out_w_rt/out_h_rt <- axi_gpio_12 ch1 \[12:1\]/\[24:13\]"
+}
 # ch2 = runtime per-geometry prefetch LEAD -> pg_warp_top lead_cfg (full 32-bit; top uses [19:0]).
 #   lead_cfg field map (firmware writes the whole 32-bit word to axi_gpio_12 ch2 @ +0x08):
 #     [19:0]  = prefetch LEAD (0 -> build LEAD)

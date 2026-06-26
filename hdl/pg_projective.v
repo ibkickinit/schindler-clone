@@ -49,6 +49,9 @@ module pg_projective #(
     // in-window test below uses these so a coord beyond the (smaller) LOD reads
     // the warp's out-of-window matte. 0 -> build-time IN_W/IN_H (legacy).
     input  wire [11:0] in_w_rt, in_h_rt,
+    // RUNTIME OUTPUT (2026-06-26): the output raster the warp walks (eol/last).
+    // = the VTC active res; switched live 720<->1080. 0 -> build OUT_W/OUT_H.
+    input  wire [11:0] out_w_rt, out_h_rt,
     input  wire signed [CW-1:0]  m_a,m_b,m_c,m_d,m_e,m_f,
     input  wire signed [GCW-1:0] m_g,m_h,
     output wire        o_valid,
@@ -61,14 +64,17 @@ module pg_projective #(
 // DYNAMIC RING: effective active source bounds (signed, for the >=0 && <bound tests).
 wire signed [12:0] inw_eff = $signed({1'b0, (in_w_rt == 12'd0) ? IN_W[11:0] : in_w_rt});
 wire signed [12:0] inh_eff = $signed({1'b0, (in_h_rt == 12'd0) ? IN_H[11:0] : in_h_rt});
+// RUNTIME OUTPUT: effective output raster bounds (eol/last). 0 -> build OUT_W/OUT_H.
+wire [11:0] outw_eff = (out_w_rt == 12'd0) ? OUT_W[11:0] : out_w_rt;
+wire [11:0] outh_eff = (out_h_rt == 12'd0) ? OUT_H[11:0] : out_h_rt;
 generate
 // =========================== AFFINE SUBSET (byte-for-byte pg_affine) ===========================
 if (PROJECTIVE==0) begin : g_affine
     reg signed [CW-1:0] a,b,c,d,e,f, ax,ay,rax,ray;
     reg [11:0] ox, oy; reg running;
     wire accept = o_valid & o_ready;
-    wire eol = (ox == OUT_W[11:0]-12'd1);
-    wire last = eol && (oy == OUT_H[11:0]-12'd1);
+    wire eol = (ox == outw_eff-12'd1);
+    wire last = eol && (oy == outh_eff-12'd1);
     wire signed [CW-1-FB:0] ax_int = ax >>> FB, ay_int = ay >>> FB;
     assign o_valid     = running;
     assign o_in_window = (ax_int>=0)&&(ax_int<inw_eff)&&(ay_int>=0)&&(ay_int<inh_eff);
@@ -130,8 +136,8 @@ end else begin : g_proj
     reg signed [AW-1:0]  nx, ny, rnx, rny;
     reg signed [WW-1:0]  w,  rw;
     reg [11:0] ox, oy; reg running;
-    wire eol  = (ox == OUT_W[11:0]-12'd1);
-    wire last = eol && (oy == OUT_H[11:0]-12'd1);
+    wire eol  = (ox == outw_eff-12'd1);
+    wire last = eol && (oy == outh_eff-12'd1);
     localparam signed [WW-1:0] WONE = (48'sd1 <<< GFB);          // 1.0 in Q.GFB
     localparam signed [WW-1:0] WEPS = (48'sd1 <<< (GFB-6));      // ~1/64 in Q.GFB (horizon guard)
 

@@ -55,6 +55,10 @@ module pg_warp_top #(
     // to match the GPIO slice width; only [11:0] used (dims < 4096). 0 ->
     // build-time IN_W/IN_H (full master) so legacy/affine builds are unchanged.
     input  wire [15:0] in_w_rt, in_h_rt,
+    // RUNTIME OUTPUT (2026-06-26): warp output raster (= VTC active res),
+    // switched live 720<->1080 via axi_gpio_12 ch1 spare bits ([12:1]=out_w,
+    // [24:13]=out_h, 12-bit each). 0 -> build OUT_W/OUT_H.
+    input  wire [11:0] out_w_rt, out_h_rt,
     // output AXIS -> color stack
     output wire [23:0] m_axis_tdata,
     output wire        m_axis_tvalid,
@@ -138,9 +142,12 @@ module pg_warp_top #(
     // in_w_rt/in_h_rt change only on a geometry switch (firmware writes the GPIO
     // then pulses srst), so a slow 2-FF sync is sufficient + glitch-free.
     (* ASYNC_REG = "TRUE" *) reg [11:0] inw_q1, inw_q2, inh_q1, inh_q2;
+    (* ASYNC_REG = "TRUE" *) reg [11:0] outw_q1, outw_q2, outh_q1, outh_q2;
     always @(posedge clk) begin
         inw_q1 <= in_w_rt[11:0]; inw_q2 <= inw_q1;
         inh_q1 <= in_h_rt[11:0]; inh_q2 <= inh_q1;
+        outw_q1 <= out_w_rt; outw_q2 <= outw_q1;
+        outh_q1 <= out_h_rt; outh_q2 <= outh_q1;
     end
 
     pg_warp_engine #(.OUT_W(OUT_W),.OUT_H(OUT_H),.IN_W(IN_W),.IN_H(IN_H),
@@ -148,7 +155,7 @@ module pg_warp_top #(
                      .PROJECTIVE(PROJECTIVE),.GCW(GCW),.GFB(GFB),.RF(RF),.LUT_BITS(LUT_BITS),
                      .NR_ITERS(NR_ITERS),.AW(AW),.WW(WW)) u_eng (
         .clk(clk),.rstn(engine_rstn),.sof(sof),.lead_rt(lr2),  // engine_rstn includes the soft-reset
-        .in_w_rt(inw_q2),.in_h_rt(inh_q2),
+        .in_w_rt(inw_q2),.in_h_rt(inh_q2),.out_w_rt(outw_q2),.out_h_rt(outh_q2),
         .m_a(a2),.m_b(b2),.m_c(c2),.m_d(d2),.m_e(e2),.m_f(f2),.m_g(g2),.m_h(h2),.matte(mt2),
         .o_valid(o_valid),.o_pix(o_pix),.o_ready(o_ready),
         .fetch_req(wreq),.fetch_tx(wtx),.fetch_ty(wty),.fetch_ready(t_rdy),

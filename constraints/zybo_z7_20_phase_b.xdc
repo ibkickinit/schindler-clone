@@ -188,3 +188,10 @@ set_false_path -quiet -to [get_pins -hier -filter {NAME =~ *pg_re_0*/h1_reg[*]/D
 # writes the dim then pulses srst). 12 bits each (in_w_rt/in_h_rt[11:0]).
 set_false_path -quiet -to [get_pins -hier -filter {NAME =~ *pg_re_0*/inw_q1_reg[*]/D}]
 set_false_path -quiet -to [get_pins -hier -filter {NAME =~ *pg_re_0*/inh_q1_reg[*]/D}]
+
+# RUNTIME OUTPUT (2026-06-26): warp output-raster CDC (axi_gpio_12 ch1 spare bits
+# FCLK_CLK0 -> pixel clock) into pg_warp_top's 2-FF sync outw_q1/outh_q1. Same
+# capture-reg trap as inw_q1/inh_q1/a1..f1/lr1/sr1 -> false-path the first stage.
+# Quasi-static (firmware writes on a 720<->1080 mode switch only).
+set_false_path -quiet -to [get_pins -hier -filter {NAME =~ *pg_re_0*/outw_q1_reg[*]/D}]
+set_false_path -quiet -to [get_pins -hier -filter {NAME =~ *pg_re_0*/outh_q1_reg[*]/D}]

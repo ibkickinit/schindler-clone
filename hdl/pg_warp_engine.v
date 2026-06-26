@@ -26,6 +26,7 @@ module pg_warp_engine #(
     input  wire        sof,                        // 1-cyc: start the raster walk (addr-gens self-pace via ready)
     input  wire [19:0] lead_rt,                    // runtime prefetch lead (0 -> use build-param LEAD)
     input  wire [11:0] in_w_rt, in_h_rt,           // DYNAMIC RING: runtime active source dims (0 -> build MAX)
+    input  wire [11:0] out_w_rt, out_h_rt,         // RUNTIME OUTPUT: warp output raster (eol/last; 0 -> build MAX)
     // numerator coeffs (signed Q(CW-FB).FB), firmware-computed
     input  wire signed [CW-1:0] m_a,m_b,m_c,m_d,m_e,m_f,
     // perspective coeffs (signed Q(GCW-GFB).GFB); tie 0 for affine (w=1 -> byte-for-byte pg_affine)
@@ -53,7 +54,7 @@ module pg_warp_engine #(
     pg_projective #(.OUT_W(OUT_W),.OUT_H(OUT_H),.IN_W(IN_W),.IN_H(IN_H),.CW(CW),.FB(FB),
                     .GCW(GCW),.GFB(GFB),.RF(RF),.LUT_BITS(LUT_BITS),.NR_ITERS(NR_ITERS),
                     .AW(AW),.WW(WW),.PROJECTIVE(PROJECTIVE)) u_aff_c (
-        .clk(clk),.rstn(rstn),.sof(sof),.in_w_rt(in_w_rt),.in_h_rt(in_h_rt),.o_valid(ca_v),.o_ready(ca_sr),
+        .clk(clk),.rstn(rstn),.sof(sof),.in_w_rt(in_w_rt),.in_h_rt(in_h_rt),.out_w_rt(out_w_rt),.out_h_rt(out_h_rt),.o_valid(ca_v),.o_ready(ca_sr),
         .m_a(m_a),.m_b(m_b),.m_c(m_c),.m_d(m_d),.m_e(m_e),.m_f(m_f),.m_g(m_g),.m_h(m_h),
         .o_in_window(ca_in),.o_src_col(ca_col),.o_src_row(ca_row),
         .o_h_frac(ca_fx),.o_v_frac(ca_fy),.o_new_row(ca_nr));
@@ -88,7 +89,7 @@ module pg_warp_engine #(
     pg_projective #(.OUT_W(OUT_W),.OUT_H(OUT_H),.IN_W(IN_W),.IN_H(IN_H),.CW(CW),.FB(FB),
                     .GCW(GCW),.GFB(GFB),.RF(RF),.LUT_BITS(LUT_BITS),.NR_ITERS(NR_ITERS),
                     .AW(AW),.WW(WW),.PROJECTIVE(PROJECTIVE)) u_aff_p (
-        .clk(clk),.rstn(rstn),.sof(sof),.in_w_rt(in_w_rt),.in_h_rt(in_h_rt),.o_valid(pa_v),.o_ready(pa_sr && pf_gate),
+        .clk(clk),.rstn(rstn),.sof(sof),.in_w_rt(in_w_rt),.in_h_rt(in_h_rt),.out_w_rt(out_w_rt),.out_h_rt(out_h_rt),.o_valid(pa_v),.o_ready(pa_sr && pf_gate),
         .m_a(m_a),.m_b(m_b),.m_c(m_c),.m_d(m_d),.m_e(m_e),.m_f(m_f),.m_g(m_g),.m_h(m_h),
         .o_in_window(pa_in),.o_src_col(pa_col),.o_src_row(pa_row),
         .o_h_frac(),.o_v_frac(),.o_new_row());
