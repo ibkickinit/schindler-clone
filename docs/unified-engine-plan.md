@@ -7,7 +7,15 @@ Last updated: 2026-06-26 · Branch: **`decimate-on-write`** (off the clean pivot
 
 ---
 
-## ★★ DIRECTION 2026-06-26 (operator) — DYNAMIC RING RESOLUTION, read-engine-driven
+## ★★ DIRECTION 2026-06-26 (operator) — DYNAMIC RING RESOLUTION, read-engine-driven  ✅ ACHIEVED
+
+> **✅ SILICON-VERIFIED 2026-06-26 (build `fd27e73`, monitor "centered live image, clean").** `Z 50` = live
+> 640×352 compact LOD auto-centered, clean warp matte border, WNS=+0.367. Full range counter-clean
+> (Z25..Z200, S2MM_SR=0x11810, opix=921600). Timing trap fixed: in_w_rt/in_h_rt CDC needed a false-path on
+> inw_q1/inh_q1 (WNS -3.486 → +0.367). This is the PRODUCTION substrate. Remaining: daemon scale.set + UI
+> slider; verify rotation/keystone compose on the centered LOD; then D5 second engine + the 1080/SD output
+> envelope. The §scope below is now DONE; kept for the rationale.
+
 
 Operator decision: do NOT special-case 720 + bolt-on auto-center. The engine resolution is fundamentally
 DYNAMIC — **the read engine is the master**: it sets its LOD, and the **ring + scaler + S2MM all follow**,
