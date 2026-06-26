@@ -402,3 +402,15 @@ centered clean 960×528 + matte. The dynamic ring resizes at a 1080p30 display. 
 WITHIN this build the ring already spans 1080↔720 at runtime: Z100 → 1920×1072 LOD; Z67 → ~1280×720 LOD
 (centered). STEP 2 (the full output-mode switch, 720p60 display ↔ 1080p30 display): runtime warp OUT_W/OUT_H
 (mirror the proven IN_W work) + a `vtc_setup(&MODE_*)` swap, on the same MAX=1920×1080 bitstream.
+
+## ✅ RUNTIME 720↔1080 OUTPUT SWITCH — COMPLETE 2026-06-26 (commit f898aba)
+
+R 720 ↔ R 1080 both clean (operator-confirmed), one MAX=1920x1080 bitstream, shared 74.25 MHz clock.
+HDL: pg_projective eol/last use runtime out_w_rt/out_h_rt (engine→top, 2-FF CDC, false-pathed); BD ties them
+to axi_gpio_12 ch1 spare bits ([12:1]=out_w, [24:13]=out_h, bit0=mux); firmware g_out_w/g_out_h + R command.
+
+ROOT CAUSE of the 720p60 no-vsync (debug subagent): vtc_setup never wrote the generator's vertical-event
+HORIZONTAL-offset regs GVBHOFF(0x7C)/GVSHOFF(0x84) — they kept 1080p defaults (col 1920/2008); on a 720p line
+(HTOTAL=1650) that column never occurs → vsync_out never asserts → No Signal. Fix = write them per-mode
+(=H_ACTIVE / H_SYNC_START); 1080p byte-identical. See [[xilinx_vtc_register_update]] sibling-gotcha note.
+Minor follow-up: eol telemetry reads 480 at 720p60 (picture clean, opix full) — cosmetic counter quirk.
