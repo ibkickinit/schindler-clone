@@ -141,6 +141,12 @@ set_property -dict [list \
     CONFIG.PCW_EN_CLK1_PORT {1} \
     CONFIG.PCW_EN_CLK2_PORT {1} \
 ] [get_bd_cells zynq_ps]
+# HP2 is used ONLY by the Path B dedicated-DMA write leg (RASTER_TO_TILE=1). When that path is off (e.g. the
+# dest-res VDMA-raster pivot), disable HP2 so its S_AXI_HP2_ACLK isn't a dangling unconnected clock (BD 41-758).
+if {![info exists ::env(RASTER_TO_TILE)] || $::env(RASTER_TO_TILE) eq "0"} {
+    set_property -dict [list CONFIG.PCW_USE_S_AXI_HP2 {0}] [get_bd_cells zynq_ps]
+    puts "BUILD: S_AXI_HP2 disabled (no Path B dedicated DMA)"
+}
 puts "STAGE_OK: Zynq PS configured"
 
 # =============================================================================
