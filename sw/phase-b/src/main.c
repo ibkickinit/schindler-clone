@@ -66,9 +66,11 @@
  * (= VDMA/DDR master size) becomes 1920×1080, but the VTC output stays 720p
  * (see vtc_setup below — gated on OUTPUT_1080P, NOT this). Without it, S2MM
  * sized to 720p over a bypassed 1080p stream stores only the top-left crop. */
-#if defined(RASTER_TO_TILE)
+#if defined(RASTER_TO_TILE) || defined(DEST_RES_LOD)
 /* DEST-RES-MASTER (W1, 2026-06-25): the scaler (scaler_top) reduces the source to the OUTPUT-RES LOD
- * (1280x720) BEFORE the tiler, so the DDR tiled master IS the LOD — not the full 1920x1080 source. FRAME_W/H
+ * (1280x720). Two write paths: RASTER_TO_TILE=1 stores it tile-row-major (Path B); DEST_RES_LOD (the PIVOT,
+ * RASTER_TO_TILE=0) stores it as a normal VDMA raster and the warp reads it TILED=0. Either way the DDR
+ * master IS the 1280x720 LOD — not the full 1920x1080 source. FRAME_W/H
  * therefore = the LOD = output res. Consequences: warp identity is a 1:1 map of the 720-line LOD onto the
  * 720-line output (whole image at 100%, no center crop), and downscale is bounded (50% = 2x downscale of a
  * 720 source = inside the clean envelope; reading the full 1080 master is what hit the BW wall). The tiler's
@@ -169,8 +171,11 @@ static int vdma_setup_channel(int direction, UINTPTR *frame_addrs)
     cfg.VertSizeInput = TILED_FRAME_TILES;   /* 8040 tiles/frame                    */
     cfg.HoriSizeInput = TILE_BYTES;          /* 768 valid bytes per tlast (1 tile)  */
     cfg.Stride        = TILE_BYTES;          /* == HSIZE => fully contiguous in DDR  */
-#elif defined(READENGINE_FULLMASTER)
-    /* DIAGNOSTIC 2026-06-02: in full-master mode S2MM stores the full 1920×1080
+#elif defined(READENGINE_FULLMASTER) && !defined(DEST_RES_LOD)
+    /* (DEST_RES_LOD pivot: the DDR master IS the 1280x720 LOD, not a 1920 master, so NO crop reprogram —
+     * the base block's HSIZE/Stride/VSIZE = STRIDE(3840)/720 is already correct. Also the warp reads via its
+     * own DataMover, not MM2S, so this leg is unused anyway.)
+     * DIAGNOSTIC 2026-06-02: in full-master mode S2MM stores the full 1920×1080
      * master, but the output VTC raster is 1280×720. The MM2S (read) leg must
      * therefore read a geometry-correct CROP, else it streams a 1920-wide raster
      * into 1280-wide output timing and the lines wrap ("doubling" seen at

@@ -406,6 +406,10 @@ connect_bd_intf_net [get_bd_intf_pins v_vid_in_axi4s_0/video_out] [get_bd_intf_p
 set RASTER_TO_TILE 0
 if {[info exists ::env(RASTER_TO_TILE)] && $::env(RASTER_TO_TILE) ne "0"} { set RASTER_TO_TILE 1 }
 puts "BUILD: RASTER_TO_TILE=$RASTER_TO_TILE (S2MM stores [expr {$RASTER_TO_TILE?{TILE-ROW-MAJOR (Path B)}:{raster}}])"
+# DEST-RES LOD geometry — gated on the SCALER (not the tiler), so it's available in BOTH the tiled write
+# path (RASTER_TO_TILE=1) AND the proven VDMA-raster write path (RASTER_TO_TILE=0). scaler_top reduces the
+# 1920x1080 source to a 1280x720 LOD; readengine_warp_bd.tcl reads LOD_W/LOD_H to size the warp source.
+if {$SCALER_MODULE eq "scaler_top"} { set LOD_W 1280 ; set LOD_H 720 }
 if {$RASTER_TO_TILE} {
     # DEST-RES-MASTER (W1, 2026-06-25): the tiler geometry is now RUNTIME (pg_raster_to_tile in_w +
     # pg_tile_s2mm_cmd frame_bytes/slot_stride). The tiled LOD follows the scaler output:

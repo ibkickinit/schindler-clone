@@ -143,6 +143,15 @@ if {[info exists ::env(WARP_ENGINE)] && $::env(WARP_ENGINE) ne "0"} {
     app config -name vdma_init -add define-compiler-symbols WARP_BUILD=1
     app config -name vdma_init -add define-compiler-symbols READENGINE_FULLMASTER=1
     puts "FW BUILD: added -DWARP_BUILD=1 + -DREADENGINE_FULLMASTER=1 (warp affine geometry)"
+    # DEST-RES PIVOT (2026-06-25): scaler_top + RASTER_TO_TILE=0 -> scaler reduces source to a 1280x720 LOD
+    # that the VDMA writes as a normal raster and the warp reads TILED=0 (the proven path; no tiler). DEST_RES_LOD
+    # makes main.c use FRAME_W/H=1280x720 (winning the FRAME_W gate over READENGINE_FULLMASTER's 1920) and skip
+    # the MM2S 1920-master crop, while keeping WARP_BUILD/READENGINE_FULLMASTER for the warp-engage path.
+    if {[info exists ::env(SCALER_MODULE)] && $::env(SCALER_MODULE) eq "scaler_top"
+        && (![info exists ::env(RASTER_TO_TILE)] || $::env(RASTER_TO_TILE) eq "0")} {
+        app config -name vdma_init -add define-compiler-symbols DEST_RES_LOD=1
+        puts "FW BUILD: added -DDEST_RES_LOD=1 (scaler_top 1280x720 LOD raster -> warp TILED=0; FRAME_W/H=1280x720)"
+    }
     # PROJECTIVE build: pg_re_0 runs the keystone/corner-pin homography front-end (FB=24/GFB=36) and the
     # perspective coeffs m_g/m_h ride axi_gpio_13/14 (see readengine_warp_bd.tcl PROJ_GH). Define
     # PROJECTIVE_BUILD so main.c routes geometry through warp_apply_homography (Q.24/Q.36) and adds the

@@ -112,16 +112,28 @@ puts "BUILD: warp pg_re_0 OUT = ${WARP_OUT_W}x${WARP_OUT_H} (OUTPUT_MODE=[expr {
 # full 1920x1080 master. build_phase_b.tcl's RASTER_TO_TILE block sets LOD_W/LOD_H/LOD_SLOT_STRIDE; we follow
 # them here so writer TILES_X (=in_w/16) == reader TILES_X (=IN_W/16). A clean LOD height (720 -> 45 bands)
 # needs no 1072 fudge. Legacy (vars unset) keeps the 1920x1072 full master. IN_W must equal the tiler's in_w.
+# TILED follows the write path: RASTER_TO_TILE=1 -> tiled DDR (CONFIG.TILED 1); =0 -> standard VDMA RASTER
+# write (CONFIG.TILED 0, strided read). The PIVOT (2026-06-25) uses the proven scaler_top->VDMA->raster path
+# with TILED=0 to sidestep the tiler write-corruption, reading the small 1280x720 LOD raster.
+set RE_TILED 1
+if {[info exists RASTER_TO_TILE] && !$RASTER_TO_TILE} { set RE_TILED 0 }
 if {[info exists LOD_W]} {
-    # IN_H clamps to whole 16-row bands (the tiler only emits complete bands): 720->720 (clean),
-    # 1080->1072 (drops the trailing 8-row partial band so the reader never requests the unwritten tile-row).
-    set RE_IN_W $LOD_W ; set RE_IN_H [expr {($LOD_H/16)*16}] ; set RE_SLOT_STRIDE $LOD_SLOT_STRIDE
+    # IN_H clamps to whole 16-row bands (tiled writer only emits complete bands): 720->720 (clean),
+    # 1080->1072 (drops the trailing 8-row partial band). Harmless for the raster read (720 is /16).
+    set RE_IN_W $LOD_W ; set RE_IN_H [expr {($LOD_H/16)*16}]
+    if {$RE_TILED} {
+        set RE_SLOT_STRIDE $LOD_SLOT_STRIDE
+    } else {
+        # RASTER ring slot stride MUST match firmware SLOT_BYTES = FRAME_BYTES + STRIDE (one guard line):
+        # 1280*3*720 + 1280*3 = 2,768,640. (NOT the tiler's 6,226,560, NOT without the guard line.)
+        set RE_SLOT_STRIDE [expr {$LOD_W*3*$LOD_H + $LOD_W*3}]
+    }
 } else {
     set RE_IN_W 1920 ; set RE_IN_H 1072 ; set RE_SLOT_STRIDE 6226560
 }
-puts "BUILD: warp pg_re_0 SOURCE = ${RE_IN_W}x${RE_IN_H} (TILES_X=[expr {$RE_IN_W/16}]), slot_stride=$RE_SLOT_STRIDE"
+puts "BUILD: warp pg_re_0 SOURCE = ${RE_IN_W}x${RE_IN_H} TILED=$RE_TILED (TILES_X=[expr {$RE_IN_W/16}]), slot_stride=$RE_SLOT_STRIDE"
 set_property -dict [list CONFIG.IN_W $RE_IN_W CONFIG.IN_H $RE_IN_H CONFIG.OUT_W $WARP_OUT_W CONFIG.OUT_H $WARP_OUT_H \
-    CONFIG.SLOT_STRIDE $RE_SLOT_STRIDE CONFIG.NUM_FRAMES {7} CONFIG.TILED {1} \
+    CONFIG.SLOT_STRIDE $RE_SLOT_STRIDE CONFIG.NUM_FRAMES {7} CONFIG.TILED $RE_TILED \
     CONFIG.NTILE {256} CONFIG.WAY {4} CONFIG.PD {64} CONFIG.DREQ {64} CONFIG.LEAD {4096}] [get_bd_cells pg_re_0]
 
 # ---- PROJECTIVE front-end (P3, env PROJECTIVE_BUILD=1). DEFAULT OFF -> the affine BD is byte-identical.
