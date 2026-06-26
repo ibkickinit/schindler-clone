@@ -204,6 +204,12 @@ module pg_warp_top #(
     reg  fr_first;                                          // SOF tag for the next engine pixel
     wire ow_en = o_valid && !of_full;                      // engine write accepted into the FIFO
     assign o_ready = !of_full;
+    // RUNTIME OUTPUT (2026-06-26): the FIFO-drain TLAST + column counter below
+    // must wrap at the RUNTIME output width (outw_q2, the CDC'd out_w_rt), NOT
+    // the build-MAX OUT_W. Using OUT_W made tlast fire every 1920 cols at 720p
+    // (eol read 480 = 921600/1920) — harmless for the picture (axis_to_vid_io
+    // frames off the VTC + SOF) but wrong telemetry + sloppy framing. 0 -> OUT_W.
+    wire [11:0] outw_eff_top = (outw_q2 == 12'd0) ? OUT_W[11:0] : outw_q2;
     reg [24:0] of_q; reg of_qv; reg [11:0] dcol;            // 1-deep output holding reg + drain column
     wire od_rd = !of_empty && (!of_qv || m_axis_tready);   // pop FIFO when the holding reg is free/freeing
     // effective column of the beat in of_q: a SOF-tagged beat (of_q[24]) is frame pixel 0 -> RE-SYNCs the
@@ -213,13 +219,13 @@ module pg_warp_top #(
     assign m_axis_tvalid = of_qv;
     assign m_axis_tdata  = of_q[23:0];
     assign m_axis_tuser  = of_qv && of_q[24];              // SOF anchor for axis_to_vid_io
-    assign m_axis_tlast  = of_qv && (ecol == OUT_W[11:0]-12'd1);
+    assign m_axis_tlast  = of_qv && (ecol == outw_eff_top-12'd1);
     always @(posedge clk) begin
         if(!rstn || srst) begin of_wr<=0; of_rd<=0; of_cnt<=0; fr_first<=1'b1; of_qv<=1'b0; dcol<=12'd0; end
         else begin
             if(sof) fr_first<=1'b1;
             if(ow_en) begin ofifo[of_wr] <= {fr_first, o_pix}; of_wr<=of_wr+1'b1; fr_first<=1'b0; end
-            if(of_qv && m_axis_tready) dcol <= (ecol==OUT_W[11:0]-12'd1) ? 12'd0 : ecol+12'd1;  // next col
+            if(of_qv && m_axis_tready) dcol <= (ecol==outw_eff_top-12'd1) ? 12'd0 : ecol+12'd1;  // next col
             if(of_qv && m_axis_tready) of_qv<=1'b0;
             if(od_rd) begin of_q <= ofifo[of_rd]; of_rd<=of_rd+1'b1; of_qv<=1'b1; end
             of_cnt <= of_cnt + (ow_en?12'd1:12'd0) - (od_rd?12'd1:12'd0);
