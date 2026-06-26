@@ -1059,7 +1059,11 @@ create_bd_cell -type ip -vlnv xilinx.com:ip:axi_gpio axi_gpio_1
 # ch2 (out_w/out_h = LOD) default = the LOD MAX so the warp/scaler boot at the
 # full output raster (identity) before firmware writes. Packed (out_h<<16)|out_w
 # from LOD_W/LOD_H (1080p:0x04380780=1920x1080, 720p:0x02D00500=1280x720).
-set _ch2def [expr {[info exists LOD_W] ? [format 0x%08X [expr {($LOD_H << 16) | $LOD_W}]] : 0x02D00500}]
+if {[info exists LOD_W]} {
+    set _ch2def [format 0x%08X [expr {($LOD_H << 16) | $LOD_W}]]
+} else {
+    set _ch2def 0x02D00500
+}
 set_property -dict [list \
     CONFIG.C_GPIO_WIDTH    {32} \
     CONFIG.C_ALL_OUTPUTS   {1} \
