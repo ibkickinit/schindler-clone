@@ -49,6 +49,11 @@ module scaler_top_tb #(
     // iter4e: scaler_top takes runtime IN_W/IN_H via 16-bit async inputs (driven
     // by AXI GPIO on bench, hardcoded here). Defaults set via _DEFAULT parameters.
     wire [47:0] diag_counts_unused;
+    // G1 adjustable-scaler: runtime output size. Default = full (OUT_W/OUT_H)
+    // → bit-identical to pre-G1. A later test can lower these to exercise
+    // downscale-of-master.
+    reg [15:0] out_w_tb = OUT_W[15:0];
+    reg [15:0] out_h_tb = OUT_H[15:0];
     scaler_top #(
         .IN_W_DEFAULT  (IN_W),
         .IN_H_DEFAULT  (IN_H),
@@ -69,6 +74,9 @@ module scaler_top_tb #(
         .m_axis_tuser  (m_axis_tuser),
         .in_w_async    (IN_W[15:0]),
         .in_h_async    (IN_H[15:0]),
+        .kernel_mode_async (4'b0101),       // production 2-tap H+V (was floating)
+        .out_w_async   (out_w_tb),          // G1 runtime output size
+        .out_h_async   (out_h_tb),
         .diag_counts   (diag_counts_unused)
     );
 
