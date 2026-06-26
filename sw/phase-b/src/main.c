@@ -1867,10 +1867,11 @@ static void uart_dispatch(const char *line)
          * state at 720 vs 1080 to find why 720p60 yields no vsync. */
 #if defined(XPAR_V_TC_TX_BASEADDR)
         UINTPTR vb = XPAR_V_TC_TX_BASEADDR;
-        xil_printf("VTC TX: CTL=%08x STAT=%08x ERR=%08x | GACT=%08x GHSZ=%08x GVSZ=%08x GHSY=%08x GVSY=%08x GPOL=%08x\r\n",
+        xil_printf("VTC TX: CTL=%08x STAT=%08x ERR=%08x | GACT=%08x GHSZ=%08x GVSZ=%08x GHSY=%08x GVSY=%08x GPOL=%08x | GVBHOFF=%08x GVSHOFF=%08x\r\n",
                    (unsigned)Xil_In32(vb+0x00), (unsigned)Xil_In32(vb+0x04), (unsigned)Xil_In32(vb+0x08),
                    (unsigned)Xil_In32(vb+0x60), (unsigned)Xil_In32(vb+0x70), (unsigned)Xil_In32(vb+0x74),
-                   (unsigned)Xil_In32(vb+0x78), (unsigned)Xil_In32(vb+0x80), (unsigned)Xil_In32(vb+0x6C));
+                   (unsigned)Xil_In32(vb+0x78), (unsigned)Xil_In32(vb+0x80), (unsigned)Xil_In32(vb+0x6C),
+                   (unsigned)Xil_In32(vb+0x7C), (unsigned)Xil_In32(vb+0x84));
 #else
         xil_printf("UART: no v_tc_tx base\r\n");
 #endif
@@ -2940,6 +2941,20 @@ static int vtc_setup(const vtc_mode_t *m)
     Xil_Out32(base + 0x78, (H_BACK_START << 16) | H_SYNC_START);
     /* Generator Vertical Sync F0 (start | end)         offset 0x80 */
     Xil_Out32(base + 0x80, (V_BACK_START << 16) | V_SYNC_START);
+
+    /* Generator VBlank/VSync HORIZONTAL offsets (0x7C / 0x84) — THE column at
+     * which the vertical vblank/vsync events fire within a line. Format
+     * (Hend<<16)|Hstart, 14-bit. CRITICAL FIX (2026-06-26): these were NEVER
+     * written, so they kept the build-time 1080p defaults (col 1920 / 2008). On
+     * a 720p line (HTOTAL=1650) that column never occurs -> vsync_out NEVER
+     * asserts -> monitor "No Signal" (R 720 hung; R 1080 worked because 1920/2008
+     * < 2200 stayed reachable). The Xilinx driver computes these per-mode:
+     *   GVBHOFF = H_ACTIVE (vblank fires at end of active)
+     *   GVSHOFF = H_SYNC_START (vsync fires at the hsync column)
+     * For 1080p30 this writes 1920/2008 == the old defaults, so 1080 is
+     * byte-identical; for 720p60 it writes 1280/1390. */
+    Xil_Out32(base + 0x7C, (H_ACTIVE     << 16) | H_ACTIVE);
+    Xil_Out32(base + 0x84, (H_SYNC_START << 16) | H_SYNC_START);
 
     /* Generator Polarity (offset 0x6C, XVTC_GPOL):
      * 720p CEA-861 = HSync+VSync POSITIVE (active-high), active video active-high.
