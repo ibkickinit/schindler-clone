@@ -1485,6 +1485,26 @@ static int s2mm_set_geometry(u32 out_w, u32 out_h)
 
 static unsigned g_scale_pct = 100;   /* unified user scale; 100 = 1:1 whole image */
 
+/* Pick the scaler kernel from the ACTUAL decimation ratio (src/lod), not pct, so
+ * a 1:1 ratio is a BIT-EXACT passthrough. The scaler's 2-tap boxcar averages
+ * neighbors even at 1:1 (a slight blur); NN (mode 0) at >=1:1 passes the source
+ * pixel through unchanged. Only a real downscale needs the anti-alias filter.
+ *   lod >= src      -> NN (mode 0): bit-exact at 1:1 / blocky upscale
+ *   src <= 2x lod    -> 2-tap (mode 1): correct box for up to 2x downscale
+ *   src >  2x lod    -> 4-tap (mode 2): deep downscale anti-alias */
+static void scaler_kernel_for_ratio(u32 lod_w, u32 lod_h)
+{
+#ifdef SCALER_KERNEL_GPIO_BASEADDR
+    unsigned sw = g_src_hactive ? g_src_hactive : OUT_RASTER_W;
+    unsigned sh = g_src_vactive ? g_src_vactive : OUT_RASTER_H;
+    unsigned kh = (lod_w >= sw) ? 0u : ((lod_w * 2u >= sw) ? 1u : 2u);
+    unsigned kv = (lod_h >= sh) ? 0u : ((lod_h * 2u >= sh) ? 1u : 2u);
+    Xil_Out32(SCALER_KERNEL_GPIO_BASEADDR, (kv << 2) | kh);
+#else
+    (void)lod_w; (void)lod_h;
+#endif
+}
+
 static void apply_scale(unsigned pct)
 {
     if (pct < 10u)  pct = 10u;
@@ -1503,9 +1523,7 @@ static void apply_scale(unsigned pct)
          * is addressable; its over-read past the content is clamped out of view.
          * Width stays /16 (stride/tile alignment; 1920/1280 already /16). */
         g_lod_w = OUT_RASTER_W & ~15u; g_lod_h = OUT_RASTER_H & ~1u;
-#ifdef SCALER_KERNEL_GPIO_BASEADDR
-        Xil_Out32(SCALER_KERNEL_GPIO_BASEADDR, 0x5u);   /* 2-tap: full-frame doesn't need 4-tap */
-#endif
+        scaler_kernel_for_ratio(g_lod_w, g_lod_h);   /* NN if 1:1 (bit-exact); filter if downscaling */
         s2mm_set_geometry(g_lod_w, g_lod_h);            /* full compact == full frame          */
         scaler_out_dims_write(g_lod_w, g_lod_h);        /* also drives warp in_w_rt (tied GPIO) */
         int inv = (int)((4096u * 100u) / pct);          /* 100->4096(1:1), 200->2048(2x)        */
@@ -1520,16 +1538,21 @@ static void apply_scale(unsigned pct)
         if (ow < 16u) ow = 16u;
         if (oh < 16u) oh = 16u;
         g_lod_w = ow; g_lod_h = oh;
-#ifdef SCALER_KERNEL_GPIO_BASEADDR
-        Xil_Out32(SCALER_KERNEL_GPIO_BASEADDR, (pct <= 67u) ? 0xAu : 0x5u);  /* 0xA=4tap H+V */
-#endif
+        scaler_kernel_for_ratio(ow, oh);   /* ratio-based: 1:1 NN, <=2x 2-tap, >2x 4-tap */
         s2mm_set_geometry(ow, oh);           /* S2MM writes the compact LOD                 */
         scaler_out_dims_write(ow, oh);       /* scaler decimates + drives warp in_w_rt       */
         /* warp identity: source-center (ow/2,oh/2) -> output center = auto-centered.
          * out-of-window matte fills the border; no DDR matte / clear needed. */
         warp_set_rotation(g_warp_deg, 4096, 4096, g_warp_panx, g_warp_pany);
-        xil_printf("SCALE %u%%: LOD %ux%u centered (compact), warp identity, k=%s\r\n",
-                   pct, (unsigned)ow, (unsigned)oh, (pct <= 67u) ? "4tap" : "2tap");
+#ifdef SCALER_KERNEL_GPIO_BASEADDR
+        u32 kreg = Xil_In32(SCALER_KERNEL_GPIO_BASEADDR);
+        static const char *kname[3] = {"NN", "2tap", "4tap"};
+        xil_printf("SCALE %u%%: LOD %ux%u centered (compact), warp identity, kH=%s kV=%s\r\n",
+                   pct, (unsigned)ow, (unsigned)oh, kname[kreg & 3u], kname[(kreg >> 2) & 3u]);
+#else
+        xil_printf("SCALE %u%%: LOD %ux%u centered (compact), warp identity\r\n",
+                   pct, (unsigned)ow, (unsigned)oh);
+#endif
     }
 }
 #endif /* WARP_BUILD */
@@ -3007,6 +3030,13 @@ int main(void)
     scaler_dims_write(src_hactive, src_vactive);
     xil_printf("SCALER: programmed IN_W=%u IN_H=%u\r\n",
                (unsigned)src_hactive, (unsigned)src_vactive);
+#if defined(WARP_BUILD)
+    /* Bit-exact boot: with the source now detected, pick the scaler kernel from
+     * the boot LOD (= OUT_RASTER full) vs source ratio. Matching res (src ==
+     * output) -> NN = bit-exact passthrough at 100% from the very first frame,
+     * instead of the BD-default 2-tap boxcar blur. */
+    scaler_kernel_for_ratio(OUT_RASTER_W & ~15u, OUT_RASTER_H & ~1u);
+#endif
 
     /* NOW align VTC generator CTL write to the next source vsync edge.
      * Detector activity above is complete; remaining latency is just the
