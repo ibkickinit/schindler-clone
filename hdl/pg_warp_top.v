@@ -49,6 +49,12 @@ module pg_warp_top #(
     input  wire signed [GCW-1:0] m_g, m_h,
     input  wire [23:0] matte_rgb,
     input  wire [31:0] lead_cfg,          // runtime per-geometry prefetch LEAD (AXI GPIO, async; 0 -> build LEAD)
+    // DYNAMIC RING (2026-06-26): runtime active source dims = the LOD the read
+    // engine reads = scaler out_w/out_h = S2MM write geometry (all driven by the
+    // SAME GPIO, axi_gpio_1 ch2, so read engine is tied to the scaler). 16-bit
+    // to match the GPIO slice width; only [11:0] used (dims < 4096). 0 ->
+    // build-time IN_W/IN_H (full master) so legacy/affine builds are unchanged.
+    input  wire [15:0] in_w_rt, in_h_rt,
     // output AXIS -> color stack
     output wire [23:0] m_axis_tdata,
     output wire        m_axis_tvalid,
@@ -128,18 +134,28 @@ module pg_warp_top #(
     wire        t_rdy;                    // tile_dma can accept a fetch (multi-outstanding handshake)
     wire        cmd_rdy;                  // DataMover command formatter can accept a row command
 
+    // DYNAMIC RING: 2-FF CDC sync of the async source dims into the engine clock.
+    // in_w_rt/in_h_rt change only on a geometry switch (firmware writes the GPIO
+    // then pulses srst), so a slow 2-FF sync is sufficient + glitch-free.
+    (* ASYNC_REG = "TRUE" *) reg [11:0] inw_q1, inw_q2, inh_q1, inh_q2;
+    always @(posedge clk) begin
+        inw_q1 <= in_w_rt[11:0]; inw_q2 <= inw_q1;
+        inh_q1 <= in_h_rt[11:0]; inh_q2 <= inh_q1;
+    end
+
     pg_warp_engine #(.OUT_W(OUT_W),.OUT_H(OUT_H),.IN_W(IN_W),.IN_H(IN_H),
                      .LTILE(LTILE),.NTILE(NTILE),.WAY(WAY),.PD(PD),.CW(CW),.FB(FB),.LEAD(LEAD),
                      .PROJECTIVE(PROJECTIVE),.GCW(GCW),.GFB(GFB),.RF(RF),.LUT_BITS(LUT_BITS),
                      .NR_ITERS(NR_ITERS),.AW(AW),.WW(WW)) u_eng (
         .clk(clk),.rstn(engine_rstn),.sof(sof),.lead_rt(lr2),  // engine_rstn includes the soft-reset
+        .in_w_rt(inw_q2),.in_h_rt(inh_q2),
         .m_a(a2),.m_b(b2),.m_c(c2),.m_d(d2),.m_e(e2),.m_f(f2),.m_g(g2),.m_h(h2),.matte(mt2),
         .o_valid(o_valid),.o_pix(o_pix),.o_ready(o_ready),
         .fetch_req(wreq),.fetch_tx(wtx),.fetch_ty(wty),.fetch_ready(t_rdy),
         .fill_valid(fv),.fill_blk(fblk),.fill_last(fl));
 
     pg_tile_dma #(.IN_W(IN_W),.LTILE(LTILE),.DREQ(DREQ),.TILED(TILED)) u_dma (
-        .clk(clk),.rstn(rstn),.srst(srst),.frame_base(frame_base),
+        .clk(clk),.rstn(rstn),.srst(srst),.in_w_rt(inw_q2),.frame_base(frame_base),
         .t_req(wreq),.t_tx(wtx),.t_ty(wty),.t_ready(t_rdy),
         .fill_valid(fv),.fill_blk(fblk),.fill_last(fl),
         .fetch_req(fetch_req),.fetch_addr(fetch_addr),.fetch_len(fetch_len),.fetch_ready(cmd_rdy),

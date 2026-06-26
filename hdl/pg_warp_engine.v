@@ -25,6 +25,7 @@ module pg_warp_engine #(
     input  wire        clk, rstn,
     input  wire        sof,                        // 1-cyc: start the raster walk (addr-gens self-pace via ready)
     input  wire [19:0] lead_rt,                    // runtime prefetch lead (0 -> use build-param LEAD)
+    input  wire [11:0] in_w_rt, in_h_rt,           // DYNAMIC RING: runtime active source dims (0 -> build MAX)
     // numerator coeffs (signed Q(CW-FB).FB), firmware-computed
     input  wire signed [CW-1:0] m_a,m_b,m_c,m_d,m_e,m_f,
     // perspective coeffs (signed Q(GCW-GFB).GFB); tie 0 for affine (w=1 -> byte-for-byte pg_affine)
@@ -52,7 +53,7 @@ module pg_warp_engine #(
     pg_projective #(.OUT_W(OUT_W),.OUT_H(OUT_H),.IN_W(IN_W),.IN_H(IN_H),.CW(CW),.FB(FB),
                     .GCW(GCW),.GFB(GFB),.RF(RF),.LUT_BITS(LUT_BITS),.NR_ITERS(NR_ITERS),
                     .AW(AW),.WW(WW),.PROJECTIVE(PROJECTIVE)) u_aff_c (
-        .clk(clk),.rstn(rstn),.sof(sof),.o_valid(ca_v),.o_ready(ca_sr),
+        .clk(clk),.rstn(rstn),.sof(sof),.in_w_rt(in_w_rt),.in_h_rt(in_h_rt),.o_valid(ca_v),.o_ready(ca_sr),
         .m_a(m_a),.m_b(m_b),.m_c(m_c),.m_d(m_d),.m_e(m_e),.m_f(m_f),.m_g(m_g),.m_h(m_h),
         .o_in_window(ca_in),.o_src_col(ca_col),.o_src_row(ca_row),
         .o_h_frac(ca_fx),.o_v_frac(ca_fy),.o_new_row(ca_nr));
@@ -87,7 +88,7 @@ module pg_warp_engine #(
     pg_projective #(.OUT_W(OUT_W),.OUT_H(OUT_H),.IN_W(IN_W),.IN_H(IN_H),.CW(CW),.FB(FB),
                     .GCW(GCW),.GFB(GFB),.RF(RF),.LUT_BITS(LUT_BITS),.NR_ITERS(NR_ITERS),
                     .AW(AW),.WW(WW),.PROJECTIVE(PROJECTIVE)) u_aff_p (
-        .clk(clk),.rstn(rstn),.sof(sof),.o_valid(pa_v),.o_ready(pa_sr && pf_gate),
+        .clk(clk),.rstn(rstn),.sof(sof),.in_w_rt(in_w_rt),.in_h_rt(in_h_rt),.o_valid(pa_v),.o_ready(pa_sr && pf_gate),
         .m_a(m_a),.m_b(m_b),.m_c(m_c),.m_d(m_d),.m_e(m_e),.m_f(m_f),.m_g(m_g),.m_h(m_h),
         .o_in_window(pa_in),.o_src_col(pa_col),.o_src_row(pa_row),
         .o_h_frac(),.o_v_frac(),.o_new_row());
@@ -98,7 +99,7 @@ module pg_warp_engine #(
     // ---- tile cache ----
     wire        tc_v; wire [23:0] tp00,tp10,tp01,tp11; wire [11:0] tfx,tfy; wire tin; wire [3:0] tsb;
     pg_tilecache_rt2 #(.IN_W(IN_W),.IN_H(IN_H),.LTILE(LTILE),.NTILE(NTILE),.WAY(WAY),.PD(PD),.SB(4)) u_tc (
-        .clk(clk),.rstn(rstn),
+        .clk(clk),.rstn(rstn),.in_w_rt(in_w_rt),.in_h_rt(in_h_rt),
         .pf_valid(pm_v),.pf_x(pm_d[24:13]),.pf_y(pm_d[12:1]),.pf_inwin(pm_d[0]),.pf_ready(pf_ready),
         .c_valid(cm_v),.c_x(cm_d[48:37]),.c_y(cm_d[36:25]),.c_fx(cm_d[24:13]),.c_fy(cm_d[12:1]),.c_inwin(cm_d[0]),.c_sb(4'd0),.c_ready(tc_ready),
         .out_valid(tc_v),.out_p00(tp00),.out_p10(tp10),.out_p01(tp01),.out_p11(tp11),

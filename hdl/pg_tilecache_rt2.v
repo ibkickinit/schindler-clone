@@ -24,6 +24,11 @@ module pg_tilecache_rt2 #(
     parameter integer SB    = 4
 ) (
     input  wire        clk, rstn,
+    // DYNAMIC RING (2026-06-26): runtime active source dims (the LOD set by the
+    // read engine). Used ONLY for the bilinear edge clamps below; the cache
+    // hash/sizing (TX, NTILE banks) stay build-time MAX (IN_W/IN_H). 0 ->
+    // fall back to build-time max so legacy builds are bit-identical.
+    input  wire [11:0] in_w_rt, in_h_rt,
     // prefetch coord stream (runs ahead)
     input  wire        pf_valid,
     input  wire [11:0] pf_x, pf_y,
@@ -53,6 +58,10 @@ module pg_tilecache_rt2 #(
 );
     localparam integer TILE=(1<<LTILE), HT=LTILE-1, BPT=(TILE*TILE)/4;
     localparam integer TX=(IN_W+TILE-1)/TILE, SLW=$clog2(NTILE), BAW=SLW+2*HT, TIDW=16;
+
+    // DYNAMIC RING: runtime edge-clamp bounds (active source width/height - 1).
+    wire [11:0] inw_m1 = ((in_w_rt == 12'd0) ? IN_W[11:0] : in_w_rt) - 12'd1;
+    wire [11:0] inh_m1 = ((in_h_rt == 12'd0) ? IN_H[11:0] : in_h_rt) - 12'd1;
     localparam integer WAYW=$clog2(WAY), SETW=SLW-WAYW, NSET=(1<<SETW); // WAY-way set-assoc; NTILE=NSET*WAY
 
     (* ram_style="block" *) reg [23:0] b00[0:NTILE*BPT-1], b10[0:NTILE*BPT-1],
@@ -143,14 +152,14 @@ module pg_tilecache_rt2 #(
 
     // ===================== CONSUMER (gather) =====================
     reg [11:0] cx_,cy_,cfx_,cfy_; reg cin_; reg [SB-1:0] csb_; reg c_busy;
-    wire [11:0] cxr=(cx_>=IN_W-1)?cx_:cx_+1, cyb=(cy_>=IN_H-1)?cy_:cy_+1;
+    wire [11:0] cxr=(cx_>=inw_m1)?cx_:cx_+1, cyb=(cy_>=inh_m1)?cy_:cy_+1;
     wire ce_x=(cxr==cx_), ce_y=(cyb==cy_);
     wire [11:0] cpx0=(cx_[0]==0)?cx_:cxr, cpx1=(cx_[0]==1)?cx_:cxr;
     wire [11:0] cpy0=(cy_[0]==0)?cy_:cyb, cpy1=(cy_[0]==1)?cy_:cyb;
     // ---- consumer feedforward: 2x2 neighbour set-indices + tile-ids of the INCOMING coord (c_x/c_y),
     //      computed combinationally and registered into cs*/ct* alongside cx_/cy_. Same coord, same edge,
     //      same source -> the setf ×13/×7 multiply leaves the looka loop (prefetch stage-1 trick, read side).
-    wire [11:0] nxr=(c_x>=IN_W-1)?c_x:c_x+1, nyb=(c_y>=IN_H-1)?c_y:c_y+1;
+    wire [11:0] nxr=(c_x>=inw_m1)?c_x:c_x+1, nyb=(c_y>=inh_m1)?c_y:c_y+1;
     wire [11:0] npx0=(c_x[0]==0)?c_x:nxr, npx1=(c_x[0]==1)?c_x:nxr;
     wire [11:0] npy0=(c_y[0]==0)?c_y:nyb, npy1=(c_y[0]==1)?c_y:nyb;
     wire [SETW-1:0] ncs00=setf(npx0,npy0), ncs10=setf(npx1,npy0), ncs01=setf(npx0,npy1), ncs11=setf(npx1,npy1);
@@ -263,7 +272,7 @@ module pg_tilecache_rt2 #(
     localparam integer HALF = 12-LTILE;             // tile-coord bits/axis in tidf = {py-tile, px-tile}
     // ---- stage 1: incoming coord + combinational feedforward (neighbours, setf, tidf) ----
     reg [11:0] px_,py_; reg pin_; reg s1_v;
-    wire [11:0] pxr=(px_>=IN_W-1)?px_:px_+1, pyb=(py_>=IN_H-1)?py_:py_+1;
+    wire [11:0] pxr=(px_>=inw_m1)?px_:px_+1, pyb=(py_>=inh_m1)?py_:py_+1;
     wire [11:0] ppx0=(px_[0]==0)?px_:pxr, ppx1=(px_[0]==1)?px_:pxr;
     wire [11:0] ppy0=(py_[0]==0)?py_:pyb, ppy1=(py_[0]==1)?py_:pyb;
     wire [TIDW-1:0] f_pt00=tidf(ppx0,ppy0), f_pt10=tidf(ppx1,ppy0), f_pt01=tidf(ppx0,ppy1), f_pt11=tidf(ppx1,ppy1);

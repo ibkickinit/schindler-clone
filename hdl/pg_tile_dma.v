@@ -32,6 +32,10 @@ module pg_tile_dma #(
     input  wire        srst,                         // soft-reset (geometry change): reset state + FLUSH the
                                                       // DataMover's in-flight beats (drain, don't store) so a
                                                       // live geometry switch never desyncs the receiver/cache.
+    // DYNAMIC RING (2026-06-26): runtime source width (the LOD / ring width set
+    // by the read engine). 0 -> fall back to build-time IN_W (full master).
+    // Drives the raster line STRIDE (TILED=0). IN_W param stays the sizing MAX.
+    input  wire [11:0] in_w_rt,
     input  wire [31:0] frame_base,
     // tile request in (handshake; t_req may assert while busy -> queued)
     input  wire        t_req,
@@ -55,6 +59,16 @@ module pg_tile_dma #(
     localparam integer TILE=(1<<LTILE), STRIDE=IN_W*3, DW=$clog2(DREQ);
     localparam integer TILES_X=IN_W/TILE, TBYTES=TILE*TILE*3;   // tiles per source row; bytes per tile (768)
 
+    // DYNAMIC RING: runtime raster stride = active source width * 3 bytes.
+    // 0 (undriven) -> build-time IN_W (full master) so legacy builds are
+    // bit-identical. Registered to keep the variable*variable address multiply
+    // off the GPIO->address combinational path. in_w_rt changes only on a
+    // geometry switch (firmware writes GPIO then pulses srst), so the 1-cycle
+    // latency settles long before the next fetch.
+    wire [11:0] in_w_eff_dma = (in_w_rt == 12'd0) ? IN_W[11:0] : in_w_rt;
+    reg  [13:0] stride_rt;
+    always @(posedge clk) stride_rt <= in_w_eff_dma * 3;
+
     // ---------------- input tile request FIFO ----------------
     reg [23:0] rq[0:DREQ-1];                          // {ty,tx}
     reg [DW:0] rq_cnt; reg [DW-1:0] rq_wr, rq_rd;
@@ -71,7 +85,7 @@ module pg_tile_dma #(
     wire       iss_load = !iss_act && !rq_empty;       // latch+pop the next tile to issue
     assign     fetch_req  = iss_act && !flushing;       // hold a row command while a tile is active
     assign     fetch_addr = TILED ? (frame_base + (iss_ty*TILES_X + iss_tx)*TBYTES)      // tiled: 1 burst/tile
-                                  : (frame_base + (iss_ty*TILE + iss_row)*STRIDE + (iss_tx*TILE)*3);
+                                  : (frame_base + (iss_ty*TILE + iss_row)*stride_rt + (iss_tx*TILE)*3);
     assign     fetch_len  = TILED ? (TILE*TILE) : TILE[11:0];   // 256 px (768B) tiled vs 16 px (48B) raster-row
     wire       iss_emit = iss_act && fetch_ready;      // a row command is consumed this cycle
 

@@ -1053,6 +1053,12 @@ static int warp_sin(int d) {           /* sin(d deg)*4096, any integer d */
 static int warp_cos(int d) { return warp_sin(d + 90); }
 static int g_warp_deg = 0, g_warp_invx = 4096, g_warp_invy = 4096;  /* Q12 inverse-scale */
 static int g_warp_panx = 0, g_warp_pany = 0;                        /* pan / shift, OUTPUT px (signed) */
+/* DYNAMIC RING (2026-06-26): current LOD = warp source = scaler out = S2MM
+ * write geometry (all tied). Default full = OUT_RASTER so boot/identity is the
+ * 1:1 full-frame map. warp_set_rotation uses (g_lod_w/2, g_lod_h/2) as the
+ * SOURCE center so a sub-LOD auto-centers in the output (no pan, no DDR matte —
+ * the warp's own out-of-window matte fills the border). */
+static unsigned g_lod_w = OUT_RASTER_W, g_lod_h = OUT_RASTER_H;
 static unsigned g_warp_anchor = 0;          /* scale anchor: 0 = image center (default), 1 = top-left corner */
 static unsigned g_warp_lod = 0;             /* LOD mip level for current geometry (0=full,1=half,2=quarter) */
 static unsigned g_mip_valid = 0;            /* 1 once the L1/L2 mip rings are filled ('M' cmd); gates LOD>0 */
@@ -1335,7 +1341,10 @@ static void warp_set_rotation(int deg, int invx, int invy, int panx, int pany)
     { int m = deg % 360; if (m < 0) m += 360; m = ((m + 5) / 10) * 10; if (m >= 360) m -= 360; deg = m; }
     int co = warp_cos(deg), si = warp_sin(deg);          /* Q12 */
     int cxo = OUT_RASTER_W / 2, cyo = OUT_RASTER_H / 2;   /* output center */
-    int cxs = FRAME_W / 2,      cys = FRAME_H / 2;        /* source center */
+    /* DYNAMIC RING: source center = the runtime LOD center, so a sub-LOD maps
+     * its center to the output center = auto-centered. At 100% g_lod = OUT_RASTER
+     * so this is the old FRAME/2 (bit-identical). */
+    int cxs = (int)g_lod_w / 2, cys = (int)g_lod_h / 2;   /* source center = LOD center */
     int m_a =  (int)(((long long)co * invx) >> 12);
     int m_b =  (int)(((long long)si * invx) >> 12);
     int m_d = -(int)(((long long)si * invy) >> 12);
@@ -1433,6 +1442,7 @@ static inline void scaler_out_dims_write(u32 out_w, u32 out_h)
 /* Pre-clear all NUM_FRAMES ring slots' frame region to matte (0x10/byte =
  * 0x101010, the warp's out-of-window matte) so a sub-window write leaves a
  * clean border. Flush to DDR for the warp DataMover. Only on a scale change. */
+static void ring_clear_matte(void) __attribute__((unused));
 static void ring_clear_matte(void)
 {
     const UINTPTR SLOT_BYTES = (UINTPTR)FRAME_BYTES + (UINTPTR)STRIDE;
@@ -1444,25 +1454,24 @@ static void ring_clear_matte(void)
     Xil_DCacheFlushRange((INTPTR)FRAME_BUF_BASE, (UINTPTR)NUM_FRAMES * SLOT_BYTES);
 }
 
-/* Set the S2MM write geometry to an out_w x out_h raster deposited as a
- * top-left sub-window of the fixed OUT_RASTER frame (Stride = full pitch).
- * out_w==FRAME_W && out_h==FRAME_H restores full-frame geometry.
+/* DYNAMIC RING (2026-06-26): set the S2MM write geometry to a COMPACT out_w x
+ * out_h LOD (stride = out_w*3, NOT the full frame pitch). The read engine reads
+ * the same compact LOD natively (its in_w_rt drives the matching read stride),
+ * and the warp PLACES the LOD centered in the output with its own out-of-window
+ * matte -> no DDR matte, no padding. out_w==OUT_RASTER_W && out_h==OUT_RASTER_H
+ * is the full 1:1 frame.
  *
- * CRITICAL (2026-06-26): update ONLY the S2MM geometry registers (HSIZE /
- * STRD_FRMDLY / VSIZE) directly, leaving S2MM_DMACR (RS run bit, dynamic-
- * genlock mode, external-fsync enable) UNTOUCHED. The first attempt used the
- * driver's DmaStop + DmaConfig + DmaStart, which rewrites DMACR and halts the
- * channel -> broke the iter6 source-vsync fsync + dynamic-genlock write -> the
- * S2MM stopped landing data -> the ring stayed at pre-cleared matte -> BLACK
- * output at any Z (bench-confirmed). PG020 register-direct resize: write
- * HSIZE + STRIDE, then VSIZE LAST (writing VSIZE commits the geometry); the
- * running channel picks it up at the next fsync without disturbing genlock. */
-static int s2mm_set_subwindow(u32 out_w, u32 out_h)
+ * CRITICAL: update ONLY the geometry registers (HSIZE / STRD_FRMDLY / VSIZE)
+ * directly, leaving S2MM_DMACR (RS, dynamic-genlock, external-fsync) UNTOUCHED.
+ * The driver's DmaStop+DmaConfig rewrites DMACR + halts -> broke genlock/fsync
+ * -> black (bench-confirmed). PG020 register-direct resize: HSIZE + STRIDE,
+ * then VSIZE LAST (commit); the running channel adopts it at the next fsync. */
+static int s2mm_set_geometry(u32 out_w, u32 out_h)
 {
     const UINTPTR S2MM = XPAR_AXI_VDMA_0_BASEADDR + 0xA0u; /* S2MM reg-direct block base */
-    Xil_Out32(S2MM + 0x04u, out_w * BYTES_PP);   /* HSIZE = valid bytes/line          */
-    Xil_Out32(S2MM + 0x08u, STRIDE);             /* STRD_FRMDLY: stride=full pitch, frmdly=0 */
-    Xil_Out32(S2MM + 0x00u, out_h);              /* VSIZE LAST -> commits geometry      */
+    Xil_Out32(S2MM + 0x04u, out_w * BYTES_PP);   /* HSIZE = valid bytes/line        */
+    Xil_Out32(S2MM + 0x08u, out_w * BYTES_PP);   /* STRD_FRMDLY: COMPACT stride, frmdly=0 */
+    Xil_Out32(S2MM + 0x00u, out_h);              /* VSIZE LAST -> commits geometry  */
     return XST_SUCCESS;
 }
 
@@ -1474,39 +1483,39 @@ static void apply_scale(unsigned pct)
     if (pct > 200u) pct = 200u;
     g_scale_pct = pct;
 
+    /* DYNAMIC RING model: the LOD = scaler out = S2MM compact write = warp
+     * source (in_w_rt, via the shared GPIO). The warp reads the native LOD and
+     * PLACES it centered (source-center = g_lod/2); its out-of-window matte
+     * fills the border. No DDR matte, no padding, no clear race. */
     if (pct >= 100u) {
-        /* UPSCALE / 100%: full LOD + full S2MM, warp zoom-in. */
-        scaler_out_dims_write(OUT_RASTER_W, OUT_RASTER_H);
+        /* UPSCALE / 100%: full LOD (= OUT_RASTER), warp zoom-in. */
+        g_lod_w = OUT_RASTER_W; g_lod_h = OUT_RASTER_H;
 #ifdef SCALER_KERNEL_GPIO_BASEADDR
         Xil_Out32(SCALER_KERNEL_GPIO_BASEADDR, 0x5u);   /* 2-tap: full-frame doesn't need 4-tap */
 #endif
-        s2mm_set_subwindow(FRAME_W, FRAME_H);
-        int inv = (int)((4096u * 100u) / pct);          /* 100->4096(1:1), 200->2048(2x) */
+        s2mm_set_geometry(g_lod_w, g_lod_h);            /* full compact == full frame          */
+        scaler_out_dims_write(g_lod_w, g_lod_h);        /* also drives warp in_w_rt (tied GPIO) */
+        int inv = (int)((4096u * 100u) / pct);          /* 100->4096(1:1), 200->2048(2x)        */
         warp_set_rotation(g_warp_deg, inv, inv, g_warp_panx, g_warp_pany);
-        xil_printf("SCALE %u%%: warp zoom inv=%d (scaler+S2MM full)\r\n", pct, inv);
+        xil_printf("SCALE %u%%: LOD %ux%u, warp zoom inv=%d\r\n", pct, g_lod_w, g_lod_h, inv);
     } else {
-        /* DOWNSCALE: scaler decimates to a sub-window; warp stays identity. */
-        u32 ow = (OUT_RASTER_W * pct) / 100u; ow &= ~1u;  /* even -> byte align */
-        u32 oh = (OUT_RASTER_H * pct) / 100u; oh &= ~1u;
+        /* DOWNSCALE: scaler decimates to a compact LOD; warp reads it 1:1 and
+         * auto-centers. Snap dims to /16 so the tile grid covers the LOD with no
+         * partial-tile over-read (the 8-row crop at e.g. 360->352 is invisible). */
+        u32 ow = ((OUT_RASTER_W * pct) / 100u) & ~15u;
+        u32 oh = ((OUT_RASTER_H * pct) / 100u) & ~15u;
         if (ow < 16u) ow = 16u;
         if (oh < 16u) oh = 16u;
+        g_lod_w = ow; g_lod_h = oh;
 #ifdef SCALER_KERNEL_GPIO_BASEADDR
         Xil_Out32(SCALER_KERNEL_GPIO_BASEADDR, (pct <= 67u) ? 0xAu : 0x5u);  /* 0xA=4tap H+V */
 #endif
-        /* ORDER MATTERS (2026-06-26 bench): switch geometry FIRST, let it settle,
-         * THEN lay down the matte. Clearing before the S2MM switches to the
-         * sub-window races: the S2MM (still full-geometry) writes one full frame
-         * into a slot AFTER its clear -> that slot keeps a stale border forever
-         * -> "stale frame flashing in the border" as the warp cycles ring slots.
-         * After the switch the S2MM only ever touches the top-left, so a single
-         * post-settle clear makes every slot's border stick at matte. */
-        s2mm_set_subwindow(ow, oh);          /* S2MM -> top-left sub-window (next frame)    */
-        scaler_out_dims_write(ow, oh);       /* scaler decimates source -> ow x oh          */
-        usleep(50000);                       /* ~3 frames: let the sub-window geometry take  */
-                                             /* effect so the S2MM is writing ONLY top-left  */
-        ring_clear_matte();                  /* matte border now sticks (S2MM won't redraw it)*/
-        warp_set_rotation(g_warp_deg, 4096, 4096, g_warp_panx, g_warp_pany);  /* identity scale */
-        xil_printf("SCALE %u%%: scaler LOD %ux%u sub-window, warp identity, k=%s\r\n",
+        s2mm_set_geometry(ow, oh);           /* S2MM writes the compact LOD                 */
+        scaler_out_dims_write(ow, oh);       /* scaler decimates + drives warp in_w_rt       */
+        /* warp identity: source-center (ow/2,oh/2) -> output center = auto-centered.
+         * out-of-window matte fills the border; no DDR matte / clear needed. */
+        warp_set_rotation(g_warp_deg, 4096, 4096, g_warp_panx, g_warp_pany);
+        xil_printf("SCALE %u%%: LOD %ux%u centered (compact), warp identity, k=%s\r\n",
                    pct, (unsigned)ow, (unsigned)oh, (pct <= 67u) ? "4tap" : "2tap");
     }
 }

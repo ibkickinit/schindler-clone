@@ -7,7 +7,36 @@ Last updated: 2026-06-26 · Branch: **`decimate-on-write`** (off the clean pivot
 
 ---
 
-## ★ BENCH LOG 2026-06-26 — decimate-on-write D1–D4 (commit `d317094`, rebuilding)
+## ★★ DIRECTION 2026-06-26 (operator) — DYNAMIC RING RESOLUTION, read-engine-driven
+
+Operator decision: do NOT special-case 720 + bolt-on auto-center. The engine resolution is fundamentally
+DYNAMIC — **the read engine is the master**: it sets its LOD, and the **ring + scaler + S2MM all follow**,
+anywhere from **1080 down to SD**. The ring holds the NATIVE compact LOD (no full-res padding, no DDR
+matte), the read engine reads it at ~1:1 and PLACES it (centered) into its output raster — the warp's own
+out-of-window matte fills the border (kills the matte-clear race + auto-center hack at once).
+
+**Why the read is always cheap:** the scaler does the downscale on WRITE, so the LOD is already the right
+size; the read engine reads it at ≥1:1 (placement / upscale-zoom only) — the downscale-on-read bandwidth
+wall NEVER occurs.
+
+**Scope (address-path is contained — keep build params as MAX for sizing, add runtime dims):**
+- `pg_tile_dma`: `STRIDE = in_w_rt*3` runtime (TILED=0 raster read). [DONE-ish]
+- `pg_tilecache_rt2`: source clamps (`cx<in_w-1`, `cy<in_h-1`, 3 sites) runtime; `TX` hash stays build-MAX.
+- `pg_projective`: window clamps (`<IN_W`/`<IN_H`, 2 sites) runtime; source-center is firmware (in_w/2).
+- Thread `in_w_rt/in_h_rt`: `pg_warp_top` → `pg_warp_engine` → {projective, tilecache, tile_dma}.
+- BD: **reuse axi_gpio_1 ch2** (already drives scaler out_w/out_h) to ALSO drive `pg_re_0 in_w_rt/in_h_rt`
+  → one GPIO ties read-engine source = scaler out = S2MM geometry.
+- Firmware: S2MM writes COMPACT (HSIZE=stride=in_w*3, no padding); read in_w/in_h = scaler out; center via
+  projective translate (src-center = in_w/2); DROP `ring_clear_matte` + sub-window-stride. Snap dims to /16
+  (tile-grid alignment; 360→352 invisible crop).
+- Sim: pg_tile_dma_lod_tb, pg_tilecache_rt2_tb cover the address math before bench.
+
+This SUPERSEDES the padded-ring "sub-window into fixed 1280×720" approach below as the production direction
+(that approach is bench-clean and stays as the fallback / proves the scaler+S2MM+warp chain).
+
+---
+
+## ★ BENCH LOG 2026-06-26 — decimate-on-write D1–D4 (commit `d317094`, padded-ring approach, CLEAN)
 
 Implemented D1–D3 and bench-debugged the sub-window write through two failures to a sim-clean fix.
 Build candidate = **`d317094`** (bitstream rebuilding as of this note). Prior build `f9d1ac4` is SUPERSEDED.

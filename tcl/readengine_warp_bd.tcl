@@ -279,6 +279,20 @@ connect_bd_net [get_bd_pins sl_sel/Dout] [get_bd_pins re_mux/sel]
 #     [31]    = SOFT-RESET request (geometry change)
 connect_bd_net [get_bd_pins axi_gpio_12/gpio2_io_o] [get_bd_pins pg_re_0/lead_cfg]
 
+# DYNAMIC RING (2026-06-26): tie the read engine's runtime source dims to the
+# SAME GPIO slices that drive the scaler's out_w/out_h (axi_gpio_1 ch2, created
+# in build_phase_b.tcl before this file is sourced). One GPIO write now sets
+# scaler-out = S2MM geometry = read-engine IN_W/IN_H together. pg_re_0 in_w_rt/
+# in_h_rt are 16-bit (match the slice width; the engine uses [11:0]). Guarded so
+# a sibling BD without these slices still elaborates.
+if {[llength [get_bd_cells -quiet slice_out_w]] && [llength [get_bd_cells -quiet slice_out_h]]} {
+    connect_bd_net [get_bd_pins slice_out_w/Dout] [get_bd_pins pg_re_0/in_w_rt]
+    connect_bd_net [get_bd_pins slice_out_h/Dout] [get_bd_pins pg_re_0/in_h_rt]
+    puts "DYNAMIC RING: pg_re_0 in_w_rt/in_h_rt tied to scaler out_w/out_h (axi_gpio_1 ch2)"
+} else {
+    puts "DYNAMIC RING: slice_out_w/h absent -> pg_re_0 in_w_rt/in_h_rt left at 0 (full master)"
+}
+
 # BRING-UP DIAG: route the warp engine's activity counters to axi_gpio_2 (firmware readback)
 # instead of predrain_snap. dbg={sts_err,cmd_valid,ovalid_cnt[9:0],fill_cnt[9:0],fetch_cnt[9:0]}.
 # fetch=0 -> prefetch dead; fill=0 -> DataMover returns nothing; ovalid=0 -> consumer never produces.

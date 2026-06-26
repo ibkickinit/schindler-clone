@@ -45,6 +45,10 @@ module pg_projective #(
 ) (
     input  wire        clk, rstn,
     input  wire        sof,
+    // DYNAMIC RING (2026-06-26): runtime active source dims (the LOD). The
+    // in-window test below uses these so a coord beyond the (smaller) LOD reads
+    // the warp's out-of-window matte. 0 -> build-time IN_W/IN_H (legacy).
+    input  wire [11:0] in_w_rt, in_h_rt,
     input  wire signed [CW-1:0]  m_a,m_b,m_c,m_d,m_e,m_f,
     input  wire signed [GCW-1:0] m_g,m_h,
     output wire        o_valid,
@@ -54,6 +58,9 @@ module pg_projective #(
     output wire [11:0] o_h_frac, o_v_frac,
     output wire        o_new_row
 );
+// DYNAMIC RING: effective active source bounds (signed, for the >=0 && <bound tests).
+wire signed [12:0] inw_eff = $signed({1'b0, (in_w_rt == 12'd0) ? IN_W[11:0] : in_w_rt});
+wire signed [12:0] inh_eff = $signed({1'b0, (in_h_rt == 12'd0) ? IN_H[11:0] : in_h_rt});
 generate
 // =========================== AFFINE SUBSET (byte-for-byte pg_affine) ===========================
 if (PROJECTIVE==0) begin : g_affine
@@ -64,7 +71,7 @@ if (PROJECTIVE==0) begin : g_affine
     wire last = eol && (oy == OUT_H[11:0]-12'd1);
     wire signed [CW-1-FB:0] ax_int = ax >>> FB, ay_int = ay >>> FB;
     assign o_valid     = running;
-    assign o_in_window = (ax_int>=0)&&(ax_int<IN_W)&&(ay_int>=0)&&(ay_int<IN_H);
+    assign o_in_window = (ax_int>=0)&&(ax_int<inw_eff)&&(ay_int>=0)&&(ay_int<inh_eff);
     assign o_src_col   = ax_int[11:0];
     assign o_src_row   = ay_int[11:0];
     assign o_h_frac    = ax[FB-1 -: 12];      // top 12 frac bits (= ax[11:0] when FB==12)
@@ -291,7 +298,7 @@ end else begin : g_proj
     wire signed [AW-1:0] sx_n = s12_px >>> RF;
     wire signed [AW-1:0] sy_n = s12_py >>> RF;
     wire signed [AW-1-FB:0] sx_int = sx_n >>> FB, sy_int = sy_n >>> FB;
-    wire inwin_n = (!s12_bad) && (sx_int>=0)&&(sx_int<IN_W)&&(sy_int>=0)&&(sy_int<IN_H);
+    wire inwin_n = (!s12_bad) && (sx_int>=0)&&(sx_int<inw_eff)&&(sy_int>=0)&&(sy_int<inh_eff);
 
     always @(posedge clk) begin
         if(!rstn) begin s12_v<=0; o_v_r<=0; end
