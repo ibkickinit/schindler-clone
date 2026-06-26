@@ -389,3 +389,16 @@ The corner-pin UI was never deleted — it's on `orient-integration`. W3 ports i
   device intermittently drops SET (set→GET-verify→retry needed; see `/tmp/osee_robust.py`). pgmIndex is
   0-based (0=IN1=ImagePro, 1=IN2=media, 2=IN3=laptop). NOTE 2026-06-25: switching pgmIndex did not change
   the Zybo's program feed at the bench despite confirmed GET — physical feed wiring (PGM vs AUX) unresolved.
+
+## ★ 1080p30 DYNAMIC RING VALIDATED 2026-06-26 (step 1 of runtime 720↔1080)
+
+OUTPUT_MODE=1080p30 build (MAX 1920×1080) — monitor-verified: Z100 = full clean smooth 1920×1080; Z50 =
+centered clean 960×528 + matte. The dynamic ring resizes at a 1080p30 display. WNS=+0.299, BRAM 48%.
+1080p30 shares the 74.25 MHz pixel clock with 720p60 (no reclock) → the runtime output switch is feasible.
+
+⚠️ opix TELEMETRY MISLEADS AT 30fps: opix/frame + "exp 921600" are 720p60-calibrated; at 1080p30 they read
+~half (1,025,024 of 2,073,600) for a FULL clean picture. Trust the MONITOR, not opix, off 720p60.
+
+WITHIN this build the ring already spans 1080↔720 at runtime: Z100 → 1920×1072 LOD; Z67 → ~1280×720 LOD
+(centered). STEP 2 (the full output-mode switch, 720p60 display ↔ 1080p30 display): runtime warp OUT_W/OUT_H
+(mirror the proven IN_W work) + a `vtc_setup(&MODE_*)` swap, on the same MAX=1920×1080 bitstream.
