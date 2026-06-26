@@ -1493,9 +1493,18 @@ static void apply_scale(unsigned pct)
 #ifdef SCALER_KERNEL_GPIO_BASEADDR
         Xil_Out32(SCALER_KERNEL_GPIO_BASEADDR, (pct <= 67u) ? 0xAu : 0x5u);  /* 0xA=4tap H+V */
 #endif
-        ring_clear_matte();                  /* matte border first (covers shrink-down stale region) */
-        s2mm_set_subwindow(ow, oh);          /* S2MM now lands only the top-left sub-window           */
-        scaler_out_dims_write(ow, oh);       /* scaler decimates source -> ow x oh                    */
+        /* ORDER MATTERS (2026-06-26 bench): switch geometry FIRST, let it settle,
+         * THEN lay down the matte. Clearing before the S2MM switches to the
+         * sub-window races: the S2MM (still full-geometry) writes one full frame
+         * into a slot AFTER its clear -> that slot keeps a stale border forever
+         * -> "stale frame flashing in the border" as the warp cycles ring slots.
+         * After the switch the S2MM only ever touches the top-left, so a single
+         * post-settle clear makes every slot's border stick at matte. */
+        s2mm_set_subwindow(ow, oh);          /* S2MM -> top-left sub-window (next frame)    */
+        scaler_out_dims_write(ow, oh);       /* scaler decimates source -> ow x oh          */
+        usleep(50000);                       /* ~3 frames: let the sub-window geometry take  */
+                                             /* effect so the S2MM is writing ONLY top-left  */
+        ring_clear_matte();                  /* matte border now sticks (S2MM won't redraw it)*/
         warp_set_rotation(g_warp_deg, 4096, 4096, g_warp_panx, g_warp_pany);  /* identity scale */
         xil_printf("SCALE %u%%: scaler LOD %ux%u sub-window, warp identity, k=%s\r\n",
                    pct, (unsigned)ow, (unsigned)oh, (pct <= 67u) ? "4tap" : "2tap");
