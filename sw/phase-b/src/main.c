@@ -2986,7 +2986,21 @@ static void set_output_mode(unsigned target_h)
     u32 ch1 = 1u | ((g_out_w & 0xFFFu) << 1) | ((g_out_h & 0xFFFu) << 13);
     Xil_Out32(INVW_GPIO_BASE, ch1);
 
-    vtc_setup(m);                 /* switch the output VTC timing (same pixel clock) */
+    /* VTC CORE RESET before reconfigure (2026-06-26): switching to a SMALLER
+     * V_TOTAL (1080p30 1125 -> 720p60 750) while the generator is running strands
+     * its vertical counter PAST the new total -> it never wraps -> no vsync (the
+     * exact asymmetry: 720->1080 always wraps and recovers; 1080->720 hangs). A
+     * full core reset (CTL bit31) zeroes the counters so vtc_setup starts from a
+     * quiescent state, just like boot. Then re-align to source vsync + reconfig. */
+#if defined(XPAR_V_TC_TX_BASEADDR)
+    Xil_Out32(XPAR_V_TC_TX_BASEADDR + 0x00u, 0x80000000u);  /* RESET the VTC core */
+    usleep(1000);
+    Xil_Out32(XPAR_V_TC_TX_BASEADDR + 0x00u, 0x00000000u);  /* release reset      */
+    usleep(1000);
+#endif
+    if (wait_for_aligned_source_vsync() != XST_SUCCESS)
+        xil_printf("WARN: source vsync align timed out before VTC switch\r\n");
+    vtc_setup(m);                 /* reconfigure + start the output VTC (same pixel clock) */
     apply_scale(g_scale_pct);     /* recompute LOD/scaler/warp for the new output + soft-reset */
     xil_printf("OUTPUT MODE -> %ux%u (%s)\r\n", g_out_w, g_out_h, m->name);
 }
