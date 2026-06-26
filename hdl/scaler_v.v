@@ -58,6 +58,14 @@ module scaler_v #(
      * in_h_runtime; scaler_top zero-clamps to OUT_H so undriven == full size. */
     input  wire [11:0] out_h_runtime,
 
+    /* decimate-on-write (2026-06-26): runtime OUTPUT width = the emit-line
+     * width. scaler_h decimates each line to out_w pixels; scaler_v must emit
+     * EXACTLY that many (TLAST at out_w-1) instead of padding back to IN_W with
+     * stale line-buffer data. A mismatch makes the S2MM see TLAST late
+     * (EOLLate) -> it halts -> frozen frame. scaler_top clamps to OUT_W so
+     * undriven == full width. */
+    input  wire [11:0] out_w_runtime,
+
     /* iter14 (2026-05-31): runtime kernel-mode selector. Mirrors scaler_h
      * mode codes: 0=NN tap3 only, 1=2-tap tap2+tap3 (production), 2=4-tap
      * tap0..tap3, 3=reserved. */
@@ -98,6 +106,10 @@ module scaler_v #(
     // Runtime OUTPUT height (vertical DDA step), latched at TUSER. Default
     // OUT_H so pre-firmware-write behavior == compile-time OUT_H.
     reg [11:0] out_h_active;
+
+    // Runtime OUTPUT width (emit-line width), latched at TUSER. Default IN_W
+    // (= full line) so pre-firmware-write behavior == compile-time full width.
+    reg [11:0] out_w_active;
 
     // Vertical accumulator. Step is the runtime out_h_active (was OUT_H param).
     reg  [11:0] v_accum;
@@ -260,6 +272,7 @@ module scaler_v #(
             m_axis_tuser    <= 1'b0;
             in_h_active     <= IN_H_DEFAULT[11:0];
             out_h_active    <= OUT_H[11:0];
+            out_w_active    <= IN_W[11:0];
             in_tlast_count       <= 16'd0;
             in_tlast_count_snap  <= 16'd0;
             emit_count           <= 16'd0;
@@ -286,6 +299,7 @@ module scaler_v #(
                      * AXI-Lite change between frames takes effect here. */
                     in_h_active    <= in_h_runtime;
                     out_h_active   <= out_h_runtime;
+                    out_w_active   <= out_w_runtime;
                     /* iter4g DIAG: snapshot + reset per-frame counters. */
                     in_tlast_count_snap  <= in_tlast_count;
                     in_tlast_count       <= s_axis_tlast ? 16'd1 : 16'd0;
@@ -374,10 +388,10 @@ module scaler_v #(
                         2'd2: stage0_valid_q <= lbuf_fresh[0] | lbuf_fresh[1];
                         2'd3: stage0_valid_q <= lbuf_fresh[1] | lbuf_fresh[2];
                     endcase
-                    tlast_q        <= (out_col == IN_W - 1);
+                    tlast_q        <= (out_col == out_w_active - 1);
                     tuser_q        <= (out_col == 0) && emit_first_row;
 
-                    if (out_col == IN_W - 1) begin
+                    if (out_col == out_w_active - 1) begin
                         emit           <= 1'b0;
                         emit_first_row <= 1'b0;
                         out_col        <= 11'd0;

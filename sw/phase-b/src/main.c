@@ -1444,39 +1444,25 @@ static void ring_clear_matte(void)
     Xil_DCacheFlushRange((INTPTR)FRAME_BUF_BASE, (UINTPTR)NUM_FRAMES * SLOT_BYTES);
 }
 
-/* Reconfigure the S2MM (write) channel to deposit an out_w x out_h raster as a
+/* Set the S2MM write geometry to an out_w x out_h raster deposited as a
  * top-left sub-window of the fixed OUT_RASTER frame (Stride = full pitch).
- * out_w==FRAME_W && out_h==FRAME_H restores full-frame geometry. Live geometry
- * change needs a stop/restart -> ~1 frame glitch on scale change (acceptable).
- * SAFE under genlock here: MM2S is vestigial (warp reads via its own
- * DataMover), so there is no read leg to desync (cf. genlock-geometry-match). */
+ * out_w==FRAME_W && out_h==FRAME_H restores full-frame geometry.
+ *
+ * CRITICAL (2026-06-26): update ONLY the S2MM geometry registers (HSIZE /
+ * STRD_FRMDLY / VSIZE) directly, leaving S2MM_DMACR (RS run bit, dynamic-
+ * genlock mode, external-fsync enable) UNTOUCHED. The first attempt used the
+ * driver's DmaStop + DmaConfig + DmaStart, which rewrites DMACR and halts the
+ * channel -> broke the iter6 source-vsync fsync + dynamic-genlock write -> the
+ * S2MM stopped landing data -> the ring stayed at pre-cleared matte -> BLACK
+ * output at any Z (bench-confirmed). PG020 register-direct resize: write
+ * HSIZE + STRIDE, then VSIZE LAST (writing VSIZE commits the geometry); the
+ * running channel picks it up at the next fsync without disturbing genlock. */
 static int s2mm_set_subwindow(u32 out_w, u32 out_h)
 {
-    XAxiVdma_DmaSetup cfg;
-    const UINTPTR SLOT_BYTES = (UINTPTR)FRAME_BYTES + (UINTPTR)STRIDE;
-    UINTPTR addrs[NUM_FRAMES];
-    int i, status;
-
-    cfg.VertSizeInput       = out_h;
-    cfg.HoriSizeInput       = out_w * BYTES_PP;   /* valid bytes per line */
-    cfg.Stride              = STRIDE;             /* FIXED full pitch -> sub-window */
-    cfg.FrameDelay          = 0;                  /* S2MM is the genlock master */
-    cfg.EnableCircularBuf   = 1;
-    cfg.EnableSync          = 0;
-    cfg.PointNum            = 0;
-    cfg.EnableFrameCounter  = 0;
-    cfg.FixedFrameStoreAddr = 0;
-
-    for (i = 0; i < NUM_FRAMES; i++)
-        addrs[i] = FRAME_BUF_BASE + (UINTPTR)i * SLOT_BYTES;
-
-    XAxiVdma_DmaStop(&vdma, XAXIVDMA_WRITE);
-    status = XAxiVdma_DmaConfig(&vdma, XAXIVDMA_WRITE, &cfg);
-    if (status != XST_SUCCESS) { xil_printf("S2MM subwin DmaConfig fail %d\r\n", status); return status; }
-    status = XAxiVdma_DmaSetBufferAddr(&vdma, XAXIVDMA_WRITE, addrs);
-    if (status != XST_SUCCESS) { xil_printf("S2MM subwin SetAddr fail %d\r\n", status); return status; }
-    status = XAxiVdma_DmaStart(&vdma, XAXIVDMA_WRITE);
-    if (status != XST_SUCCESS) { xil_printf("S2MM subwin DmaStart fail %d\r\n", status); return status; }
+    const UINTPTR S2MM = XPAR_AXI_VDMA_0_BASEADDR + 0xA0u; /* S2MM reg-direct block base */
+    Xil_Out32(S2MM + 0x04u, out_w * BYTES_PP);   /* HSIZE = valid bytes/line          */
+    Xil_Out32(S2MM + 0x08u, STRIDE);             /* STRD_FRMDLY: stride=full pitch, frmdly=0 */
+    Xil_Out32(S2MM + 0x00u, out_h);              /* VSIZE LAST -> commits geometry      */
     return XST_SUCCESS;
 }
 
@@ -1507,9 +1493,9 @@ static void apply_scale(unsigned pct)
 #ifdef SCALER_KERNEL_GPIO_BASEADDR
         Xil_Out32(SCALER_KERNEL_GPIO_BASEADDR, (pct <= 67u) ? 0xAu : 0x5u);  /* 0xA=4tap H+V */
 #endif
-        scaler_out_dims_write(ow, oh);
-        ring_clear_matte();
-        s2mm_set_subwindow(ow, oh);
+        ring_clear_matte();                  /* matte border first (covers shrink-down stale region) */
+        s2mm_set_subwindow(ow, oh);          /* S2MM now lands only the top-left sub-window           */
+        scaler_out_dims_write(ow, oh);       /* scaler decimates source -> ow x oh                    */
         warp_set_rotation(g_warp_deg, 4096, 4096, g_warp_panx, g_warp_pany);  /* identity scale */
         xil_printf("SCALE %u%%: scaler LOD %ux%u sub-window, warp identity, k=%s\r\n",
                    pct, (unsigned)ow, (unsigned)oh, (pct <= 67u) ? "4tap" : "2tap");

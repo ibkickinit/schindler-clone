@@ -180,6 +180,7 @@ module scaler_top #(
         .m_axis_tuser  (m_axis_tuser),
         .in_h_runtime  (in_h_eff),
         .out_h_runtime (out_h_eff),
+        .out_w_runtime (out_w_eff),
         .kernel_mode   (kernel_mode_v),
         .in_tlast_count_snap  (scaler_v_in_tlast_snap),
         .emit_count_snap      (scaler_v_emit_snap),

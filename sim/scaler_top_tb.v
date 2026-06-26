@@ -161,14 +161,14 @@ module scaler_top_tb #(
                 out_tuser_count = out_tuser_count + 1;
                 if (!out_first_pixel) begin
                     // End of previous frame
-                    if (out_pixels_in_frame != OUT_W * OUT_H) begin
+                    if (out_pixels_in_frame != out_w_tb * out_h_tb) begin
                         $display("[t=%0t] FRAME %0d size mismatch: got %0d pixels (expected %0d)",
-                                 $time, out_frame_idx, out_pixels_in_frame, OUT_W * OUT_H);
+                                 $time, out_frame_idx, out_pixels_in_frame, out_w_tb * out_h_tb);
                         errors = errors + 1;
                     end
-                    if (out_tlast_count != OUT_H) begin
+                    if (out_tlast_count != out_h_tb) begin
                         $display("[t=%0t] FRAME %0d TLAST count: got %0d (expected %0d)",
-                                 $time, out_frame_idx, out_tlast_count, OUT_H);
+                                 $time, out_frame_idx, out_tlast_count, out_h_tb);
                         errors = errors + 1;
                     end
                     out_frame_idx = out_frame_idx + 1;
@@ -187,11 +187,11 @@ module scaler_top_tb #(
                     line_widths[line_idx] = out_pixels_in_line;
                     line_idx = line_idx + 1;
                 end
-                if (out_pixels_in_line != OUT_W) begin
-                    if (out_tlast_count < 5 || out_pixels_in_line != OUT_W) begin
+                if (out_pixels_in_line != out_w_tb) begin
+                    if (out_tlast_count < 5 || out_pixels_in_line != out_w_tb) begin
                         $display("[t=%0t] FRAME %0d LINE %0d width = %0d (expected %0d)",
-                                 $time, out_frame_idx, out_tlast_count, out_pixels_in_line, OUT_W);
-                        if (out_pixels_in_line != OUT_W) errors = errors + 1;
+                                 $time, out_frame_idx, out_tlast_count, out_pixels_in_line, out_w_tb);
+                        if (out_pixels_in_line != out_w_tb) errors = errors + 1;
                     end
                 end
                 out_tlast_count = out_tlast_count + 1;
