@@ -3,7 +3,61 @@
 **Living document.** This is the persistent source of truth for the warp/scale engine effort.
 It survives context compaction and onboards new agents. Update it as state changes.
 
-Last updated: 2026-06-25 · Branch: `unified-engine-destres` (off `warp-demand-fetch-fsm` @ `3783d95`)
+Last updated: 2026-06-25 eve · Branch: **`decimate-on-write`** (off the clean pivot `137b13d`)
+
+---
+
+## ★ CURRENT DIRECTION (2026-06-25 eve): DECIMATE-ON-WRITE — read the §D plan first
+
+After the tiled-write paths failed (shear via the bursty scaler; empty-ring via the vestigial VDMA MM2S —
+see §4 W1-B history), the architecture pivoted to a cleaner model that **dissolves the downscale-bandwidth
+problem** instead of fighting it.
+
+**THE IDEA.** Today the *warp* does the SCALE (reads a fixed-res LOD, downscales for sub-100%) and that
+downscale-on-read is the bandwidth wall. Instead: the **scaler decimates the source to the scale-appropriate
+size on the WRITE side**, the S2MM writes that small LOD into the ring, and the **read engine reads it at
+~1:1** (cache-friendly — NO downscale fetch). SCALE moves to the scaler (quality polyphase decimation),
+GEOMETRY (rotate / keystone / position) stays on the warp. Upscale (>100%) stays the warp's zoom-in
+(already clean).
+
+**WHY IT'S CLEAN (key insights, operator-derived 2026-06-25):**
+- The warp **read engine + frame ring ARE the MM2S replacement.** In the warp build the VDMA MM2S is
+  vestigial (connected, unused — warp drives output via re_mux/s1). We use only the VDMA *S2MM half*
+  (write + `s2mm_frame_ptr_out`). → So there is **no MM2S to diverge from S2MM** → the
+  "[[schindler_genlock_geometry_must_match]] / G1 reframe blacked out HDMI" failure mode **cannot happen**:
+  the S2MM is free to write a RUNTIME-sized decimated LOD and the warp just adapts its read.
+- The scaler sits **BEFORE** the S2MM (decimate-on-write), not after — so NO DDR read-back/retile. One
+  decimating write, one 1:1 read, per engine. (The failed MM2S-retile was the opposite "process-after-S2MM"
+  read-back pattern.)
+- **Quality:** scaler is an 8-tap polyphase core; it AVERAGES (does not drop). Kernels: NN(drop — avoid) /
+  2-tap boxcar (prod default) / 4-tap boxcar / [8-tap polyphase reserved]. Deep decimation (50% scale =
+  ~3× from a 1080 source) wants **4-tap** (2-tap under-filters at 3×). 4-tap is runtime-selectable (iter14
+  `k h/v 2`). This is a quality UPGRADE over the warp's old bilinear-2-tap downscale.
+- **Two engines = two parallel rings at two LODs.** source ─broadcast─► {scaler_A→S2MM_A→ringA→read_A→HDMI},
+  {scaler_B→S2MM_B→ringB→read_B→analog}. Each decimates to its own runtime scale-res. Because both reads are
+  ~1:1, the two-engine DDR budget (W2) gets EASIER, not harder. (Cost: 2 scalers + 2 rings + 2 read engines —
+  needs a 7020 BRAM/LUT fit check; SD engine's scaler is small. Prove single-engine first.)
+
+**REALTIME.** scaler out-res (G1) + kernel (iter14) are both GPIO/runtime → firmware reprograms decimation
+per scale-change (~1-frame granularity; possible 1-frame VDMA-reprogram glitch only while dragging).
+
+**THE PLAN (single-engine 720p first):**
+  D1. Port the **G1 runtime-output scaler** (runtime OUT_W/OUT_H in scaler_h/v/top — exists on
+      `iter5-1080p-clean` @ `ffcd4ce`) onto this branch (current scaler_top has runtime INPUT but build-time
+      OUTPUT). Fit + sim check.
+  D2. Make the **S2MM write geometry + warp IN_W/IN_H runtime** (firmware sets scaler-out-res, S2MM
+      HSIZE/Stride/VSIZE, warp dims in lockstep per scale). Reuse the dest-res `DEST_RES_LOD` plumbing.
+  D3. **Firmware: decompose the user transform** → (scaler decimation factor for the SCALE component) +
+      (warp 1:1 rotate/translate/keystone for GEOMETRY). Downscale→scaler; upscale→warp zoom; 100%→1:1.
+      Set kernel = 4-tap for deep decimation.
+  D4. Build + bench: clean whole-image at 100%, **clean downscale to 50%** (no starve, polyphase quality),
+      clean rotation/keystone, upscale to 200% via warp zoom.
+  D5. Then instantiate the **second engine** (broadcast source, 2nd scaler/ring/read) + the W2 fit check.
+
+**BASE = the clean pivot `137b13d`** (warp + projective + scaler_top + color + VDMA raster ring + clean
+whole-image, bench-proven). NOT iter5 (it has the G1 scaler but no warp engine — grafting the warp would be
+the bigger job). The dead-end tiled/retile experiment code (pg_raster_to_tile, pg_tile_s2mm_cmd,
+RASTER_TO_TILE conditionals) is INERT in the decimate-on-write config — prune later for tidiness.
 
 ---
 
@@ -129,6 +183,50 @@ Status: ☐ todo · ◐ in progress · ✅ done · 🔬 needs verification
     full-master path teetered at 67%/50% (82k–845k); reading the pre-scaled 720 LOD bounds the working
     set. **SPEC (0.5–2.0×) MET on silicon.** WNS=+0.0035 (met, razor-thin — scaler_top adds logic;
     margin is a follow-up). Identity is now a 1:1 LOD→output map = whole image (visual check owed).
+  - **W1-B-tiled ❌ ABANDONED (scaler→tiler corruption).** The dedicated-DMA tiled write
+    (scaler_top→pg_raster_to_tile) produces a persistent 640-seam shear. JTAG DDR forensics proved it's
+    write-side (scaler's bursty/variable-length output corrupts the count-based tiler); the AXIS FIFO and a
+    TLAST-delimited tiler BOTH failed to fix it (DDR byte-identical). Builds 32e66fb/cd24288/b168c06.
+  - **W1-B-pivot ◐ PARTIAL WIN, bench 2026-06-25 (commit `137b13d`, artifact unified-engine-destres-720p-
+    scaler_top-enable-137b13d).** Pivoted to the PROVEN scaler_top→**VDMA→raster** write + warp **TILED=0**
+    strided read of the 1280×720 LOD. **SHEAR GONE** — DDR raster clean every row (JTAG-verified), identity
+    + rotation + zoom-in full 921600, and **100% = whole image** (the goal). BUT **downscale STARVES**
+    (80%/67%/50% = 219–310 rows) — the TILED=0 strided read lacks throughput for downscale. So the two
+    problems are now SEPARATED: shear=FIXED (VDMA raster), downscale-bandwidth=needs tiling (which corrupts).
+    WNS +0.286. This is the cleanest usable warp build to date (clean whole-image identity/rotation/zoom).
+  - **W1-B-next ◐ DDR retile via VDMA MM2S (IN PROGRESS — the chosen fix for downscale BW + clean picture).**
+    Reuse the VDMA's existing MM2S leg (24-bit, framed tuser=SOF/tlast=EOL, dynamic-genlock slave, PROVEN) to
+    read the clean raster back from DDR ring A → feed the EXISTING Path-B tiler chain → write tiles to DDR
+    ring B → warp reads ring B TILED=1 (full downscale BW). The MM2S delivers a STEADY fixed-length raster,
+    not the bursty scaler that corrupted the tiler. **NO new HDL** (all blocks exist; MM2S↔tiler contract
+    matches). Latency cost ~1–2 frames. Design map (agent-verified):
+    * 2 DDR rings: A raster @0x10000000 stride 2,768,640 ×7; B tiled @**0x11400000** stride **2,768,640** ×7
+      (use 2,768,640 NOT the tiler's 6,226,560 — else 7-slot ring overruns into MIP_L1 @0x12991180).
+    * Genlock: stage1→2 = VDMA internal (S2MM master mode2 ↔ MM2S slave mode3); stage2→3 = wr_cmd gray
+      frame_ptr_out → pg_re_0/frame_ptr (existing RASTER_TO_TILE branch, widen gate to ||DDR_RETILE).
+    * HP map: HP0=VDMA(S2MM+MM2S), HP1=warp read B, HP2=tiled write B (re-enable). No HP3.
+    * Tiler chain moves to **pclk_out** (=mm2s_aclk, 148.5MHz, source-independent) + rst_pixclk_out.
+    * Feed tiler from `axi_vdma_0/M_AXIS_MM2S` via an axis_broadcaster (leg→tiler, leg→re_mux/s0 fallback);
+      warp still drives output via re_mux/s1 (sel=1).
+    * **pg_re_0 needs CONFIG.FRAME_BUF_BASE {0x11400000} ADDED (currently absent → defaults 0x10000000).**
+    * Firmware: gate `DDR_RETILE` (+DEST_RES_LOD, NOT PATH_B_DEDICATED_DMA so both VDMA channels run);
+      FRAME_W/H=1280×720; warp lead tiled-table (8192). Build env: WARP_ENGINE=1 PROJECTIVE_BUILD=1
+      SCALER_MODULE=scaler_top OUTPUT_MODE=720p DDR_RETILE=1 (do NOT set RASTER_TO_TILE).
+    * Risks: MM2S per-LINE tlast (tiler rolls band-row per tlast — needs per-line not per-frame); pclk_out
+      domain (flip ALL tiler-block pclk_in refs + reset); both ring-B bases (wr_cmd + pg_re_0).
+  - **W1-B-retile-MM2S ❌ DID NOT WORK (3 builds, 2026-06-25 eve).** Reused the VDMA MM2S to read ring A
+    back into the tiler (DDR_RETILE, commits up to `ac36487`). Tiled ring B stays EMPTY (251/8192 nonzero)
+    and the MM2S asserts `SOFEarly` — the tiler never produces frame-starts, so wr_cmd never issues tiled
+    writes. Fixed a real broadcaster-stall bug along the way (axis_broadcaster M01→re_mux/s0 held tready=0 on
+    the unselected mux input → starved the tiler feed; dropped the broadcaster, MM2S→tiler direct) but the
+    EMPTY-ring-B + SOFEarly PERSIST. Conclusion: the VDMA MM2S genlock/pacing is too coupled to its
+    video-output role to repurpose as a steady tiler feed. WNS +0.308 (build is fine; the dataflow isn't).
+  - **W1-B-retile-dedicatedDMA ☐ THE ROBUST PATH (deferred decision).** The original design (agent a8196e20):
+    a DEDICATED axi_datamover MM2S on HP3 + a small command-gen (pg_retile_rd_cmd: gray2bin(s2mm_frame_ptr)-1,
+    BTT=1280*720*3, triggered by source-vsync pulse) + a framer (pg_unpack 64→24, exists; assert SOF). This
+    bypasses the VDMA-MM2S coupling entirely — clean steady read. MORE new HDL (rd_cmd + framer + HP3) +
+    another build cycle. Full map in the design-agent transcript; rings/genlock same as the MM2S variant.
+  - **W1-B-alt ☐ other fallbacks:** root-cause scaler bursty-output corruption; or 128-bit read DM for TILED=0.
   - **W1-C ◐ Runtime per-engine LOD (deferred to multi-engine).** Today LOD is build-time (xlconstants +
     pg_re_0 CONFIG + scaler_top fixed OUT_W/H + firmware FRAME_W/H). True runtime per-engine res needs:
     xlconstants→GPIO (firmware-set), scaler_top OUT_W/H made runtime, firmware LOD from a define/GPIO.
