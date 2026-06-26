@@ -1046,10 +1046,19 @@ create_bd_cell -type ip -vlnv xilinx.com:ip:axi_gpio axi_gpio_1
 set_property -dict [list \
     CONFIG.C_GPIO_WIDTH    {32} \
     CONFIG.C_ALL_OUTPUTS   {1} \
-    CONFIG.C_IS_DUAL       {0} \
+    CONFIG.C_IS_DUAL       {1} \
+    CONFIG.C_GPIO2_WIDTH   {32} \
+    CONFIG.C_ALL_OUTPUTS_2 {1} \
     CONFIG.C_INTERRUPT_PRESENT {0} \
-    CONFIG.C_DOUT_DEFAULT  {0x04380780} \
+    CONFIG.C_DOUT_DEFAULT   {0x04380780} \
+    CONFIG.C_DOUT_DEFAULT_2 {0x02D00500} \
 ] [get_bd_cells axi_gpio_1]
+# D2 (decimate-on-write, 2026-06-25): axi_gpio_1 is now DUAL-channel.
+#   ch1 (gpio_io_o)  bits[15:0]=IN_W,  [31:16]=IN_H  — source raster (unchanged).
+#   ch2 (gpio2_io_o) bits[15:0]=OUT_W, [31:16]=OUT_H — scaler DECIMATION target
+#       (the write-side LOD the S2MM stores + the warp reads at ~1:1).
+#   ch2 default 0x02D00500 = 1280x720 = full OUT_W/OUT_H = identity until
+#   firmware programs a smaller LOD for downscale.
 
 create_bd_cell -type ip -vlnv xilinx.com:ip:xlslice slice_in_w
 set_property -dict [list \
@@ -1069,6 +1078,26 @@ connect_bd_net [get_bd_pins axi_gpio_1/gpio_io_o] [get_bd_pins slice_in_w/Din]
 connect_bd_net [get_bd_pins axi_gpio_1/gpio_io_o] [get_bd_pins slice_in_h/Din]
 connect_bd_net [get_bd_pins slice_in_w/Dout]      [get_bd_pins scaler_0/in_w_async]
 connect_bd_net [get_bd_pins slice_in_h/Dout]      [get_bd_pins scaler_0/in_h_async]
+
+# D2: channel 2 -> scaler out_w_async/out_h_async (runtime decimation LOD).
+create_bd_cell -type ip -vlnv xilinx.com:ip:xlslice slice_out_w
+set_property -dict [list \
+    CONFIG.DIN_WIDTH {32} \
+    CONFIG.DIN_FROM  {15} \
+    CONFIG.DIN_TO    {0} \
+    CONFIG.DOUT_WIDTH {16} \
+] [get_bd_cells slice_out_w]
+create_bd_cell -type ip -vlnv xilinx.com:ip:xlslice slice_out_h
+set_property -dict [list \
+    CONFIG.DIN_WIDTH {32} \
+    CONFIG.DIN_FROM  {31} \
+    CONFIG.DIN_TO    {16} \
+    CONFIG.DOUT_WIDTH {16} \
+] [get_bd_cells slice_out_h]
+connect_bd_net [get_bd_pins axi_gpio_1/gpio2_io_o] [get_bd_pins slice_out_w/Din]
+connect_bd_net [get_bd_pins axi_gpio_1/gpio2_io_o] [get_bd_pins slice_out_h/Din]
+connect_bd_net [get_bd_pins slice_out_w/Dout]      [get_bd_pins scaler_0/out_w_async]
+connect_bd_net [get_bd_pins slice_out_h/Dout]      [get_bd_pins scaler_0/out_h_async]
 
 # AXI-Lite connection
 connect_bd_intf_net [get_bd_intf_pins axi_ic_lite/M04_AXI] [get_bd_intf_pins axi_gpio_1/S_AXI]

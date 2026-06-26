@@ -563,7 +563,8 @@ static void cmd_help(void)
                "  J <json>        JSON-RPC 2.0 (catalog v0.1.0; for schindlerd)\r\n");
 #ifdef WARP_BUILD
     xil_printf("  W <deg> [ix iy [px py]]  warp rotation/zoom/pan\r\n"
-               "  L <n>           warp prefetch lead override (0=auto)\r\n");
+               "  L <n>           warp prefetch lead override (0=auto)\r\n"
+               "  Z <pct>         scale 10-200%% (<100 scaler-decimate, >=100 warp-zoom)\r\n");
 #endif
 #ifdef PROJECTIVE_BUILD
     xil_printf("  K <h> <v>       keystone (h,v = far-edge shrink, 1/1000; K 200 0 = 0.20 H)\r\n"
@@ -1401,6 +1402,119 @@ static void warp_set_rotation(int deg, int invx, int invy, int panx, int pany)
     xil_printf("WARP rot=%d invx=%d invy=%d lead=%u: a=%d b=%d c=%d d=%d e=%d f=%d\r\n",
                deg, invx, invy, (unsigned)g_warp_lead, m_a, m_b, m_c, m_d, m_e, m_f);
 }
+
+/* ============================================================================
+ * DECIMATE-ON-WRITE scale (D2/D3, 2026-06-25) — the unified user "scale" knob.
+ *
+ * Keeps downscale OFF the warp read (the bandwidth wall) by moving it to the
+ * scaler's WRITE-side decimation, and keeps upscale on the warp's zoom-in:
+ *   pct >= 100 : scaler emits the FULL OUT_RASTER LOD, S2MM full-frame, the
+ *                warp ZOOMS in (invx=invy=4096*100/pct). 100% == the proven
+ *                clean pivot (137b13d).
+ *   pct <  100 : the scaler DECIMATES the source to a small raster (G1
+ *                out_w/out_h GPIO); the S2MM writes it as a top-left SUB-WINDOW
+ *                of the fixed OUT_RASTER frame (Stride stays full pitch); the
+ *                ring is pre-cleared to matte so the border reads clean; the
+ *                warp stays at IDENTITY (no downscale-fetch -> no starve). Deep
+ *                decimation (<=67%) switches the scaler to 4-tap (averages).
+ * The warp source frame stays FIXED at OUT_RASTER ("LOD == output res, never
+ * switched within an engine") so NO warp address-math is runtime. Auto-center
+ * of the sub-window is a follow-up (user pans via 'W' for now).
+ * ==========================================================================*/
+
+/* ch2 of axi_gpio_1 (base+0x08): [15:0]=OUT_W, [31:16]=OUT_H -> scaler
+ * out_w/h_async = the G1 runtime DDA step (decimation target). */
+static inline void scaler_out_dims_write(u32 out_w, u32 out_h)
+{
+    u32 v = ((out_h & 0xFFFFu) << 16) | (out_w & 0xFFFFu);
+    Xil_Out32(SCALER_DIMS_GPIO_BASEADDR + 0x08, v);
+}
+
+/* Pre-clear all NUM_FRAMES ring slots' frame region to matte (0x10/byte =
+ * 0x101010, the warp's out-of-window matte) so a sub-window write leaves a
+ * clean border. Flush to DDR for the warp DataMover. Only on a scale change. */
+static void ring_clear_matte(void)
+{
+    const UINTPTR SLOT_BYTES = (UINTPTR)FRAME_BYTES + (UINTPTR)STRIDE;
+    int i;
+    for (i = 0; i < NUM_FRAMES; i++) {
+        void *f = (void *)(uintptr_t)(FRAME_BUF_BASE + (UINTPTR)i * SLOT_BYTES);
+        memset(f, 0x10, FRAME_BYTES);
+    }
+    Xil_DCacheFlushRange((INTPTR)FRAME_BUF_BASE, (UINTPTR)NUM_FRAMES * SLOT_BYTES);
+}
+
+/* Reconfigure the S2MM (write) channel to deposit an out_w x out_h raster as a
+ * top-left sub-window of the fixed OUT_RASTER frame (Stride = full pitch).
+ * out_w==FRAME_W && out_h==FRAME_H restores full-frame geometry. Live geometry
+ * change needs a stop/restart -> ~1 frame glitch on scale change (acceptable).
+ * SAFE under genlock here: MM2S is vestigial (warp reads via its own
+ * DataMover), so there is no read leg to desync (cf. genlock-geometry-match). */
+static int s2mm_set_subwindow(u32 out_w, u32 out_h)
+{
+    XAxiVdma_DmaSetup cfg;
+    const UINTPTR SLOT_BYTES = (UINTPTR)FRAME_BYTES + (UINTPTR)STRIDE;
+    UINTPTR addrs[NUM_FRAMES];
+    int i, status;
+
+    cfg.VertSizeInput       = out_h;
+    cfg.HoriSizeInput       = out_w * BYTES_PP;   /* valid bytes per line */
+    cfg.Stride              = STRIDE;             /* FIXED full pitch -> sub-window */
+    cfg.FrameDelay          = 0;                  /* S2MM is the genlock master */
+    cfg.EnableCircularBuf   = 1;
+    cfg.EnableSync          = 0;
+    cfg.PointNum            = 0;
+    cfg.EnableFrameCounter  = 0;
+    cfg.FixedFrameStoreAddr = 0;
+
+    for (i = 0; i < NUM_FRAMES; i++)
+        addrs[i] = FRAME_BUF_BASE + (UINTPTR)i * SLOT_BYTES;
+
+    XAxiVdma_DmaStop(&vdma, XAXIVDMA_WRITE);
+    status = XAxiVdma_DmaConfig(&vdma, XAXIVDMA_WRITE, &cfg);
+    if (status != XST_SUCCESS) { xil_printf("S2MM subwin DmaConfig fail %d\r\n", status); return status; }
+    status = XAxiVdma_DmaSetBufferAddr(&vdma, XAXIVDMA_WRITE, addrs);
+    if (status != XST_SUCCESS) { xil_printf("S2MM subwin SetAddr fail %d\r\n", status); return status; }
+    status = XAxiVdma_DmaStart(&vdma, XAXIVDMA_WRITE);
+    if (status != XST_SUCCESS) { xil_printf("S2MM subwin DmaStart fail %d\r\n", status); return status; }
+    return XST_SUCCESS;
+}
+
+static unsigned g_scale_pct = 100;   /* unified user scale; 100 = 1:1 whole image */
+
+static void apply_scale(unsigned pct)
+{
+    if (pct < 10u)  pct = 10u;
+    if (pct > 200u) pct = 200u;
+    g_scale_pct = pct;
+
+    if (pct >= 100u) {
+        /* UPSCALE / 100%: full LOD + full S2MM, warp zoom-in. */
+        scaler_out_dims_write(OUT_RASTER_W, OUT_RASTER_H);
+#ifdef SCALER_KERNEL_GPIO_BASEADDR
+        Xil_Out32(SCALER_KERNEL_GPIO_BASEADDR, 0x5u);   /* 2-tap: full-frame doesn't need 4-tap */
+#endif
+        s2mm_set_subwindow(FRAME_W, FRAME_H);
+        int inv = (int)((4096u * 100u) / pct);          /* 100->4096(1:1), 200->2048(2x) */
+        warp_set_rotation(g_warp_deg, inv, inv, g_warp_panx, g_warp_pany);
+        xil_printf("SCALE %u%%: warp zoom inv=%d (scaler+S2MM full)\r\n", pct, inv);
+    } else {
+        /* DOWNSCALE: scaler decimates to a sub-window; warp stays identity. */
+        u32 ow = (OUT_RASTER_W * pct) / 100u; ow &= ~1u;  /* even -> byte align */
+        u32 oh = (OUT_RASTER_H * pct) / 100u; oh &= ~1u;
+        if (ow < 16u) ow = 16u;
+        if (oh < 16u) oh = 16u;
+#ifdef SCALER_KERNEL_GPIO_BASEADDR
+        Xil_Out32(SCALER_KERNEL_GPIO_BASEADDR, (pct <= 67u) ? 0xAu : 0x5u);  /* 0xA=4tap H+V */
+#endif
+        scaler_out_dims_write(ow, oh);
+        ring_clear_matte();
+        s2mm_set_subwindow(ow, oh);
+        warp_set_rotation(g_warp_deg, 4096, 4096, g_warp_panx, g_warp_pany);  /* identity scale */
+        xil_printf("SCALE %u%%: scaler LOD %ux%u sub-window, warp identity, k=%s\r\n",
+                   pct, (unsigned)ow, (unsigned)oh, (pct <= 67u) ? "4tap" : "2tap");
+    }
+}
 #endif /* WARP_BUILD */
 
 /* Phase-3 gamma/tone LUT load GPIO (axi_gpio_11): bit0=bypass, bit1=tog,
@@ -1669,6 +1783,20 @@ static void uart_dispatch(const char *line)
         }
 #else
         xil_printf("UART: 'W' is warp-only; no warp engine in this build\r\n");
+#endif
+    } else if (op == 'Z') {
+        /* DECIMATE-ON-WRITE scale: Z <pct>  (10..200). <100 = scaler decimates
+         * to a sub-window (clean downscale, no warp starve); >=100 = warp zoom.
+         * 'Z' alone = query. */
+#ifdef WARP_BUILD
+        unsigned pct;
+        if (parse_uint(&p, &pct)) {
+            apply_scale(pct);
+        } else {
+            xil_printf("SCALE %u%% (Z <10-200> to set)\r\n", g_scale_pct);
+        }
+#else
+        xil_printf("UART: 'Z' is warp-only; no warp engine in this build\r\n");
 #endif
     } else if (op == 'L') {
         /* WARP prefetch LEAD override: L <n> sets a manual lead (0 = auto per-geometry); L = query.

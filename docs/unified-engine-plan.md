@@ -42,17 +42,40 @@ GEOMETRY (rotate / keystone / position) stays on the warp. Upscale (>100%) stays
 per scale-change (~1-frame granularity; possible 1-frame VDMA-reprogram glitch only while dragging).
 
 **THE PLAN (single-engine 720p first):**
-  D1. Port the **G1 runtime-output scaler** (runtime OUT_W/OUT_H in scaler_h/v/top — exists on
-      `iter5-1080p-clean` @ `ffcd4ce`) onto this branch (current scaler_top has runtime INPUT but build-time
-      OUTPUT). Fit + sim check.
-  D2. Make the **S2MM write geometry + warp IN_W/IN_H runtime** (firmware sets scaler-out-res, S2MM
-      HSIZE/Stride/VSIZE, warp dims in lockstep per scale). Reuse the dest-res `DEST_RES_LOD` plumbing.
-  D3. **Firmware: decompose the user transform** → (scaler decimation factor for the SCALE component) +
-      (warp 1:1 rotate/translate/keystone for GEOMETRY). Downscale→scaler; upscale→warp zoom; 100%→1:1.
-      Set kernel = 4-tap for deep decimation.
+  D1. ✅ DONE (commit `4508d49`). Port the **G1 runtime-output scaler** (runtime OUT_W/OUT_H in
+      scaler_h/v/top — `iter5-1080p-clean` @ `ffcd4ce`) onto this branch. scaler_top_tb PASS, identity
+      path unchanged. Cherry-pick applied clean.
+
+  ★★ D2 REFRAMED (2026-06-25 late eve) — SUB-WINDOW WRITE, FIXED-RES FRAME, **NO warp HDL surgery.** ★★
+      The user requirement "**each engine works from an LOD equal to its OUTPUT RESOLUTION, never switch
+      LOD within an engine**" means the warp SOURCE FRAME is FIXED at output res (1280×720) and never
+      changes. So we do NOT make warp IN_W/IN_H runtime (that was a 4-module address-math surgery —
+      pg_tile_dma stride, pg_tilecache clamps, pg_projective window + CDC — high risk, hard to bench-verify).
+      Instead:
+        • The scaler DECIMATES the source to a small raster (e.g. 640×360 for 50%) via the G1 out_w/out_h
+          GPIO (D1) — content quality = polyphase, runtime.
+        • The VDMA S2MM writes that small raster as a **SUB-WINDOW** of the fixed 1280×720 frame
+          (HoriSizeInput=out_w·3, VertSizeInput=out_h, **Stride FIXED = OUT_W·3 = 3840**, base unchanged →
+          top-left anchor). Runtime, firmware-set per scale-change. Safe because MM2S is vestigial → no
+          [[schindler_genlock_geometry_must_match]] trap (that needed a live MM2S; here only S2MM is used).
+        • The warp reads the FULL fixed 1280×720 frame at **IDENTITY** — the bench-proven clean read path
+          (137b13d whole-image). Content occupies the top-left out_w×out_h; the rest is **pre-cleared
+          DDR matte**. The "small picture" = content physically smaller in a fixed frame, NOT a warp
+          downscale-fetch → the starve wall is DISSOLVED, not fought.
+        • Firmware pre-clears the ring frames to matte on scale-change (covers scale-DOWN stale region;
+          cheap transient memset, not per-frame).
+      BD work DONE (this session): axi_gpio_1 made dual-channel — ch2 (gpio2_io_o) bits[15:0]=OUT_W,
+      [31:16]=OUT_H drives scaler out_w/h_async (default 0x02D00500=1280×720=identity). scaler_bypass_1080p
+      + scaler_crop_bypass given matching out_w/h_async stub ports (module-agnostic BD convention).
+  D3. **Firmware: decompose the user transform** → SCALE = scaler decimation (out_w/out_h GPIO + VDMA
+      sub-window geometry + matte-clear + auto-center warp translate so default downscale is centered) ;
+      GEOMETRY = warp 1:1 rotate/translate/keystone. Downscale→scaler; upscale→warp zoom; 100%→1:1.
+      Set kernel = 4-tap for deep decimation (`k h/v 2`). Add a daemon `scale.set <pct>` command.
   D4. Build + bench: clean whole-image at 100%, **clean downscale to 50%** (no starve, polyphase quality),
       clean rotation/keystone, upscale to 200% via warp zoom.
   D5. Then instantiate the **second engine** (broadcast source, 2nd scaler/ring/read) + the W2 fit check.
+      NOTE: with the fixed-per-engine-res model, the 2nd engine is a 2nd BD instance at SD res — no
+      runtime-source-dim engine needed; each engine's frame res is its (build-time) output res.
 
 **BASE = the clean pivot `137b13d`** (warp + projective + scaler_top + color + VDMA raster ring + clean
 whole-image, bench-proven). NOT iter5 (it has the G1 scaler but no warp engine — grafting the warp would be

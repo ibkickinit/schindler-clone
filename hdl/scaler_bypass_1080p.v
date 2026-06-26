@@ -52,6 +52,12 @@ module scaler_bypass_1080p #(
      * port to keep BD wiring identical across SCALER_MODULE choices. */
     input  wire [3:0]  kernel_mode_async,
 
+    /* D2 out_w/h_async stub — bypass passes the source through 1:1, no
+     * runtime decimation. Ports present only to keep BD wiring identical
+     * across SCALER_MODULE choices. */
+    input  wire [15:0] out_w_async,
+    input  wire [15:0] out_h_async,
+
     /* scaler_top exposes 48-bit diag counters. iter5 step 1 EOLEarly debug:
      * repurpose the slots to measure incoming AXIS line/frame boundaries.
      *   [15:0]  = pixels in last completed line  (should be 1920 for clean 1080p)
@@ -70,7 +76,7 @@ module scaler_bypass_1080p #(
 );
     assign out_tlast_snap = 16'd0;
     /* Suppress unused-input warnings without dropping ports. */
-    wire _stub_keep = |{in_w_async, in_h_async, kernel_mode_async};
+    wire _stub_keep = |{in_w_async, in_h_async, kernel_mode_async, out_w_async, out_h_async};
 
     reg [15:0] px_running;          /* pixels in current line */
     reg [15:0] px_latched;          /* pixels in last completed line */
