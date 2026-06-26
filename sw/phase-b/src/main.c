@@ -1496,10 +1496,13 @@ static void apply_scale(unsigned pct)
      * PLACES it centered (source-center = g_lod/2); its out-of-window matte
      * fills the border. No DDR matte, no padding, no clear race. */
     if (pct >= 100u) {
-        /* UPSCALE / 100%: full LOD (= OUT_RASTER), warp zoom-in. Snap to /16 for
-         * tile-grid alignment (1080 -> 1072; 720/1280/1920 already /16). The
-         * <=8-row bottom strip on a 1080 output reads the warp matte. */
-        g_lod_w = OUT_RASTER_W & ~15u; g_lod_h = OUT_RASTER_H & ~15u;
+        /* UPSCALE / 100%: full LOD (= OUT_RASTER). OVER-RES (2026-06-26): the LOD
+         * HEIGHT is the EXACT output height (even-aligned), NOT floored to /16 —
+         * so a 1080 output keeps all 1080 rows (was 1072, an 8-row bottom strip).
+         * The warp grid is built one band taller (ceil, RE_IN_H=1088) so band 67
+         * is addressable; its over-read past the content is clamped out of view.
+         * Width stays /16 (stride/tile alignment; 1920/1280 already /16). */
+        g_lod_w = OUT_RASTER_W & ~15u; g_lod_h = OUT_RASTER_H & ~1u;
 #ifdef SCALER_KERNEL_GPIO_BASEADDR
         Xil_Out32(SCALER_KERNEL_GPIO_BASEADDR, 0x5u);   /* 2-tap: full-frame doesn't need 4-tap */
 #endif
@@ -1512,8 +1515,8 @@ static void apply_scale(unsigned pct)
         /* DOWNSCALE: scaler decimates to a compact LOD; warp reads it 1:1 and
          * auto-centers. Snap dims to /16 so the tile grid covers the LOD with no
          * partial-tile over-read (the 8-row crop at e.g. 360->352 is invisible). */
-        u32 ow = ((OUT_RASTER_W * pct) / 100u) & ~15u;
-        u32 oh = ((OUT_RASTER_H * pct) / 100u) & ~15u;
+        u32 ow = ((OUT_RASTER_W * pct) / 100u) & ~15u;   /* width /16 (stride/tile align) */
+        u32 oh = ((OUT_RASTER_H * pct) / 100u) & ~1u;    /* OVER-RES: exact even height, no /16 floor */
         if (ow < 16u) ow = 16u;
         if (oh < 16u) oh = 16u;
         g_lod_w = ow; g_lod_h = oh;
@@ -2585,12 +2588,15 @@ static void telemetry_loop(UINTPTR vdma_base)
                            (unsigned)((dv[5]>>8)&0xFFu),(unsigned)(dv[5]&0xFFu),
                            (unsigned)((f4>>15)&1u),(unsigned)((f4>>14)&1u),(unsigned)((f4>>13)&1u),(unsigned)((f4>>12)&1u),
                            (unsigned)((f4>>11)&1u),(unsigned)((f4>>10)&1u),(unsigned)((f4>>9)&1u),(unsigned)((f4>>8)&1u));
-                /* OUTPUT framing measurement: opix should=921600, eol=720, und=output-starved cycles. */
-                unsigned opix = (unsigned)(((dv[7] & 0xFu) << 16) | (dv[6] & 0xFFFFu));
-                unsigned eol  = (unsigned)((dv[7] >> 4) & 0xFFFu);
+                /* OUTPUT framing measurement. opix is now 21-bit (pg_warp_top:
+                 * was 20-bit, overflowed at 1080p); dbg slot7 = {eol[10:0],
+                 * opix[20:16]}. EXPECTED is the RUNTIME output raster (g_out_w/h),
+                 * so the readout is valid at ANY resolution (720p..1080p..). */
+                unsigned opix = (unsigned)(((dv[7] & 0x1Fu) << 16) | (dv[6] & 0xFFFFu));
+                unsigned eol  = (unsigned)((dv[7] >> 5) & 0x7FFu);
                 unsigned und  = (unsigned)(dv[8] & 0xFFFFu);
-                xil_printf("  OUT: opix/frame=%u (exp 921600) eol/frame=%u (exp 720) starved=%u\r\n",
-                           opix, eol, und);
+                xil_printf("  OUT: opix/frame=%u (exp %u) eol/frame=%u (exp %u) starved=%u\r\n",
+                           opix, (unsigned)(OUT_RASTER_W * OUT_RASTER_H), eol, (unsigned)OUT_RASTER_H, und);
 #endif
 #endif
                 /* DRAIN (2026-06-03): from axis_to_vid_io_0/predrain_snap, routed onto

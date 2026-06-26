@@ -118,9 +118,13 @@ puts "BUILD: warp pg_re_0 OUT = ${WARP_OUT_W}x${WARP_OUT_H} (OUTPUT_MODE=[expr {
 set RE_TILED 1
 if {[info exists RASTER_TO_TILE] && !$RASTER_TO_TILE} { set RE_TILED 0 }
 if {[info exists LOD_W]} {
-    # IN_H clamps to whole 16-row bands (tiled writer only emits complete bands): 720->720 (clean),
-    # 1080->1072 (drops the trailing 8-row partial band). Harmless for the raster read (720 is /16).
-    set RE_IN_W $LOD_W ; set RE_IN_H [expr {($LOD_H/16)*16}]
+    # OVER-RES (2026-06-26): the warp grid IN_H = CEIL to whole 16-row bands so the
+    # last partial band IS addressable (1080 -> 1088, 68 bands), and firmware drives
+    # in_h_rt = the EXACT content height (clamp) so all 1080 rows display. (Was floor
+    # 1080->1072, which dropped 8 rows = an 8-row bottom matte strip.) The band-67
+    # fetch over-reads <=8 rows past the content into adjacent DDR — clamped out of
+    # view, harmless. Slot stride stays content-based (RE_SLOT_STRIDE below).
+    set RE_IN_W $LOD_W ; set RE_IN_H [expr {(($LOD_H+15)/16)*16}]
     if {$RE_TILED} {
         set RE_SLOT_STRIDE $LOD_SLOT_STRIDE
     } else {

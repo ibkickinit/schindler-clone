@@ -221,15 +221,18 @@ module pg_warp_top #(
     // ---- per-frame OUTPUT measurement (warp-specific; the DIAG v_emit/v_out_tlast are scaler-based, dead
     // in the warp build): opix should be OUT_W*OUT_H=921600, eol should be OUT_H=720, und = output-starved
     // cycles (m_axis_tready & !tvalid). Latched at sof, read via dbg views 6/7/8. ----
-    reg [19:0] opix_cnt, opix_lat, und_cnt, und_lat; reg [11:0] eol_cnt, eol_lat;
+    // opix_cnt is 21-bit (2026-06-26): 20-bit overflowed at 1080p (2,073,600 >
+    // 2^20=1,048,576 -> read 1,025,024, a phantom "half frame"). 21 bits = 2.1M
+    // covers 1080p full. dbg slot 7 now carries opix[20:16] (5 bits) + eol[10:0].
+    reg [20:0] opix_cnt, opix_lat; reg [19:0] und_cnt, und_lat; reg [11:0] eol_cnt, eol_lat;
     always @(posedge clk) begin
         if(!rstn) begin opix_cnt<=0; opix_lat<=0; eol_cnt<=0; eol_lat<=0; und_cnt<=0; und_lat<=0; end
         else if(sof) begin
-            opix_lat<=opix_cnt; opix_cnt<= ow_en?20'd1:20'd0;
+            opix_lat<=opix_cnt; opix_cnt<= ow_en?21'd1:21'd0;
             eol_lat<=eol_cnt;  eol_cnt<=0;
             und_lat<=und_cnt;  und_cnt<=0;
         end else begin
-            if(ow_en) opix_cnt<=opix_cnt+20'd1;
+            if(ow_en) opix_cnt<=opix_cnt+21'd1;
             if(m_axis_tvalid && m_axis_tready && m_axis_tlast) eol_cnt<=eol_cnt+12'd1;
             if(m_axis_tready && !m_axis_tvalid) und_cnt<=und_cnt+20'd1;
         end
@@ -297,7 +300,7 @@ module pg_warp_top #(
                             tc_fetch_req, tc_pf_full, u_eng.u_tc.c_busy, 8'b0};
             4'd5: dbg_lo = {u_eng.u_tc.fetch_tx[7:0], u_eng.u_tc.fetch_ty[7:0]};
             4'd6: dbg_lo = opix_lat[15:0];                       // output pixels/frame low (expect 0xE1000)
-            4'd7: dbg_lo = {eol_lat[11:0], opix_lat[19:16]};     // EOL/frame (expect 720) + opix high nibble
+            4'd7: dbg_lo = {eol_lat[10:0], opix_lat[20:16]};     // EOL/frame[10:0] (<=1080) + opix[20:16] (5b)
             4'd8: dbg_lo = und_lat[15:0];                        // output-starved cycles/frame
             default: dbg_lo = beat_cnt;
         endcase
