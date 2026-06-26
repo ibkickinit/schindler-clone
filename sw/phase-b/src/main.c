@@ -1862,6 +1862,18 @@ static void uart_dispatch(const char *line)
 #else
         xil_printf("UART: 'R' needs a MAX=1920x1080 (OUTPUT_1080P) warp build\r\n");
 #endif
+    } else if (op == 'V') {
+        /* VTC TX generator register dump (2026-06-26 debug): compare generator
+         * state at 720 vs 1080 to find why 720p60 yields no vsync. */
+#if defined(XPAR_V_TC_TX_BASEADDR)
+        UINTPTR vb = XPAR_V_TC_TX_BASEADDR;
+        xil_printf("VTC TX: CTL=%08x STAT=%08x ERR=%08x | GACT=%08x GHSZ=%08x GVSZ=%08x GHSY=%08x GVSY=%08x GPOL=%08x\r\n",
+                   (unsigned)Xil_In32(vb+0x00), (unsigned)Xil_In32(vb+0x04), (unsigned)Xil_In32(vb+0x08),
+                   (unsigned)Xil_In32(vb+0x60), (unsigned)Xil_In32(vb+0x70), (unsigned)Xil_In32(vb+0x74),
+                   (unsigned)Xil_In32(vb+0x78), (unsigned)Xil_In32(vb+0x80), (unsigned)Xil_In32(vb+0x6C));
+#else
+        xil_printf("UART: no v_tc_tx base\r\n");
+#endif
     } else if (op == 'L') {
         /* WARP prefetch LEAD override: L <n> sets a manual lead (0 = auto per-geometry); L = query.
          * Too DEEP a lead for a gentle rotation HARD-FREEZES (evicts unconsumed tiles); too shallow
