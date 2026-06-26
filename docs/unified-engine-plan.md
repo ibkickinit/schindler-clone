@@ -3,7 +3,46 @@
 **Living document.** This is the persistent source of truth for the warp/scale engine effort.
 It survives context compaction and onboards new agents. Update it as state changes.
 
-Last updated: 2026-06-25 eve · Branch: **`decimate-on-write`** (off the clean pivot `137b13d`)
+Last updated: 2026-06-26 · Branch: **`decimate-on-write`** (off the clean pivot `137b13d`)
+
+---
+
+## ★ BENCH LOG 2026-06-26 — decimate-on-write D1–D4 (commit `d317094`, rebuilding)
+
+Implemented D1–D3 and bench-debugged the sub-window write through two failures to a sim-clean fix.
+Build candidate = **`d317094`** (bitstream rebuilding as of this note). Prior build `f9d1ac4` is SUPERSEDED.
+
+**What works (silicon-confirmed):** the firmware `apply_scale(pct)` decompose is correct (`Z 50` → scaler
+LOD 640×360 + 4-tap; `Z 25` → 320×180). The **warp never starves** — `opix/frame=921600` stays full at
+every scale (the core bandwidth win: downscale moved off the warp read entirely). Identity (`Z 100` / boot)
+is the clean pivot, unchanged.
+
+**Bug 1 — S2MM resize broke genlock → BLACK (fixed firmware).** `s2mm_set_subwindow()` first used the
+driver's `XAxiVdma_DmaStop`+`DmaConfig`+`DmaStart`, which rewrites `DMACR` (clobbers dynamic-genlock mode +
+external-fsync enable, iter6) and halts the channel → S2MM stops landing data → ring stays at the
+pre-cleared matte → **black at ANY Z** (incl. 100). Bench S2MM_SR showed `SOFEarly`. FIX: write ONLY the
+geometry registers directly at `VDMA_BASE+0xA0` (HSIZE @+0x04, STRD_FRMDLY @+0x08, **VSIZE @+0x00 LAST** =
+commit), leaving `DMACR` untouched. Bench-confirmed: `SOFEarly` cleared, picture clean again.
+
+**Bug 2 — scaler_v padded to 1280 → EOLLate → FROZEN frame (fixed HDL).** `scaler_h` decimates each line to
+`out_w` (DDA, TLAST at the input line end), but `scaler_v` re-emitted `out_col 0..IN_W-1` (fixed 1280) with
+**stale line-buffer data** in cols `out_w..1279`, asserting TLAST 640 px late vs the S2MM `HSIZE=out_w*3`
+→ **`EOLLate` → S2MM halts → warp reads a frozen frame** (bench: operator saw "clean but not shrunk,
+static; should be moving" + a frozen Osee-input-2 frame). FIX: route `out_w_eff` into `scaler_v`, latch
+`out_w_active` at TUSER, bound the emit to `out_col==out_w_active-1`. `scaler_top_tb` PASS at **1280×720
+(regression)** AND **640×360 (new)** — tb expectations now track `out_w_tb/out_h_tb`.
+
+**PENDING:** bench-verify `d317094` → expect clean LIVE shrunk image at `Z 50` (640×360 content top-left +
+matte border), no freeze, no EOLLate. Then `Z 25`/`Z 200`/rotation. Auto-center + daemon `scale.set` are
+the next polish once clean-shrink is confirmed.
+
+**⚠ BENCH RIG NOTE (2026-06-26): v4l2 device map SWAPPED from memory.** `/dev/video4` = **Brio webcam**
+(monitor view, real fine-artifact truth), `/dev/video2` = **MS2109 HDMI capture**. The MS2109 **IS on the
+board output** (operator-confirmed) — good for GROSS geometry self-checks (full-vs-shrunk, live-vs-frozen) but
+it MASKS fine artifacts. Byte-identical MS2109 frames across `Z` changes = the OUTPUT is FROZEN (S2MM halted),
+NOT a source feed (I misread this on 2026-06-26). The Brio is usually held by the operator's `cheese`/pipewire
+viewer, so direct gst capture of video4 fails "device busy" — ask the operator for the fine-artifact read.
+ALWAYS confirm device identity with `v4l2-ctl --list-devices` before trusting a capture.
 
 ---
 
