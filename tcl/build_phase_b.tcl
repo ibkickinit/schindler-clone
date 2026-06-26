@@ -415,7 +415,20 @@ puts "BUILD: RASTER_TO_TILE=$RASTER_TO_TILE (S2MM stores [expr {$RASTER_TO_TILE?
 # DEST-RES LOD geometry — gated on the SCALER (not the tiler), so it's available in BOTH the tiled write
 # path (RASTER_TO_TILE=1) AND the proven VDMA-raster write path (RASTER_TO_TILE=0). scaler_top reduces the
 # 1920x1080 source to a 1280x720 LOD; readengine_warp_bd.tcl reads LOD_W/LOD_H to size the warp source.
-if {$SCALER_MODULE eq "scaler_top"} { set LOD_W 1280 ; set LOD_H 720 }
+if {$SCALER_MODULE eq "scaler_top"} {
+    # DYNAMIC RING 1080 (2026-06-26): the LOD MAX = the output raster, so an
+    # OUTPUT_MODE=1080p* build sizes the scaler/ring/warp-source for 1920x1080
+    # (the dynamic ring then resizes down at runtime). 720p stays 1280x720.
+    if {$OUTPUT_MODE eq "1080p30" || $OUTPUT_MODE eq "1080p60" || $OUTPUT_MODE eq "1080p"} {
+        set LOD_W 1920 ; set LOD_H 1080
+    } else {
+        set LOD_W 1280 ; set LOD_H 720
+    }
+    # Size scaler_top's OUTPUT to the LOD MAX (module-ref params -> CONFIG). The
+    # runtime out_w/out_h GPIO then decimates BELOW this; out_w==OUT_W = 1:1.
+    set_property -dict [list CONFIG.OUT_W $LOD_W CONFIG.OUT_H $LOD_H] [get_bd_cells scaler_0]
+    puts "BUILD: scaler_0 OUT (LOD MAX) = ${LOD_W}x${LOD_H} (OUTPUT_MODE=$OUTPUT_MODE)"
+}
 if {$RASTER_TO_TILE} {
     # DEST-RES-MASTER (W1, 2026-06-25): the tiler geometry is now RUNTIME (pg_raster_to_tile in_w +
     # pg_tile_s2mm_cmd frame_bytes/slot_stride). The tiled LOD follows the scaler output:
@@ -1043,6 +1056,10 @@ create_bd_cell -type ip -vlnv xilinx.com:ip:axi_gpio axi_gpio_1
 # stays at 0 until firmware writes, scaler's emit_now = (accum >= 0) is
 # always true, scaler hangs in emit-storm and HDMI output dies before
 # firmware can recover.
+# ch2 (out_w/out_h = LOD) default = the LOD MAX so the warp/scaler boot at the
+# full output raster (identity) before firmware writes. Packed (out_h<<16)|out_w
+# from LOD_W/LOD_H (1080p:0x04380780=1920x1080, 720p:0x02D00500=1280x720).
+set _ch2def [expr {[info exists LOD_W] ? [format 0x%08X [expr {($LOD_H << 16) | $LOD_W}]] : 0x02D00500}]
 set_property -dict [list \
     CONFIG.C_GPIO_WIDTH    {32} \
     CONFIG.C_ALL_OUTPUTS   {1} \
@@ -1051,7 +1068,7 @@ set_property -dict [list \
     CONFIG.C_ALL_OUTPUTS_2 {1} \
     CONFIG.C_INTERRUPT_PRESENT {0} \
     CONFIG.C_DOUT_DEFAULT   {0x04380780} \
-    CONFIG.C_DOUT_DEFAULT_2 {0x02D00500} \
+    CONFIG.C_DOUT_DEFAULT_2 $_ch2def \
 ] [get_bd_cells axi_gpio_1]
 # D2 (decimate-on-write, 2026-06-25): axi_gpio_1 is now DUAL-channel.
 #   ch1 (gpio_io_o)  bits[15:0]=IN_W,  [31:16]=IN_H  — source raster (unchanged).

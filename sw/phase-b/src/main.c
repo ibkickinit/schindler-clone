@@ -75,9 +75,17 @@
  * 720-line output (whole image at 100%, no center crop), and downscale is bounded (50% = 2x downscale of a
  * 720 source = inside the clean envelope; reading the full 1080 master is what hit the BW wall). The tiler's
  * runtime in_w + the cmd-gen frame_bytes/slot_stride (driven by xlconstants in build_phase_b.tcl) and
- * pg_re_0 IN_W/IN_H (readengine_warp_bd.tcl) MUST all agree with this LOD. */
+ * pg_re_0 IN_W/IN_H (readengine_warp_bd.tcl) MUST all agree with this LOD.
+ * DYNAMIC RING 1080 (2026-06-26): under OUTPUT_1080P the LOD MAX = the 1080p
+ * output raster (scaler/ring/warp all built 1920x1080); FRAME_W/H follow it so
+ * the dynamic ring spans 1920x1080 down. 720p builds stay 1280x720. */
+#if defined(OUTPUT_1080P)
+#define FRAME_W           1920
+#define FRAME_H           1080
+#else
 #define FRAME_W           1280
 #define FRAME_H           720
+#endif
 #elif defined(OUTPUT_1080P) || defined(READENGINE_FULLMASTER)
 #define FRAME_W           1920
 #define FRAME_H           1080
@@ -1488,8 +1496,10 @@ static void apply_scale(unsigned pct)
      * PLACES it centered (source-center = g_lod/2); its out-of-window matte
      * fills the border. No DDR matte, no padding, no clear race. */
     if (pct >= 100u) {
-        /* UPSCALE / 100%: full LOD (= OUT_RASTER), warp zoom-in. */
-        g_lod_w = OUT_RASTER_W; g_lod_h = OUT_RASTER_H;
+        /* UPSCALE / 100%: full LOD (= OUT_RASTER), warp zoom-in. Snap to /16 for
+         * tile-grid alignment (1080 -> 1072; 720/1280/1920 already /16). The
+         * <=8-row bottom strip on a 1080 output reads the warp matte. */
+        g_lod_w = OUT_RASTER_W & ~15u; g_lod_h = OUT_RASTER_H & ~15u;
 #ifdef SCALER_KERNEL_GPIO_BASEADDR
         Xil_Out32(SCALER_KERNEL_GPIO_BASEADDR, 0x5u);   /* 2-tap: full-frame doesn't need 4-tap */
 #endif
