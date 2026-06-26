@@ -178,3 +178,13 @@ set_false_path -quiet -to [get_pins -hier -filter {NAME =~ *pg_re_0*/sr1_reg/D}]
 # so the pins-not-found / already-constant case is a no-op). 40-bit each.
 set_false_path -quiet -to [get_pins -hier -filter {NAME =~ *pg_re_0*/g1_reg[*]/D}]
 set_false_path -quiet -to [get_pins -hier -filter {NAME =~ *pg_re_0*/h1_reg[*]/D}]
+
+# DYNAMIC RING (2026-06-26): runtime source-dim CDC (axi_gpio_1 ch2 = scaler
+# out_w/out_h slices, FCLK_CLK0 -> output pixel clock) into pg_warp_top's 2-FF
+# ASYNC_REG sync inw_q1/inh_q1. SAME capture-reg trap as a1..f1/lr1/sr1: without
+# the false-path the timer chases the unconstrained GPIO->inw_q1/inh_q1 crossing
+# (bench: WNS=-3.486, axi_gpio_1/gpio2_Data_Out -> pg_re_0/inst/inh_q1_reg/D,
+# Requirement 0.034ns) and wrecks the datapath placement. Quasi-static (firmware
+# writes the dim then pulses srst). 12 bits each (in_w_rt/in_h_rt[11:0]).
+set_false_path -quiet -to [get_pins -hier -filter {NAME =~ *pg_re_0*/inw_q1_reg[*]/D}]
+set_false_path -quiet -to [get_pins -hier -filter {NAME =~ *pg_re_0*/inh_q1_reg[*]/D}]
