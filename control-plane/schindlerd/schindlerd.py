@@ -713,7 +713,7 @@ class Dispatcher:
         Params: {x, y} per-axis, or {amt} symmetric (legacy; sets both). Conservative clamp +/-200 (0.20);
         {override:true} unlocks to +/-1000 (1.0)."""
         ov = bool(params.get("override"))
-        lim = 100   # 2026-06-28: HARD CAP ±100 (both modes) — keeps stacked warps inside the 1080p fetch budget
+        lim = 200 if ov else 100   # default ±100 (safe); {override:true} unlocks to ±200 for exploration
         if not hasattr(self, "_pin_x"): self._pin_x = 0
         if not hasattr(self, "_pin_y"): self._pin_y = 0
         def _clamp(v):
@@ -778,7 +778,7 @@ class Dispatcher:
         with pincushion. Clamp 1/3 raster (safe) / full under {override:true}. Res from the live mode."""
         W, H = self._out_wh()
         ov = bool(params.get("override"))
-        lim = 100   # 2026-06-28: HARD CAP ±100 px (both modes) — keeps stacked warps inside the 1080p fetch budget
+        lim = 200 if ov else 100   # default ±100 px (safe); {override:true} unlocks to ±200 for exploration
         def cl(v, m):
             iv = int(round(float(v))); return -m if iv < -m else m if iv > m else iv
         keys = ["tl", "tr", "br", "bl"]

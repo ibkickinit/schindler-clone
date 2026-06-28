@@ -969,7 +969,7 @@
       call("lead.autotune",{}).catch(()=>{}).finally(()=>setTimeout(()=>{ b.disabled=false; b.textContent="Force Lead Sweep"; },3500)); });
     // 2026-06-28: HARD CAP ±100 for corners + pincushion (both axes), regardless of override — keeps
     // stacked warps inside the 1080p geometry-fetch budget (combined warps past this STARVE the engine).
-    function applyRanges(){ const cl=100, pn=100;
+    function applyRanges(){ const cl=ov()?200:100, pn=ov()?200:100;   // override unlocks ±200 for exploration
       for(const [k] of CK) for(const ax of ["x","y"]){ const e=$(`cn-${k}-${ax}-r`); if(e){ e.min=-cl; e.max=cl; e.value=Math.max(-cl,Math.min(cl,+e.value)); } }
       for(const id of ["sw-pin-r","sw-pin-n","sw-pin-yr","sw-pin-yn"]){ const e=$(id); if(e){ e.min=-pn; e.max=pn; e.value=Math.max(-pn,Math.min(pn,+e.value)); } } }
     $("sw-override").addEventListener("change",()=>{ applyRanges(); cornerSend(true); pinSend(true); });
