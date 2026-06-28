@@ -1481,6 +1481,7 @@ static unsigned g_autotune_en   = 1;        /* on-break auto-tune enabled (UART 
 static unsigned g_tuned_sig     = 0u;       /* geom signature of the last auto-tune */
 static unsigned g_tuned_lead    = 0u;       /* lead the last auto-tune applied (re-tune if clobbered) */
 static int      g_autotune_busy = 0;        /* reentrancy guard */
+static unsigned g_short_streak  = 0u;       /* consecutive short telemetry reads (filter rewarm transients) */
 
 /* FNV-1a over the geometry state -> changes whenever ANY warp param changes (so the telemetry loop
  * detects a new-geometry-that-breaks without instrumenting every geometry writer). */
@@ -3032,12 +3033,20 @@ static void telemetry_loop(UINTPTR vdma_base)
                  * value; it does NOT loop once a working (or best-effort) lead is applied. 'L' disables. */
                 if (g_autotune_en && !g_autotune_busy && !g_warp_lead_ovr) {
                     unsigned exp_o = (unsigned)(g_out_w * g_out_h);
-                    if (exp_o > 0u && opix < exp_o - (exp_o >> 6)) {        /* >~1.5% short = a break */
-                        unsigned sig = warp_geom_sig();
-                        if (sig != g_tuned_sig || (unsigned)g_warp_lead != g_tuned_lead) {
-                            xil_printf("AUTOTUNE: break (opix=%u/%u) -> sweeping lead...\r\n", opix, exp_o);
-                            warp_autotune_lead();
+                    if (exp_o > 0u && opix < exp_o - (exp_o >> 6)) {        /* >~1.5% short */
+                        /* require the starve to PERSIST across 2 telemetry reads: a genuine break is short
+                         * every frame; a geometry-change rewarm transient clears within one frame, so it
+                         * never survives two reads. Filters the drag-flicker (false sweeps on clean changes). */
+                        if (++g_short_streak >= 2u) {
+                            g_short_streak = 0u;
+                            unsigned sig = warp_geom_sig();
+                            if (sig != g_tuned_sig || (unsigned)g_warp_lead != g_tuned_lead) {
+                                xil_printf("AUTOTUNE: break (opix=%u/%u, sustained) -> sweeping lead...\r\n", opix, exp_o);
+                                warp_autotune_lead();
+                            }
                         }
+                    } else {
+                        g_short_streak = 0u;                                /* full frame -> reset streak */
                     }
                 }
 #endif
