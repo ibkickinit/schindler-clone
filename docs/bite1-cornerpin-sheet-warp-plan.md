@@ -32,3 +32,38 @@ on-sheet/off-content=GRAY MATTE (runtime color), on-content=sample. ONE reciproc
 
 ## Test (1 build, UART steps): passthrough → T(matte color) → C(black exterior) → W(placement) → compose.
 ## Risk: WNS +0.12 tight; contingency = 3-stage place pipe. Stale warp TBs → elaboration + scaler_top_tb only.
+
+---
+## IMPLEMENTATION COMPLETE (2026-06-26)
+
+All 8 steps done. Build = `run_decimate_1080_build.sh` (WARP_ENGINE=1 PROJECTIVE_BUILD=1
+SCALER_MODULE=scaler_top RASTER_TO_TILE=0 OUTPUT_MODE=1080p30). Verified pre-build:
+- xvlog/xelab elaborate clean (PROJECTIVE=0 and =1), only pre-existing pf_cnt[6:0] telemetry warn.
+- pg_place_affine unit sim (/tmp/xvlog_lint/tb_place.v): 5/5 PASS — identity, off-content matte,
+  off-sheet black, 0.5x scale, +translate. Math + both bounds bits + 3-way sideband all correct.
+- BD validate_bd_design PASS (placement+matte GPIOs on axi_ic_lite2 M02-M05, NUM_MI 2->6).
+
+### Two-stage model as built
+- m_a..m_h = CORNER-PIN (output->sheet, the OUT_RASTER canvas). Boot = identity.
+- pa..pf     = PLACEMENT (sheet->LOD). Rotation/scale/pan (warp_set_rotation) now write THESE.
+- 3-way bilinear: off-sheet -> BLACK; on-sheet/off-content -> MATTE (runtime colour); else sample.
+- Composite at boot (identity corner-pin ∘ placement) == old single-stage output->LOD -> passthrough.
+
+### Bench runbook (1 build, UART /dev/ttyUSB1 @115200, monitor = bench display NOT MS2109)
+Kill daemon FIRST (separate cmd), then program bitstream+ELF (build FW already in run script).
+1. PASSTHROUGH: boot default. Expect full clean source filling 1080p output (composite identity).
+2. MATTE COLOUR:  `T 255 0 0` (red), `T 0 80 0`, `T 16 16 16` (back to gray). Only visible once a
+   region is off-content (do step 4 first if whole frame is covered) — or shrink placement.
+3. BLACK EXTERIOR: corner-pin shrink, e.g. `C 240 135 1680 135 1680 945 240 945` (sheet quad inset
+   ~12.5%). Output OUTSIDE the quad must be BLACK; inside shows the (still-full) source warped to
+   the quad. This proves corner-pin warps the whole sheet incl. exterior=black.
+4. PLACEMENT: `W 0 200 200` (zoom 0.5x via inv-scale) or `Z 50` -> source shrinks WITHIN the sheet,
+   gray MATTE fills around it (on-sheet/off-content). `T` colour now clearly visible.
+5. COMPOSE: do 4 then 3 -> placed+matted source, whole sheet then corner-pinned, black exterior.
+
+### Open / watch
+- Timing: prior substrate WNS +0.12 was tight; place stage adds DSPs+regs. If WNS<0 or wedge,
+  contingency = split place into 3 stages OR phys_opt (already in flow). Check build WNS.
+- Lead interaction: corner-pin (C/K) sets lead from its quad; placement (W) sets its own. With a
+  downscaling placement + shrinking corner-pin both deep, leads may fight -> revisit in compose.
+- Rotation cache resonance unchanged (10deg clamp still applies to placement rotation).

@@ -45,6 +45,7 @@
 #include "xaxivdma.h"
 #include "xvtc.h"
 #include "xtime_l.h"   /* Phase D iter-4a: SCU timer for precise rate measurement */
+#include "analog_iic.h" /* ANALOG_BUILD: engine-B Si5351 + ADV7393 I2C bring-up (self-gates) */
 
 // iter5-1080p-clean 720p re-validation (2026-05-17 evening): 1080p60 source
 // scaled to 720p60 output (matched rate). Build with SCALER_MODULE=scaler_top
@@ -572,12 +573,15 @@ static void cmd_help(void)
 #ifdef WARP_BUILD
     xil_printf("  W <deg> [ix iy [px py]]  warp rotation/zoom/pan\r\n"
                "  L <n>           warp prefetch lead override (0=auto)\r\n"
+               "  U [0|1]         auto-tune lead on break: 'U'=sweep+log now; U 0/1=disable/enable auto\r\n"
                "  Z <pct>         scale 10-200%% (<100 scaler-decimate, >=100 warp-zoom)\r\n"
                "  R <720|1080>    runtime output-res switch (1080p builds only)\r\n");
 #endif
 #ifdef PROJECTIVE_BUILD
     xil_printf("  K <h> <v>       keystone (h,v = far-edge shrink, 1/1000; K 200 0 = 0.20 H)\r\n"
-               "  C x0 y0..x3 y3  corner-pin: 4 SOURCE corners TL,TR,BR,BL the output corners map to\r\n");
+               "  C x0 y0..x3 y3  corner-pin: 4 SHEET corners TL,TR,BR,BL the output corners map to\r\n"
+               "  T <r> <g> <b>   matte fill colour 0..255 (on-sheet/off-content; off-sheet=black)\r\n"
+               "  I <x> [y]       pincushion radial warp per-axis (1/1000 signed; +out/-barrel; 1 arg=symmetric)\r\n");
 #endif
 }
 
@@ -1013,6 +1017,17 @@ static void cp_dispatch_jsonrpc(const char *json)
 #elif defined(XPAR_PHASE_B_BD_AXI_GPIO_12_BASEADDR)
 #  define LEAD_GPIO_BASE (XPAR_PHASE_B_BD_AXI_GPIO_12_BASEADDR + 0x08u)
 #endif
+/* diag-counter GPIO (axi_gpio_2) base — hoisted here (2026-06-28) so warp_autotune_lead/warp_read_opix
+ * can read opix/eol/starved; the telemetry_loop below uses the same macro. */
+#if defined(XPAR_AXI_GPIO_2_BASEADDR)
+#  define DIAG_GPIO_BASEADDR XPAR_AXI_GPIO_2_BASEADDR
+#elif defined(XPAR_AXI_GPIO_2_S_AXI_BASEADDR)
+#  define DIAG_GPIO_BASEADDR XPAR_AXI_GPIO_2_S_AXI_BASEADDR
+#elif defined(XPAR_PHASE_B_BD_AXI_GPIO_2_BASEADDR)
+#  define DIAG_GPIO_BASEADDR XPAR_PHASE_B_BD_AXI_GPIO_2_BASEADDR
+#else
+#  error "AXI GPIO 2 (diag counters) base address not found in xparameters.h"
+#endif
 
 /* PROJECTIVE build: perspective coeffs m_g / m_h (signed Q4.36 in a 40-bit word) ride two NEW dual-channel
  * GPIOs on the PS second GP master (axi_ic_lite2). The 40-bit value is split LOW-32 + HIGH-8 (must match
@@ -1030,6 +1045,35 @@ static void cp_dispatch_jsonrpc(const char *json)
 #    define GH_HI_BASE XPAR_AXI_GPIO_14_BASEADDR
 #  elif defined(XPAR_PHASE_B_BD_AXI_GPIO_14_BASEADDR)
 #    define GH_HI_BASE XPAR_PHASE_B_BD_AXI_GPIO_14_BASEADDR
+#  endif
+/* BITE1 (2026-06-26): PLACEMENT affine (sheet->LOD) pa..pf = Q12.20 on three dual-channel GPIOs
+ * (axi_gpio_15/16/17 ch1/ch2 = pa/pb, pc/pd, pe/pf), + runtime MATTE colour (axi_gpio_18, 24-bit).
+ * m_a..m_h are now the CORNER-PIN (output->sheet); pa..pf place the source on the sheet. */
+#  if defined(XPAR_AXI_GPIO_15_BASEADDR)
+#    define PL_A_BASE XPAR_AXI_GPIO_15_BASEADDR
+#  elif defined(XPAR_PHASE_B_BD_AXI_GPIO_15_BASEADDR)
+#    define PL_A_BASE XPAR_PHASE_B_BD_AXI_GPIO_15_BASEADDR
+#  endif
+#  if defined(XPAR_AXI_GPIO_16_BASEADDR)
+#    define PL_B_BASE XPAR_AXI_GPIO_16_BASEADDR
+#  elif defined(XPAR_PHASE_B_BD_AXI_GPIO_16_BASEADDR)
+#    define PL_B_BASE XPAR_PHASE_B_BD_AXI_GPIO_16_BASEADDR
+#  endif
+#  if defined(XPAR_AXI_GPIO_17_BASEADDR)
+#    define PL_C_BASE XPAR_AXI_GPIO_17_BASEADDR
+#  elif defined(XPAR_PHASE_B_BD_AXI_GPIO_17_BASEADDR)
+#    define PL_C_BASE XPAR_PHASE_B_BD_AXI_GPIO_17_BASEADDR
+#  endif
+#  if defined(XPAR_AXI_GPIO_18_BASEADDR)
+#    define MATTE_BASE XPAR_AXI_GPIO_18_BASEADDR
+#  elif defined(XPAR_PHASE_B_BD_AXI_GPIO_18_BASEADDR)
+#    define MATTE_BASE XPAR_PHASE_B_BD_AXI_GPIO_18_BASEADDR
+#  endif
+/* BITE2 (2026-06-26): PINCUSHION radial coeff k_pin (signed Q40) on axi_gpio_19. */
+#  if defined(XPAR_AXI_GPIO_19_BASEADDR)
+#    define KPIN_BASE XPAR_AXI_GPIO_19_BASEADDR
+#  elif defined(XPAR_PHASE_B_BD_AXI_GPIO_19_BASEADDR)
+#    define KPIN_BASE XPAR_PHASE_B_BD_AXI_GPIO_19_BASEADDR
 #  endif
 #endif
 
@@ -1128,6 +1172,56 @@ static void mip_fill_static(void)
 }
 static unsigned g_warp_lead_ovr = 0;        /* UART 'L <n>' manual lead; 0 = auto per-geometry */
 static unsigned g_warp_lead = 0;            /* last lead actually written (for status / 'L' query) */
+/* ---- task-57: per-1deg tile-cache set-hash LUT (rides lead GPIO bits [27:24], 4-bit, 9 variants) -----
+ * NSET=64 has no single hash stable at ALL angles (=4 metastable on silicon). Per-angle hash: each 1deg
+ * angle gets a constant with worst-set-live<=3 (stable). hsel index -> multiplier b:
+ *   0:33 (default, keystone/pincushion + most angles)  1:13  2:29  3:31  4:37  5:45  6:57  7:61  8:3
+ * EVERY degree 0-359 covered at <=3 (offline-proven; the model's <=3 rule was silicon-validated). 'B 0..8'
+ * overrides live (>8 = auto). 210/360 degrees use a non-default hash. Continuous 1deg rotation enabled. */
+static const unsigned char g_hsel_lut360[360] = {
+    /* 2026-06-27 BENCH-DERIVED (reset-robust auto-tune, /tmp/autotune.py): per degree, the hsel that
+     * lands clean across MULTIPLE soft-resets (the model + single-pass tune were unreliable at this
+     * margin). Uses only b=33/13/29 (idx 0/1/2); the exotic constants were never reset-robust. 45/135/
+     * 225/315 (exact diagonals) have NO robust variant -> firmware snaps them 1deg (see warp_set_rotation). */
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 1, 0, 0, 2, 0, 1, 0, 0,
+    0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 1,
+    2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 2, 0,
+    0, 1, 2, 0, 0, 1, 0, 0, 2, 1, 0, 0,
+    0, 0, 1, 1, 0, 0, 0, 0, 1, 1, 0, 1,
+    0, 1, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 1, 0, 0, 2, 0, 1, 0, 0,
+    0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 1,
+    2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 2, 0,
+    0, 1, 2, 0, 0, 1, 0, 0, 2, 1, 0, 0,
+    0, 0, 1, 1, 0, 0, 0, 0, 1, 1, 0, 1,
+    0, 1, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0
+};
+static unsigned g_warp_hsel  = 0;           /* current hash select actually written */
+static int      g_hsel_ovr   = -1;          /* 'B' live override; <0 = use LUT */
+static unsigned g_frame_align = 0;          /* black-flash fix: 1=apply soft-reset at sof (vblank). Boot
+                                             * OFF (proven legacy reset); enable live via 'N 1' to test. */
+/* every LEAD GPIO write carries hsel[27:24] + frame-align-enable[28] (else the running cache mis-hashes /
+ * the reset-retiming flips). word already holds lead[19:0] | dsel[23:20] | softreset[31]. */
+#define LEAD_GPIO_WR(word) Xil_Out32(LEAD_GPIO_BASE, ((u32)(word)) \
+            | (((u32)g_warp_hsel & 0xFu) << 24) | (((u32)g_frame_align & 1u) << 28))
 #ifdef PROJECTIVE_BUILD
 static int g_proj_kh = 0, g_proj_kv = 0;    /* last keystone amounts (1/1000 units) for 'K' query */
 /* floor(x) for the fixed-point quantizers (matches the golden's math.floor: round toward -inf). No libm
@@ -1186,6 +1280,20 @@ static unsigned warp_calc_lead(int deg, int invx, int invy)
     else if (d180 == 0)    lead = 8192u;    /* axis-aligned zoom-in / identity throughput floor */
     else                   lead = 4096u;    /* rotations: 10deg-clamp+(1,33) hash, covers transpose-starve */
 #endif
+    /* RES-AWARE (2026-06-26, fixes #50): the DEEP downscale lead (24576) was tuned at 1080p; a smaller
+     * runtime raster (720p) has a proportionally smaller LOD with FEWER tiles, so that depth OVER-RUNS it
+     * -> the prefetch evicts unconsumed tiles -> starve (bench: 720p corner-pin starves at the default
+     * 24576, clean at 8192..16384). Scale ONLY the deep lead by the output-area ratio vs the build raster.
+     * The 8192/4096 leads are round-trip THROUGHPUT floors (res-independent — 720p identity is clean at
+     * 8192) so they're left alone, and the scaled value never drops below the 8192 floor. */
+    {
+        unsigned ref_area = (unsigned)OUT_RASTER_W * (unsigned)OUT_RASTER_H;
+        unsigned cur_area = (unsigned)g_out_w * (unsigned)g_out_h;
+        if (lead > 8192u && cur_area > 0u && cur_area < ref_area) {
+            unsigned scaled = (unsigned)(((unsigned long long)lead * cur_area) / ref_area);
+            lead = (scaled < 8192u) ? 8192u : scaled;   /* never below the throughput floor */
+        }
+    }
     return lead > 0x000FFFFFu ? 0x000FFFFFu : lead;
 }
 
@@ -1240,11 +1348,11 @@ static void warp_apply_homography(int a20,int b20,int c20,int d20,int e20,int f2
 #ifdef LEAD_GPIO_BASE
     g_warp_lead = lead;
     u32 ldw = (g_warp_lead & 0xFFFFFu);
-    Xil_Out32(LEAD_GPIO_BASE, ldw);
+    LEAD_GPIO_WR(ldw);
     /* soft-reset pulse (lead_cfg[31]) -> clean cache start on the new geometry, no transition wedge. */
-    Xil_Out32(LEAD_GPIO_BASE, (1u << 31) | ldw);
+    LEAD_GPIO_WR((1u << 31) | ldw);
     for (volatile int d = 0; d < 30000; d++) { }
-    Xil_Out32(LEAD_GPIO_BASE, ldw);
+    LEAD_GPIO_WR(ldw);
 #else
     (void)lead;
 #endif
@@ -1255,6 +1363,189 @@ static void warp_apply_homography(int a20,int b20,int c20,int d20,int e20,int f2
 static int to_q20(double v)  { return (int)llround_floor(v * 1048576.0); }      /* 2^20 */
 static long long to_q36(double v) { return (long long)llround_floor(v * 68719476736.0); } /* 2^36 */
 
+/* BITE1 — TWO-STAGE warp (2026-06-26). m_a..m_h = CORNER-PIN (output->SHEET, the OUT_RASTER canvas);
+ * pa..pf = PLACEMENT (SHEET->LOD, where rotation/scale/pan now live). The engine chains them:
+ *   output --(corner-pin inv)--> sheet --(placement)--> LOD --(bilinear)--> pixel
+ *   off-sheet -> BLACK ; on-sheet/off-content -> MATTE ; on-content -> sample.
+ *
+ * Write the 6 placement coeffs (Q12.20) to axi_gpio_15/16/17 and pulse the engine soft-reset (same flush
+ * as warp_apply_homography) so the cache restarts clean on the new placement. */
+static void warp_apply_placement(int pa20,int pb20,int pc20,int pd20,int pe20,int pf20, unsigned lead)
+{
+#if defined(PL_A_BASE) && defined(PL_B_BASE) && defined(PL_C_BASE)
+    Xil_Out32(PL_A_BASE + 0x00, (u32)pa20);   /* pa */
+    Xil_Out32(PL_A_BASE + 0x08, (u32)pb20);   /* pb */
+    Xil_Out32(PL_B_BASE + 0x00, (u32)pc20);   /* pc */
+    Xil_Out32(PL_B_BASE + 0x08, (u32)pd20);   /* pd */
+    Xil_Out32(PL_C_BASE + 0x00, (u32)pe20);   /* pe */
+    Xil_Out32(PL_C_BASE + 0x08, (u32)pf20);   /* pf */
+#endif
+#ifdef LEAD_GPIO_BASE
+    g_warp_lead = lead;
+    u32 ldw = (g_warp_lead & 0xFFFFFu);
+    LEAD_GPIO_WR(ldw);
+    LEAD_GPIO_WR((1u << 31) | ldw);   /* soft-reset pulse -> clean cache start */
+    for (volatile int d = 0; d < 30000; d++) { }
+    LEAD_GPIO_WR(ldw);
+#else
+    (void)lead;
+#endif
+}
+
+/* Write the CORNER-PIN to identity (output coord == sheet coord, full OUT_RASTER sheet). No reset here —
+ * the caller's placement write pulses it. m_a=m_e=1.0 (Q20), b/c/d/f=0, g=h=0 (w=1 -> pure affine). */
+static void warp_cornerpin_identity(void)
+{
+    Xil_Out32(GEO_A_BASE + 0x00, (u32)(1 << 20));  /* m_a = 1.0 */
+    Xil_Out32(GEO_A_BASE + 0x08, 0u);              /* m_b */
+    Xil_Out32(GEO_B_BASE + 0x00, 0u);              /* m_c */
+    Xil_Out32(GEO_B_BASE + 0x08, 0u);              /* m_d */
+    Xil_Out32(GEO_C_BASE + 0x00, (u32)(1 << 20));  /* m_e = 1.0 */
+    Xil_Out32(GEO_C_BASE + 0x08, 0u);              /* m_f */
+    gh_write40(0, 0, 0);                           /* g=h=0 */
+}
+
+/* Runtime MATTE colour (on-sheet, off-content fill). r/g/b 0..255 -> 24-bit GPIO. The AXIS pipeline
+ * carries pixels as {R[23:16], B[15:8], G[7:0]} (empirically; see schindler_pipeline_rbg_byte_order),
+ * so pack matte the SAME way or the gray/colour will channel-swap. */
+static void warp_set_matte(int r, int g, int b)
+{
+#ifdef MATTE_BASE
+    if (r < 0) r = 0;
+    if (r > 255) r = 255;
+    if (g < 0) g = 0;
+    if (g > 255) g = 255;
+    if (b < 0) b = 0;
+    if (b > 255) b = 255;
+    u32 v = ((u32)(r & 0xFF) << 16) | ((u32)(b & 0xFF) << 8) | (u32)(g & 0xFF);  /* R,B,G order */
+    Xil_Out32(MATTE_BASE, v);
+    xil_printf("WARP matte = R%d G%d B%d (0x%06x)\r\n", r, g, b, (unsigned)v);
+#else
+    (void)r; (void)g; (void)b;
+#endif
+}
+
+/* BITE2 — PINCUSHION radial warp (Stage-2, sheet space). amt_e3 = pincushion fraction * 1000, SIGNED
+ * ('P 100' = +0.10 = +10% pincushion = edges pushed OUT; 'P -100' = barrel = edges pulled IN). The HDL
+ * computes s' = s + (s-c)*k_pin*r2 so |displacement| = amt at the corner. k_pin is Q(FB+KPSH)=Q40:
+ *   k_pin = (amt / r2max) * 2^40,  r2max = (out_w/2)^2 + (out_h/2)^2  (corner radius^2, in px^2).
+ * Writes the coeff GPIO + pulses the engine soft-reset (clean cache restart on the new radial geometry,
+ * same flush as warp_apply_placement). amt 0 -> k_pin 0 -> transparent (== Bite 1). */
+/* 2026-06-28: INDEPENDENT X/Y pincushion. axi_gpio_19 is now DUAL-channel: ch1 (KPIN_BASE) = kx
+ * (horizontal bow), ch2 (KPIN_BASE + 0x08) = ky (vertical bow). x_e3==y_e3 reproduces the prior
+ * symmetric pincushion. Each axis: k = (amt/1000 / r2max) * 2^40. */
+#define KPIN_CH2_OFF 0x08u
+static int g_pin_x_e3 = 0, g_pin_y_e3 = 0;
+static void warp_set_pincushion_xy(int x_e3, int y_e3)
+{
+#ifdef KPIN_BASE
+    double cx = g_out_w * 0.5, cy = g_out_h * 0.5;
+    double r2max = cx*cx + cy*cy; if (r2max < 1.0) r2max = 1.0;
+    double kpx = ((double)x_e3 / 1000.0 / r2max) * 1099511627776.0;   /* * 2^40 */
+    double kpy = ((double)y_e3 / 1000.0 / r2max) * 1099511627776.0;
+    int kx = (int)llround_floor(kpx);
+    int ky = (int)llround_floor(kpy);
+    Xil_Out32(KPIN_BASE,                (u32)kx);   /* ch1 = kx (horizontal) */
+    Xil_Out32(KPIN_BASE + KPIN_CH2_OFF, (u32)ky);   /* ch2 = ky (vertical)   */
+    g_pin_x_e3 = x_e3; g_pin_y_e3 = y_e3;
+#ifdef LEAD_GPIO_BASE
+    u32 ldw = (g_warp_lead & 0xFFFFFu);
+    LEAD_GPIO_WR((1u << 31) | ldw);          /* soft-reset pulse */
+    for (volatile int d = 0; d < 30000; d++) { }
+    LEAD_GPIO_WR(ldw);
+#endif
+    xil_printf("WARP pincushion x=%d.%03d y=%d.%03d (kx=%d ky=%d r2max=%d)\r\n",
+               x_e3/1000, (x_e3<0?-x_e3:x_e3)%1000, y_e3/1000, (y_e3<0?-y_e3:y_e3)%1000,
+               kx, ky, (int)r2max);
+#else
+    (void)x_e3; (void)y_e3;
+#endif
+}
+/* Symmetric convenience wrapper (legacy callers / single-arg 'I'). */
+static void warp_set_pincushion(int amt_e3) { warp_set_pincushion_xy(amt_e3, amt_e3); }
+
+/* ===================== AUTO-TUNE LEAD ON BREAK (2026-06-28) =========================
+ * warp_calc_lead picks the right lead for SINGLE transforms but mis-picks for COMBINED geometry
+ * (corner-pin's deep lead + pincushion's radial scatter thrashes the 4-way/512 cache -> starve;
+ * bench-proven 2026-06-28: a 2px corner-pin + 10per-mille pincushion broke at the deep auto lead,
+ * FULL frame at 6144..12288). Instead of hand-coding every combo: when a geometry STARVES
+ * (opix < raster), sweep a candidate-lead ladder, apply the LOWEST lead that makes a FULL frame,
+ * and LOG every (geometry, lead, opix) trial over UART so the data can drive a better static
+ * heuristic later. Each trial soft-resets the cache (brief on-screen flicker) -> runs only on a
+ * real break (or the manual 'U'). Manual 'L' override disables it. */
+#ifdef LEAD_GPIO_BASE
+#define WARP_GEOM_FMT  "rot=%d invx=%d invy=%d pan=%d,%d ks=%d,%d pin=%d,%d"
+#define WARP_GEOM_ARGS g_warp_deg,g_warp_invx,g_warp_invy,g_warp_panx,g_warp_pany,\
+                       g_proj_kh,g_proj_kv,g_pin_x_e3,g_pin_y_e3
+static unsigned g_autotune_en   = 1;        /* on-break auto-tune enabled (UART 'U 0/1') */
+static unsigned g_tuned_sig     = 0u;       /* geom signature of the last auto-tune */
+static unsigned g_tuned_lead    = 0u;       /* lead the last auto-tune applied (re-tune if clobbered) */
+static int      g_autotune_busy = 0;        /* reentrancy guard */
+
+/* FNV-1a over the geometry state -> changes whenever ANY warp param changes (so the telemetry loop
+ * detects a new-geometry-that-breaks without instrumenting every geometry writer). */
+static unsigned warp_geom_sig(void)
+{
+    unsigned s = 2166136261u;
+    int v[9] = { g_warp_deg, g_warp_invx, g_warp_invy, g_warp_panx, g_warp_pany,
+                 g_proj_kh, g_proj_kv, g_pin_x_e3, g_pin_y_e3 };
+    for (int i = 0; i < 9; i++) { s ^= (unsigned)v[i]; s *= 16777619u; }
+    return s ? s : 1u;
+}
+
+/* Read diag slots 6/7/8 (opix / eol / starved) then restore the live lead (sel=0). Mirrors the
+ * telemetry_loop readout. lead_word = the lead[19:0] currently driven (sel/hsel/fa added by the
+ * LEAD_GPIO_WR macro). */
+static void warp_read_opix(u32 lead_word, unsigned *opix, unsigned *eol, unsigned *und)
+{
+    u32 d6, d7, d8;
+    LEAD_GPIO_WR(((u32)6u << 20) | lead_word); for (volatile int d=0; d<4000; d++){} d6 = Xil_In32(DIAG_GPIO_BASEADDR + 0x00);
+    LEAD_GPIO_WR(((u32)7u << 20) | lead_word); for (volatile int d=0; d<4000; d++){} d7 = Xil_In32(DIAG_GPIO_BASEADDR + 0x00);
+    LEAD_GPIO_WR(((u32)8u << 20) | lead_word); for (volatile int d=0; d<4000; d++){} d8 = Xil_In32(DIAG_GPIO_BASEADDR + 0x00);
+    LEAD_GPIO_WR(lead_word);                                  /* restore sel=0 (live lead only) */
+    *opix = (unsigned)(((d7 & 0x1Fu) << 16) | (d6 & 0xFFFFu));
+    *eol  = (unsigned)((d7 >> 5) & 0x7FFu);
+    *und  = (unsigned)(d8 & 0xFFFFu);
+}
+
+/* Sweep candidate leads on the CURRENT geometry; log each trial; apply the lowest FULL one (or the
+ * best-effort max-opix if none reach full = a genuine bandwidth wall). Returns the chosen lead. */
+static unsigned warp_autotune_lead(void)
+{
+    static const unsigned cand[] = { 4096u, 6144u, 8192u, 12288u, 16384u, 24576u };
+    const int NC = (int)(sizeof cand / sizeof cand[0]);
+    unsigned expo = (unsigned)(g_out_w * g_out_h);
+    unsigned best_lead = cand[0], best_opix = 0;
+    g_autotune_busy = 1;
+    xil_printf("AUTOTUNE start: " WARP_GEOM_FMT " exp=%u (auto lead was %u)\r\n", WARP_GEOM_ARGS, expo, (unsigned)g_warp_lead);
+    for (int i = 0; i < NC; i++) {
+        u32 ldw = (cand[i] & 0xFFFFFu);
+        LEAD_GPIO_WR((1u << 31) | ldw);                      /* soft-reset the cache on the new lead */
+        usleep(2000);
+        LEAD_GPIO_WR(ldw);
+        usleep(500000);                                      /* ~15 frames @30fps to warm the cache */
+        unsigned opix=0, eol=0, und=0;
+        warp_read_opix(ldw, &opix, &eol, &und);
+        int full = (opix >= expo);
+        xil_printf("AUTOTUNE: " WARP_GEOM_FMT " L=%u opix=%u/%u eol=%u starved=%u %s\r\n",
+                   WARP_GEOM_ARGS, cand[i], opix, expo, eol, und, full ? "FULL" : "short");
+        if (opix > best_opix) { best_opix = opix; best_lead = cand[i]; }
+        if (full) break;                                     /* lowest full lead wins */
+    }
+    g_warp_lead = best_lead;
+    u32 bw = (best_lead & 0xFFFFFu);
+    LEAD_GPIO_WR((1u << 31) | bw);
+    usleep(2000);
+    LEAD_GPIO_WR(bw);
+    xil_printf("AUTOTUNE done: " WARP_GEOM_FMT " CHOSE L=%u (opix=%u/%u)%s\r\n",
+               WARP_GEOM_ARGS, best_lead, best_opix, expo, (best_opix >= expo) ? "" : " [BW wall?]");
+    g_tuned_sig  = warp_geom_sig();
+    g_tuned_lead = best_lead;
+    g_autotune_busy = 0;
+    return best_lead;
+}
+#endif /* LEAD_GPIO_BASE */
+
 /* 4-point homography solver. Maps OUTPUT corners (dst) -> SOURCE corners (src) — the engine inverse-maps
  * output->source, so H * [ox,oy,1]^T ~ [sx,sy,1]^T. Mirrors tools/pg_projective_golden.py solve_homography
  * EXACTLY (same 8x8 DLT, same row ordering, i normalized to 1). dst is the full output raster corners;
@@ -1262,8 +1553,11 @@ static long long to_q36(double v) { return (long long)llround_floor(v * 68719476
 static int warp_solve_cornerpin(const double sx[4], const double sy[4])
 {
     /* output (dst) corners, full raster, TL,TR,BR,BL — same as the golden's dst quad. */
-    const double ox[4] = {0.0, (double)(OUT_RASTER_W-1), (double)(OUT_RASTER_W-1), 0.0};
-    const double oy[4] = {0.0, 0.0, (double)(OUT_RASTER_H-1), (double)(OUT_RASTER_H-1)};
+    /* dst = the RUNTIME output raster (g_out_w/h), NOT the build constant OUT_RASTER_W — so corner-pin
+     * geometry is correct at 720p as well as 1080p (the HDL walks out_w_rt = the same runtime raster). */
+    const double ow = (double)g_out_w, oh = (double)g_out_h;
+    const double ox[4] = {0.0, ow-1.0, ow-1.0, 0.0};
+    const double oy[4] = {0.0, 0.0, oh-1.0, oh-1.0};
     /* Build the 8x8 system A*[a b c d e f g h]^T = B  (rows per the golden):
      *   row 2k  : [ox oy 1 0 0 0 -ox*sx -oy*sx] = sx
      *   row 2k+1: [0 0 0 ox oy 1 -ox*sy -oy*sy] = sy   */
@@ -1303,7 +1597,7 @@ static int warp_solve_cornerpin(const double sx[4], const double sy[4])
     double sh_lft = sy[3]-sy[0], sh_rgt = sy[2]-sy[1];   /* left / right edge heights */
     double src_w  = (sw_top > sw_bot ? sw_top : sw_bot); if (src_w < 0) src_w = -src_w;
     double src_h  = (sh_lft > sh_rgt ? sh_lft : sh_rgt); if (src_h < 0) src_h = -src_h;
-    double rx = src_w / (double)OUT_RASTER_W, ry = src_h / (double)OUT_RASTER_H;
+    double rx = src_w / (double)g_out_w, ry = src_h / (double)g_out_h;   /* runtime raster (720/1080) */
     double ratio = (rx > ry ? rx : ry);
     int invx_eq = (int)(ratio * 4096.0 + 0.5);           /* affine-equivalent inverse-scale */
     unsigned lead = warp_calc_lead(0, invx_eq, invx_eq); /* deep for >1.0× shrink, like warp.set */
@@ -1331,8 +1625,10 @@ static void warp_set_keystone(int h_amt_e3, int v_amt_e3)
     if (v < -0.9) v = -0.9; if (v > 0.9) v = 0.9;
     /* half-extents about center use FRAME-1 so the h=v=0 identity corners are exactly (0,0)..(1919,1079),
      * matching the cornerpin full-raster identity (no off-by-one source-edge matte line). */
-    double mx = (FRAME_W - 1) * 0.5, my = (FRAME_H - 1) * 0.5;
-    double sw = (FRAME_W - 1) * 0.5, sh = (FRAME_H - 1) * 0.5;
+    /* keystone quad in the RUNTIME output/sheet space (g_out_w/h), not the source FRAME — correct at 720p
+     * (at 1080p FRAME_W==g_out_w so this is identical to before). */
+    double mx = (g_out_w - 1) * 0.5, my = (g_out_h - 1) * 0.5;
+    double sw = (g_out_w - 1) * 0.5, sh = (g_out_h - 1) * 0.5;
     double ht = h > 0 ? h : 0.0, hb = h < 0 ? -h : 0.0;   /* H: top vs bottom edge shrink */
     double vl = v > 0 ? v : 0.0, vr = v < 0 ? -v : 0.0;   /* V: left vs right edge shrink */
     /* TL,TR,BR,BL. sx: top edge (TL,TR) shrunk by ht, bottom edge (BL,BR) by hb.
@@ -1352,12 +1648,26 @@ static void warp_set_keystone(int h_amt_e3, int v_amt_e3)
  * invx/invy (Q12; 4096 = 1.0 source-px per output-px, >4096 = downscale). */
 static void warp_set_rotation(int deg, int invx, int invy, int panx, int pany)
 {
-    /* 2026-06-24 ROTATION CLAMP -> 10-degree increments. Continuous rotation overflows the 4-way tile
-     * cache at narrow angle bands for ANY set-index hash (exhaustively offline-proven 1-179deg; bench-
-     * confirmed 13,7 fails ~17-19, 5,59 fails ~90+125-140). The (1,33) hash in pg_tilecache_rt2 is
-     * bench-clean ONLY on the 10-deg grid {0,10,...,350}, where worst-set-live<=3 fits 4-way with no
-     * eviction. Snap the requested angle to the nearest 10deg so off-grid angles can't thrash the cache. */
-    { int m = deg % 360; if (m < 0) m += 360; m = ((m + 5) / 10) * 10; if (m >= 360) m -= 360; deg = m; }
+    /* SCALE CANON (corrected 2026-06-27): SHRINK = write-side decimate (scaler_top, the 'Z' command);
+     * ENLARGE = read-side warp ZOOM (invx/invy < 4096 — cheap: it fetches FEWER source px per output px).
+     * The warp must never DOWNSCALE: invx/invy > 4096 = read-side downscale-FETCH = the bandwidth footgun
+     * (use Z to shrink on the write side instead). So invx<4096 (zoom-in) is the LEGITIMATE upscale path;
+     * only invx/invy > 4096 is flagged. (Supersedes the 2026-06-26 "ALL scale write-side" wording.) */
+    if (invx > 4096 || invy > 4096)
+        xil_printf("WARN[read-downscale]: warp invx=%d invy=%d > 4096 = read-side downscale — use Z to shrink\r\n",
+                   invx, invy);
+    /* 2026-06-27: 10deg CLAMP REMOVED -> CONTINUOUS 1deg rotation. The old clamp existed because a SINGLE
+     * set-hash thrashes the 4-way cache off-grid; the per-1deg hash LUT (g_hsel_lut360 -> pg_tilecache_rt2
+     * hsel, 9 variants) now gives every 1deg angle a constant with worst-set-live<=3. warp_sin/cos already
+     * resolve any integer degree. Just normalize to 0-359. */
+    { int m = deg % 360; if (m < 0) m += 360; deg = m; }
+    /* 2026-06-27: 45/135/225/315 (exact diagonals) have NO reset-robust set-hash on the 64-set cache
+     * (45deg = the classic maximal-diagonal worst case). Snap them 1deg to a clean neighbour — the trig
+     * and the hash both use the snapped angle; a 1deg shift at the diagonal is visually imperceptible. */
+    if (deg == 45 || deg == 135 || deg == 225 || deg == 315) deg -= 1;
+    /* task-58: pick the per-1deg tile-cache set-hash (bench-derived LUT), or the live 'B' override. Set
+     * BEFORE the LEAD_GPIO writes below (and before warp_apply_placement) so it rides the same word. */
+    g_warp_hsel = (g_hsel_ovr >= 0) ? (unsigned)g_hsel_ovr : g_hsel_lut360[deg];
     int co = warp_cos(deg), si = warp_sin(deg);          /* Q12 */
     int cxo = (int)g_out_w / 2, cyo = (int)g_out_h / 2;   /* output center = runtime VTC raster */
     /* DYNAMIC RING: source center = the runtime LOD center, so a sub-LOD maps
@@ -1397,15 +1707,14 @@ static void warp_set_rotation(int deg, int invx, int invy, int panx, int pany)
     { unsigned mxl = (unsigned)(invx > invy ? invx : invy);
       g_warp_lod = (mxl <= 6144u) ? 0u : (mxl <= 12288u) ? 1u : 2u; }
 #ifdef PROJECTIVE_BUILD
-    /* PROJECTIVE build: the engine numerator is Q12.20 (FB=20), not Q.12. Rotation/zoom/pan are the affine
-     * sub-case (g=h=0). m_a..m_e here are co/si*invx >> 12 = Q.12 ratios; shift them << 8 to Q.20. The
-     * translation m_c/m_f were built as src_center*4096 (Q.12) so they also become Q.20 with << 8. Route
-     * through the single homography writer so rotation and keystone share one coeff path + one g/h packing. */
-    warp_apply_homography((int)((long long)m_a << 8), (int)((long long)m_b << 8),
-                          (int)((long long)m_c << 8), (int)((long long)m_d << 8),
-                          (int)((long long)m_e << 8), (int)((long long)m_f << 8),
-                          0, 0, lead);
-    g_proj_kh = 0; g_proj_kv = 0;   /* rotation cancels any prior keystone */
+    /* BITE1 (2026-06-26) TWO-STAGE: rotation/zoom/pan now drive the PLACEMENT stage (sheet->LOD), NOT the
+     * corner-pin homography. The affine math is IDENTICAL — under identity corner-pin the sheet has the same
+     * dims as the output raster, so the same m_a..m_f map sheet->LOD exactly as they used to map output->LOD.
+     * Q.12 ratios -> Q.20 with << 8 (FB=20 placement). Corner-pin (m_a..m_h) is left untouched so the two
+     * stages COMPOSE: a prior C/K keystone still warps the whole sheet, and rotation no longer cancels it. */
+    warp_apply_placement((int)((long long)m_a << 8), (int)((long long)m_b << 8),
+                         (int)((long long)m_c << 8), (int)((long long)m_d << 8),
+                         (int)((long long)m_e << 8), (int)((long long)m_f << 8), lead);
 #else
     Xil_Out32(GEO_A_BASE + 0x00, (u32)m_a);
     Xil_Out32(GEO_A_BASE + 0x08, (u32)m_b);
@@ -1417,14 +1726,14 @@ static void warp_set_rotation(int deg, int invx, int invy, int panx, int pany)
      * (lead_cnt resets there), same vblank the new coeffs latch. */
 #ifdef LEAD_GPIO_BASE
     g_warp_lead = lead;
-    Xil_Out32(LEAD_GPIO_BASE, g_warp_lead);
+    LEAD_GPIO_WR(g_warp_lead);
     /* Pulse the engine SOFT-RESET (lead_cfg[31]) AFTER the coeffs+lead are written: it clears the warp
      * engine + tile-cache + cmd formatter + output FIFO and FLUSHes the DataMover's in-flight beats, so the
      * cache starts clean on the new geometry -> NO transition wedge. The next sof restarts the walk with the
      * new coeffs. Held briefly (~150us, well under a frame); the flush self-completes after deassert. */
-    Xil_Out32(LEAD_GPIO_BASE, (1u << 31) | (g_warp_lead & 0xFFFFFu));
+    LEAD_GPIO_WR((1u << 31) | (g_warp_lead & 0xFFFFFu));
     for (volatile int d = 0; d < 30000; d++) { }
-    Xil_Out32(LEAD_GPIO_BASE, g_warp_lead & 0xFFFFFu);
+    LEAD_GPIO_WR(g_warp_lead & 0xFFFFFu);
 #endif
 #endif /* PROJECTIVE_BUILD */
     xil_printf("WARP rot=%d invx=%d invy=%d lead=%u: a=%d b=%d c=%d d=%d e=%d f=%d\r\n",
@@ -1494,7 +1803,8 @@ static int s2mm_set_geometry(u32 out_w, u32 out_h)
     return XST_SUCCESS;
 }
 
-static unsigned g_scale_pct = 100;   /* unified user scale; 100 = 1:1 whole image */
+static unsigned g_scale_pct  = 100;  /* legacy uniform scale (== x axis) for query/status */
+static unsigned g_scale_xpct = 100, g_scale_ypct = 100;  /* independent X/Y scale (task-59) */
 
 /* Pick the scaler kernel from the ACTUAL decimation ratio (src/lod), not pct, so
  * a 1:1 ratio is a BIT-EXACT passthrough. The scaler's 2-tap boxcar averages
@@ -1516,56 +1826,32 @@ static void scaler_kernel_for_ratio(u32 lod_w, u32 lod_h)
 #endif
 }
 
-static void apply_scale(unsigned pct)
+/* INDEPENDENT X/Y scale (task-59). Each axis: <100% = scaler DECIMATES that axis of the LOD
+ * (write-side, bandwidth-safe); >=100% = warp ZOOMS that axis (read-side, invx/invy of the affine).
+ * Mixed (one down, one up) is fine: the LOD is decimated on the down axis, the warp zooms the up axis.
+ * The decimated LOD auto-centers (warp source-center = g_lod/2). xpct==ypct == the old uniform Z. */
+static void apply_scale_xy(unsigned xpct, unsigned ypct)
 {
-    if (pct < 10u)  pct = 10u;
-    if (pct > 200u) pct = 200u;
-    g_scale_pct = pct;
-
-    /* DYNAMIC RING model: the LOD = scaler out = S2MM compact write = warp
-     * source (in_w_rt, via the shared GPIO). The warp reads the native LOD and
-     * PLACES it centered (source-center = g_lod/2); its out-of-window matte
-     * fills the border. No DDR matte, no padding, no clear race. */
-    if (pct >= 100u) {
-        /* UPSCALE / 100%: full LOD (= OUT_RASTER). OVER-RES (2026-06-26): the LOD
-         * HEIGHT is the EXACT output height (even-aligned), NOT floored to /16 —
-         * so a 1080 output keeps all 1080 rows (was 1072, an 8-row bottom strip).
-         * The warp grid is built one band taller (ceil, RE_IN_H=1088) so band 67
-         * is addressable; its over-read past the content is clamped out of view.
-         * Width stays /16 (stride/tile alignment; 1920/1280 already /16). */
-        g_lod_w = g_out_w & ~15u; g_lod_h = g_out_h & ~1u;   /* LOD MAX = runtime output raster */
-        scaler_kernel_for_ratio(g_lod_w, g_lod_h);   /* NN if 1:1 (bit-exact); filter if downscaling */
-        s2mm_set_geometry(g_lod_w, g_lod_h);            /* full compact == full frame          */
-        scaler_out_dims_write(g_lod_w, g_lod_h);        /* also drives warp in_w_rt (tied GPIO) */
-        int inv = (int)((4096u * 100u) / pct);          /* 100->4096(1:1), 200->2048(2x)        */
-        warp_set_rotation(g_warp_deg, inv, inv, g_warp_panx, g_warp_pany);
-        xil_printf("SCALE %u%%: LOD %ux%u, warp zoom inv=%d\r\n", pct, g_lod_w, g_lod_h, inv);
-    } else {
-        /* DOWNSCALE: scaler decimates to a compact LOD; warp reads it 1:1 and
-         * auto-centers. Snap dims to /16 so the tile grid covers the LOD with no
-         * partial-tile over-read (the 8-row crop at e.g. 360->352 is invisible). */
-        u32 ow = ((g_out_w * pct) / 100u) & ~15u;   /* width /16 (stride/tile align); rel. runtime output */
-        u32 oh = ((g_out_h * pct) / 100u) & ~1u;    /* OVER-RES: exact even height, no /16 floor */
-        if (ow < 16u) ow = 16u;
-        if (oh < 16u) oh = 16u;
-        g_lod_w = ow; g_lod_h = oh;
-        scaler_kernel_for_ratio(ow, oh);   /* ratio-based: 1:1 NN, <=2x 2-tap, >2x 4-tap */
-        s2mm_set_geometry(ow, oh);           /* S2MM writes the compact LOD                 */
-        scaler_out_dims_write(ow, oh);       /* scaler decimates + drives warp in_w_rt       */
-        /* warp identity: source-center (ow/2,oh/2) -> output center = auto-centered.
-         * out-of-window matte fills the border; no DDR matte / clear needed. */
-        warp_set_rotation(g_warp_deg, 4096, 4096, g_warp_panx, g_warp_pany);
-#ifdef SCALER_KERNEL_GPIO_BASEADDR
-        u32 kreg = Xil_In32(SCALER_KERNEL_GPIO_BASEADDR);
-        static const char *kname[3] = {"NN", "2tap", "4tap"};
-        xil_printf("SCALE %u%%: LOD %ux%u centered (compact), warp identity, kH=%s kV=%s\r\n",
-                   pct, (unsigned)ow, (unsigned)oh, kname[kreg & 3u], kname[(kreg >> 2) & 3u]);
-#else
-        xil_printf("SCALE %u%%: LOD %ux%u centered (compact), warp identity\r\n",
-                   pct, (unsigned)ow, (unsigned)oh);
-#endif
-    }
+    if (xpct < 10u) xpct = 10u; if (xpct > 200u) xpct = 200u;
+    if (ypct < 10u) ypct = 10u; if (ypct > 200u) ypct = 200u;
+    g_scale_xpct = xpct; g_scale_ypct = ypct; g_scale_pct = xpct;
+    /* LOD dims: decimate the axis that shrinks (<100); keep full where it zooms (>=100). */
+    u32 ow = (xpct < 100u) ? (((g_out_w * xpct) / 100u) & ~15u) : (g_out_w & ~15u);  /* /16 align */
+    u32 oh = (ypct < 100u) ? (((g_out_h * ypct) / 100u) & ~1u)  : (g_out_h & ~1u);   /* even      */
+    if (ow < 16u) ow = 16u;
+    if (oh < 16u) oh = 16u;
+    /* warp inverse-scale: zoom the axis that grows (>=100); 1:1 read where it was decimated. */
+    int invx = (xpct >= 100u) ? (int)((4096u * 100u) / xpct) : 4096;
+    int invy = (ypct >= 100u) ? (int)((4096u * 100u) / ypct) : 4096;
+    g_lod_w = ow; g_lod_h = oh;
+    scaler_kernel_for_ratio(ow, oh);     /* per-axis kernel from the actual decimation ratio */
+    s2mm_set_geometry(ow, oh);            /* S2MM compact LOD write */
+    scaler_out_dims_write(ow, oh);        /* scaler decimate target + warp in_w_rt (tied GPIO) */
+    warp_set_rotation(g_warp_deg, invx, invy, g_warp_panx, g_warp_pany);
+    xil_printf("SCALE x=%u%% y=%u%%: LOD %ux%u, warp inv=(%d,%d)\r\n",
+               xpct, ypct, (unsigned)ow, (unsigned)oh, invx, invy);
 }
+static void apply_scale(unsigned pct) { apply_scale_xy(pct, pct); }   /* uniform == both axes */
 #endif /* WARP_BUILD */
 
 /* Phase-3 gamma/tone LUT load GPIO (axi_gpio_11): bit0=bypass, bit1=tog,
@@ -1840,11 +2126,13 @@ static void uart_dispatch(const char *line)
          * to a sub-window (clean downscale, no warp starve); >=100 = warp zoom.
          * 'Z' alone = query. */
 #ifdef WARP_BUILD
-        unsigned pct;
-        if (parse_uint(&p, &pct)) {
-            apply_scale(pct);
+        /* Z <x> [y]  — x = X scale %, optional y = Y scale % (default y=x = uniform). 10..200. */
+        unsigned xp, yp;
+        if (parse_uint(&p, &xp)) {
+            yp = xp; parse_uint(&p, &yp);
+            apply_scale_xy(xp, yp);
         } else {
-            xil_printf("SCALE %u%% (Z <10-200> to set)\r\n", g_scale_pct);
+            xil_printf("SCALE x=%u%% y=%u%% (Z <x> [y], 10-200)\r\n", g_scale_xpct, g_scale_ypct);
         }
 #else
         xil_printf("UART: 'Z' is warp-only; no warp engine in this build\r\n");
@@ -1875,6 +2163,15 @@ static void uart_dispatch(const char *line)
 #else
         xil_printf("UART: no v_tc_tx base\r\n");
 #endif
+    } else if (op == 'A') {
+        /* ANALOG (engine-B G1+): A <sub> — Si5351 + ADV7393 I2C bring-up. i=init c=si5351-27MHz
+         * f=freq-readback a=adv7393 s=i2c-scan. Bench bring-up is MANUAL via these (not auto at boot)
+         * so we can step through + scope each stage. Only in the ANALOG_BUILD; no-op otherwise. */
+#ifdef ANALOG_BUILD
+        analog_iic_cmd(p);
+#else
+        xil_printf("UART: 'A' analog leg not in this build (set ANALOG_BUILD=1)\r\n");
+#endif
     } else if (op == 'L') {
         /* WARP prefetch LEAD override: L <n> sets a manual lead (0 = auto per-geometry); L = query.
          * Too DEEP a lead for a gentle rotation HARD-FREEZES (evicts unconsumed tiles); too shallow
@@ -1890,6 +2187,55 @@ static void uart_dispatch(const char *line)
         }
 #else
         xil_printf("UART: 'L' is warp-only; no warp engine in this build\r\n");
+#endif
+    } else if (op == 'U') {
+        /* aUto-tune lead: 'U' = sweep the lead ladder on the CURRENT geometry NOW + log each trial
+         * (AUTOTUNE: lines, harvest for better static leads); 'U 0' / 'U 1' = disable / enable the
+         * automatic on-break tuner (default ON). Manual 'L' override always wins over the auto tuner. */
+#if defined(PROJECTIVE_BUILD) && defined(LEAD_GPIO_BASE)
+        int a;
+        if (parse_int(&p, &a)) {
+            g_autotune_en = (a != 0);
+            xil_printf("AUTOTUNE on-break = %u\r\n", g_autotune_en);
+        } else {
+            warp_autotune_lead();
+        }
+#else
+        xil_printf("UART: 'U' autotune is warp/projective-only\r\n");
+#endif
+    } else if (op == 'B') {
+        /* task-57: tile-cache set-hash select override (live bench tuning, no rebuild). hsel index->b:
+         *   0:33 1:13 2:29 3:31 4:37 5:45 6:57 7:61 8:3 .  B 0..8 = force ; B 9+ = AUTO (per-1deg LUT) ; B = query.
+         * Re-applies the current geometry so the new hash latches with a clean soft-reset. */
+#if defined(WARP_BUILD) && defined(LEAD_GPIO_BASE) && defined(PROJECTIVE_BUILD)
+        unsigned n;
+        if (parse_uint(&p, &n)) {
+            g_hsel_ovr = (n <= 8u) ? (int)n : -1;       /* >8 -> auto (LUT) */
+            warp_set_rotation(g_warp_deg, g_warp_invx, g_warp_invy, g_warp_panx, g_warp_pany);
+            xil_printf("WARP hash %s -> hsel=%u (deg=%d)\r\n",
+                       (g_hsel_ovr >= 0) ? "OVERRIDE" : "AUTO", (unsigned)g_warp_hsel, g_warp_deg);
+        } else {
+            xil_printf("WARP hash hsel=%u (%s); B 0..8=force 9+=auto (0:*33 1:*13 2:*29 3:*31 4:*37 5:*45 6:*57 7:*61 8:*3)\r\n",
+                       (unsigned)g_warp_hsel, (g_hsel_ovr >= 0) ? "override" : "auto");
+        }
+#else
+        xil_printf("UART: 'B' is projective-warp-only\r\n");
+#endif
+    } else if (op == 'N') {
+        /* black-flash fix (frame-aligned reset): N 1 = apply the warp soft-reset at frame start (vblank)
+         * so a geometry change rewarms the cache in vblank with NO visible black flash; N 0 = legacy
+         * immediate reset (proven fallback). N = query. Rides lead_cfg[28] (preserved on every lead write). */
+#if defined(WARP_BUILD) && defined(LEAD_GPIO_BASE) && defined(PROJECTIVE_BUILD)
+        unsigned n;
+        if (parse_uint(&p, &n)) {
+            g_frame_align = n ? 1u : 0u;
+            warp_set_rotation(g_warp_deg, g_warp_invx, g_warp_invy, g_warp_panx, g_warp_pany);  /* push enable bit */
+            xil_printf("WARP frame-align (no-flash) = %u\r\n", g_frame_align);
+        } else {
+            xil_printf("WARP frame-align = %u (N 1=vblank-reset/no-flash, N 0=legacy immediate)\r\n", g_frame_align);
+        }
+#else
+        xil_printf("UART: 'N' is projective-warp-only\r\n");
 #endif
     } else if (op == 'M') {
         /* LOD mip fill (PHASE 1, STATIC source): snapshot the current frame into the L1/L2 mip rings, then
@@ -1945,6 +2291,36 @@ static void uart_dispatch(const char *line)
         }
 #else
         xil_printf("UART: 'C' is projective-only; not a projective build\r\n");
+#endif
+    } else if (op == 'T') {
+        /* BITE1 runtime MATTE colour:  T <r> <g> <b>  (0..255 each). Fills the on-sheet / off-content
+         * region (off-SHEET is always black). 'T' alone = note. Default boot = 0x101010 (dim gray). */
+#ifdef PROJECTIVE_BUILD
+        int r, g, b;
+        if (parse_int(&p, &r) && parse_int(&p, &g) && parse_int(&p, &b)) {
+            warp_set_matte(r, g, b);
+        } else {
+            xil_printf("UART: usage 'T r g b' (matte fill colour, 0..255 each)\r\n");
+        }
+#else
+        xil_printf("UART: 'T' is projective-only; not a projective build\r\n");
+#endif
+    } else if (op == 'I') {
+        /* BITE2 pIncushion radial warp:  I <x> [y]  (1/1000, SIGNED, per-axis). 'I 100' = +10% both axes
+         * (edges out), 'I -100' = barrel both, 'I 100 0' = horizontal-only, 'I 0 100' = vertical-only,
+         * 'I 0' / 'I 0 0' = off. 'I' alone = query. Target +/-100. One arg -> symmetric (x=y). */
+#ifdef PROJECTIVE_BUILD
+        int x, y;
+        if (parse_int(&p, &x)) {
+            if (parse_int(&p, &y)) warp_set_pincushion_xy(x, y);
+            else                   warp_set_pincushion(x);   /* symmetric */
+        } else {
+            xil_printf("PROJ pincushion x=%d.%03d y=%d.%03d  (usage 'I x [y]', 1/1000 signed; +out/-barrel)\r\n",
+                       g_pin_x_e3/1000, (g_pin_x_e3<0?-g_pin_x_e3:g_pin_x_e3)%1000,
+                       g_pin_y_e3/1000, (g_pin_y_e3<0?-g_pin_y_e3:g_pin_y_e3)%1000);
+        }
+#else
+        xil_printf("UART: 'I' is projective-only; not a projective build\r\n");
 #endif
     } else if (op == 'G') {
         /* Route-B read-engine geometry (additive+mux build):
@@ -2131,15 +2507,7 @@ static inline void color_matrix_saturation(u16 sat_q15)
  * For a clean 1920x1080 source with scaler_top (production): expect 1080,
  * 1080, 720. With iter5 scaler_bypass_1080p: expect 0, 0, 0 (bypass ties
  * diag_counts to zero). Use mm2s pixel counter + DMASR bits instead. */
-#if defined(XPAR_AXI_GPIO_2_BASEADDR)
-#  define DIAG_GPIO_BASEADDR XPAR_AXI_GPIO_2_BASEADDR
-#elif defined(XPAR_AXI_GPIO_2_S_AXI_BASEADDR)
-#  define DIAG_GPIO_BASEADDR XPAR_AXI_GPIO_2_S_AXI_BASEADDR
-#elif defined(XPAR_PHASE_B_BD_AXI_GPIO_2_BASEADDR)
-#  define DIAG_GPIO_BASEADDR XPAR_PHASE_B_BD_AXI_GPIO_2_BASEADDR
-#else
-#  error "AXI GPIO 2 (diag counters) base address not found in xparameters.h"
-#endif
+/* DIAG_GPIO_BASEADDR moved up next to LEAD_GPIO_BASE (2026-06-28) so the autotune helpers can use it. */
 
 /* iter5 (2026-05-22): repurposed [63:48] slot. Was mm2s_tlast (always 0).
  * Now scaler_v's m_axis_tlast handshake count per source frame — the A2
@@ -2626,11 +2994,11 @@ static void telemetry_loop(UINTPTR vdma_base)
                 u32 lead_word = (g_warp_lead & 0xFFFFFu);
                 u32 dv[9];
                 for (int sel = 0; sel < 9; sel++) {
-                    Xil_Out32(LEAD_GPIO_BASE, ((u32)sel << 20) | lead_word);
+                    LEAD_GPIO_WR(((u32)sel << 20) | lead_word);
                     for (volatile int d = 0; d < 4000; d++) { }   /* CDC (2FF) + mux settle */
                     dv[sel] = Xil_In32(DIAG_GPIO_BASEADDR + 0x00);
                 }
-                Xil_Out32(LEAD_GPIO_BASE, lead_word);             /* restore sel=0 (live LEAD only) */
+                LEAD_GPIO_WR(lead_word);             /* restore sel=0 (live LEAD only) */
                 u32 wdbg = dv[0];
                 u32 f4 = dv[4];   /* sel4 state flags in [15:8] */
                 xil_printf("WARP DBG: STICKY[dmv=%u fill=%u resid=%u cmv=%u call=%u gath=%u ov=%u sts=%u] "
@@ -2657,6 +3025,22 @@ static void telemetry_loop(UINTPTR vdma_base)
                 unsigned und  = (unsigned)(dv[8] & 0xFFFFu);
                 xil_printf("  OUT: opix/frame=%u (exp %u) eol/frame=%u (exp %u) starved=%u\r\n",
                            opix, (unsigned)(g_out_w * g_out_h), eol, (unsigned)g_out_h, und);
+#if defined(PROJECTIVE_BUILD) && defined(LEAD_GPIO_BASE)
+                /* AUTO-TUNE ON BREAK (2026-06-28): if this geometry starves (opix short) and we haven't
+                 * already tuned THIS geometry to THIS lead, sweep the lead ladder + log. The (sig,lead)
+                 * pair re-tunes if a geometry re-apply clobbered the tuned lead back to the deep auto
+                 * value; it does NOT loop once a working (or best-effort) lead is applied. 'L' disables. */
+                if (g_autotune_en && !g_autotune_busy && !g_warp_lead_ovr) {
+                    unsigned exp_o = (unsigned)(g_out_w * g_out_h);
+                    if (exp_o > 0u && opix < exp_o - (exp_o >> 6)) {        /* >~1.5% short = a break */
+                        unsigned sig = warp_geom_sig();
+                        if (sig != g_tuned_sig || (unsigned)g_warp_lead != g_tuned_lead) {
+                            xil_printf("AUTOTUNE: break (opix=%u/%u) -> sweeping lead...\r\n", opix, exp_o);
+                            warp_autotune_lead();
+                        }
+                    }
+                }
+#endif
 #endif
 #endif
                 /* DRAIN (2026-06-03): from axis_to_vid_io_0/predrain_snap, routed onto
@@ -3216,8 +3600,15 @@ int main(void)
      * unconsumed tile). warp_set_rotation now writes the per-geometry LEAD GPIO (rot20 -> 1344, proven
      * deadlock-safe in sim/pg_warp_real_faithful_tb.v). 'W <deg>' to change rotation, 'L <n>' to tune lead. */
     Xil_Out32(INVW_GPIO_BASE, 1u);           /* axi_gpio_12 = mux sel = warp (explicit; def is 1) */
-    warp_set_rotation(0, 4096, 4096, 0, 0);  /* boot IDENTITY — matches BD default coeffs (NO shrink-boot,
-                                              * NO geometry transition); simplest cache case. 'W <deg>' to rotate */
+#ifdef PROJECTIVE_BUILD
+    /* BITE1: TWO-STAGE boot. Corner-pin -> identity (output->sheet 1:1) FIRST (the projective build's GPIO
+     * defaults are stale Q.12 -> ~0 in Q.20 -> degenerate/black if left), then placement identity below.
+     * Composite (identity corner-pin ∘ placement) == the old single-stage output->LOD, so boot is unchanged. */
+    warp_cornerpin_identity();
+    warp_set_matte(0, 0, 0);   /* boot matte = BLACK (operator default 2026-06-27; was GPIO-default gray) */
+#endif
+    warp_set_rotation(0, 4096, 4096, 0, 0);  /* boot IDENTITY placement — composite = source fills output.
+                                              * (NO shrink-boot, NO geometry transition); simplest cache case. */
     xil_printf("WARP engaged: %ux%u master -> %ux%u output, boot IDENTITY (UART 'W <deg>' / 'L <n>')\r\n",
                FRAME_W, FRAME_H, OUT_RASTER_W, OUT_RASTER_H);
 #else

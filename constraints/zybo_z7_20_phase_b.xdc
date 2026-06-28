@@ -160,6 +160,11 @@ set_false_path -quiet -to [get_pins -hier -filter {NAME =~ *pg_re_0*/f1_reg[*]/D
 set_false_path -quiet -to [get_pins -hier -filter {NAME =~ *pg_re_0*/mt1_reg[*]/D}]
 # runtime per-geometry LEAD GPIO CDC (axi_gpio_12 ch2 FCLK_CLK0 -> pixel clock), same 2-FF ASYNC_REG capture reg.
 set_false_path -quiet -to [get_pins -hier -filter {NAME =~ *pg_re_0*/lr1_reg[*]/D}]
+# task-57 per-angle set-hash select CDC (lead_cfg[27:24] FCLK_CLK0 -> pixel clock); quasi-static. Same 2-FF.
+set_false_path -quiet -to [get_pins -hier -filter {NAME =~ *pg_re_0*/hs1_reg[*]/D}]
+# task-58 frame-align ENABLE CDC (lead_cfg[28] FCLK_CLK0 -> pixel clock); quasi-static. Same 2-FF as lr1/sr1.
+# WITHOUT this the timer chases the unconstrained GPIO->fa1 path (-3.37) and collaterally wrecks placement.
+set_false_path -quiet -to [get_pins -hier -filter {NAME =~ *pg_re_0*/fa1_reg/D}]
 # telemetry dbg_sel CDC (lead_cfg[23:20] FCLK_CLK0 -> pixel clock); quasi-static (fw sets+waits+reads).
 # WITHOUT this, the timer chases the unconstrained GPIO->dsel1 path (-3.35) and collaterally wrecks the
 # real datapath placement (+0.212 -> -0.435). Same 2-FF ASYNC_REG capture reg as lr1.
@@ -178,6 +183,25 @@ set_false_path -quiet -to [get_pins -hier -filter {NAME =~ *pg_re_0*/sr1_reg/D}]
 # so the pins-not-found / already-constant case is a no-op). 40-bit each.
 set_false_path -quiet -to [get_pins -hier -filter {NAME =~ *pg_re_0*/g1_reg[*]/D}]
 set_false_path -quiet -to [get_pins -hier -filter {NAME =~ *pg_re_0*/h1_reg[*]/D}]
+
+# BITE1 (2026-06-26): PLACEMENT-coeff CDC pa1..pf1 (axi_gpio_15/16/17 FCLK_CLK0 -> pixel clock). Same
+# 2-FF ASYNC_REG capture-reg trap as a1..f1/g1/h1/lr1/sr1 -> false-path the first stage D so the
+# unconstrained GPIO->pa1..pf1 crossing can't wreck the datapath placement. -quiet keeps these HARMLESS
+# in the affine build (pa1..pf1 regs exist in pg_warp_top but are fed by the identity xlconstant tie).
+# 32 bits each (Q12.20). Same hierarchy-robust *pg_re_0* scoping as the numerator coeffs.
+set_false_path -quiet -to [get_pins -hier -filter {NAME =~ *pg_re_0*/pa1_reg[*]/D}]
+set_false_path -quiet -to [get_pins -hier -filter {NAME =~ *pg_re_0*/pb1_reg[*]/D}]
+set_false_path -quiet -to [get_pins -hier -filter {NAME =~ *pg_re_0*/pc1_reg[*]/D}]
+set_false_path -quiet -to [get_pins -hier -filter {NAME =~ *pg_re_0*/pd1_reg[*]/D}]
+set_false_path -quiet -to [get_pins -hier -filter {NAME =~ *pg_re_0*/pe1_reg[*]/D}]
+set_false_path -quiet -to [get_pins -hier -filter {NAME =~ *pg_re_0*/pf1_reg[*]/D}]
+
+# BITE2 (2026-06-26): PINCUSHION-coeff CDC (axi_gpio_19 FCLK_CLK0 -> pixel clock). Same 2-FF
+# ASYNC_REG capture-reg trap as the placement/numerator coeffs -> false-path the first stage D.
+# -quiet keeps it harmless in the affine build (fed by the kx/ky=0 xlconstant tie). 32 bits each.
+# 2026-06-28: split into per-axis kpx1 (kx) / kpy1 (ky) — dual-channel GPIO; false-path both.
+set_false_path -quiet -to [get_pins -hier -filter {NAME =~ *pg_re_0*/kpx1_reg[*]/D}]
+set_false_path -quiet -to [get_pins -hier -filter {NAME =~ *pg_re_0*/kpy1_reg[*]/D}]
 
 # DYNAMIC RING (2026-06-26): runtime source-dim CDC (axi_gpio_1 ch2 = scaler
 # out_w/out_h slices, FCLK_CLK0 -> output pixel clock) into pg_warp_top's 2-FF

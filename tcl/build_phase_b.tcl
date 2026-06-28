@@ -73,6 +73,8 @@ add_files -norecurse [file join $project_root hdl pg_projective.v]  ;# projectiv
 add_files -norecurse [file join $project_root hdl pg_skid.v]
 add_files -norecurse [file join $project_root hdl pg_tilecache_rt2.v]
 add_files -norecurse [file join $project_root hdl pg_warp_engine.v]
+add_files -norecurse [file join $project_root hdl pg_place_affine.v]  ;# BITE1: Stage-2 placement affine (sheet->LOD)
+add_files -norecurse [file join $project_root hdl pg_pincushion.v]    ;# BITE2: Stage-2 radial pincushion warp
 add_files -norecurse [file join $project_root hdl pg_tile_dma.v]
 add_files -norecurse [file join $project_root hdl pg_warp_top.v]
 add_files -norecurse [file join $project_root hdl pg_raster_to_tile.v]    ;# Path B: RASTER->TILE writer (S2MM tiled-layout)

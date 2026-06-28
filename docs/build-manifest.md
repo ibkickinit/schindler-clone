@@ -1382,3 +1382,204 @@ corrupt master → warp produced ~12% of a frame even at fit). KEY INSIGHT: a ti
   back-pressure starves the tiler's band buffers under burst); (2) HP2 vs HP0(VDMA)/HP1(read) PS arbitration
   under full warp load; (3) the runtime `Z` (freeze) UART cmd still pokes the VDMA S2MM RS bit — a no-op under
   dedicated DMA (freeze not wired to the new path; out of scope).
+
+---
+## 2026-06-26 — BITE 1: corner-pin warps whole sheet (TWO-STAGE warp) ✅ LOGIC PROVEN
+
+**Build:** `run_decimate_1080_build.sh` (WARP_ENGINE=1 PROJECTIVE_BUILD=1 SCALER_MODULE=scaler_top
+RASTER_TO_TILE=0 OUTPUT_MODE=1080p30 NO_ILA=1). **Timing CLOSED: WNS=+0.1335 / WHS=+0.0123.**
+Artifacts: `build/vitis-phase-b/phase_b_pf/hw/phase_b.bit` + `build/vitis-phase-b/vdma_init/Debug/vdma_init.elf`
+(14:30 / 14:31). Programmed + bench-verified on the monitor (Brio webcam surface; user's eyes).
+
+**What changed — two-stage geometry.** m_a..m_h are now the CORNER-PIN (output→SHEET, the OUT_RASTER
+canvas); NEW pa..pf are the PLACEMENT (sheet→LOD, where scale/rotation/pan live). 3-way bilinear:
+off-SHEET→BLACK, on-sheet/off-content→MATTE (runtime colour, axi_gpio_18), on-content→sample.
+- NEW HDL `hdl/pg_place_affine.v` (Stage-2 placement, 2-cyc pipe, both bounds tests). Unit-sim 5/5 PASS.
+- `pg_warp_engine.v` restructured: projective→place→skid on consumer AND prefetch (equal latency,
+  freeze-on-!pen contract); 50-bit consumer skid carries lod_in+offsheet; offsheet sideband through
+  cache; 3-way bilinear mux.
+- `pg_projective.v` emits full-Q sheet coord (o_sheet_x/y) + tests SHEET bounds.
+- `pg_warp_top.v` threads pa..pf with 2-FF CDC (pa1/pa2..). XDC: pa1..pf1 false-paths.
+- BD `readengine_warp_bd.tcl`: placement GPIOs axi_gpio_15/16/17 + runtime matte axi_gpio_18 on
+  axi_ic_lite2 (GP1) M02-M05 (NUM_MI 2→6). Affine build keeps const matte + identity-placement xlconstants.
+- FW `main.c`: warp_set_rotation retargeted to PLACEMENT; warp_cornerpin_identity() at boot; `T r g b`
+  matte cmd (R-B-G pack). Corner-pin/keystone (C/K) drive the sheet warp; W drives placement.
+
+**Bench results (monitor):** (1) passthrough = full clean image ✓ (2) placement pan/centered-shrink ✓
+(3) runtime matte red, R-B-G correct ✓ (4) gentle corner-pin → clean BLACK exterior border ✓
+(5) gentle keystone → red matte frame TILTS WITH the source = corner-pin warps whole sheet incl. matte ✓.
+
+**TARGET = ±10% sheet warp — MET.** Operator 2026-06-26: "±10% corner pin would be fine as a target.
+more is great but not worth chasing" + "same for pincushion." ±10% corner-pin proven FULL-FRAME clean
+(gentle 0.9 = 1.11x fetch AND asymmetric real ~10% corner displacement `C 192 108 1919 0 1919 1079 192
+972` → opix 2073600 / eol 1080). Bite 2 pincushion targets ±10% too (gentle non-linear, same fetch budget).
+
+**Corner-pin EXTREMES SWEEP (2026-06-26, symmetric black-exterior pin, monitor-verified):**
+- Robust clean (FULL frame at DEFAULT lead, no tuning): **5% / 10% / 15%** (k=0.95/0.90/0.85, fetch ≤1.18x).
+- Wall between 15% (clean) and 20% (breaks). 20%/25%/30% short-frame at default lead.
+- Lead tuning gets 20-30% to ~97-99.7% opix but it's BIMODAL/FRAGILE: k=0.80 good only at L=13k/22k
+  (collapses to 20% at L=16k/19k); k=0.70 good only at L=10k. Good-lead window is narrow + per-quad.
+- **DECISIVE (trust-monitor-not-counter, MS2109 lesson):** 25% pin at its best lead = opix 98.8% on
+  TELEMETRY but **VISIBLY BROKEN/SCRAMBLED on the monitor.** The starved pixels SCRAMBLE the picture,
+  they don't drop as clean lines — so "near-full opix" extremes are NOT usable. Hard usable limit ~15%.
+- Root cause = 4-way tile-cache EVICTION RESONANCE (same structural limit as continuous rotation,
+  [[schindler_warp_rotation_clamp]]) fighting prefetch lead — NOT raw DDR bandwidth (a sweet-spot lead
+  exists, just fragile). ±10% production target sits comfortably inside the robust zone.
+
+---
+## 2026-06-26 — BITE 2: PINCUSHION (Stage-2 radial warp) ✅ SHIPPED + bench-proven
+
+**Build:** `run_decimate_1080_build.sh` (same env as Bite 1). **Timing CLOSED: WNS=+0.1359 / WHS=+0.0223**
+(pincushion is fully pipelined, no chained multiplies → ~10 added DSPs cost zero margin). Programmed +
+monitor-verified. Builds ON the Bite 1 two-stage substrate.
+
+**What changed.** NEW `hdl/pg_pincushion.v` — non-linear radial address-gen inserted as a Stage-2 step
+BETWEEN pg_projective (corner-pin) and pg_place_affine (placement), in BOTH consumer + prefetch legs
+(equal latency → coherent). Displaces the sheet coord: `s' = s + (s-c)*k_pin*r2`, centre = output/2.
+`k_pin>0` = pincushion (edges out), `<0` = barrel, `=0` = transparent (byte-for-byte == Bite 1).
+7-stage pen-gated pipe (1 raw DSP product/stage). Unit-sim 6/6 PASS. Wired: pg_warp_engine (u_pin_c/p),
+pg_warp_top (k_pin port + CDC kp1/kp2), XDC kp1 false-path, BD axi_gpio_19 (signed 32-bit, M06 on
+axi_ic_lite2, NUM_MI 6→7; affine build ties 0 via pl_zero), FW `warp_set_pincushion` + `I <amt>` cmd
+(1/1000 signed, k_pin=round((amt/r2max)*2^40)).
+
+**Bench results (monitor):** (1) k=0 boot = clean passthrough, full frame (== Bite 1 regression) ✓
+(2) `I 100` +10% = smooth radial bow, clean ✓ (3) `I -150` = opposite direction (barrel), clean ✓
+(4) compose: Z-50 decimated source offset down + `I 150` = green matte frame BOWS WITH the source
+(pincushion warps the placed sheet incl. matte) ✓.
+
+**Headroom (better than corner-pin!):** pincushion alone stays FULL-FRAME on telemetry to **+25%** (I 250),
+visually clean to at least 15% — a radial warp spreads the fetch rate vs the corner-pin's uniform
+downscale, so peak local fetch is lower. CAVEAT: placement-shrink + pincushion COMPOUNDS the fetch
+(placement-90% + pincushion-15% short-frames at opix 1022k). For shrink+pincushion combos, shrink via
+the DECIMATE path (`Z`, scaler shrinks on write → warp stays 1:1) which leaves the budget for the
+pincushion — Z-50 + I-150 was full-frame clean.
+
+**v1 limitation (documented, not chased):** pincushion is applied to the sheet coord AFTER the corner-pin,
+so the corner-pin's BLACK exterior (sheet_in, tested pre-pincushion) does NOT itself bow when corner-pin
++ pincushion are combined. The source + matte DO bow. Bowing the black too = output-space pre-warp (a
+follow-up). For pincushion-alone (identity corner-pin) it IS exact output-space pincushion.
+
+---
+## 2026-06-26 — BITE 2b: pincushion corner-PINNING + corner-pin runtime-raster ✅ bench-proven
+
+Two fixes on the Bite 2 substrate, one rebuild (`run_decimate_1080_build.sh`). **WNS=+0.3548 / WHS=+0.0238.**
+1. **Pincushion corner-pinning (HDL, pg_pincushion.v):** g changed from `k*r2` to `k*(r2max-r2)`,
+   r2max=cx^2+cy^2 computed in HDL. Now the displacement VANISHES at the frame corners → corners stay
+   PINNED and the interior bows (true pincushion/barrel). Was: g~r2 grew with radius so corners moved
+   the most + content dragged off into matte (operator-flagged wrong feel). Firmware k_pin scaling
+   UNCHANGED. Unit-sim re-verified: corner (1920,1080)->(1920,1080) pinned, interior bows. Bench ✓.
+2. **Corner-pin runtime raster (FW):** warp_solve_cornerpin dst + lead-ratio + warp_set_keystone quad
+   now use runtime g_out_w/g_out_h instead of build-const OUT_RASTER_W (1920). Corner-pin/keystone
+   geometry is now CORRECT at 720p (was solving for a 1920 dst while the HDL walked a 1280 raster ->
+   under-warped). Bench ✓ (30% corner-pin at 720p clean + correct geometry).
+
+**720p vs 1080p WARP HEADROOM (the comparison; lower res = far more headroom — the fixed cache covers a
+bigger fraction of the smaller LOD):**
+- PINCUSHION (clean, no lead dependency): 1080p clean to +25%; **720p clean to >=+100%** (I 1000).
+- CORNER-PIN: 1080p clean to ~15% (default lead, fragile beyond). 720p with a GOOD lead clean to
+  **>=60%** (k=0.40). BUT the default lead HEURISTIC is NOT resolution-aware: warp_calc_lead picks the
+  1080p deep lead (~24576) at 720p, which OVER-RUNS the smaller 720p LOD -> eviction -> starves even at
+  10% pin by default. With L=4096..16384 (wide clean window) 720p corner-pin is full-frame. FOLLOW-UP:
+  make warp_calc_lead scale the lead by output resolution so corner-pin "just works" at 720p.
+
+**Quality follow-ups (operator-observed):** (#48) matte/content edge has NO anti-aliasing — hard binary
+lod_in cutoff reads jagged on curved/angled edges. (#49) pincushion doesn't bow the corner-pin black
+exterior (sheet_in tested pre-pincushion).
+
+### Opposing corner-pin mismatch limit (2026-06-26, 1080p, monitor-confirmed)
+Two diagonal-opposite corners (TL, BR) displaced anti-parallel by d px; TR/BL fixed.
+- DIVERGING (TL up-left -d,-d + BR down-right +d,+d = pull APART, stretch diagonal): clean FULL-FRAME to
+  **d=140 (~6.4% diagonal stretch)**, sharp breakup at d=150 (opix 1130204). Bandwidth-limited (stretch =
+  downscale-fetch). Operator-confirmed visually clean at d=120.
+- CONVERGING (pull TOGETHER, pinch/magnify): full-frame to **d~700**, breakup d=800 (opix 222053).
+  Geometric (homography fold), NOT bandwidth — magnify doesn't stress fetch.
+- Direction matters ~5x. The binding limit for "pull-apart" opposing pins is the ~6.4% stretch (bandwidth),
+  same wall as symmetric downscale. Pinch/magnify goes far further (fold-limited). 720p would have much
+  more headroom in both (per the 720p comparison: smaller LOD fits cache better).
+
+### #50 FIXED — resolution-aware corner-pin lead (2026-06-26, FW-only, bench-proven)
+warp_calc_lead now scales the DEEP downscale lead (24576) by output-area ratio vs the build raster
+(g_out_w*g_out_h / OUT_RASTER_W*OUT_RASTER_H), clamped to the 8192 throughput floor; the 8192/4096
+floors (round-trip bounds) are left alone. 720p: deep lead 24576 -> ~10912 (inside the clean 8192..16384
+window). Bench: 720p corner-pin now FULL-FRAME 10%..40% at the DEFAULT/auto lead (was starving even at
+10% before, needed a manual L). 1080p UNCHANGED (cur_area==ref_area -> no scaling; k=0.9/0.85 still full).
+FW-only rebuild (~10s, reuses the bite2b bitstream). Corner-pin now "just works" at 720p.
+
+---
+## ⚠️ CORRECTION (2026-06-26) — corner-pin/pincushion "limits" above were the RETIRED read-side path
+
+Architecture clarified with operator 2026-06-26: **read-side scaling is being retired.** The scaler was
+MOVED to the write side (decimate-on-write is canon); the warp must NEVER do uniform scale, and a
+**shrinking corner-pin / stretching opposing-pin is read-side scaling** (downscale-in-disguise). Every
+
+> **CLARIFIED 2026-06-27:** "never uniform scale / read-side scaling retired" means **DOWNSCALE** only.
+> **ENLARGE (zoom-in, >=100%) stayed read-side** as the warp zoom (`invx<4096`, cheap — fetches fewer px);
+> it's legit and shipped (`apply_scale_xy`). Only read-side **downscale** (`invx>4096`) is the footgun.
+> Canon = "shrink write-side, enlarge read-side; never read-side downscale." (#53 strips only downscale.)
+
+corner-pin/pincushion "breakup limit" recorded above (corner-pin ~15% @1080p, opposing ~6.4%/700px,
+720p corner-pin 60%, pincushion +25%/+100%, and #50's lead behaviour on shrink quads) was measured by
+applying the geometry to the FULL LOD = read-side downscale. **Those numbers are RETIRED — they measure
+the path being removed, and they're lead-sensitive/bimodal.**
+
+CANON re-verification (full run, `docs/canon-reverification-2026-06-26.md`): size via the write-scaler
+(`Z`), geometry as a ~1:1 shape remap on the pre-sized LOD → **FULL-FRAME at every level tested** (Z to
+25%, keystone K500, pincushion I600). No geometry bandwidth wall on the canon path.
+
+Still valid (mechanism, scale-path-independent): Bite 1 two-stage datapath, Bite 2 pincushion, #48 AA,
+rotation, pan, matte, off-sheet→black / off-content→matte. Open bug: lead heuristic mis-picks for
+FULL-LOD (no-shrink) geometry — the 1080p60 geometry-trim case — bimodal near-full shorts; needs a
+geometry-aware lead. Read-side scale still flagged-on-use (firmware WARN + daemon), strip in #53.
+
+---
+## 2026-06-27 — Warp controls session (1° rotation, anamorphic scale, 4-corner pin, UI/daemon)
+**Checkpoint build (source==flashed==bank):** `build/artifacts/decimate-1080p30-1deg-rotation-frametalign-task58`
+— bitstream md5 `e1112da` (WNS +0.027), ELF md5 `5390dc89` (firmware-resynced this session).
+**Full session handoff + decision log:** `docs/handoff-2026-06-27-warp-controls-session.md` (read first).
+Highlights: continuous **1° rotation** (per-angle hash LUT, bench-derived reset-robust; 45/135/225/315
+snap 1°); **anamorphic X/Y scale** (`Z x y`); true **4-corner pin** (image-corner forward model);
+corner-pin **+** pincushion coexist; **scale canon corrected** (shrink=write / enlarge=read, never
+read-downscale); matte default **black**; frame-aligned reset built (default OFF, `N 1`, untested).
+Bug fixes: anchor-crush (`G` clobbers warp `GEO_A/B/C` → `geom.set` neutralized), factory-reset
+black-screen, rotation-wipes-zoom. Open: frame-align visual, combined rotate+zoom/keystone hash,
+separate X/Y pincushion (needs HDL). Board left at 1080p identity, black matte, daemon up, Osee input 3.
+
+---
+## 2026-06-28 — Separate X/Y pincushion (HDL)
+**Build (source==flashed==bank):** `build/artifacts/decimate-1080p30-pincushion-xy`
+— bitstream md5 `c24dab26…`, ELF md5 `8250ba13…`. **WNS +0.122** (base was +0.027 — improved),
+WHS +0.009, TNS/THS 0. Env identical to task58 base (`./run_decimate_1080_build.sh`).
+**Change:** split the radial pincushion coeff into independent per-axis kx (horizontal) / ky (vertical).
+HDL `pg_pincushion.v` duplicates the g-pipeline per axis (`gx=kx·(r2max−r2)`, `gy=ky·(r2max−r2)`;
+kx==ky == prior symmetric, byte-identical). `pg_warp_engine.v`/`pg_warp_top.v` carry kx/ky + per-axis
+CDC (`kpx1/kpy1`, both false-pathed). `axi_gpio_19` → **dual-channel** (ch1=kx, ch2=ky @ base+0x08) —
+no interconnect/address-map change. Firmware `I <x> [y]` (1 arg = symmetric). Daemon `pincushion.set
+{x,y}` (legacy `{amt}` still works). UI: Pin X + Pin Y sliders + link toggle.
+**Bench (2026-06-28, monitor via user, Osee input 1 SMPTE):** I 250 0 → H-only barrel CONFIRMED;
+I 0 250 → V-only barrel CONFIRMED; I 250 250 → kx==ky symmetric (telemetry; mild starve at 25% =
+pre-existing 1080p geom-BW ceiling, not a regression). **Status: ✅ CLEAN, per-axis verified on monitor.**
+
+### 2026-06-28 — control-plane follow-ups (no rebuild)
+- **Warp-stack hard cap ±100** (corner-pin px + pincushion ‰, both axes, BOTH override modes) in daemon
+  (`_m_pincushion_set`, `_m_corner_set`) + UI (`applyRanges`, slider min/max). Rationale: stacking
+  corner-pin + pincushion + zoom past ~±100 exceeds the 1080p geometry-fetch budget → engine starves
+  every frame (opix < 2073600, eol < 1080, `starved` climbs) and does NOT self-recover until geometry is
+  reduced. Bench-observed 2026-06-28 (combined warps left it perpetually short-framing; restoring identity
+  recovered full frames). Cap keeps the UI inside the safe envelope. (Raw UART still unclamped — dev path.)
+- **UI rename** "Sheet Warp" → **"Warp Engine"**.
+- **Frame-align `N 1` verdict:** eyes-on rotation-toggle compare → **N 1 WORSE than N 0** (transition
+  artifacting; sof-gated rewarm unfinished before active video). **N 0 retained default.** Owed item closed.
+
+### 2026-06-28 — AUTO-TUNE LEAD ON BREAK (firmware-only)
+Build `decimate-1080p30-autotune-lead` (bitstream unchanged from pincushion-xy; ELF md5 4231c2dc…).
+Root-caused the "tiny corner-pin + tiny pincushion breaks the engine" report: corner-pin auto-picks a
+deep prefetch lead (~24576, sized for its implied downscale), pincushion reuses it, deep-lead + radial
+scatter thrashes the 4-way/512 tile cache → starve. **NOT a bandwidth wall** — same geometry runs
+full-frame at a moderate lead (repro TL X=-2 + Pin -10/-10: broken@24576, FULL@6144). Fix = adaptive:
+firmware detects a starve (opix<raster) in telemetry_loop, sweeps a lead ladder
+{4096,6144,8192,12288,16384,24576}, applies the lowest FULL lead, and LOGS every (geom,lead,opix) trial
+(`AUTOTUNE:` lines) for mining a better static heuristic later. UART `U`=force sweep, `U 0|1`=disable/
+enable (default ON); manual `L` disables it. Bench-verified: the reported combo self-healed to full
+frames autonomously. Substantially addresses the open `#54 geometry-aware lead` item. **Still owed:**
+fold the harvested AUTOTUNE data into warp_calc_lead so common combos pick the right lead WITHOUT the
+~3s sweep + transient flicker.

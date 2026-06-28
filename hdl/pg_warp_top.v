@@ -47,6 +47,14 @@ module pg_warp_top #(
     // perspective coeffs (AXI GPIO, async; GCW-bit signed Q(GCW-GFB).GFB). Tie 0 for affine.
     // NOT wired into any BD tcl in P2 — exposed as ports only; the BD hook-up is P3.
     input  wire signed [GCW-1:0] m_g, m_h,
+    // BITE 1 (2026-06-26): PLACEMENT affine (sheet -> LOD), signed Q(CW-FB).FB (AXI GPIO, async).
+    // m_a..m_f/m_g/m_h are now the CORNER-PIN (output -> sheet); pa..pf place the source on the sheet.
+    // Defaults pa=pe=1.0 (Q.FB), pb=pc=pd=pf=0 -> identity placement (source fills the sheet 1:1).
+    input  wire signed [CW-1:0] pa, pb, pc, pd, pe, pf,
+    // BITE 2 (2026-06-26): PINCUSHION radial coeff (signed Q(FB+KPSH), AXI GPIO, async; 0 -> transparent).
+    // 2026-06-28: split into independent per-axis coeffs (kx=horizontal bow, ky=vertical bow); dual-channel
+    // axi_gpio_19 (ch1=kx, ch2=ky). kx==ky reproduces the prior symmetric pincushion.
+    input  wire signed [31:0] kx, ky,
     input  wire [23:0] matte_rgb,
     input  wire [31:0] lead_cfg,          // runtime per-geometry prefetch LEAD (AXI GPIO, async; 0 -> build LEAD)
     // DYNAMIC RING (2026-06-26): runtime active source dims = the LOD the read
@@ -110,24 +118,63 @@ module pg_warp_top #(
     // perspective-coeff CDC (m_g/m_h), 2-FF, mirrors a..f. g1's D MUST be false-pathed in the XDC at
     // P3 (same GPIO->pclk trap as the a..f / lr1 / sr1 crossings). Tied 0 in the affine BD -> harmless.
     (* ASYNC_REG="TRUE" *) reg signed [GCW-1:0] g1,h1, g2,h2;
+    // placement-coeff CDC (pa..pf), 2-FF, mirrors a..f. pa1..pf1's D MUST be false-pathed in the XDC
+    // (same GPIO->pclk trap as a..f / g1 / lr1). Identity placement default -> harmless if unwired.
+    (* ASYNC_REG="TRUE" *) reg signed [CW-1:0] pa1,pb1,pc1,pd1,pe1,pf1, pa2,pb2,pc2,pd2,pe2,pf2;
+    // pincushion-coeff CDC (kx/ky), 2-FF, mirrors a..f. kpx1/kpy1's D MUST be false-pathed in the XDC
+    // (same GPIO->pclk trap). 0 default -> transparent if unwired (affine build ties both 0).
+    (* ASYNC_REG="TRUE" *) reg signed [31:0] kpx1, kpx2, kpy1, kpy2;
     (* ASYNC_REG="TRUE" *) reg [23:0] mt1, mt2;
     // runtime LEAD CDC (quasi-static GPIO; firmware writes the per-geometry lead at sof-far). 2-FF sync;
     // lr1's D is false-pathed in the XDC (same as the coeff CDC). 0 -> engine falls back to build LEAD.
     // lead_cfg[19:0]=LEAD, [23:20]=dbg_sel (read-only telemetry view select, quasi-static).
     (* ASYNC_REG="TRUE" *) reg [19:0] lr1, lr2;
     (* ASYNC_REG="TRUE" *) reg [3:0]  dsel1, dsel2;
+    // task-57: per-angle set-hash select rides lead_cfg[27:24] (4-bit, 9 variants; quasi-static).
+    // 2-FF sync, hs1's D false-pathed in the XDC like lr1/dsel1. 0 -> ty*33 default (keystone/pincushion).
+    (* ASYNC_REG="TRUE" *) reg [3:0]  hs1, hs2;
     // lead_cfg[31] = SOFT-RESET request (firmware pulses it on a geometry change). 2-FF synced -> srst.
     // engine_rstn resets the affines+cache+consumer; u_dma gets srst (resets + FLUSHes the DataMover); the
     // cmd formatter + output FIFO reset too. The DataMover is NOT reset (its in-flight beats are DRAINED by
     // the flush) so HP1 never hangs. This makes a live rotation change clean (no transition wedge).
-    (* ASYNC_REG="TRUE" *) reg sr1, srst;
+    // FRAME-ALIGNED soft-reset (black-flash fix). lead_cfg[31]=reset REQUEST, lead_cfg[28]=frame-align
+    // ENABLE. When enabled, the request is latched and the applied reset (srst) fires at the next `sof`
+    // (vsync rising = start of vblank), held SRST_HOLD cycles to flush, then released -> the prefetch
+    // rewarms during the rest of vblank (~1.3ms >> ~200us refill) so active video is clean: NO black flash.
+    // Enable=0 -> LEGACY immediate async reset (the proven path; safe fallback if frame-align misbehaves).
+    (* ASYNC_REG="TRUE" *) reg sr1, sr2;
+    (* ASYNC_REG="TRUE" *) reg fa1, fa2;
+    reg sr2_d, srst_pend, srst;
+    reg [11:0] srst_hold;
+    localparam [11:0] SRST_HOLD = 12'd2048;     // ~28us @74.25MHz: >> DataMover drain, << vblank
     wire engine_rstn = rstn & ~srst;
     always @(posedge clk) begin
         a1<=m_a;b1<=m_b;c1<=m_c;d1<=m_d;e1<=m_e;f1<=m_f; mt1<=matte_rgb; g1<=m_g; h1<=m_h;
         a2<=a1;b2<=b1;c2<=c1;d2<=d1;e2<=e1;f2<=f1; mt2<=mt1; g2<=g1; h2<=h1;
+        pa1<=pa;pb1<=pb;pc1<=pc;pd1<=pd;pe1<=pe;pf1<=pf;
+        pa2<=pa1;pb2<=pb1;pc2<=pc1;pd2<=pd1;pe2<=pe1;pf2<=pf1;
+        kpx1<=kx; kpx2<=kpx1; kpy1<=ky; kpy2<=kpy1;
         lr1<=lead_cfg[19:0]; lr2<=lr1;
         dsel1<=lead_cfg[23:20]; dsel2<=dsel1;
-        sr1<=lead_cfg[31]; srst<=sr1;
+        hs1<=lead_cfg[27:24]; hs2<=hs1;
+        sr1<=lead_cfg[31]; sr2<=sr1;            // request (2-FF sync)
+        fa1<=lead_cfg[28]; fa2<=fa1;            // frame-align enable (2-FF sync)
+    end
+    always @(posedge clk) begin
+        if(!rstn) begin sr2_d<=1'b0; srst_pend<=1'b0; srst<=1'b0; srst_hold<=12'd0; end
+        else begin
+            sr2_d<=sr2;
+            if(fa2) begin                                    // FRAME-ALIGNED
+                if(sr2 & ~sr2_d) srst_pend<=1'b1;            // capture request edge
+                if(srst) begin
+                    if(srst_hold!=12'd0) srst_hold<=srst_hold-12'd1; else srst<=1'b0;
+                end else if(sof & srst_pend) begin           // apply at frame start
+                    srst<=1'b1; srst_hold<=SRST_HOLD; srst_pend<=1'b0;
+                end
+            end else begin                                   // LEGACY immediate (proven fallback)
+                srst<=sr2; srst_pend<=1'b0;
+            end
+        end
     end
 
     // ---- engine + tile DMA ----
@@ -154,9 +201,10 @@ module pg_warp_top #(
                      .LTILE(LTILE),.NTILE(NTILE),.WAY(WAY),.PD(PD),.CW(CW),.FB(FB),.LEAD(LEAD),
                      .PROJECTIVE(PROJECTIVE),.GCW(GCW),.GFB(GFB),.RF(RF),.LUT_BITS(LUT_BITS),
                      .NR_ITERS(NR_ITERS),.AW(AW),.WW(WW)) u_eng (
-        .clk(clk),.rstn(engine_rstn),.sof(sof),.lead_rt(lr2),  // engine_rstn includes the soft-reset
+        .clk(clk),.rstn(engine_rstn),.sof(sof),.lead_rt(lr2),.hsel(hs2),  // engine_rstn includes the soft-reset
         .in_w_rt(inw_q2),.in_h_rt(inh_q2),.out_w_rt(outw_q2),.out_h_rt(outh_q2),
-        .m_a(a2),.m_b(b2),.m_c(c2),.m_d(d2),.m_e(e2),.m_f(f2),.m_g(g2),.m_h(h2),.matte(mt2),
+        .m_a(a2),.m_b(b2),.m_c(c2),.m_d(d2),.m_e(e2),.m_f(f2),.m_g(g2),.m_h(h2),
+        .pa(pa2),.pb(pb2),.pc(pc2),.pd(pd2),.pe(pe2),.pf(pf2),.kx(kpx2),.ky(kpy2),.matte(mt2),
         .o_valid(o_valid),.o_pix(o_pix),.o_ready(o_ready),
         .fetch_req(wreq),.fetch_tx(wtx),.fetch_ty(wty),.fetch_ready(t_rdy),
         .fill_valid(fv),.fill_blk(fblk),.fill_last(fl));

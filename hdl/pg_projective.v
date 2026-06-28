@@ -56,10 +56,14 @@ module pg_projective #(
     input  wire signed [GCW-1:0] m_g,m_h,
     output wire        o_valid,
     input  wire        o_ready,
-    output wire        o_in_window,
+    output wire        o_in_window,             // BITE 1: now = inside the SHEET (corner-pin quad)
     output wire [11:0] o_src_col, o_src_row,
     output wire [11:0] o_h_frac, o_v_frac,
-    output wire        o_new_row
+    output wire        o_new_row,
+    // BITE 1 (2026-06-26): full-precision SHEET coord (Q.FB) for the downstream
+    // pg_place_affine placement stage (sheet -> LOD). = sx_q/sy_q (proj) or the
+    // affine accumulator (affine subset). Carries sub-pixel so rotation stays smooth.
+    output wire signed [AW-1:0] o_sheet_x, o_sheet_y
 );
 // DYNAMIC RING: effective active source bounds (signed, for the >=0 && <bound tests).
 wire signed [12:0] inw_eff = $signed({1'b0, (in_w_rt == 12'd0) ? IN_W[11:0] : in_w_rt});
@@ -67,6 +71,10 @@ wire signed [12:0] inh_eff = $signed({1'b0, (in_h_rt == 12'd0) ? IN_H[11:0] : in
 // RUNTIME OUTPUT: effective output raster bounds (eol/last). 0 -> build OUT_W/OUT_H.
 wire [11:0] outw_eff = (out_w_rt == 12'd0) ? OUT_W[11:0] : out_w_rt;
 wire [11:0] outh_eff = (out_h_rt == 12'd0) ? OUT_H[11:0] : out_h_rt;
+// BITE 1: signed SHEET bounds. o_in_window now tests the corner-pin SHEET quad
+// (= the OUT_W x OUT_H canvas), NOT the LOD. Off-sheet -> black downstream.
+wire signed [12:0] outw_s = $signed({1'b0, outw_eff});
+wire signed [12:0] outh_s = $signed({1'b0, outh_eff});
 generate
 // =========================== AFFINE SUBSET (byte-for-byte pg_affine) ===========================
 if (PROJECTIVE==0) begin : g_affine
@@ -77,12 +85,14 @@ if (PROJECTIVE==0) begin : g_affine
     wire last = eol && (oy == outh_eff-12'd1);
     wire signed [CW-1-FB:0] ax_int = ax >>> FB, ay_int = ay >>> FB;
     assign o_valid     = running;
-    assign o_in_window = (ax_int>=0)&&(ax_int<inw_eff)&&(ay_int>=0)&&(ay_int<inh_eff);
+    assign o_in_window = (ax_int>=0)&&(ax_int<outw_s)&&(ay_int>=0)&&(ay_int<outh_s); // SHEET bounds
     assign o_src_col   = ax_int[11:0];
     assign o_src_row   = ay_int[11:0];
     assign o_h_frac    = ax[FB-1 -: 12];      // top 12 frac bits (= ax[11:0] when FB==12)
     assign o_v_frac    = ay[FB-1 -: 12];
     assign o_new_row   = (ox==12'd0);
+    assign o_sheet_x   = {{(AW-CW){ax[CW-1]}}, ax};   // sign-extend affine accum to AW
+    assign o_sheet_y   = {{(AW-CW){ay[CW-1]}}, ay};
     always @(posedge clk) begin
         if(!rstn) begin running<=0; ox<=0; oy<=0; ax<=0; ay<=0; rax<=0; ray<=0; end
         else if(sof) begin
@@ -304,7 +314,7 @@ end else begin : g_proj
     wire signed [AW-1:0] sx_n = s12_px >>> RF;
     wire signed [AW-1:0] sy_n = s12_py >>> RF;
     wire signed [AW-1-FB:0] sx_int = sx_n >>> FB, sy_int = sy_n >>> FB;
-    wire inwin_n = (!s12_bad) && (sx_int>=0)&&(sx_int<inw_eff)&&(sy_int>=0)&&(sy_int<inh_eff);
+    wire inwin_n = (!s12_bad) && (sx_int>=0)&&(sx_int<outw_s)&&(sy_int>=0)&&(sy_int<outh_s); // SHEET bounds
 
     always @(posedge clk) begin
         if(!rstn) begin s12_v<=0; o_v_r<=0; end
@@ -325,6 +335,8 @@ end else begin : g_proj
     assign o_h_frac    = sx_q[FB-1 -: 12];
     assign o_v_frac    = sy_q[FB-1 -: 12];
     assign o_new_row   = o_nr_r;
+    assign o_sheet_x   = sx_q;                 // full-Q sheet coord for pg_place_affine
+    assign o_sheet_y   = sy_q;
 
 end
 endgenerate

@@ -3,13 +3,17 @@
 # (pg_affine + tile cache + bilinear) instead of pg_read_engine_top, and geometry = 6 affine coeffs.
 #
 # GPIO map (firmware-written 32-bit each; the 3 existing dual GPIOs give exactly 6 channels):
-#   axi_gpio_8 ch1 = m_a   ch2 = m_b      (signed Q20.12)
+#   axi_gpio_8 ch1 = m_a   ch2 = m_b      (CORNER-PIN output->sheet; signed Q12.20 in PROJECTIVE build)
 #   axi_gpio_9 ch1 = m_c   ch2 = m_d
 #   axi_gpio_10 ch1 = m_e  ch2 = m_f
 #   axi_gpio_12 ch1 bit0 = mux sel (default 1 = warp; write 0 for VDMA passthrough)
+#   axi_gpio_12 ch1 [12:1]/[24:13] = runtime out_w/out_h (1080p builds; 720<->1080 live switch)
 #   axi_gpio_12 ch2      = runtime per-geometry prefetch LEAD (20-bit; 0 = build LEAD; def 0x500) @ +0x08
-# Default coeffs = fit-scale 1920x1080 -> 1280x720: a=e=1.5 (0x1800), b=c=d=f=0 -> boots to a scaled frame.
-# matte = constant 0x101010 (runtime matte GPIO deferred).
+#   axi_gpio_13/14 (GP1) = perspective m_g/m_h (PROJECTIVE only; Q4.36 40-bit split)
+#   BITE1 (PROJECTIVE only, GP1/axi_ic_lite2 M02-M05):
+#     axi_gpio_15 ch1=pa ch2=pb / axi_gpio_16 ch1=pc ch2=pd / axi_gpio_17 ch1=pe ch2=pf  (PLACEMENT sheet->LOD, Q12.20)
+#     axi_gpio_18 = runtime MATTE colour (24-bit, default 0x101010 gray; on-sheet/off-content fill)
+# Affine build: matte = const 0x101010, placement = identity xlconstants (pa=pe=1.0).
 
 puts "READENGINE-WARP: integrating affine/warp read-engine (additive + mux)"
 
@@ -66,9 +70,8 @@ foreach {gname dflt1 dflt2} {
         CONFIG.C_DOUT_DEFAULT_2 $dflt2] [get_bd_cells $gname]
 }
 
-# matte constant
-create_bd_cell -type ip -vlnv xilinx.com:ip:xlconstant warp_matte
-set_property -dict [list CONFIG.CONST_WIDTH {24} CONFIG.CONST_VAL {0x101010}] [get_bd_cells warp_matte]
+# matte constant (AFFINE build only — the PROJECTIVE build drives matte from a runtime GPIO, see BITE1).
+# Created later inside the affine-only connect block (PROJECTIVE_BUILD isn't known yet at this point).
 
 # ---- warp compositor ----
 create_bd_cell -type module -reference pg_warp_top pg_re_0
@@ -179,7 +182,29 @@ connect_bd_net [get_bd_pins axi_gpio_9/gpio_io_o]   [get_bd_pins pg_re_0/m_c]
 connect_bd_net [get_bd_pins axi_gpio_9/gpio2_io_o]  [get_bd_pins pg_re_0/m_d]
 connect_bd_net [get_bd_pins axi_gpio_10/gpio_io_o]  [get_bd_pins pg_re_0/m_e]
 connect_bd_net [get_bd_pins axi_gpio_10/gpio2_io_o] [get_bd_pins pg_re_0/m_f]
-connect_bd_net [get_bd_pins warp_matte/dout]        [get_bd_pins pg_re_0/matte_rgb]
+# matte + placement (pa..pf): in the AFFINE build these are CONSTANTS (matte=0x101010, placement=identity
+# sheet->LOD 1:1 so the legacy single-stage behaviour is preserved); the PROJECTIVE build OVERRIDES them
+# with runtime GPIOs (search BITE1 below). pg_re_0/pa..pf default to 0 if unconnected, which would map all
+# of the sheet to LOD origin -> MUST drive identity here even in the affine build.
+if {!$PROJECTIVE_BUILD} {
+    create_bd_cell -type ip -vlnv xilinx.com:ip:xlconstant warp_matte
+    set_property -dict [list CONFIG.CONST_WIDTH {24} CONFIG.CONST_VAL {0x101010}] [get_bd_cells warp_matte]
+    connect_bd_net [get_bd_pins warp_matte/dout]    [get_bd_pins pg_re_0/matte_rgb]
+    # identity placement (Q.FB, affine build FB=12 -> 1.0 = 0x1000): pa=pe=1.0, pb=pc=pd=pf=0.
+    create_bd_cell -type ip -vlnv xilinx.com:ip:xlconstant pl_one
+    set_property -dict [list CONFIG.CONST_WIDTH {32} CONFIG.CONST_VAL {0x00001000}] [get_bd_cells pl_one]
+    create_bd_cell -type ip -vlnv xilinx.com:ip:xlconstant pl_zero
+    set_property -dict [list CONFIG.CONST_WIDTH {32} CONFIG.CONST_VAL {0x00000000}] [get_bd_cells pl_zero]
+    connect_bd_net [get_bd_pins pl_one/dout]  [get_bd_pins pg_re_0/pa]
+    connect_bd_net [get_bd_pins pl_zero/dout] [get_bd_pins pg_re_0/pb]
+    connect_bd_net [get_bd_pins pl_zero/dout] [get_bd_pins pg_re_0/pc]
+    connect_bd_net [get_bd_pins pl_zero/dout] [get_bd_pins pg_re_0/pd]
+    connect_bd_net [get_bd_pins pl_one/dout]  [get_bd_pins pg_re_0/pe]
+    connect_bd_net [get_bd_pins pl_zero/dout] [get_bd_pins pg_re_0/pf]
+    # BITE2: pincushion kx/ky = 0 (transparent) in the affine build (reuse the 32-bit zero constant).
+    connect_bd_net [get_bd_pins pl_zero/dout] [get_bd_pins pg_re_0/kx]
+    connect_bd_net [get_bd_pins pl_zero/dout] [get_bd_pins pg_re_0/ky]
+}
 # m_g/m_h: perspective coeffs (40-bit each, PROJECTIVE only). In the AFFINE build they are LEFT
 # UNCONNECTED exactly as in the pre-P3 BD (pg_warp_top defaults unconnected inputs to 0 -> w=1 -> affine);
 # this keeps the affine wrapper/netlist byte-identical (no extra xlconstant cell). The PROJECTIVE build
@@ -380,6 +405,72 @@ if {$PROJECTIVE_BUILD} {
     connect_bd_net [get_bd_pins axi_gpio_13/gpio2_io_o] [get_bd_pins gh_h_cat/In0]
     connect_bd_net [get_bd_pins sl_h_hi/Dout]           [get_bd_pins gh_h_cat/In1]
     connect_bd_net [get_bd_pins gh_h_cat/dout]          [get_bd_pins pg_re_0/m_h]
+}
+
+# ============================================================================================
+# BITE1 — PLACEMENT affine (pa..pf, sheet->LOD) + RUNTIME MATTE. PROJECTIVE build only.
+# ============================================================================================
+# Two-stage warp: m_a..m_h are the CORNER-PIN (output->sheet); pa..pf place the source onto the sheet
+# (scale + rotation + centering, sheet->LOD). 6 coeffs are signed Q12.20 (CW=32, FB=20) -> one 32-bit
+# GPIO channel each -> 3 dual GPIOs. The matte fill colour becomes runtime-selectable (24-bit GPIO).
+# All hang off axi_ic_lite2 (GP1) which PROJ_GH created with NUM_MI=2 (M00/M01 = g/h) — bump to 6.
+#   axi_gpio_15 (DUAL): ch1=pa(=1.0 0x100000)  ch2=pb(0)
+#   axi_gpio_16 (DUAL): ch1=pc(0)              ch2=pd(0)
+#   axi_gpio_17 (DUAL): ch1=pe(=1.0 0x100000)  ch2=pf(0)
+#   axi_gpio_18 (24b) : ch1=matte_rgb (default 0x101010 gray)
+# Identity placement default (pa=pe=1.0) -> clean 1:1 boot (firmware overwrites with the real scale/rot).
+if {$PROJECTIVE_BUILD} {
+    puts "BITE1: wiring placement pa..pf (Q12.20) + runtime matte via axi_gpio_15/16/17/18 on axi_ic_lite2"
+    set_property -dict [list CONFIG.NUM_MI {6}] [get_bd_cells axi_ic_lite2]
+    foreach mp {M02 M03 M04 M05} {
+        connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]        [get_bd_pins axi_ic_lite2/${mp}_ACLK]
+        connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn] [get_bd_pins axi_ic_lite2/${mp}_ARESETN]
+    }
+    # 3 dual-channel placement GPIOs (Q.20 identity defaults).
+    foreach {gname mp d1 d2} {
+        axi_gpio_15 M02 0x00100000 0x00000000
+        axi_gpio_16 M03 0x00000000 0x00000000
+        axi_gpio_17 M04 0x00100000 0x00000000
+    } {
+        create_bd_cell -type ip -vlnv xilinx.com:ip:axi_gpio $gname
+        set_property -dict [list CONFIG.C_GPIO_WIDTH {32} CONFIG.C_GPIO2_WIDTH {32} \
+            CONFIG.C_ALL_OUTPUTS {1} CONFIG.C_ALL_OUTPUTS_2 {1} CONFIG.C_IS_DUAL {1} \
+            CONFIG.C_INTERRUPT_PRESENT {0} CONFIG.C_DOUT_DEFAULT $d1 \
+            CONFIG.C_DOUT_DEFAULT_2 $d2] [get_bd_cells $gname]
+        connect_bd_intf_net [get_bd_intf_pins axi_ic_lite2/${mp}_AXI] [get_bd_intf_pins ${gname}/S_AXI]
+        connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]          [get_bd_pins ${gname}/s_axi_aclk]
+        connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn] [get_bd_pins ${gname}/s_axi_aresetn]
+    }
+    connect_bd_net [get_bd_pins axi_gpio_15/gpio_io_o]  [get_bd_pins pg_re_0/pa]
+    connect_bd_net [get_bd_pins axi_gpio_15/gpio2_io_o] [get_bd_pins pg_re_0/pb]
+    connect_bd_net [get_bd_pins axi_gpio_16/gpio_io_o]  [get_bd_pins pg_re_0/pc]
+    connect_bd_net [get_bd_pins axi_gpio_16/gpio2_io_o] [get_bd_pins pg_re_0/pd]
+    connect_bd_net [get_bd_pins axi_gpio_17/gpio_io_o]  [get_bd_pins pg_re_0/pe]
+    connect_bd_net [get_bd_pins axi_gpio_17/gpio2_io_o] [get_bd_pins pg_re_0/pf]
+    # runtime matte (24-bit single-channel GPIO, default 0x101010 gray).
+    create_bd_cell -type ip -vlnv xilinx.com:ip:axi_gpio axi_gpio_18
+    set_property -dict [list CONFIG.C_GPIO_WIDTH {24} CONFIG.C_ALL_OUTPUTS {1} CONFIG.C_IS_DUAL {0} \
+        CONFIG.C_INTERRUPT_PRESENT {0} CONFIG.C_DOUT_DEFAULT {0x00101010}] [get_bd_cells axi_gpio_18]
+    connect_bd_intf_net [get_bd_intf_pins axi_ic_lite2/M05_AXI] [get_bd_intf_pins axi_gpio_18/S_AXI]
+    connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]          [get_bd_pins axi_gpio_18/s_axi_aclk]
+    connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn] [get_bd_pins axi_gpio_18/s_axi_aresetn]
+    connect_bd_net [get_bd_pins axi_gpio_18/gpio_io_o]  [get_bd_pins pg_re_0/matte_rgb]
+    # BITE2: pincushion kx/ky (signed 32-bit each, DUAL-channel GPIO, default 0 = transparent) on M06.
+    # 2026-06-28: ch1 (gpio_io_o) = kx (horizontal bow), ch2 (gpio2_io_o) = ky (vertical bow). Dual channel
+    # keeps both axes on ONE AXI slave (ch2 data reg at base+0x08) — no interconnect/address-map change.
+    set_property -dict [list CONFIG.NUM_MI {7}] [get_bd_cells axi_ic_lite2]
+    connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]          [get_bd_pins axi_ic_lite2/M06_ACLK]
+    connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn] [get_bd_pins axi_ic_lite2/M06_ARESETN]
+    create_bd_cell -type ip -vlnv xilinx.com:ip:axi_gpio axi_gpio_19
+    set_property -dict [list CONFIG.C_GPIO_WIDTH {32} CONFIG.C_ALL_OUTPUTS {1} CONFIG.C_IS_DUAL {1} \
+        CONFIG.C_GPIO2_WIDTH {32} CONFIG.C_ALL_OUTPUTS_2 {1} \
+        CONFIG.C_INTERRUPT_PRESENT {0} CONFIG.C_DOUT_DEFAULT {0x00000000} \
+        CONFIG.C_DOUT_DEFAULT_2 {0x00000000}] [get_bd_cells axi_gpio_19]
+    connect_bd_intf_net [get_bd_intf_pins axi_ic_lite2/M06_AXI] [get_bd_intf_pins axi_gpio_19/S_AXI]
+    connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]          [get_bd_pins axi_gpio_19/s_axi_aclk]
+    connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn] [get_bd_pins axi_gpio_19/s_axi_aresetn]
+    connect_bd_net [get_bd_pins axi_gpio_19/gpio_io_o]  [get_bd_pins pg_re_0/kx]
+    connect_bd_net [get_bd_pins axi_gpio_19/gpio2_io_o] [get_bd_pins pg_re_0/ky]
 }
 
 puts "READENGINE-WARP: integration block complete (pg_warp_top + 6-coeff GPIO + sel)"

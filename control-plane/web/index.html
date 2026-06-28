@@ -132,14 +132,19 @@
 
       <div id="geometry" style="margin:6px 0 14px">
         <h3 style="margin:0 0 6px">Geometry &amp; Scale</h3>
-        <label style="display:block;margin:4px 0"><input type="checkbox" id="geo-aspect" checked> Maintain aspect ratio&nbsp;<span style="opacity:.5">(lock X:Y when scaling)</span></label>
-      <div style="opacity:.6;margin-bottom:6px">Scale = zoom (1280/720 = 100%); Shift = move the image (−ve = off the left/top edge, pixels leave the frame).</div>
+      <!-- CANON scale = the ONE write-side scaler (Z), INDEPENDENT X/Y (#59), values in OUTPUT px. -->
+      <label style="display:block;margin:4px 0"><input type="checkbox" id="scale-link" checked> Link X/Y&nbsp;<span style="opacity:.5">(lock aspect when scaling)</span></label>
       <div style="display:flex;gap:8px;align-items:center;margin:3px 0"><span style="width:64px">Scale X</span>
-        <input type="range" id="geo-sx-r" min="64" max="3840" value="1280" style="flex:1">
-        <input type="number" id="geo-sx-n" min="1" max="3840" value="1280" style="width:72px"><span style="opacity:.5">1280=100% · 3840=300%</span></div>
+        <input type="range" id="scale-x-r" min="128" max="2560" value="1280" style="flex:1">
+        <input type="number" id="scale-x-n" min="128" max="2560" value="1280" style="width:72px"><span style="opacity:.5" id="scale-x-lbl">px&nbsp;100%</span></div>
       <div style="display:flex;gap:8px;align-items:center;margin:3px 0"><span style="width:64px">Scale Y</span>
-        <input type="range" id="geo-sy-r" min="64" max="2160" value="720" style="flex:1">
-        <input type="number" id="geo-sy-n" min="1" max="2160" value="720" style="width:72px"><span style="opacity:.5">720=100% · 2160=300%</span></div>
+        <input type="range" id="scale-y-r" min="72" max="1440" value="720" style="flex:1">
+        <input type="number" id="scale-y-n" min="72" max="1440" value="720" style="width:72px"><span style="opacity:.5" id="scale-y-lbl">px&nbsp;100%</span></div>
+      <div style="opacity:.6;margin-bottom:6px">Scale = write-side decimate, per axis (clean to ~25%). Values = output px @ current res. Rotation/shift = warp.</div>
+      <!-- LEGACY hidden (IDs kept so older JS refs don't throw): uniform % + route-B sx/sy + aspect. -->
+      <div style="display:none"><input type="checkbox" id="geo-aspect" checked>
+        <input type="range" id="scale-pct-r" min="10" max="200" value="100"><input type="number" id="scale-pct-n" min="10" max="200" value="100">
+        <input type="range" id="geo-sx-r"><input type="number" id="geo-sx-n"><input type="range" id="geo-sy-r"><input type="number" id="geo-sy-n"></div>
       <div style="display:flex;gap:8px;align-items:center;margin:3px 0"><span style="width:64px">Shift X</span>
         <input type="range" id="geo-px-r" min="-1280" max="1280" value="0" style="flex:1">
         <input type="number" id="geo-px-n" min="-1280" max="1280" value="0" style="width:72px"><span style="opacity:.5">±px</span></div>
@@ -149,16 +154,15 @@
       <div style="display:flex;gap:8px;align-items:center;margin:3px 0"><span style="width:64px">Rotation</span>
         <input type="range" id="warp-rot-r" min="-180" max="180" value="0" style="flex:1">
         <input type="number" id="warp-rot-n" min="-180" max="180" value="0" style="width:72px"><span style="opacity:.5">° (warp)</span></div>
-      <label style="display:block;margin:6px 0"><input type="checkbox" id="geo-anchor"> Anchor scale to top-left corner&nbsp;<span style="opacity:.5">(unchecked = scale about center)</span></label>
-      <label style="display:block;margin:6px 0">Resample:
-        <select id="geo-filt">
-          <option value="0">Nearest (sharp)</option>
-          <option value="1">2-tap box</option>
-          <option value="2">Bilinear (H)</option>
-          <option value="3">Bilinear (H+V)</option>
-        </select>&nbsp;<span style="opacity:.5">(Bilinear = smooth zoom)</span></label>
-      <label style="display:inline-block;margin:6px 12px 6px 0"><input type="checkbox" id="geo-hflip"> Flip H</label>
-      <label style="display:inline-block;margin:6px 0"><input type="checkbox" id="geo-vflip"> Flip V&nbsp;<span style="opacity:.5">(both = 180°)</span></label>
+      <!-- ROUTE-B controls (anchor/resample/flip) HIDDEN 2026-06-27: in the warp build these drove the
+           'G' command which clobbers the warp's projective GEO_A/B/C (the "anchor crushed it" bug). They
+           are now no-ops at the daemon; kept here (display:none) only so JS id refs don't throw. -->
+      <div style="display:none">
+      <label><input type="checkbox" id="geo-anchor"> Anchor scale to top-left corner</label>
+      <select id="geo-filt"><option value="0">NN</option><option value="1">box</option><option value="2">Hbi</option><option value="3">HVbi</option></select>
+      <label><input type="checkbox" id="geo-hflip"> Flip H</label>
+      <label><input type="checkbox" id="geo-vflip"> Flip V</label>
+      </div>
       <div style="margin-top:6px"><span style="opacity:.6">ARC:</span>
         <button data-arc="fill">Fill</button>
         <button data-arc="zoom">Zoom</button>
@@ -169,6 +173,33 @@
       <div id="geo-applied" style="font-family:monospace;margin-top:6px;opacity:.7">G 1280 720 0 0 0</div>
         <div id="mount-scaler"></div>
       </div><!-- /Geometry -->
+
+      <div id="sheetwarp" style="margin:6px 0 14px">
+        <h3 style="margin:0 0 6px">Warp Engine <span style="opacity:.5;font-weight:normal">(corner-pin + pincushion, independent)</span></h3>
+        <label style="display:block;margin:2px 0 6px"><input type="checkbox" id="sw-override"> User limits override
+          <span style="opacity:.5">(corner-pin + pincushion hard-capped at ±100 to stay within the 1080p fetch budget)</span></label>
+        <div style="opacity:.7;margin:2px 0 4px">Corner Pin — per-corner offset, output px&nbsp;<span style="opacity:.6">(+ = OUT / − = IN; each corner absolute)</span></div>
+        <div id="sw-corners"></div>
+        <button id="sw-corner-reset" style="margin:2px 0 6px">Reset corners</button>
+        <div style="opacity:.7;margin:8px 0 2px">Pincushion — independent X/Y&nbsp;<span style="opacity:.6">(+barrel/−pincushion; ‰)</span>
+          <label style="margin-left:8px"><input type="checkbox" id="sw-pin-link" checked> link X/Y</label></div>
+        <div style="display:flex;gap:8px;align-items:center;margin:2px 0"><span style="width:64px">Pin X</span>
+          <input type="range" id="sw-pin-r" min="-100" max="100" value="0" style="flex:1">
+          <input type="number" id="sw-pin-n" min="-100" max="100" value="0" style="width:72px"></div>
+        <div style="display:flex;gap:8px;align-items:center;margin:2px 0"><span style="width:64px">Pin Y</span>
+          <input type="range" id="sw-pin-yr" min="-100" max="100" value="0" style="flex:1">
+          <input type="number" id="sw-pin-yn" min="-100" max="100" value="0" style="width:72px"></div>
+        <div style="margin:8px 0 4px"><button id="sw-lead-sweep">Force Lead Sweep</button>
+          <span style="opacity:.5">re-tune prefetch lead for the current warp (~3s, brief flicker; logs AUTOTUNE data)</span></div>
+        <!-- legacy hidden (keep IDs so older JS refs don't throw) -->
+        <div style="display:none"><select id="sw-mode"><option value="none">none</option></select>
+          <div id="sw-keystone"><input id="sw-kh-r"><input id="sw-kh-n"><input id="sw-kv-r"><input id="sw-kv-n"></div>
+          <div id="sw-pincushion"></div></div>
+        <div style="display:flex;gap:8px;align-items:center;margin:6px 0"><span style="width:64px">Matte</span>
+          <input type="color" id="sw-matte" value="#000000" style="width:48px;height:26px">
+          <span style="opacity:.5">on-sheet / off-content fill (default black; off-sheet always black)</span></div>
+        <div id="sw-applied" style="font-family:monospace;margin-top:4px;opacity:.7">mode none</div>
+      </div><!-- /Warp Engine -->
 
       <div style="margin:6px 0 14px">
         <h3 style="margin:0 0 6px">FRC (frame-rate)</h3>
@@ -219,11 +250,30 @@
 
       <div style="margin:6px 0 4px">
         <h3 style="margin:0 0 6px">Output</h3>
-        <div style="font-family:monospace"><span style="opacity:.6">Resolution</span> <b id="stat-out-res">720p</b>
-          &nbsp; <span style="opacity:.6">Framerate</span> <b id="stat-out-rate">—</b> Hz
-          <span style="opacity:.45">(format fixed 720p60 this build; selectable when dual-engine lands)</span></div>
+        <label style="display:block;margin:3px 0">Resolution / rate:
+          <select id="out-mode">
+            <option value="720p60">720p60</option>
+            <option value="1080p30">1080p30</option>
+            <option value="720p50" disabled>720p50 (firmware TODO)</option>
+            <option value="1080p24" disabled>1080p24 (firmware TODO)</option>
+            <option value="1080p25" disabled>1080p25 (firmware TODO)</option>
+            <option value="1080p60" disabled>1080p60 (blocked: Zybo serializer)</option>
+          </select>
+          <span style="opacity:.45">live switch; all 74.25 MHz (no reclock)</span>
+        </label>
+        <div style="font-family:monospace;opacity:.7"><span style="opacity:.6">Live</span> <b id="stat-out-res">720p</b>
+          &nbsp; <b id="stat-out-rate">—</b> Hz</div>
       </div>
     </div><!-- /Engine 1 → Output A -->
+
+    <!-- ENGINE 2 → OUTPUT B (analog/ADV7393): stubbed until engine B is wired + the DAC/clock land -->
+    <div style="background:#161616;border:1px solid #333;border-radius:8px;padding:12px;margin:10px 0;opacity:.55">
+      <h2 style="margin:0 0 10px;color:#77d">Engine 2 → Output B (analog)</h2>
+      <div style="opacity:.7">Second read engine + analog (ADV7393/composite) output. Hardware not yet present
+        (DAC on order; needs an independent 27 MHz clock for NTSC/PAL). Controls mirror Engine 1's
+        geometry / sheet-warp / color and activate once engine B is in the build. The two-engine DDR
+        bandwidth build (task #41) will derate the warp clamps when both engines run.</div>
+    </div>
 
     <div id="catalog-mount"></div><!-- fallback: System + Status sections render here -->
     <div id="metrics" hidden></div>
@@ -539,7 +589,11 @@
     const set = (eid,t)=>{const e=document.getElementById(eid); if(e) e.textContent=t;};
     if (id === "status.source_format")      set("stat-in-res",  v);
     else if (id === "status.source_rate_hz") set("stat-in-rate", v);
-    else if (id === "status.output_format")  set("stat-out-res", v);
+    else if (id === "status.output_format")  { set("stat-out-res", v);
+      // SYNC the scale handles + res selector to the board's ACTUAL res (build boots 1080p30; UI must follow).
+      const is1080 = /1080/.test(String(v));
+      if (window.__setScaleOutRes) window.__setScaleOutRes(is1080?1920:1280, is1080?1080:720);
+      const om = document.getElementById("out-mode"); if (om && /720|1080/.test(String(v))) om.value = String(v); }
     else if (id === "status.output_rate_hz") set("stat-out-rate", v);
     else if (id === "status.source_lock") {
       const e=document.getElementById("stat-in-lock");
@@ -722,7 +776,7 @@
   function syncGeoUI() {
     const setv = (id,v)=>{const e=document.getElementById(id); if(e && +e.value!==+v) e.value=v;};
     setv("geo-sx-r",geo.sx); setv("geo-sx-n",geo.sx); setv("geo-sy-r",geo.sy); setv("geo-sy-n",geo.sy);
-    setv("geo-px-r",geo.px); setv("geo-px-n",geo.px); setv("geo-py-r",geo.py); setv("geo-py-n",geo.py);
+    // NOTE: geo-px/geo-py (Shift X/Y) are NOT synced here — they drive warp PAN (warp.set), not geom.set.
     const chk=(id,v)=>{const e=document.getElementById(id); if(e) e.checked=!!v;};
     chk("geo-anchor",geo.anchor); chk("geo-hflip",geo.hflip); chk("geo-vflip",geo.vflip);
     const f=document.getElementById("geo-filt"); if(f) f.value=String(geo.filt);
@@ -764,9 +818,50 @@
     n.addEventListener("change", () => set(n.value));
   }
   geoPair("sx", "geo-sx-r", "geo-sx-n"); geoPair("sy", "geo-sy-r", "geo-sy-n");
-  geoPair("px", "geo-px-r", "geo-px-n"); geoPair("py", "geo-py-r", "geo-py-n");
 
-  // Warp geometry: Rotation (deg) + Warp Zoom (%) -> ONE coherent warp.set 'W <deg> <invx> <invy>'.
+  // CANON scale -> write-side scaler, INDEPENDENT X/Y (#59). Handles are OUTPUT PIXELS @ current res;
+  // we convert px->% and send scale.set {x,y}. Link toggle locks aspect (one axis drives both).
+  // Debounced (Z soft-resets the tile cache ~1 frame). Exposes window.__setScaleOutRes(w,h) for res switch.
+  (function(){
+    const $=(id)=>document.getElementById(id);
+    const xr=$("scale-x-r"), xn=$("scale-x-n"), yr=$("scale-y-r"), yn=$("scale-y-n"), link=$("scale-link");
+    if(!xr||!yr) return;
+    let outW=1280, outH=720, inflight=false, pending=null, timer=null;
+    const pctOf=(px,res)=>Math.max(10,Math.min(200,Math.round(px/res*100)));
+    const pxOf =(pct,res)=>Math.round(pct*res/100);
+    function setRanges(){ xr.min=xn.min=Math.round(outW*.1); xr.max=xn.max=outW*2;
+                          yr.min=yn.min=Math.round(outH*.1); yr.max=yn.max=outH*2; }
+    function lbl(){ $("scale-x-lbl").textContent="px "+pctOf(+xr.value,outW)+"%";
+                    $("scale-y-lbl").textContent="px "+pctOf(+yr.value,outH)+"%"; }
+    async function send(xp,yp){ if(inflight){pending=[xp,yp];return;} inflight=true;
+      try{ await call("scale.set",{x:xp,y:yp}); }catch(e){ log(`scale.set: ${e.message}`,"err"); }
+      finally{ inflight=false; if(pending){const q=pending;pending=null;send(q[0],q[1]);} } }
+    function apply(driver, now){
+      let xp=pctOf(+xr.value,outW), yp=pctOf(+yr.value,outH);
+      if(link.checked){ const p=(driver==='y')?yp:xp; xp=yp=p;
+        xr.value=xn.value=pxOf(xp,outW); yr.value=yn.value=pxOf(yp,outH); }
+      else { xn.value=xr.value; yn.value=yr.value; }
+      lbl();
+      if(now) send(xp,yp); else { clearTimeout(timer); timer=setTimeout(()=>send(xp,yp),180); }
+    }
+    xr.addEventListener("input",()=>apply('x',false)); xr.addEventListener("change",()=>apply('x',true));
+    xn.addEventListener("change",()=>{ xr.value=xn.value; apply('x',true); });
+    yr.addEventListener("input",()=>apply('y',false)); yr.addEventListener("change",()=>apply('y',true));
+    yn.addEventListener("change",()=>{ yr.value=yn.value; apply('y',true); });
+    link.addEventListener("change",()=>{ if(link.checked) apply('x',true); });
+    setRanges(); lbl();
+    // res-aware reset to 100% (full res) — for factory reset (don't hardcode 1280/720).
+    window.__scaleReset=()=>{ xr.value=xn.value=outW; yr.value=yn.value=outH; lbl(); };
+    // res switch: keep current % , re-derive px for the new output res.
+    window.__setScaleOutRes=(w,h)=>{ const xp=pctOf(+xr.value,outW), yp=pctOf(+yr.value,outH);
+      outW=w||outW; outH=h||outH; setRanges();
+      xr.value=xn.value=pxOf(xp,outW); yr.value=yn.value=pxOf(yp,outH); lbl(); };
+  })();
+  // NOTE: Shift X/Y (geo-px/geo-py) is NO LONGER wired to geom.set 'G' (route-B, inert in the warp
+  // build). It now drives the warp placement PAN via warp.set {panx,pany} — see the warp IIFE below.
+
+  // Warp geometry: Rotation (deg) + Warp Zoom (%) + PAN (Shift X/Y) -> coherent warp.set
+  // 'W <deg> <invx> <invy> <panx> <pany>'.
   // Each warp.set triggers a firmware soft-reset (~1 frame black) to avoid the tile-cache transition wedge,
   // so we DEBOUNCE: while dragging, the number boxes track live but NOTHING is sent until the slider has
   // been still ~180ms (or released) -> one clean update per settled adjustment, not a flash per drag-step.
@@ -788,6 +883,88 @@
       rr.addEventListener("change", () => setRot(+rr.value, true));   // release -> send now
       rn.addEventListener("change", () => setRot(+rn.value, true));
     }
+    // PAN (Shift X/Y) -> placement translation. Canon "Position" control: the image slides under the
+    // matte, matte fills the vacated edge (signed-window). Debounced like rotation (warp soft-resets
+    // ~1 frame). The daemon holds deg/zoom, so {panx}/{pany} merge without clobbering the other axes.
+    const px_r=$pan("geo-px-r"), px_n=$pan("geo-px-n"), py_r=$pan("geo-py-r"), py_n=$pan("geo-py-n");
+    function $pan(id){ return document.getElementById(id); }
+    function setPan(axis, v, now){ v = Math.round(+v); if(!isFinite(v)) return;
+      const key = axis==="x" ? "panx" : "pany";
+      if(axis==="x"){ if(px_r) px_r.value=v; if(px_n) px_n.value=v; }
+      else          { if(py_r) py_r.value=v; if(py_n) py_n.value=v; }
+      (now ? warpSend : debounced)({ [key]: v }); }
+    if(px_r) px_r.addEventListener("input",  () => setPan("x", px_r.value, false));
+    if(px_r) px_r.addEventListener("change", () => setPan("x", px_r.value, true));
+    if(px_n) px_n.addEventListener("change", () => setPan("x", px_n.value, true));
+    if(py_r) py_r.addEventListener("input",  () => setPan("y", py_r.value, false));
+    if(py_r) py_r.addEventListener("change", () => setPan("y", py_r.value, true));
+    if(py_n) py_n.addEventListener("change", () => setPan("y", py_n.value, true));
+  })();
+
+  // ---- Sheet warp: INDEPENDENT 4-corner pin (corner.set 'C') + pincushion (pincushion.set 'I') — they now
+  // COEXIST (no XOR). + matte + output resolution. Each change soft-resets the warp (~1 frame), debounced. ----
+  (function(){
+    const $=(id)=>document.getElementById(id);
+    let inflight=false, pending=null, timer=null;
+    async function send(method,p){ if(inflight){pending=[method,p];return;} inflight=true;
+      try{ await call(method,p); }catch(e){ log(`${method}: ${e.message}`,"err"); }
+      finally{ inflight=false; if(pending){const q=pending;pending=null;send(q[0],q[1]);} } }
+    const deb=(m,p)=>{ clearTimeout(timer); timer=setTimeout(()=>send(m,p),180); };
+    const ov=()=>$("sw-override").checked;
+    // CORNER PIN: 4 corners (TL/TR/BR/BL) x (X,Y) offset sliders, generated into #sw-corners.
+    const CK=[["tl","TL"],["tr","TR"],["br","BR"],["bl","BL"]];
+    const corners={tl:{x:0,y:0},tr:{x:0,y:0},br:{x:0,y:0},bl:{x:0,y:0}};
+    function cornerSend(now){ (now?send:deb)("corner.set",{tl:corners.tl,tr:corners.tr,br:corners.br,bl:corners.bl,override:ov()}); }
+    const host=$("sw-corners");
+    for(const [k,lbl] of CK){
+      const row=document.createElement("div"); row.style.cssText="display:flex;gap:6px;align-items:center;margin:2px 0";
+      row.innerHTML=`<span style="width:22px">${lbl}</span>`+["x","y"].map(ax=>
+        `<span style="opacity:.5">${ax.toUpperCase()}</span>`+
+        `<input type="range" id="cn-${k}-${ax}-r" min="-100" max="100" value="0" style="flex:1">`+
+        `<input type="number" id="cn-${k}-${ax}-n" min="-100" max="100" value="0" style="width:58px">`).join("");
+      host.appendChild(row);
+      for(const ax of ["x","y"]){ const r=$(`cn-${k}-${ax}-r`), n=$(`cn-${k}-${ax}-n`);
+        const set=(v,now)=>{ v=Math.round(+v); if(!isFinite(v))return; corners[k][ax]=v; r.value=v; n.value=v; cornerSend(now); };
+        r.addEventListener("input",()=>set(r.value,false)); r.addEventListener("change",()=>set(r.value,true));
+        n.addEventListener("change",()=>set(n.value,true)); }
+    }
+    $("sw-corner-reset").addEventListener("click",()=>{
+      for(const [k] of CK) for(const ax of ["x","y"]){ corners[k][ax]=0; $(`cn-${k}-${ax}-r`).value=0; $(`cn-${k}-${ax}-n`).value=0; }
+      cornerSend(true); });
+    // PINCUSHION (independent X/Y; coexists with corner-pin)
+    const pinLinked=()=>$("sw-pin-link").checked;
+    function pinSend(now){ const x=+$("sw-pin-r").value, y=+$("sw-pin-yr").value;
+      $("sw-pin-n").value=x; $("sw-pin-yn").value=y; (now?send:deb)("pincushion.set",{x,y,override:ov()}); }
+    function pinSetX(v,now){ $("sw-pin-r").value=v; $("sw-pin-n").value=v;
+      if(pinLinked()){ $("sw-pin-yr").value=v; $("sw-pin-yn").value=v; } pinSend(now); }
+    function pinSetY(v,now){ $("sw-pin-yr").value=v; $("sw-pin-yn").value=v;
+      if(pinLinked()){ $("sw-pin-r").value=v; $("sw-pin-n").value=v; } pinSend(now); }
+    $("sw-pin-r").addEventListener("input",()=>pinSetX($("sw-pin-r").value,false));
+    $("sw-pin-r").addEventListener("change",()=>pinSetX($("sw-pin-r").value,true));
+    $("sw-pin-n").addEventListener("change",()=>pinSetX($("sw-pin-n").value,true));
+    $("sw-pin-yr").addEventListener("input",()=>pinSetY($("sw-pin-yr").value,false));
+    $("sw-pin-yr").addEventListener("change",()=>pinSetY($("sw-pin-yr").value,true));
+    $("sw-pin-yn").addEventListener("change",()=>pinSetY($("sw-pin-yn").value,true));
+    $("sw-pin-link").addEventListener("change",()=>{ if(pinLinked()) pinSetX($("sw-pin-r").value,true); });
+    // FORCE LEAD SWEEP: trigger the firmware auto-tune ('U') for the current geometry (one-shot button)
+    $("sw-lead-sweep").addEventListener("click",()=>{ const b=$("sw-lead-sweep"); b.disabled=true; b.textContent="Sweeping…";
+      call("lead.autotune",{}).catch(()=>{}).finally(()=>setTimeout(()=>{ b.disabled=false; b.textContent="Force Lead Sweep"; },3500)); });
+    // 2026-06-28: HARD CAP ±100 for corners + pincushion (both axes), regardless of override — keeps
+    // stacked warps inside the 1080p geometry-fetch budget (combined warps past this STARVE the engine).
+    function applyRanges(){ const cl=100, pn=100;
+      for(const [k] of CK) for(const ax of ["x","y"]){ const e=$(`cn-${k}-${ax}-r`); if(e){ e.min=-cl; e.max=cl; e.value=Math.max(-cl,Math.min(cl,+e.value)); } }
+      for(const id of ["sw-pin-r","sw-pin-n","sw-pin-yr","sw-pin-yn"]){ const e=$(id); if(e){ e.min=-pn; e.max=pn; e.value=Math.max(-pn,Math.min(pn,+e.value)); } } }
+    $("sw-override").addEventListener("change",()=>{ applyRanges(); cornerSend(true); pinSend(true); });
+    $("sw-matte").addEventListener("change",()=>{ const h=$("sw-matte").value;
+      deb("matte.set",{r:parseInt(h.slice(1,3),16),g:parseInt(h.slice(3,5),16),b:parseInt(h.slice(5,7),16)}); });
+    applyRanges();
+    // Output resolution / framerate (74.25 family).
+    const om=$("out-mode");
+    if(om) om.addEventListener("change", async ()=>{
+      try{ await call("output.set",{mode:om.value});
+        const is1080=/1080/.test(om.value);
+        if(window.__setScaleOutRes) window.__setScaleOutRes(is1080?1920:1280, is1080?1080:720); }
+      catch(e){ log(`output.set: ${e.message}`,"err"); } });
   })();
   // maintain-aspect toggle: when re-enabled, immediately re-lock Y to X's ratio (fix any stretch)
   document.getElementById("geo-aspect").addEventListener("change", (e) => {
@@ -798,12 +975,22 @@
     if (!confirm("Factory reset — return ALL settings (geometry, color, gamma, temp, operator) to defaults?")) return;
     try {
       try { await setValue("system.reset", true); } catch (e) {}   // firmware proc-amp/color reset
-      Object.assign(geo, { sx:1280, sy:720, px:0, py:0, anchor:false, filt:0, hflip:false, vflip:false });
-      geoSend();                                                   // geometry → defaults (+ syncGeoUI)
+      // #58 BUGFIX: factory reset MUST also clear the WARP state (it lives outside color/route-B geom).
+      // Otherwise a leftover scale/rotation/keystone/pincushion stays applied and the picture stays black.
+      try { await call("scale.set",      { x:100, y:100 }); } catch (e) {}   // write-scaler -> 100% both axes
+      try { await call("warp.set",       { deg:0, panx:0, pany:0 }); } catch (e) {} // rotation/pan -> identity
+      try { await call("corner.set",     { tl:{x:0,y:0},tr:{x:0,y:0},br:{x:0,y:0},bl:{x:0,y:0} }); } catch (e) {} // corner-pin -> identity
+      try { await call("pincushion.set", { x:0, y:0 }); } catch (e) {}        // pincushion (X+Y) -> off
+      try { await call("matte.set", { r:0, g:0, b:0 }); } catch (e) {}         // matte -> black (default)
       const setEl=(id,val,txt)=>{const e=document.getElementById(id); if(e){ if(val!==undefined)e.value=val; if(txt!==undefined)e.textContent=txt; }};
+      // reflect in the handles: scale X/Y, corner sliders, rotation, shift
+      if(window.__scaleReset) window.__scaleReset();   // scale handles -> 100% of CURRENT out res (res-aware)
+      for(const k of ["tl","tr","br","bl"]) for(const ax of ["x","y"]){ setEl(`cn-${k}-${ax}-r`,0); setEl(`cn-${k}-${ax}-n`,0); }
+      setEl("sw-pin-r",0); setEl("sw-pin-n",0); setEl("sw-pin-yr",0); setEl("sw-pin-yn",0); setEl("sw-matte","#000000");
       setEl("temp-r",6500); setEl("temp-val",undefined,"6500K");
       setEl("gamma-r",1.0); setEl("gamma-val",undefined,"1.0");
-      log("factory reset → defaults", "ok");
+      setEl("warp-rot-r",0); setEl("warp-rot-n",0); setEl("geo-px-r",0); setEl("geo-px-n",0); setEl("geo-py-r",0); setEl("geo-py-n",0);
+      log("factory reset → defaults (incl. warp)", "ok");
     } catch (e) { log(`factory reset: ${e.message}`, "err"); }
   });
   // ---- Live / Settings tabs ----

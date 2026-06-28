@@ -1,25 +1,21 @@
-// pg_place_affine.v — STAGE-2 placement affine (Bite 1, 2026-06-26).
+// pg_place_affine.v — STAGE-2 placement affine (Bite 1, 2026-06-26) + edge AA (#48, 2026-06-26).
 //
-// Two-stage warp model: pg_projective does the CORNER-PIN (output raster ->
-// SHEET, 1920x1080 canvas) and emits the full-precision sheet coord (sx_q/sy_q,
-// Q.FB). This module applies the PLACEMENT affine (scale + rotation + centering)
-// SHEET -> LOD (the compact source), then bounds-tests both spaces:
-//   - i_sheet_in (from the projective) = inside the corner-pin sheet quad. If 0
-//     -> OFF-SHEET -> the bilinear paints BLACK.
-//   - o_lod_in = inside the LOD content. If 0 (but on-sheet) -> GRAY MATTE.
-//   - else -> sample the LOD at (o_lod_col,o_lod_row)+frac.
+// Two-stage warp model: pg_projective does the CORNER-PIN (output -> SHEET, 1920x1080 canvas) and emits
+// the full-precision sheet coord (sx_q/sy_q, Q.FB). This module applies the PLACEMENT affine (scale +
+// rotation + centering) SHEET -> LOD (the compact source), then bounds-tests both spaces:
+//   - i_sheet_in (from the projective) = inside the corner-pin sheet quad. If 0 -> OFF-SHEET -> BLACK.
+//   - o_alpha = LOD-content COVERAGE (0=fully matte/off-content .. 255=fully content), ramped over the
+//     outer 1px of the LOD so the matte/content edge ANTI-ALIASES (was a hard binary lod_in -> jagged on
+//     curved/angled edges; #48). o_lod_in = sheet_in && alpha>0 = the FETCH gate.
+//   - the bilinear blends content<->matte by o_alpha (matte where alpha=0, content where 255).
 //
-// WHY no second reciprocal: pg_projective already divided by the corner-pin
-// denominator w (sx=nx/w). A plain affine on the already-divided sheet coord is
-// just xl = a*sx + b*sy + c — multiplies + adds, no divide. (Operator's
-// same-denominator insight is what guarantees placement-then-pin composes to one
-// homography; we exploit it by reusing the divide, not by fusing into it.)
+// WHY no second reciprocal: pg_projective already divided by the corner-pin denominator w (sx=nx/w). A
+// plain affine on the already-divided sheet coord is just xl = a*sx + b*sy + c — multiplies + adds.
 //
-// Fixed-latency 2-stage feed-forward pipe, gated by `pen` (downstream skid
-// ready). pen depends only on registered/downstream state, never on i_valid
-// (axis-tready-independence rule). Same advance-only-on-accept contract as the
-// projective tail, so the prefetch lead is unchanged (consumer + prefetch get
-// identical latency).
+// Fixed-latency 3-stage feed-forward pipe (M multiplies / A sum+coord+edge-distance / B alpha+outputs),
+// gated by `pen` (downstream skid ready). pen depends only on registered/downstream state, never on
+// i_valid (axis-tready-independence rule). Same advance-only-on-accept contract as the projective tail,
+// so the prefetch lead is unchanged (consumer + prefetch get identical latency).
 
 `default_nettype none
 `timescale 1ns / 1ps
@@ -41,10 +37,13 @@ module pg_place_affine #(
     output reg  [11:0] o_lod_col, o_lod_row,
     output reg  [11:0] o_h_frac,  o_v_frac,
     output reg         o_sheet_in,                // carried: off-sheet -> black
-    output reg         o_lod_in,                  // inside LOD content -> sample, else matte
+    output reg         o_lod_in,                  // sheet_in && alpha>0 -> FETCH gate
+    output reg  [7:0]  o_alpha,                   // LOD-content coverage (0=matte .. 255=content), edge AA
     output reg         o_new_row
 );
-    localparam integer PW = AW + CW;              // raw product width
+    localparam integer PW = AW + CW;                       // raw product width
+    localparam signed [AW-1:0] HALF = (1 <<< (FB-1));      // 0.5 in Q.FB (ramp centre offset)
+    localparam signed [AW-1:0] ONE  = (1 <<< FB);          // 1.0 in Q.FB
 
     // ---- Stage M: isolated multiplies, raw products registered (DSP output reg) ----
     reg signed [PW-1:0] pxa, pxb, pya, pyb;
@@ -60,17 +59,43 @@ module pg_place_affine #(
         end
     end
 
-    // ---- Stage A: sum + align c/f + >>FB + split into int/frac + LOD bounds ----
+    // ---- Stage A: sum + align c/f + >>FB -> LOD coord ; per-axis edge distance for the AA ramp ----
     wire signed [PW-1:0] sumx = pxa + pxb;        // Q.2FB
     wire signed [PW-1:0] sumy = pya + pyb;
-    // (sum >>> FB) is Q.FB; add c2/f2 (already Q.FB, sign-extended to AW).
-    wire signed [AW-1:0] xl_q = ($signed(sumx >>> FB))[AW-1:0] + {{(AW-CW){c2_m[CW-1]}}, c2_m};
-    wire signed [AW-1:0] yl_q = ($signed(sumy >>> FB))[AW-1:0] + {{(AW-CW){f2_m[CW-1]}}, f2_m};
-    wire signed [AW-1-FB:0] xl_int = xl_q >>> FB;
-    wire signed [AW-1-FB:0] yl_int = yl_q >>> FB;
-    wire lod_in = m_sheet_in
-                && (xl_int >= 0) && (xl_int < $signed({1'b0, in_w_rt}))
-                && (yl_int >= 0) && (yl_int < $signed({1'b0, in_h_rt}));
+    wire signed [AW-1:0] sumx_sh = sumx >>> FB;   // arithmetic shift, auto-truncated to AW (forbidden to
+    wire signed [AW-1:0] sumy_sh = sumy >>> FB;   // part-select a parenthesised expr -> intermediate wire)
+    wire signed [AW-1:0] xl_qc = sumx_sh + {{(AW-CW){c2_m[CW-1]}}, c2_m};
+    wire signed [AW-1:0] yl_qc = sumy_sh + {{(AW-CW){f2_m[CW-1]}}, f2_m};
+    // LOD bounds in Q.FB; the content occupies xl in [0, in_w). dist = signed distance to the nearer edge.
+    wire signed [AW-1:0] inw_q = $signed({1'b0, in_w_rt}) <<< FB;
+    wire signed [AW-1:0] inh_q = $signed({1'b0, in_h_rt}) <<< FB;
+    wire signed [AW-1:0] dxr   = inw_q - xl_qc;            // distance to right edge
+    wire signed [AW-1:0] dyr   = inh_q - yl_qc;
+    wire signed [AW-1:0] distx = (xl_qc < dxr) ? xl_qc : dxr;   // nearer x-edge distance (signed)
+    wire signed [AW-1:0] disty = (yl_qc < dyr) ? yl_qc : dyr;
+
+    reg signed [AW-1:0] xl_q, yl_q, covx_raw, covy_raw;   // covX_raw = dist + 0.5 (Q.FB; clamp+extract in B)
+    reg                 a_valid, a_sheet_in, a_new_row;
+    always @(posedge clk) begin
+        if(!rstn) begin a_valid<=1'b0; end
+        else if(pen) begin
+            xl_q <= xl_qc;  yl_q <= yl_qc;
+            covx_raw <= distx + HALF;  covy_raw <= disty + HALF;
+            a_valid <= m_valid;  a_sheet_in <= m_sheet_in;  a_new_row <= m_new_row;
+        end
+    end
+
+    // ---- Stage B: clamp coverage -> 8-bit alpha (min of the two axes) ; register outputs ----
+    // alpha ramps 0..255 over the outer 1px (covX_raw in (0,1) -> top 8 frac bits; <=0 -> 0; >=1 -> 255).
+    // min() (not product) so fully-interior pixels stay 255 (no matte dilution); a corner picks the
+    // tighter axis. Interior -> 255 (pure content); exact edge centre -> 128 (50/50); 1px out -> 0 (matte).
+    wire        negx = covx_raw[AW-1];                    // < 0
+    wire        bigx = |covx_raw[AW-2:FB];                // >= 1.0
+    wire        negy = covy_raw[AW-1];
+    wire        bigy = |covy_raw[AW-2:FB];
+    wire [7:0]  ax   = negx ? 8'd0 : (bigx ? 8'd255 : covx_raw[FB-1 -: 8]);
+    wire [7:0]  ay   = negy ? 8'd0 : (bigy ? 8'd255 : covy_raw[FB-1 -: 8]);
+    wire [7:0]  alpha = (ax < ay) ? ax : ay;
     always @(posedge clk) begin
         if(!rstn) begin o_valid<=1'b0; end
         else if(pen) begin
@@ -78,10 +103,11 @@ module pg_place_affine #(
             o_lod_row  <= yl_q[FB +: 12];
             o_h_frac   <= xl_q[FB-1 -: 12];
             o_v_frac   <= yl_q[FB-1 -: 12];
-            o_sheet_in <= m_sheet_in;
-            o_lod_in   <= lod_in;
-            o_new_row  <= m_new_row;
-            o_valid    <= m_valid;
+            o_sheet_in <= a_sheet_in;
+            o_alpha    <= alpha;
+            o_lod_in   <= a_sheet_in && (alpha != 8'd0);   // fetch gate
+            o_new_row  <= a_new_row;
+            o_valid    <= a_valid;
         end
     end
 endmodule

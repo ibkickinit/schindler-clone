@@ -404,6 +404,9 @@ class TelemetryParser:
     RE_VTCRX = re.compile(
         r"VTC_RX:\s+HACTIVE=(\d+)\s+VACTIVE=(\d+)\s+HTOTAL=(\d+)\s+VTOTAL=(\d+)")
     RE_LOCKED = re.compile(r"dvi2rgb pLocked stable")
+    # The warp OUT line fires EVERY telemetry cycle; its eol-exp = output height (720/1080) -> robust
+    # output-res detection even after a daemon restart (the "VTC: configuring" line only fires on a change).
+    RE_OUTEXP = re.compile(r"OUT: opix/frame=\d+ \(exp \d+\) eol/frame=\d+ \(exp (\d+)\)")
 
     def __init__(self, bus: StatusBus):
         self.bus = bus
@@ -442,6 +445,11 @@ class TelemetryParser:
             return
         if self.RE_LOCKED.search(line):
             self._update("status.source_lock", True)
+            return
+        if m := self.RE_OUTEXP.search(line):
+            fmt = "1080p30" if int(m.group(1)) >= 1000 else "720p60"   # eol-exp = output height
+            self._output_format = fmt
+            self._update("status.output_format", fmt)
             return
         if "VTC: configuring 720p60" in line:
             self._output_format = "720p60"
@@ -491,6 +499,13 @@ class Dispatcher:
             "debug.dump":           self._m_debug_dump,
             "geom.set":             self._m_geom_set,
             "warp.set":             self._m_warp_set,
+            "sheet.set":            self._m_sheet_set,        # keystone (legacy; superseded by corner.set)
+            "corner.set":           self._m_corner_set,       # independent 4-corner pin (raw 'C')
+            "pincushion.set":       self._m_pincushion_set,   # radial warp (now COEXISTS with corner-pin)
+            "lead.autotune":        self._m_lead_autotune,    # force prefetch-lead sweep ('U') / toggle on-break
+            "matte.set":            self._m_matte_set,        # runtime matte fill colour
+            "scale.set":            self._m_scale_set,        # CANON scale: shrink=write-side, enlarge=read-side warp zoom (Z)
+            "output.set":           self._m_output_set,       # live resolution / framerate (74.25 family)
             "blend.set":            self._m_blend_set,
             "operator.set":         self._m_operator_set,
             "arc.set":              self._m_arc_set,
@@ -591,9 +606,14 @@ class Dispatcher:
         route-B 'G' command, which writes the same GPIOs as the warp coeffs and would clobber them.
           deg          : -180..180 (firmware wraps mod 360, auto per-geometry LEAD)
           invx/invy    : inverse scale, Q12 (4096 = 1:1; >4096 = zoom OUT/downscale; <4096 = zoom IN)
+          panx/pany    : SIGNED placement shift, OUTPUT px (+right/+down). Applied through the affine,
+                         so the image slides under the matte and matte fills the vacated edge (canon
+                         signed-window). This is the CANON "Position" control (Shift X/Y handle); the
+                         route-B 'G' shift is inert in the warp build.
           zoom         : convenience % (100 = 1:1; 200 = 2x zoom-in); maps to invx=invy=4096*100/zoom"""
         if not hasattr(self, "_warp_deg"):
             self._warp_deg, self._warp_invx, self._warp_invy = 0, 4096, 4096
+            self._warp_panx, self._warp_pany = 0, 0
         if "deg" in params:
             d = int(round(float(params["deg"])))
             while d > 180:  d -= 360
@@ -602,44 +622,198 @@ class Dispatcher:
         def cl(v): return 256 if v < 256 else 0xFFFFF if v > 0xFFFFF else v
         if "invx" in params: self._warp_invx = cl(int(round(float(params["invx"]))))
         if "invy" in params: self._warp_invy = cl(int(round(float(params["invy"]))))
+        def clp(v, lim): iv = int(round(float(v))); return -lim if iv < -lim else lim if iv > lim else iv
+        if "panx" in params: self._warp_panx = clp(params["panx"], 2560)  # OUTPUT px, off-screen ok
+        if "pany" in params: self._warp_pany = clp(params["pany"], 1440)
         if "zoom" in params:
+            # Legacy convenience: prefer scale.set ('Z') which routes per axis. zoom>=100 is a legit
+            # read-side warp zoom (the canon ENLARGE path); zoom<100 would be a read-side DOWNSCALE-fetch
+            # (the bandwidth footgun — shrink belongs on the write side via Z). UI scale uses scale.set.
             z = max(25.0, min(400.0, float(params["zoom"])))
             iv = cl(int(round(4096.0 * 100.0 / z)))
             self._warp_invx = self._warp_invy = iv
-        self.uart.send_raw(f"W {self._warp_deg} {self._warp_invx} {self._warp_invy}")
-        out = {"deg": self._warp_deg, "invx": self._warp_invx, "invy": self._warp_invy}
+        # 5-arg W (firmware: W <deg> <invx> <invy> <panx> <pany>); pan applied through the affine.
+        self.uart.send_raw(f"W {self._warp_deg} {self._warp_invx} {self._warp_invy} "
+                           f"{self._warp_panx} {self._warp_pany}")
+        out = {"deg": self._warp_deg, "invx": self._warp_invx, "invy": self._warp_invy,
+               "panx": self._warp_panx, "pany": self._warp_pany}
         self.bus.publish({"jsonrpc": "2.0", "method": "warp.changed", "params": out})
         return out
 
+    # ---- Two-stage SHEET WARP (Bite 1/2). Keystone/corner-pin and pincushion are MUTUALLY EXCLUSIVE
+    # (#49: pincushion is applied AFTER the corner-pin, so combining them leaves the black border
+    # un-bowed — clamped to one-or-the-other). The daemon holds _sheet_mode and zeroes the other family
+    # on switch. CLAMPS are the conservative single-engine 1080p envelope (720p has more headroom); the
+    # UI 'override' box unlocks the fragile/may-break zone toward the firmware's own clamp. These will be
+    # tightened once the two-engine DDR-bandwidth build measures the real derate (task #41). ----
+    async def _m_sheet_set(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Keystone sheet warp (Bite 1). XOR with pincushion. Raw 'K <h> <v>' — h,v 1/1000 signed
+        (far-edge shrink; the simple corner-pin driver). Switching INTO keystone zeroes any active
+        pincushion. Conservative clamp +/-150 (0.15); {override:true} unlocks to +/-900 (fw clamps 0.9)."""
+        ov = bool(params.get("override"))
+        lim = 900 if ov else 150
+        def clk(v): iv = int(round(float(v))); return -lim if iv < -lim else lim if iv > lim else iv
+        if not hasattr(self, "_sheet_h"): self._sheet_h, self._sheet_v = 0, 0
+        if "h" in params: self._sheet_h = clk(params["h"])
+        if "v" in params: self._sheet_v = clk(params["v"])
+        self.uart.send_raw(f"K {self._sheet_h} {self._sheet_v}")   # XOR removed (coexists with pincushion)
+        out = {"h": self._sheet_h, "v": self._sheet_v, "override": ov}
+        self.bus.publish({"jsonrpc": "2.0", "method": "sheet.changed", "params": out})
+        return out
+
+    async def _m_pincushion_set(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Radial pincushion/barrel warp (Bite 2), INDEPENDENT X/Y (2026-06-28). Coexists with corner-pin.
+        Raw 'I <x> <y>' — 1/1000 signed per-axis (+barrel out / -pincushion in; corners stay PINNED).
+        Params: {x, y} per-axis, or {amt} symmetric (legacy; sets both). Conservative clamp +/-200 (0.20);
+        {override:true} unlocks to +/-1000 (1.0)."""
+        ov = bool(params.get("override"))
+        lim = 100   # 2026-06-28: HARD CAP ±100 (both modes) — keeps stacked warps inside the 1080p fetch budget
+        if not hasattr(self, "_pin_x"): self._pin_x = 0
+        if not hasattr(self, "_pin_y"): self._pin_y = 0
+        def _clamp(v):
+            iv = int(round(float(v)))
+            return -lim if iv < -lim else lim if iv > lim else iv
+        if "amt" in params:                       # legacy symmetric
+            self._pin_x = self._pin_y = _clamp(params["amt"])
+        if "x" in params: self._pin_x = _clamp(params["x"])
+        if "y" in params: self._pin_y = _clamp(params["y"])
+        # 2026-06-27: pincushion COEXISTS with corner-pin (separate firmware stages) — XOR removed.
+        self.uart.send_raw(f"I {self._pin_x} {self._pin_y}")
+        out = {"x": self._pin_x, "y": self._pin_y, "amt": self._pin_x, "override": ov}
+        self.bus.publish({"jsonrpc": "2.0", "method": "pincushion.changed", "params": out})
+        return out
+
+    async def _m_lead_autotune(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Prefetch-lead auto-tune (firmware 'U'). No params -> force a sweep on the CURRENT geometry NOW
+        (the firmware tries a lead ladder, applies the lowest FULL one, and logs AUTOTUNE: lines on the
+        UART for harvesting). {enable: bool} -> toggle the automatic on-break tuner ('U 0'/'U 1', default
+        ON). The sweep takes ~3s and soft-resets the cache each step (brief on-screen flicker)."""
+        if "enable" in params:
+            en = 1 if params["enable"] else 0
+            self.uart.send_raw(f"U {en}")
+            return {"enable": bool(en)}
+        self.uart.send_raw("U")
+        return {"swept": True}
+
+    def _out_wh(self):
+        """Current output raster (W,H). Prefer the LIVE board res from telemetry (the build BOOTS 1080p30,
+        so the board can be 1080p while the daemon's set-mode still says 720p) -> fall back to _output_format."""
+        fmt = (self.telemetry.last.get("status.output_format") if self.telemetry else None) \
+              or getattr(self, "_output_format", "720p60")
+        return (1920, 1080) if "1080" in str(fmt) else (1280, 720)
+
+    async def _m_corner_set(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Independent 4-corner pin, IMAGE-CORNER (forward) model so each corner is ABSOLUTE/decoupled.
+        Each corner has an (x,y) handle: **+ = OUT (away from frame center), − = IN (toward center)** —
+        consistent for all four corners and both axes. We place each image corner at its output position,
+        solve the output->source homography, and emit 'C' = that homography at the 4 fixed raster corners.
+        (The old source-offset model coupled the corners — moving one shifted the whole map.) Coexists
+        with pincushion. Clamp 1/3 raster (safe) / full under {override:true}. Res from the live mode."""
+        W, H = self._out_wh()
+        ov = bool(params.get("override"))
+        lim = 100   # 2026-06-28: HARD CAP ±100 px (both modes) — keeps stacked warps inside the 1080p fetch budget
+        def cl(v, m):
+            iv = int(round(float(v))); return -m if iv < -m else m if iv > m else iv
+        keys = ["tl", "tr", "br", "bl"]
+        rect = [(0, 0), (W - 1, 0), (W - 1, H - 1), (0, H - 1)]   # source content corners + fixed output corners
+        sgnx = {"tl": -1, "tr": +1, "br": +1, "bl": -1}          # +handle X -> OUT: screen-x sign per corner
+        sgny = {"tl": -1, "tr": -1, "br": +1, "bl": +1}          # +handle Y -> OUT: screen-y sign per corner
+        if not hasattr(self, "_corners"):
+            self._corners = {k: {"x": 0, "y": 0} for k in keys}
+        for k in keys:
+            c = params.get(k)
+            if isinstance(c, dict):
+                if "x" in c: self._corners[k]["x"] = cl(c["x"], lim)
+                if "y" in c: self._corners[k]["y"] = cl(c["y"], lim)
+        # output position where each IMAGE corner should land (absolute), per the OUT=+ convention
+        outp = []
+        for (bx, by), k in zip(rect, keys):
+            outp.append((bx + sgnx[k] * self._corners[k]["x"], by + sgny[k] * self._corners[k]["y"]))
+        # solve homography mapping output-positions -> source-rect-corners, then sample at the fixed corners
+        Hm = _solve_homography(outp, rect)
+        if Hm is None:                                            # degenerate -> identity (no-op send)
+            pts = [v for c in rect for v in c]
+        else:
+            pts = []
+            for (fx, fy) in rect:
+                sx, sy = _apply_homography(Hm, fx, fy)
+                pts += [int(round(sx)), int(round(sy))]
+        self.uart.send_raw("C " + " ".join(str(p) for p in pts))
+        out = {"corners": self._corners, "src": pts, "w": W, "h": H, "override": ov}
+        self.bus.publish({"jsonrpc": "2.0", "method": "corner.changed", "params": out})
+        return out
+
+    async def _m_matte_set(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Runtime matte fill colour (on-sheet/off-content fill; off-sheet is always black).
+        Raw 'T <r> <g> <b>', each 0..255. Default 16/16/16 (dim gray, the firmware boot default)."""
+        def c8(v): iv = int(round(float(v))); return 0 if iv < 0 else 255 if iv > 255 else iv
+        r = c8(params.get("r", 0)); g = c8(params.get("g", 0)); b = c8(params.get("b", 0))  # default black
+        self.uart.send_raw(f"T {r} {g} {b}")
+        out = {"r": r, "g": g, "b": b}
+        self.bus.publish({"jsonrpc": "2.0", "method": "matte.changed", "params": out})
+        return out
+
+    async def _m_scale_set(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """CANON image scale via raw 'Z <x> [y]' (per axis; #59). Each axis: <100% = scaler DECIMATES
+        write-side (shrink, bandwidth-safe); >=100% = warp ZOOMS read-side (enlarge, cheap). Canon =
+        "shrink write-side, enlarge read-side; the warp never DOWNSCALES." Independent ('x','y' in %) or
+        uniform ('pct'). 10..200%."""
+        def cl(v):
+            iv = int(round(float(v)))
+            return 10 if iv < 10 else 200 if iv > 200 else iv
+        try:
+            if "x" in params or "y" in params:
+                xp = cl(params.get("x", params.get("y", 100)))
+                yp = cl(params.get("y", params.get("x", 100)))
+            else:
+                xp = yp = cl(params.get("pct", 100))
+        except (TypeError, ValueError):
+            raise ValueError("scale.set needs numeric 'pct' or 'x'/'y'")
+        self.uart.send_raw(f"Z {xp} {yp}")
+        self._scale_pct = xp
+        # Mirror the firmware: UPSCALE (>=100%) lives in the warp invx/invy; DOWNSCALE (<100%) decimates
+        # write-side so the warp reads 1:1 (invx=4096). Record it so a later warp.set (rotation/pan) sends
+        # the CURRENT zoom and doesn't reset it to 1:1 (fixes "nudging rotation zeroes my zoom").
+        if not hasattr(self, "_warp_deg"):
+            self._warp_deg, self._warp_panx, self._warp_pany = 0, 0, 0
+        self._warp_invx = max(256, (4096 * 100) // xp) if xp >= 100 else 4096
+        self._warp_invy = max(256, (4096 * 100) // yp) if yp >= 100 else 4096
+        out = {"x": xp, "y": yp, "pct": xp}
+        self.bus.publish({"jsonrpc": "2.0", "method": "scale.changed", "params": out})
+        return out
+
+    async def _m_output_set(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Live output resolution / framerate. Raw 'R <720|1080>'. v1 firmware wires the two 74.25 MHz
+        modes 720p60 / 1080p30; 720p50 / 1080p24 / 1080p25 are the SAME clock but need firmware VTC
+        tables (follow-up). 1080p60 (148.5 MHz) is BLOCKED on the Zybo rgb2dvi serializer -> rejected."""
+        m = str(params.get("mode", "720p60"))
+        R = {"720p60": 720, "1080p30": 1080}
+        if m not in R:
+            raise ValueError(f"output mode '{m}' not available on this build (have: {', '.join(R)})")
+        self.uart.send_raw(f"R {R[m]}")
+        self._output_format = m
+        self.bus.publish({"jsonrpc": "2.0", "method": "output.changed", "params": {"mode": m}})
+        return {"mode": m}
+
     async def _m_geom_set(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        """Read-engine geometry: scale w×h, SIGNED shift (x,y), anchor mode.
-        Sent as the raw 'G w h x y a' firmware command (not a catalog control).
-          w,h    : scaled image size in output-raster px (1280/720 = 100%, up to 200%)
-          x,y    : SIGNED shift in output px (+right/down, -left/up); may push the image
-                   off the edge — pixels then leave the frame and matte fills the opposite side
-          anchor : 0 = scale about image center (default), 1 = top-left corner
-        Firmware derives the on-screen window position + source-crop seed; the daemon just
-        clamps and forwards, then broadcasts geom.changed for multi-client sync."""
+        """⚠️ NEUTRALIZED in the WARP build (2026-06-27). The raw 'G'/'P' (route-B read-engine geometry)
+        writes GEO_A/B/C — the SAME GPIOs the warp's projective corner-pin (warp_apply_homography) uses —
+        so ANY geom.set CLOBBERS the warp's matrix and breaks/blacks the picture (this was the "anchor
+        crushed it on the left" bug). Route-B is legacy/dead in the warp product. So we DO NOT send G/P;
+        we only echo the requested values for multi-client sync. Scale=Z (scale.set), shift=warp pan
+        (warp.set panx/pany), rotation=warp.set deg. If a real route-B build is ever revived, re-enable."""
         def clampi(v: Any, lo: int, hi: int) -> int:
             iv = int(round(float(v)))
             return lo if iv < lo else hi if iv > hi else iv
-        # scale up to 300% of the 720p output raster (3840x2160); firmware clamps to 3× too.
         w = clampi(params.get("w", 1280), 1, 3840)
         h = clampi(params.get("h", 720), 1, 2160)
-        # signed shift; range lets the image be pushed fully off-screen at 100%.
         x = clampi(params.get("x", 0), -2560, 2560)
         y = clampi(params.get("y", 0), -1440, 1440)
         anchor = 1 if params.get("anchor", 0) else 0
-        filt = clampi(params.get("filt", 0), 0, 3)  # #107: 0=NN 1=2-tap box 2=H-bilinear 3=H+V-bilinear
+        filt = clampi(params.get("filt", 0), 0, 3)
         hflip = 1 if params.get("hflip", 0) else 0
-        vflip = 1 if params.get("vflip", 0) else 0  # 180° = both
-        # Only emit the flip command when it actually changes — otherwise every size/shift
-        # drag would do a redundant 2nd full geometry write (P then G), doubling the
-        # multi-register GPIO churn and the chance a frame-latch samples a half-written update.
-        if getattr(self, "_last_flip", None) != (hflip, vflip):
-            self.uart.send_raw(f"P {hflip} {vflip}")
-            self._last_flip = (hflip, vflip)
-        self.uart.send_raw(f"G {w} {h} {x} {y} {anchor} {filt}")
+        vflip = 1 if params.get("vflip", 0) else 0
+        # *** NO 'G'/'P' SENT — see docstring (clobbers the warp). Echo only. ***
         applied = {"w": w, "h": h, "x": x, "y": y, "anchor": anchor, "filt": filt,
                    "hflip": hflip, "vflip": vflip}
         self.bus.publish({"jsonrpc": "2.0", "method": "geom.changed", "params": applied})
@@ -805,6 +979,38 @@ class Dispatcher:
         if self.telemetry is None:
             return {}
         return dict(self.telemetry.last)
+
+
+def _solve_homography(src, dst):
+    """4-point DLT: 3x3 homography (i=1) mapping src[i]->dst[i] (each a 2-tuple). Returns [a..h] or None.
+    Plain Gaussian elimination on the 8x8 system (no numpy)."""
+    A, b = [], []
+    for (x, y), (u, v) in zip(src, dst):
+        A.append([x, y, 1, 0, 0, 0, -x * u, -y * u]); b.append(float(u))
+        A.append([0, 0, 0, x, y, 1, -x * v, -y * v]); b.append(float(v))
+    n = 8
+    for col in range(n):
+        piv = max(range(col, n), key=lambda r: abs(A[r][col]))
+        if abs(A[piv][col]) < 1e-9:
+            return None
+        A[col], A[piv] = A[piv], A[col]; b[col], b[piv] = b[piv], b[col]
+        pv = A[col][col]
+        for j in range(col, n): A[col][j] /= pv
+        b[col] /= pv
+        for r in range(n):
+            if r != col and A[r][col] != 0.0:
+                f = A[r][col]
+                for j in range(col, n): A[r][j] -= f * A[col][j]
+                b[r] -= f * b[col]
+    return b  # [a,b,c,d,e,f,g,h]
+
+
+def _apply_homography(H, x, y):
+    a, b, c, d, e, f, g, h = H
+    w = g * x + h * y + 1.0
+    if abs(w) < 1e-9:
+        w = 1e-9
+    return (a * x + b * y + c) / w, (d * x + e * y + f) / w
 
 
 def _error(rid: Any, code: int, message: str) -> Dict[str, Any]:

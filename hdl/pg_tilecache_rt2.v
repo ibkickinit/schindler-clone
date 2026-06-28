@@ -29,6 +29,10 @@ module pg_tilecache_rt2 #(
     // hash/sizing (TX, NTILE banks) stay build-time MAX (IN_W/IN_H). 0 ->
     // fall back to build-time max so legacy builds are bit-identical.
     input  wire [11:0] in_w_rt, in_h_rt,
+    // runtime set-index HASH SELECT (task-57 per-angle LUT, 9 variants for continuous 1deg rotation).
+    // 0=ty*33 (default: keystone/pincushion + most angles), 1..8 = ty*{13,29,31,37,45,57,61,3}. firmware
+    // writes the per-1deg-angle index (g_hsel_lut360). Every degree 0-359 reaches worst-set-live<=3.
+    input  wire [3:0]  hsel,
     // prefetch coord stream (runs ahead)
     input  wire        pf_valid,
     input  wire [11:0] pf_x, pf_y,
@@ -134,16 +138,34 @@ module pg_tilecache_rt2 #(
 
     // tile id = {ty,tx} concatenation (unique, NO multiply) — the multiply was on the lookup path
     function [TIDW-1:0] tidf; input [11:0] px,py; tidf={py[11:LTILE], px[11:LTILE]}; endfunction
-    // set index = mixing hash (tx*1 + ty*33). KEY FINDING (2026-06-24, exhaustive offline sweep of EVERY
-    // degree 1-179 against the working-set model): NO linear OR non-linear hash keeps worst-set-live<=4 at
-    // ALL continuous angles -- a 4-way cache structurally can't serve continuous rotation (some narrow angle
-    // band always overflows for any hash; bench-confirmed: 13,7 fails ~17-19deg, 5,59 fails ~90+125-140deg).
-    // The product therefore CLAMPS rotation to 10-degree increments (firmware snaps the W angle). On that
-    // 10deg grid {0,10,...,170}, (1,33) holds worst-set-live<=3 (a full way of margin under 4-way), so the
-    // working set FITS with zero eviction at every supported angle -> bench-clean. metric<=4 == fits-4-way
-    // == clean (proven: clean angles sit at 2-3, every bench failure was at metric>4). tag = full tile-id.
+    // set index = mixing hash (tx*1 + ty*33).
+    // ** 2026-06-27 (docs/warp-edge-sweep-2026-06-27.md): root cause of the residual rotation dead-band is
+    //    that NTILE was cut 512->256 (NSET 128->64) to free RAMB36 for the decimate-on-write scaler, halving
+    //    the sets. The hash masks mod NSET, so (1,33)'s clean-grid proof (done at 128 sets) no longer holds
+    //    at 64 -> (1,33) overflows (worst-set-live=6) at deg 40/50/170 + mirrors. A re-search found single
+    //    constants ((1,15) etc.) that hit worst-set-live=4 across the grid, BUT bench (flashed (1,15) 2026-06-27)
+    //    proved =4 is NOT stable on silicon: the cache needs a spare way for in-flight/reserved tiles, so it
+    //    needs <=3. =4 -> METASTABLE (rot50 coin-flips clean/thrash; ksV900/pincushion regressed). Since =4 is
+    //    the NSET=64 single-hash FLOOR, NO single constant is stable here. KEPT (1,33): it is the best
+    //    all-rounder (clean keystone H<=700/V<=900/HV<=500 + pincushion +/-1000; weak only at rotation
+    //    40/50/170 which firmware CLAMPS out). True fix = restore NTILE=512 (needs ~48 RAMB36 back from the
+    //    scaler) for <=3 everywhere; a rotation-indexed per-angle b-LUT only helps rotation, not keystone. **
+    // RUNTIME per-angle hash select (task-57, 9 variants for 1deg rotation). TIMING: the 9-way mux of
+    // CONSTANT products, replicated across the 8 setf call sites (=72 multiplies), blew the set-index
+    // critical path (WNS -3.2). Instead REGISTER the selected multiplier `bmul` ONCE off the per-pixel
+    // path (hsel changes only at geometry change, quasi-static + soft-reset follows), so each setf is a
+    // SINGLE small variable multiply (tx + ty*bmul). hsel->b: 0:33 1:13 2:29 3:31 4:37 5:45 6:57 7:61 8:3.
+    reg [6:0] bmul = 7'd33;
+    always @(posedge clk) begin
+        case (hsel)
+            4'd1: bmul <= 7'd13;  4'd2: bmul <= 7'd29;  4'd3: bmul <= 7'd31;
+            4'd4: bmul <= 7'd37;  4'd5: bmul <= 7'd45;  4'd6: bmul <= 7'd57;
+            4'd7: bmul <= 7'd61;  4'd8: bmul <= 7'd3;   default: bmul <= 7'd33;
+        endcase
+    end
     function [SETW-1:0] setf; input [11:0] px,py;
-        setf=(((px>>LTILE)*1) + ((py>>LTILE)*33)) & {SETW{1'b1}}; endfunction
+        setf = ((px>>LTILE) + ((py>>LTILE)*bmul)) & {SETW{1'b1}};
+    endfunction
     function [BAW-1:0] baddr; input [SLW-1:0] s; input [11:0] px,py;
         baddr=(s<<(2*HT))|(((py[LTILE-1:0]>>1)<<HT)|(px[LTILE-1:0]>>1)); endfunction
     // Consumer hit detect is INLINED in the gather always@* below (the setf ×13/×7 multiply + tidf are
