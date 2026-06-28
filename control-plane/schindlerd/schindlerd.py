@@ -148,10 +148,14 @@ _AUTOTUNE_CSV = os.path.normpath(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "docs", "autotune-leads.csv"))
 _AUTOTUNE_HDR = ("ts,rot,invx,invy,panx,pany,ks_h,ks_v,pin_x,pin_y,"
                  "lead,opix,opix_exp,eol,starved,result,"
-                 "tl_x,tl_y,tr_x,tr_y,br_x,br_y,bl_x,bl_y\n")
+                 "tl_x,tl_y,tr_x,tr_y,br_x,br_y,bl_x,bl_y,scale_pct\n")
 # Live corner-pin offsets (output px), kept current by _m_corner_set. The firmware geometry descriptor
 # can't express the corner-pin (it's solved into the homography), so the daemon supplies it for the CSV.
 _LAST_CORNERS = (0, 0, 0, 0, 0, 0, 0, 0)   # tl_x,tl_y,tr_x,tr_y,br_x,br_y,bl_x,bl_y
+# Live scale %, kept current by _m_scale_set. The firmware descriptor only reflects ENLARGE (>=100%, via
+# invx); SHRINK (<100%) decimates write-side with invx=4096, so 90% and 100% are indistinguishable there.
+# Capturing it daemon-side labels the shrink rows.
+_LAST_SCALE = 100
 
 def autotune_csv_tap(text: str) -> None:
     """If `text` is a firmware AUTOTUNE trial line, append one parsed row to docs/autotune-leads.csv.
@@ -167,7 +171,7 @@ def autotune_csv_tap(text: str) -> None:
             if new:
                 fh.write(_AUTOTUNE_HDR)
             corners = ",".join(str(v) for v in _LAST_CORNERS)
-            fh.write("%d,%s,%s\n" % (int(time.time()), ",".join(m.groups()), corners))
+            fh.write("%d,%s,%s,%d\n" % (int(time.time()), ",".join(m.groups()), corners, _LAST_SCALE))
     except Exception as e:                 # disk/path issue must never kill the UART reader
         log.debug("autotune csv tap failed: %s", e)
 
@@ -837,6 +841,8 @@ class Dispatcher:
             raise ValueError("scale.set needs numeric 'pct' or 'x'/'y'")
         self.uart.send_raw(f"Z {xp} {yp}")
         self._scale_pct = xp
+        global _LAST_SCALE
+        _LAST_SCALE = xp                       # label autotune CSV rows with the live scale (esp. shrink)
         # Mirror the firmware: UPSCALE (>=100%) lives in the warp invx/invy; DOWNSCALE (<100%) decimates
         # write-side so the warp reads 1:1 (invx=4096). Record it so a later warp.set (rotation/pan) sends
         # the CURRENT zoom and doesn't reset it to 1:1 (fixes "nudging rotation zeroes my zoom").
