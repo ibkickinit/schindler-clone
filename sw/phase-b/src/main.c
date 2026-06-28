@@ -1524,9 +1524,18 @@ static unsigned warp_autotune_lead(void)
         LEAD_GPIO_WR((1u << 31) | ldw);                      /* soft-reset the cache on the new lead */
         usleep(2000);
         LEAD_GPIO_WR(ldw);
-        usleep(500000);                                      /* ~15 frames @30fps to warm the cache */
+        /* WARM-UP scales with the lead: a deeper prefetch pipeline takes longer to fill, so a fixed wait
+         * mis-measured deep leads as 'short' (single-shot noise). Then SAMPLE opix several times and keep
+         * the MAX — a truly-full lead reads full on every sample; a single warming/transient frame can't
+         * pull the max down. (2026-06-28 measurement fix; pre-fix rows are single-shot/noisy.) */
+        usleep(400000u + cand[i] * 24u);                     /* ~0.5s (4096) .. ~1.0s (24576) */
         unsigned opix=0, eol=0, und=0;
-        warp_read_opix(ldw, &opix, &eol, &und);
+        for (int s = 0; s < 5; s++) {
+            unsigned o2=0, e2=0, u2=0;
+            warp_read_opix(ldw, &o2, &e2, &u2);
+            if (o2 > opix) { opix = o2; eol = e2; und = u2; }  /* keep the best (most-complete) frame */
+            usleep(50000);                                   /* ~1.5 frames between samples */
+        }
         int full = (opix >= expo);
         xil_printf("AUTOTUNE: " WARP_GEOM_FMT " L=%u opix=%u/%u eol=%u starved=%u %s\r\n",
                    WARP_GEOM_ARGS, cand[i], opix, expo, eol, und, full ? "FULL" : "short");
