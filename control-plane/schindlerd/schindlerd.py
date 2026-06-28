@@ -526,6 +526,7 @@ class Dispatcher:
         self.uart = uart
         self.profiles = profiles
         self.bus = bus
+        self.uart.text_log_handler = self._on_uart_text   # firmware AUTOTUNE lines -> OSD banner events
         self.methods: Dict[str, Callable[[Dict[str, Any]], Awaitable[Any]]] = {
             "system.identify":      self._m_identify,
             "system.catalog":       self._m_catalog,
@@ -735,6 +736,24 @@ class Dispatcher:
             return {"enable": bool(en)}
         self.uart.send_raw("U")
         return {"swept": True}
+
+    def _on_uart_text(self, text: str) -> None:
+        """Route firmware AUTOTUNE log lines to the UI as an OSD banner: a 'tuning' event when a sweep
+        starts (carrying the old/auto lead) and a 'done' event when it finishes (the chosen lead + whether
+        it reached a full frame). Runs on the event-loop thread (call_soon_threadsafe from the UART reader)."""
+        try:
+            m = re.search(r"AUTOTUNE start:.*\(auto lead was (\d+)\)", text)
+            if m:
+                self.bus.publish({"jsonrpc": "2.0", "method": "autotune.changed",
+                                  "params": {"state": "tuning", "old": int(m.group(1))}})
+                return
+            m = re.search(r"AUTOTUNE done:.*CHOSE L=(\d+) \(opix=(\d+)/(\d+)\)", text)
+            if m:
+                self.bus.publish({"jsonrpc": "2.0", "method": "autotune.changed",
+                                  "params": {"state": "done", "new": int(m.group(1)),
+                                             "full": int(m.group(2)) >= int(m.group(3))}})
+        except Exception as e:                 # never let an OSD parse error disturb the UART path
+            log.debug("autotune osd parse failed: %s", e)
 
     def _out_wh(self):
         """Current output raster (W,H). Prefer the LIVE board res from telemetry (the build BOOTS 1080p30,

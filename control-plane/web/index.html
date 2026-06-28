@@ -409,11 +409,29 @@
       if (m.method && m.id === undefined) {
         if (m.method === "status.update") handleStatusUpdate(m.params);
         else if (m.method === "control.changed") handleControlChanged(m.params);
+        else if (m.method === "autotune.changed") handleAutotune(m.params);
         return;
       }
       const cb = pending.get(m.id);
       if (cb) { pending.delete(m.id); cb(m); }
     };
+
+    // OSD banner for the firmware auto-tune-lead-on-break: shows WHEN it's tuning and the OLD -> NEW lead.
+    let __atBanner=null, __atTimer=null, __atOld=null;
+    function handleAutotune(p){
+      if(!__atBanner){ __atBanner=document.createElement("div");
+        __atBanner.style.cssText="position:fixed;top:10px;left:50%;transform:translateX(-50%);z-index:9999;"+
+          "padding:8px 16px;border-radius:6px;font:600 14px system-ui;color:#fff;box-shadow:0 2px 10px rgba(0,0,0,.45)";
+        document.body.appendChild(__atBanner); }
+      clearTimeout(__atTimer);
+      if(p.state==="tuning"){ __atOld=p.old; __atBanner.style.background="#b9770e";
+        __atBanner.textContent="⚙ Auto-tuning prefetch lead… (was "+p.old+")"; __atBanner.style.display="block"; }
+      else if(p.state==="done"){ __atBanner.style.background=p.full?"#1a7f37":"#9a3412";
+        __atBanner.textContent=(p.full?"✓ ":"⚠ ")+"Lead "+(__atOld!=null?__atOld+" → ":"→ ")+p.new+
+          (p.full?"":" (still short — near BW wall)");
+        __atBanner.style.display="block";
+        __atTimer=setTimeout(()=>{ if(__atBanner) __atBanner.style.display="none"; }, 4500); }
+    }
   }
 
   function call(method, params, timeoutMs) {
