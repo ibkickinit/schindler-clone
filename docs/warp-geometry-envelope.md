@@ -49,10 +49,15 @@ to clear shallow-lead misses at 4096, shallow enough to dodge deep-lead eviction
 auto-tuner stays as the safety net for the <1% and the edges.
 
 ## 4. Rotation
-- **Rotation ALONE is clean to 360°** (10° grid + cache hash; prior bench work, not re-swept here).
-- **Rotation + heavy (twist) corner-pin walls at ≥30°** (20° narrows the window). The *combination*
-  exceeds the fetch budget — neither alone does. **The joint corner×rotation limit is only sampled on the
-  5 twist offenders; a dedicated rotation×corner-magnitude sweep is the open characterization.**
+- **Rotation ALONE is clean to 360°** (continuous 1° via per-angle hash LUT).
+- **Rotation + heavy (twist) corner-pin walls at ≥30°** (20° narrows) — but that's continuous rotation from
+  0° combined with the WORST twist corners, not a realistic use case.
+- **CARDINAL ±15° + keystone = FULLY CLEAN (validated 2026-06-28, `autotune-cardinal-bands-1080p.csv`).**
+  Every angle in {0,90,180,270}±15° renders full-frame with and without a coherent keystone (top-in 100px).
+  Transpose bands (75–105°, 255–285°) are full at lead 4096; exact 0°/180° need 8192 (axis-aligned floor).
+  **Recommended rotation spec = cardinal orient (0/90/180/270) + ±15° fine** — covers tilt/leveling +
+  portrait/landscape/inverted, stays well inside the 64-bit envelope, and dodges the 30°+ walls and the
+  45° resonance entirely. Static **lead 8192** covers the whole cardinal±15°+keystone spec.
 
 ## 5. Pincushion
 Mild: ±10 narrows the lead window slightly, ±20 recovers; no walls on its own (from the axis sweep).
@@ -61,8 +66,8 @@ Mild: ±10 narrows the lead window slightly, ±20 recovers; no walls on its own 
 | Control | 1080p | 720p |
 |---|---|---|
 | Corner-pin (per corner, px) | **±120** | **±180** |
-| Rotation (alone) | full 360° (10° grid) | full 360° |
-| Rotation (with corner-pin active) | cap ~**±20°** | TBD (likely higher) |
+| Rotation | **cardinal 0/90/180/270 + ±15° fine** (validated clean w/ keystone) | same |
+
 | Pincushion | ±100‰ (current) | ±100‰ |
 | Prefetch lead (corner-pin) | **6144 static** | 6144 (verify) |
 
