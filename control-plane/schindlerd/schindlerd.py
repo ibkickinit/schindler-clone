@@ -134,6 +134,45 @@ class Catalog:
 
 
 # ---------------------------------------------------------------------------
+# AUTOTUNE log tap — harvest the firmware's per-trial lead-sweep lines into a CSV
+# so (geometry -> working lead) data accumulates as the operator drives the UI.
+# A firmware trial line looks like:
+#   AUTOTUNE: rot=0 invx=4096 invy=4096 pan=0,0 ks=0,0 pin=-10,-10 L=6144 \
+#             opix=2073600/2073600 eol=1080 starved=24 FULL
+# ---------------------------------------------------------------------------
+_AUTOTUNE_RE = re.compile(
+    r"AUTOTUNE:\s+rot=(-?\d+)\s+invx=(-?\d+)\s+invy=(-?\d+)\s+pan=(-?\d+),(-?\d+)\s+"
+    r"ks=(-?\d+),(-?\d+)\s+pin=(-?\d+),(-?\d+)\s+L=(\d+)\s+opix=(\d+)/(\d+)\s+"
+    r"eol=(\d+)\s+starved=(\d+)\s+(FULL|short)")
+_AUTOTUNE_CSV = os.path.normpath(
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "docs", "autotune-leads.csv"))
+_AUTOTUNE_HDR = ("ts,rot,invx,invy,panx,pany,ks_h,ks_v,pin_x,pin_y,"
+                 "lead,opix,opix_exp,eol,starved,result,"
+                 "tl_x,tl_y,tr_x,tr_y,br_x,br_y,bl_x,bl_y\n")
+# Live corner-pin offsets (output px), kept current by _m_corner_set. The firmware geometry descriptor
+# can't express the corner-pin (it's solved into the homography), so the daemon supplies it for the CSV.
+_LAST_CORNERS = (0, 0, 0, 0, 0, 0, 0, 0)   # tl_x,tl_y,tr_x,tr_y,br_x,br_y,bl_x,bl_y
+
+def autotune_csv_tap(text: str) -> None:
+    """If `text` is a firmware AUTOTUNE trial line, append one parsed row to docs/autotune-leads.csv.
+    Append-only, called from the single UART reader thread (no lock needed). Never raises into the
+    reader loop. Each row is one (geometry, lead) -> opix datapoint (firmware geom fields + the daemon's
+    live corner-pin) for mining better static leads."""
+    m = _AUTOTUNE_RE.search(text)
+    if not m:
+        return
+    try:
+        new = not os.path.exists(_AUTOTUNE_CSV)
+        with open(_AUTOTUNE_CSV, "a") as fh:
+            if new:
+                fh.write(_AUTOTUNE_HDR)
+            corners = ",".join(str(v) for v in _LAST_CORNERS)
+            fh.write("%d,%s,%s\n" % (int(time.time()), ",".join(m.groups()), corners))
+    except Exception as e:                 # disk/path issue must never kill the UART reader
+        log.debug("autotune csv tap failed: %s", e)
+
+
+# ---------------------------------------------------------------------------
 # UART bridge — runs in a worker thread, talks to the firmware over /dev/ttyUSBn
 # ---------------------------------------------------------------------------
 
@@ -194,6 +233,8 @@ class UartBridge:
                 else:
                     text = line.decode("utf-8", "replace")
                     log.debug("uart-log: %s", text)
+                    if "AUTOTUNE:" in text:
+                        autotune_csv_tap(text)          # harvest lead-sweep trials -> docs/autotune-leads.csv
                     if self.text_log_handler and self._loop:
                         self._loop.call_soon_threadsafe(self.text_log_handler, text)
 
@@ -725,6 +766,9 @@ class Dispatcher:
             if isinstance(c, dict):
                 if "x" in c: self._corners[k]["x"] = cl(c["x"], lim)
                 if "y" in c: self._corners[k]["y"] = cl(c["y"], lim)
+        # keep the module-level corner snapshot current for the AUTOTUNE CSV tap (firmware can't log it)
+        global _LAST_CORNERS
+        _LAST_CORNERS = tuple(self._corners[k][ax] for k in keys for ax in ("x", "y"))
         # output position where each IMAGE corner should land (absolute), per the OUT=+ convention
         outp = []
         for (bx, by), k in zip(rect, keys):
