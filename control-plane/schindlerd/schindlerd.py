@@ -734,6 +734,9 @@ class Dispatcher:
             en = 1 if params["enable"] else 0
             self.uart.send_raw(f"U {en}")
             return {"enable": bool(en)}
+        if params.get("scan"):
+            self.uart.send_raw("U 2")          # scan-all: log every lead's result for this geometry
+            return {"swept": True, "scan": True}
         self.uart.send_raw("U")
         return {"swept": True}
 

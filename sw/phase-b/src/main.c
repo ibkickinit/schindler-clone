@@ -1511,14 +1511,18 @@ static void warp_read_opix(u32 lead_word, unsigned *opix, unsigned *eol, unsigne
 
 /* Sweep candidate leads on the CURRENT geometry; log each trial; apply the lowest FULL one (or the
  * best-effort max-opix if none reach full = a genuine bandwidth wall). Returns the chosen lead. */
-static unsigned warp_autotune_lead(void)
+/* scan_all=0: stop at the lowest FULL lead (fast self-heal). scan_all=1: test EVERY candidate and log
+ * each (no early stop) to map the whole solution window incl. deep-lead eviction edges, then apply the
+ * lowest full. */
+static unsigned warp_autotune_lead(int scan_all)
 {
     static const unsigned cand[] = { 4096u, 6144u, 8192u, 12288u, 16384u, 24576u };
     const int NC = (int)(sizeof cand / sizeof cand[0]);
     unsigned expo = (unsigned)(g_out_w * g_out_h);
-    unsigned best_lead = cand[0], best_opix = 0;
+    unsigned best_lead = cand[0], best_opix = 0, lowest_full = 0;
     g_autotune_busy = 1;
-    xil_printf("AUTOTUNE start: " WARP_GEOM_FMT " exp=%u (auto lead was %u)\r\n", WARP_GEOM_ARGS, expo, (unsigned)g_warp_lead);
+    xil_printf("AUTOTUNE start: " WARP_GEOM_FMT " exp=%u (auto lead was %u)%s\r\n",
+               WARP_GEOM_ARGS, expo, (unsigned)g_warp_lead, scan_all ? " [scan-all]" : "");
     for (int i = 0; i < NC; i++) {
         u32 ldw = (cand[i] & 0xFFFFFu);
         LEAD_GPIO_WR((1u << 31) | ldw);                      /* soft-reset the cache on the new lead */
@@ -1543,19 +1547,22 @@ static unsigned warp_autotune_lead(void)
         xil_printf("AUTOTUNE: " WARP_GEOM_FMT " L=%u opix=%u/%u eol=%u starved=%u %s\r\n",
                    WARP_GEOM_ARGS, cand[i], opix, expo, eol, und, full ? "FULL" : "short");
         if (opix > best_opix) { best_opix = opix; best_lead = cand[i]; }
-        if (full) break;                                     /* lowest full lead wins */
+        if (full && lowest_full == 0u) lowest_full = cand[i];  /* remember the LOWEST full lead */
+        if (full && !scan_all) break;                        /* normal: lowest full wins; scan-all: keep going */
     }
-    g_warp_lead = best_lead;
-    u32 bw = (best_lead & 0xFFFFFu);
+    /* apply the lowest full lead if any reached full; else the best-effort (max-opix) lead. */
+    unsigned apply = lowest_full ? lowest_full : best_lead;
+    g_warp_lead = apply;
+    u32 bw = (apply & 0xFFFFFu);
     LEAD_GPIO_WR((1u << 31) | bw);
     usleep(2000);
     LEAD_GPIO_WR(bw);
-    xil_printf("AUTOTUNE done: " WARP_GEOM_FMT " CHOSE L=%u (opix=%u/%u)%s\r\n",
-               WARP_GEOM_ARGS, best_lead, best_opix, expo, (best_opix >= expo) ? "" : " [BW wall?]");
+    xil_printf("AUTOTUNE done: " WARP_GEOM_FMT " CHOSE L=%u (best opix=%u/%u)%s\r\n",
+               WARP_GEOM_ARGS, apply, best_opix, expo, lowest_full ? "" : " [BW wall?]");
     g_tuned_sig  = warp_geom_sig();
-    g_tuned_lead = best_lead;
+    g_tuned_lead = apply;
     g_autotune_busy = 0;
-    return best_lead;
+    return apply;
 }
 #endif /* LEAD_GPIO_BASE */
 
@@ -2202,16 +2209,16 @@ static void uart_dispatch(const char *line)
         xil_printf("UART: 'L' is warp-only; no warp engine in this build\r\n");
 #endif
     } else if (op == 'U') {
-        /* aUto-tune lead: 'U' = sweep the lead ladder on the CURRENT geometry NOW + log each trial
-         * (AUTOTUNE: lines, harvest for better static leads); 'U 0' / 'U 1' = disable / enable the
-         * automatic on-break tuner (default ON). Manual 'L' override always wins over the auto tuner. */
+        /* aUto-tune lead: 'U' = sweep the lead ladder NOW (stop at lowest full); 'U 2' = SCAN-ALL (test
+         * every lead + log each, map the whole window incl. deep-lead eviction edges); 'U 0' / 'U 1' =
+         * disable / enable the automatic on-break tuner (default ON). Manual 'L' override always wins. */
 #if defined(PROJECTIVE_BUILD) && defined(LEAD_GPIO_BASE)
         int a;
         if (parse_int(&p, &a)) {
-            g_autotune_en = (a != 0);
-            xil_printf("AUTOTUNE on-break = %u\r\n", g_autotune_en);
+            if (a == 2) { warp_autotune_lead(1); }           /* scan-all force sweep */
+            else { g_autotune_en = (a != 0); xil_printf("AUTOTUNE on-break = %u\r\n", g_autotune_en); }
         } else {
-            warp_autotune_lead();
+            warp_autotune_lead(0);                            /* normal force sweep (lowest full) */
         }
 #else
         xil_printf("UART: 'U' autotune is warp/projective-only\r\n");
@@ -3054,7 +3061,7 @@ static void telemetry_loop(UINTPTR vdma_base)
                             unsigned sig = warp_geom_sig();
                             if (sig != g_tuned_sig || (unsigned)g_warp_lead != g_tuned_lead) {
                                 xil_printf("AUTOTUNE: break (opix=%u/%u, sustained) -> sweeping lead...\r\n", opix, exp_o);
-                                warp_autotune_lead();
+                                warp_autotune_lead(0);        /* on-break = fast lowest-full self-heal */
                             }
                         }
                     } else {
