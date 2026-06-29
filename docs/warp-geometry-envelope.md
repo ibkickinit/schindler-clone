@@ -59,8 +59,16 @@ auto-tuner stays as the safety net for the <1% and the edges.
   portrait/landscape/inverted, stays well inside the 64-bit envelope, and dodges the 30°+ walls and the
   45° resonance entirely. Static **lead 8192** covers the whole cardinal±15°+keystone spec.
 
-## 5. Pincushion
-Mild: ±10 narrows the lead window slightly, ±20 recovers; no walls on its own (from the axis sweep).
+## 5. Pincushion — ASYMMETRIC (validated 2026-06-28, `autotune-pincushion-1080p.csv`)
+Pincushion direction matters far more than magnitude, and it is NOT symmetric:
+- **POSITIVE (barrel, edges OUT) minifies the source → expensive. WALLS at +75 even with NO corner-pin**
+  (safe only to +50). This is the dangerous direction.
+- **NEGATIVE (pincushion, edges IN) magnifies → cheap. Clean all the way to −200.**
+- **Corner-pin does NOT compound — it can HELP:** +100 barrel walls alone but renders on a keystone
+  (6144) or twist (4096) corner, because the corner-pin reshapes/shrinks the content enough to fit the
+  barrel's minification in budget. So the limiter is the POSITIVE pincushion magnitude itself, not the
+  stacking. The current symmetric ±100/±200 clamp is wrong on the positive side.
+- **Envelope ≈ [−200, +50]; recommend clamp [−150, +40] with margin.**
 
 ## Recommended shipping clamps (simple, safe, with margin)
 | Control | 1080p | 720p |
@@ -68,7 +76,7 @@ Mild: ±10 narrows the lead window slightly, ±20 recovers; no walls on its own 
 | Corner-pin (per corner, px) | **±120** | **±180** |
 | Rotation | **cardinal 0/90/180/270 + ±15° fine** (validated clean w/ keystone) | same |
 
-| Pincushion | ±100‰ (current) | ±100‰ |
+| Pincushion | **[−150, +40]‰ (ASYMMETRIC — +barrel walls @+75)** | similar |
 | Prefetch lead (corner-pin) | **6144 static** | 6144 (verify) |
 
 The auto-tuner + OSD remain the safety net: anything past these renders best-effort and flags "near BW wall".
