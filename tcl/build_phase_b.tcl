@@ -67,6 +67,10 @@ add_files -norecurse [file join $project_root hdl pg_linefetch.v]
 add_files -norecurse [file join $project_root hdl pg_unpack.v]
 add_files -norecurse [file join $project_root hdl pg_compose.v]
 add_files -norecurse [file join $project_root hdl pg_read_engine_top.v]
+# DUAL-ENGINE (Engine B) — composite output encoder + selectable mux + timing gen.
+add_files -norecurse [file join $project_root hdl pg_composite_out.v]
+add_files -norecurse [file join $project_root hdl pg_comp_out_mux.v]
+add_files -norecurse [file join $project_root hdl engb_timing.v]
 # warp read-engine (affine/arbitrary-geometry) modules
 add_files -norecurse [file join $project_root hdl pg_affine.v]
 add_files -norecurse [file join $project_root hdl pg_projective.v]  ;# projective addr-gen (PROJECTIVE_BUILD=1); affine build elaborates its byte-identical g_affine branch
@@ -1437,9 +1441,32 @@ if {[info exists ::env(WARP_ENGINE)] && $::env(WARP_ENGINE) ne "0"} {
 }
 
 # =============================================================================
+# DUAL-ENGINE validation (env DUAL_ENGINE=1): add Engine B (a 2nd read engine)
+# reading the SAME DDR on its own 27 MHz PLL domain + HP2 DataMover, output to an
+# FPGA composite encoder -> 8-bit R-2R ladder on Pmod JC. Additive; Engine A
+# (warp -> HDMI) is untouched. Sourced after the warp BD so all referenced cells
+# (zynq_ps, axi_vdma_0, rst_mem/rst_axi, axi_ic_lite2) already exist.
+# =============================================================================
+if {[info exists ::env(DUAL_ENGINE)] && $::env(DUAL_ENGINE) ne "0"} {
+    source [file join $project_root tcl dual_engine_b_bd.tcl]
+}
+
+# =============================================================================
 # Address map + validate + wrapper
 # =============================================================================
 assign_bd_address
+# DUAL-ENGINE: report Engine B address-map entries (control GPIO on GP1 + HP2 reader)
+# so the daemon knows where to write brightness/comp_enable.
+if {[info exists ::env(DUAL_ENGINE)] && $::env(DUAL_ENGINE) ne "0"} {
+    catch {
+        foreach seg [get_bd_addr_segs -of_objects [get_bd_cells axi_gpio_20]] {
+            puts "DUAL-ENGINE-B ADDR: axi_gpio_20 (brightness\[15:0\]/comp_enable\[16\]) @ [get_property OFFSET $seg] range [get_property RANGE $seg]"
+        }
+        foreach seg [get_bd_addr_segs -of_objects [get_bd_cells re_datamover_b]] {
+            puts "DUAL-ENGINE-B ADDR: re_datamover_b reads -> [get_property OFFSET $seg] range [get_property RANGE $seg]"
+        }
+    }
+}
 validate_bd_design
 save_bd_design
 puts "STAGE_OK: Block Design validated"

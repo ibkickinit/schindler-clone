@@ -75,6 +75,36 @@ set_false_path -to [get_pins {phase_b_bd_i/axi_sync_inputs_0/inst/plocked_q1_reg
 set_false_path -to [get_pins {phase_b_bd_i/axi_sync_inputs_0/inst/vsync_out_q1_reg/D}]
 set_false_path -to [get_pins {phase_b_bd_i/axi_sync_inputs_0/inst/pclk_locked_q1_reg/D}]
 
+# ============================================================================
+# DUAL-ENGINE (Engine B) — composite/bypass output on Pmod JC = 8-bit R-2R ladder.
+# Present only when DUAL_ENGINE=1 (the `comp` port exists only then); -quiet keeps
+# these harmless in non-dual builds. Pin map identical to the proven TPG DAC pinout
+# (zybo_z7_20.xdc). comp[7]=MSB=JC1 ... comp[0]=LSB=JC10. R-2R ladder wiring map:
+#   comp[7] (MSB) = JC1  = V15
+#   comp[6]       = JC2  = W15
+#   comp[5]       = JC3  = T11
+#   comp[4]       = JC4  = T10
+#   comp[3]       = JC7  = W14
+#   comp[2]       = JC8  = Y14
+#   comp[1]       = JC9  = T12
+#   comp[0] (LSB) = JC10 = U12
+# Pmod JC GND = JC5/JC11, VCC(3V3) = JC6/JC12 (tie the ladder's reference to JC GND).
+# ============================================================================
+set_property -quiet -dict { PACKAGE_PIN V15 IOSTANDARD LVCMOS33 } [get_ports {comp[7]}]
+set_property -quiet -dict { PACKAGE_PIN W15 IOSTANDARD LVCMOS33 } [get_ports {comp[6]}]
+set_property -quiet -dict { PACKAGE_PIN T11 IOSTANDARD LVCMOS33 } [get_ports {comp[5]}]
+set_property -quiet -dict { PACKAGE_PIN T10 IOSTANDARD LVCMOS33 } [get_ports {comp[4]}]
+set_property -quiet -dict { PACKAGE_PIN W14 IOSTANDARD LVCMOS33 } [get_ports {comp[3]}]
+set_property -quiet -dict { PACKAGE_PIN Y14 IOSTANDARD LVCMOS33 } [get_ports {comp[2]}]
+set_property -quiet -dict { PACKAGE_PIN T12 IOSTANDARD LVCMOS33 } [get_ports {comp[1]}]
+set_property -quiet -dict { PACKAGE_PIN U12 IOSTANDARD LVCMOS33 } [get_ports {comp[0]}]
+
+# Engine B control GPIO (axi_gpio_20, FCLK_CLK0) -> pg_comp_out_mux 2-FF sync into
+# the 27 MHz engb clock. Quasi-static brightness/comp_enable; ASYNC_REG handles
+# metastability. Hierarchy-robust match (same rule as the route-B/warp CDC paths).
+set_false_path -quiet -to [get_pins -hier -filter {NAME =~ */br_q1_reg[*]/D}]
+set_false_path -quiet -to [get_pins -hier -filter {NAME =~ */ce_q1_reg/D}]
+
 # Color-correct GPIO-to-pclk_out CDC false-paths. ASYNC_REG handles
 # metastability; these inform the timing engine the inter-clock paths are
 # async and shouldn't be constrained. Without them Vivado tries to meet
