@@ -1622,6 +1622,10 @@ update_compile_order -fileset sources_1
 # =============================================================================
 # Synth + impl + bit
 # =============================================================================
+# NOTE: the warp placement-affine DSP cone (pg_place_affine pxa/pxb -> ~21 levels -> covx_raw)
+# was the WNS +0.003 limiter under the TSG build's congestion. Tried synth RETIMING first --
+# no-op (the pen-gated regs can't be moved). Real fix is the A1/A2 pipeline split in
+# hdl/pg_place_affine.v (proven bit-exact vs the pre-split module by tb_place_equiv).
 launch_runs synth_1 -jobs 4
 wait_on_run synth_1
 if {[get_property PROGRESS [get_runs synth_1]] ne "100%"} {

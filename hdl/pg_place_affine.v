@@ -59,29 +59,46 @@ module pg_place_affine #(
         end
     end
 
-    // ---- Stage A: sum + align c/f + >>FB -> LOD coord ; per-axis edge distance for the AA ramp ----
+    // ---- Stage A1: sum partials + align c/f + >>FB -> LOD coord (REGISTERED) ----
+    // Was one combinational cone (sum -> shift -> +c -> edge-dist -> +HALF) of ~21 logic levels feeding
+    // covx_raw; under the TSG build's added congestion that cone slipped to WNS +0.003 (sub-jitter). Split
+    // into A1 (this) + A2 (below) so each half is ~half the depth. Functionally identical, +1 pipe stage:
+    // both u_place_c and u_place_p (same module) gain the cycle equally, and both legs are valid/ready
+    // elastic (skid-buffered, lead is a tile COUNT not a latency) so the cache stays coherent. (#margin)
     wire signed [PW-1:0] sumx = pxa + pxb;        // Q.2FB
     wire signed [PW-1:0] sumy = pya + pyb;
     wire signed [AW-1:0] sumx_sh = sumx >>> FB;   // arithmetic shift, auto-truncated to AW (forbidden to
     wire signed [AW-1:0] sumy_sh = sumy >>> FB;   // part-select a parenthesised expr -> intermediate wire)
     wire signed [AW-1:0] xl_qc = sumx_sh + {{(AW-CW){c2_m[CW-1]}}, c2_m};
     wire signed [AW-1:0] yl_qc = sumy_sh + {{(AW-CW){f2_m[CW-1]}}, f2_m};
+
+    reg signed [AW-1:0] xl_a1, yl_a1;             // LOD coord, registered between the two adder cones
+    reg                 a1_valid, a1_sheet_in, a1_new_row;
+    always @(posedge clk) begin
+        if(!rstn) begin a1_valid<=1'b0; end
+        else if(pen) begin
+            xl_a1 <= xl_qc;  yl_a1 <= yl_qc;
+            a1_valid <= m_valid;  a1_sheet_in <= m_sheet_in;  a1_new_row <= m_new_row;
+        end
+    end
+
+    // ---- Stage A2: per-axis edge distance for the AA ramp + cov (REGISTERED) ----
     // LOD bounds in Q.FB; the content occupies xl in [0, in_w). dist = signed distance to the nearer edge.
     wire signed [AW-1:0] inw_q = $signed({1'b0, in_w_rt}) <<< FB;
     wire signed [AW-1:0] inh_q = $signed({1'b0, in_h_rt}) <<< FB;
-    wire signed [AW-1:0] dxr   = inw_q - xl_qc;            // distance to right edge
-    wire signed [AW-1:0] dyr   = inh_q - yl_qc;
-    wire signed [AW-1:0] distx = (xl_qc < dxr) ? xl_qc : dxr;   // nearer x-edge distance (signed)
-    wire signed [AW-1:0] disty = (yl_qc < dyr) ? yl_qc : dyr;
+    wire signed [AW-1:0] dxr   = inw_q - xl_a1;            // distance to right edge
+    wire signed [AW-1:0] dyr   = inh_q - yl_a1;
+    wire signed [AW-1:0] distx = (xl_a1 < dxr) ? xl_a1 : dxr;   // nearer x-edge distance (signed)
+    wire signed [AW-1:0] disty = (yl_a1 < dyr) ? yl_a1 : dyr;
 
     reg signed [AW-1:0] xl_q, yl_q, covx_raw, covy_raw;   // covX_raw = dist + 0.5 (Q.FB; clamp+extract in B)
     reg                 a_valid, a_sheet_in, a_new_row;
     always @(posedge clk) begin
         if(!rstn) begin a_valid<=1'b0; end
         else if(pen) begin
-            xl_q <= xl_qc;  yl_q <= yl_qc;
+            xl_q <= xl_a1;  yl_q <= yl_a1;
             covx_raw <= distx + HALF;  covy_raw <= disty + HALF;
-            a_valid <= m_valid;  a_sheet_in <= m_sheet_in;  a_new_row <= m_new_row;
+            a_valid <= a1_valid;  a_sheet_in <= a1_sheet_in;  a_new_row <= a1_new_row;
         end
     end
 
