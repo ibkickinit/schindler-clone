@@ -1621,6 +1621,12 @@ static int warp_solve_cornerpin(const double sx[4], const double sy[4])
     double ratio = (rx > ry ? rx : ry);
     int invx_eq = (int)(ratio * 4096.0 + 0.5);           /* affine-equivalent inverse-scale */
     unsigned lead = warp_calc_lead(0, invx_eq, invx_eq); /* deep for >1.0× shrink, like warp.set */
+    /* CHARACTERIZATION CAP (2026-06-28, docs/warp-geometry-envelope.md): corner-pin/keystone renders 99%
+     * of the renderable envelope at <=8192, and DEEP leads (16384/24576) actively EVICT (the deep-lead
+     * cliff). The old deep value made every downscale-implying corner-pin start at 24576 -> starve ->
+     * autotune sweep -> flicker. Cap at 8192 so it renders immediately; the on-break autotuner (still in
+     * the build) catches any residual that genuinely needs more. */
+    if (lead > 8192u) lead = 8192u;
     /* LOD: fetch from a mip so the cache sees effective <=1.5x (silicon-clean). L0<=1.5x, L1<=3x, else L2. */
     g_warp_lod = (invx_eq <= 6144) ? 0u : (invx_eq <= 12288) ? 1u : 2u;
     warp_apply_homography(to_q20(a),to_q20(b),to_q20(c),to_q20(d),to_q20(e),to_q20(f),

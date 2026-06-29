@@ -713,12 +713,16 @@ class Dispatcher:
         Params: {x, y} per-axis, or {amt} symmetric (legacy; sets both). Conservative clamp +/-200 (0.20);
         {override:true} unlocks to +/-1000 (1.0)."""
         ov = bool(params.get("override"))
-        lim = 200 if ov else 100   # default ±100 (safe); {override:true} unlocks to ±200 for exploration
+        # ASYMMETRIC clamp (2026-06-28, docs/warp-geometry-envelope.md): +barrel pincushion minifies the
+        # source -> WALLS at +75 even with no corner-pin, so cap positive TIGHT; -pincushion magnifies ->
+        # clean to -200, so negative is generous. Override loosens both slightly.
+        pos_lim = 50 if ov else 40
+        neg_lim = 200 if ov else 150
         if not hasattr(self, "_pin_x"): self._pin_x = 0
         if not hasattr(self, "_pin_y"): self._pin_y = 0
         def _clamp(v):
             iv = int(round(float(v)))
-            return -lim if iv < -lim else lim if iv > lim else iv
+            return -neg_lim if iv < -neg_lim else pos_lim if iv > pos_lim else iv
         if "amt" in params:                       # legacy symmetric
             self._pin_x = self._pin_y = _clamp(params["amt"])
         if "x" in params: self._pin_x = _clamp(params["x"])
