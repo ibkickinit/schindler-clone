@@ -458,7 +458,7 @@ class TelemetryParser:
         self.last: Dict[str, Any] = {}
         # Output format is a build-time constant for v0.1 — bag it from the
         # banner line and reuse.
-        self._output_format = "720p60"  # default until banner says otherwise
+        self._output_format = "1080p30"  # this build BOOTS 1080p30; telemetry corrects if not
 
     def feed(self, line: str) -> None:
         try:
@@ -771,7 +771,7 @@ class Dispatcher:
         """Write-side source select (internal Test Signal Generator vs HDMI input), firmware 'E t'/'E p'.
         {tsg_enable: bool} -> 'E t <0|1>' (True = internal 1080p pattern, input-independent; False = HDMI).
         {pattern: 0..7} -> 'E p <0..7>' (0 bars100 / 1 h-ramp / 2 v-ramp / 3 gray /
-        4 bars75 / 5 crosshatch+border / 6 checker64 / 7 checker1). Either or both."""
+        4 SMPTE bars / 5 crosshatch+border / 6 checker64 / 7 checker1). Either or both."""
         if not hasattr(self, "_tsg_enable"):  self._tsg_enable = False
         if not hasattr(self, "_tsg_pattern"): self._tsg_pattern = 0
         if "tsg_enable" in params:

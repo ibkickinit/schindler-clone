@@ -2275,7 +2275,7 @@ static void uart_dispatch(const char *line)
             xil_printf("TSG enable = %u (%s)\r\n", g_tsg_enable, g_tsg_enable ? "internal pattern" : "HDMI input");
         } else if (sub == 'p' && parse_int(&p, &v)) {
             /* TSG pattern: 0 bars100 / 1 h-ramp / 2 v-ramp / 3 gray /
-             *              4 bars75 / 5 crosshatch+border / 6 checker64 / 7 checker1. */
+             *              4 SMPTE bars / 5 crosshatch+border / 6 checker64 / 7 checker1. */
             if (v < 0) v = 0; if (v > 7) v = 7;
             g_tsg_pattern = (unsigned)v;
             engb_write();

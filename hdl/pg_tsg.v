@@ -28,7 +28,7 @@ module pg_tsg #(
     parameter integer V_FP  = 4,    parameter integer V_SYNC = 5
 ) (
     input  wire        clk, rstn,
-    input  wire [2:0]  pattern,            // 0 bars100 / 1 h-ramp / 2 v-ramp / 3 gray / 4 bars75 /
+    input  wire [2:0]  pattern,            // 0 bars100 / 1 h-ramp / 2 v-ramp / 3 gray / 4 SMPTE bars /
                                            // 5 crosshatch+border / 6 checker64 / 7 checker1 (async GPIO; quasi-static)
     output reg  [23:0] vid_data,           // {R[23:16], G[15:8], B[7:0]}
     output reg         vid_active,
@@ -67,19 +67,31 @@ module pg_tsg #(
     reg [2:0]  bar_q;
     reg [7:0]  hramp_q, vramp_q;
     reg        grid_q, chk64_q, chk1_q;       // geometry/scaling patterns (all divide-free, registered)
+    reg [2:0]  bar7_q;                         // SMPTE 7-bar column index (1920/7 boundaries)
+    reg [1:0]  vsec_q;                         // SMPTE vertical section: 0 top bars / 1 castellation / 2 pluge row
+    reg [2:0]  hbot_q;                         // SMPTE pluge-row horizontal segment index
     always @(posedge clk) begin
         if(!rstn) begin
             act_q<=1'b0; hs_q<=1'b0; vs_q<=1'b0; bar_q<=3'd0; hramp_q<=8'd0; vramp_q<=8'd0;
-            grid_q<=1'b0; chk64_q<=1'b0; chk1_q<=1'b0;
+            grid_q<=1'b0; chk64_q<=1'b0; chk1_q<=1'b0; bar7_q<=3'd0; vsec_q<=2'd0; hbot_q<=3'd0;
         end else begin
             act_q <= act; hs_q <= hs; vs_q <= vs;
             // 8 color bars: index = number of bar-boundaries crossed (divide-free)
             bar_q <= (hc>=BW) + (hc>=2*BW) + (hc>=3*BW) + (hc>=4*BW)
                    + (hc>=5*BW) + (hc>=6*BW) + (hc>=7*BW);
+            // SMPTE EG-1 geometry (1080p-specific boundaries, divide-free):
+            //  7 main bars at k*1920/7 (274,549,823,1097,1371,1646); vertical sections at
+            //  2/3 (720) and 3/4 (810); pluge-row segments (-I / 100% / +Q / black / pluge bars).
+            bar7_q <= (hc>=12'd274)+(hc>=12'd549)+(hc>=12'd823)+(hc>=12'd1097)+(hc>=12'd1371)+(hc>=12'd1646);
+            vsec_q <= (vc>=12'd720) + (vc>=12'd810);
+            hbot_q <= (hc>=12'd320)+(hc>=12'd640)+(hc>=12'd960)+(hc>=12'd1280)+(hc>=12'd1413)+(hc>=12'd1546);
             // luma ramps ~hc*255/1920 and ~vc*255/1080 (divide-free; overflow during
-            // blanking is masked by act_q=0 downstream).
-            hramp_q <= (hc * 12'd68) >> 9;     // 0..254 across 1920
-            vramp_q <= (vc * 12'd60) >> 8;     // 0..252 across 1080
+            // blanking is masked by act_q=0 downstream). NOTE: the multiplier literal MUST
+            // be wide (19'd..) -- Verilog sizes a*b to max(L(a),L(b)), so `hc * 12'd68`
+            // evaluates in 12 bits and WRAPS (hc*68 needs 18 bits) -> black ramp. The 19-bit
+            // literal forces a full-width multiply.
+            hramp_q <= (hc * 19'd68) >> 9;     // 0..254 across 1920
+            vramp_q <= (vc * 19'd60) >> 8;     // 0..252 across 1080
             // crosshatch: 2px lines every 128px (low 7 bits) + a 2px outer border. Pure
             // bit-mask/compare -> the best geometry/keystone alignment reference for warp.
             grid_q  <= (hc[6:0] < 7'd2) | (vc[6:0] < 7'd2)
@@ -101,17 +113,42 @@ module pg_tsg #(
         default: bars = 24'h000000; // black
     endcase
 
-    reg [23:0] bars75;                        // 75% SMPTE color bars (0xC0 amplitude)
-    always @(*) case(bar_q)
-        3'd0: bars75 = 24'hC0C0C0;  // 75% white (grey)
-        3'd1: bars75 = 24'hC0C000;  // yellow
-        3'd2: bars75 = 24'h00C0C0;  // cyan
-        3'd3: bars75 = 24'h00C000;  // green
-        3'd4: bars75 = 24'hC000C0;  // magenta
-        3'd5: bars75 = 24'hC00000;  // red
-        3'd6: bars75 = 24'h0000C0;  // blue
-        default: bars75 = 24'h000000; // black
-    endcase
+    // Proper SMPTE EG-1 color bars: 75% top bars / reverse-blue castellation / PLUGE row.
+    // 0xBF = 191 = 75% amplitude. Top: gray,yellow,cyan,green,magenta,red,blue. Castellation
+    // (chroma-align strip): blue,black,magenta,black,cyan,black,gray. Pluge row: -I, 100%
+    // white, +Q, black, then the pluge bars (ref-black vs just-above-black for brightness set).
+    reg [23:0] smpte;
+    always @(*) begin
+        case(vsec_q)
+        2'd0: case(bar7_q)                    // top 2/3: 75% color bars
+            3'd0: smpte = 24'hBFBFBF;  // gray
+            3'd1: smpte = 24'hBFBF00;  // yellow
+            3'd2: smpte = 24'h00BFBF;  // cyan
+            3'd3: smpte = 24'h00BF00;  // green
+            3'd4: smpte = 24'hBF00BF;  // magenta
+            3'd5: smpte = 24'hBF0000;  // red
+            default: smpte = 24'h0000BF; // blue
+        endcase
+        2'd1: case(bar7_q)                    // castellation strip (reverse-blue)
+            3'd0: smpte = 24'h0000BF;  // blue
+            3'd1: smpte = 24'h000000;  // black
+            3'd2: smpte = 24'hBF00BF;  // magenta
+            3'd3: smpte = 24'h000000;  // black
+            3'd4: smpte = 24'h00BFBF;  // cyan
+            3'd5: smpte = 24'h000000;  // black
+            default: smpte = 24'hBFBFBF; // gray
+        endcase
+        default: case(hbot_q)                 // bottom 1/4: PLUGE / reference row
+            3'd0: smpte = 24'h001E40;  // -I (dark blue)
+            3'd1: smpte = 24'hFFFFFF;  // 100% white
+            3'd2: smpte = 24'h35006A;  // +Q (dark purple)
+            3'd3: smpte = 24'h000000;  // black
+            3'd4: smpte = 24'h000000;  // pluge: reference black
+            3'd5: smpte = 24'h0F0F0F;  // pluge: just-above-black (set brightness to just see this)
+            default: smpte = 24'h000000; // black
+        endcase
+        endcase
+    end
 
     reg [23:0] px;
     always @(*) case(pattern)
@@ -119,7 +156,7 @@ module pg_tsg #(
         3'd1: px = {hramp_q, hramp_q, hramp_q};       // horizontal luma ramp
         3'd2: px = {vramp_q, vramp_q, vramp_q};       // vertical luma ramp
         3'd3: px = 24'h808080;                        // 50% gray (level check)
-        3'd4: px = bars75;                            // 75% SMPTE color bars
+        3'd4: px = smpte;                             // proper SMPTE EG-1 color bars
         3'd5: px = grid_q  ? 24'hFFFFFF : 24'h000000; // crosshatch grid + border (geometry)
         3'd6: px = chk64_q ? 24'hFFFFFF : 24'h000000; // 64px checkerboard
         default: px = chk1_q ? 24'hFFFFFF : 24'h000000; // 1px checkerboard (Nyquist)
