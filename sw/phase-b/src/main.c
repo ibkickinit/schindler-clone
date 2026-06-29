@@ -1076,6 +1076,20 @@ static void cp_dispatch_jsonrpc(const char *json)
 #    define KPIN_BASE XPAR_PHASE_B_BD_AXI_GPIO_19_BASEADDR
 #  endif
 #endif
+/* DUAL-ENGINE (2026-06-28): Engine B (composite/raw output) control on axi_gpio_20.
+ * Word: [15:0] = brightness Q8.8 (0x0100 = 1.0), [16] = comp_enable (1=composite, 0=raw bypass). */
+#if defined(XPAR_AXI_GPIO_20_BASEADDR)
+#  define ENGB_GPIO_BASE XPAR_AXI_GPIO_20_BASEADDR
+#elif defined(XPAR_PHASE_B_BD_AXI_GPIO_20_BASEADDR)
+#  define ENGB_GPIO_BASE XPAR_PHASE_B_BD_AXI_GPIO_20_BASEADDR
+#endif
+#ifdef ENGB_GPIO_BASE
+static unsigned g_engb_bright = 0x0100;   /* Q8.8 luma gain, 1.0 */
+static unsigned g_engb_comp_en = 1;       /* 1 = composite encode, 0 = raw bypass */
+static void engb_write(void) {
+    Xil_Out32(ENGB_GPIO_BASE, ((g_engb_comp_en & 1u) << 16) | (g_engb_bright & 0xFFFFu));
+}
+#endif
 
 /* ==========================================================================
  * WARP read-engine (pg_warp_top) affine geometry. In the WARP build the SAME
@@ -2228,6 +2242,29 @@ static void uart_dispatch(const char *line)
         }
 #else
         xil_printf("UART: 'U' autotune is warp/projective-only\r\n");
+#endif
+    } else if (op == 'E') {
+        /* DUAL-ENGINE Engine-B (composite) control: 'E b <pct>' = luma brightness 0..400% (100=1.0);
+         * 'E c <0|1>' = comp_enable (1=composite, 0=raw bypass); 'E' alone = query. axi_gpio_20. */
+#ifdef ENGB_GPIO_BASE
+        while (*p == ' ') p++;
+        char sub = *p; if (sub) p++;
+        int v;
+        if (sub == 'b' && parse_int(&p, &v)) {
+            if (v < 0) v = 0; if (v > 400) v = 400;
+            g_engb_bright = (unsigned)((v * 256) / 100);     /* pct -> Q8.8 */
+            engb_write();
+            xil_printf("ENGB brightness = %d%% (Q8.8=0x%03x)\r\n", v, g_engb_bright);
+        } else if (sub == 'c' && parse_int(&p, &v)) {
+            g_engb_comp_en = (v != 0);
+            engb_write();
+            xil_printf("ENGB comp_enable = %u (%s)\r\n", g_engb_comp_en, g_engb_comp_en ? "composite" : "raw");
+        } else {
+            xil_printf("ENGB: brightness=Q8.8 0x%03x comp_enable=%u  (usage 'E b <pct>' / 'E c <0|1>')\r\n",
+                       g_engb_bright, g_engb_comp_en);
+        }
+#else
+        xil_printf("UART: 'E' Engine-B control not in this build (dual-engine only)\r\n");
 #endif
     } else if (op == 'B') {
         /* task-57: tile-cache set-hash select override (live bench tuning, no rebuild). hsel index->b:

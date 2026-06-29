@@ -549,6 +549,7 @@ class Dispatcher:
             "corner.set":           self._m_corner_set,       # independent 4-corner pin (raw 'C')
             "pincushion.set":       self._m_pincushion_set,   # radial warp (now COEXISTS with corner-pin)
             "lead.autotune":        self._m_lead_autotune,    # force prefetch-lead sweep ('U') / toggle on-break
+            "engineb.set":          self._m_engineb_set,      # dual-engine Engine B composite output control ('E')
             "matte.set":            self._m_matte_set,        # runtime matte fill colour
             "scale.set":            self._m_scale_set,        # CANON scale: shrink=write-side, enlarge=read-side warp zoom (Z)
             "output.set":           self._m_output_set,       # live resolution / framerate (74.25 family)
@@ -747,6 +748,23 @@ class Dispatcher:
             return {"swept": True, "scan": True}
         self.uart.send_raw("U")
         return {"swept": True}
+
+    async def _m_engineb_set(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Dual-engine Engine B (composite output → Pmod JC R-2R ladder) live control (firmware 'E').
+        {brightness: pct 0..400} → 'E b <pct>' (luma gain); {comp_enable: bool} → 'E c <0|1>'
+        (True=composite encode, False=raw bypass). Either or both."""
+        if not hasattr(self, "_engb_bright"): self._engb_bright = 100
+        if not hasattr(self, "_engb_comp"):   self._engb_comp = True
+        if "brightness" in params:
+            b = int(round(float(params["brightness"])))
+            self._engb_bright = 0 if b < 0 else 400 if b > 400 else b
+            self.uart.send_raw(f"E b {self._engb_bright}")
+        if "comp_enable" in params:
+            self._engb_comp = bool(params["comp_enable"])
+            self.uart.send_raw(f"E c {1 if self._engb_comp else 0}")
+        out = {"brightness": self._engb_bright, "comp_enable": self._engb_comp}
+        self.bus.publish({"jsonrpc": "2.0", "method": "engineb.changed", "params": out})
+        return out
 
     def _on_uart_text(self, text: str) -> None:
         """Route firmware AUTOTUNE log lines to the UI as an OSD banner: a 'tuning' event when a sweep

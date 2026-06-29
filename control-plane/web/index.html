@@ -104,6 +104,7 @@
   <main>
     <div id="tabnav" style="display:flex;gap:6px;margin:8px 0">
       <button id="tab-btn-live" style="background:#2a6">Live</button>
+      <button id="tab-btn-engineb">Engine B</button>
       <button id="tab-btn-settings">Settings</button>
     </div>
     <div id="tab-live">
@@ -305,6 +306,27 @@
         <div style="opacity:.5;font-size:.9em;margin-top:4px">Network config applies <b>on-target</b>
           (PetaLinux). The daemon currently runs on the dev host, so these are read-only placeholders
           until on-target deployment.</div>
+      </div>
+    </div>
+
+    <div id="tab-engineb" hidden>
+      <h2 style="margin:8px 0 6px;color:#7bd">Engine 2 → Output B (Composite)</h2>
+      <div style="opacity:.6;font-size:.9em;margin:0 0 12px">Second read engine → FPGA composite encoder →
+        <b>Pmod JC</b> 8-bit R-2R ladder (scope it). Intentionally non-NTSC (~10.9 Hz) — bring-up/scope aid.
+        Keep the Engine 1 scale at 100% while observing (Engine B reads the full-res LOD).</div>
+
+      <div style="margin:10px 0"><label style="display:block;margin-bottom:4px">Output encode</label>
+        <label style="margin-right:14px"><input type="radio" name="engb-mode" id="engb-comp" checked> Composite (luma+sync)</label>
+        <label><input type="radio" name="engb-mode" id="engb-raw"> Raw bypass (8-bit channel)</label>
+        <span style="opacity:.5;font-size:.85em;margin-left:8px">live select — flip and watch the scope</span>
+      </div>
+
+      <div style="display:flex;gap:8px;align-items:center;margin:14px 0 4px"><span style="width:80px">Brightness</span>
+        <input type="range" id="engb-bright-r" min="0" max="400" value="100" style="flex:1">
+        <input type="number" id="engb-bright-n" min="0" max="400" value="100" style="width:72px"><span style="opacity:.5">% luma gain</span></div>
+
+      <div style="font-family:monospace;opacity:.5;font-size:.85em;margin-top:16px">
+        comp[7]=JC1 (MSB) · comp[6]=JC2 · comp[5]=JC3 · comp[4]=JC4 · comp[3]=JC7 · comp[2]=JC8 · comp[1]=JC9 · comp[0]=JC10 (LSB) · ref→JC GND
       </div>
     </div>
 
@@ -1011,17 +1033,32 @@
       log("factory reset → defaults (incl. warp)", "ok");
     } catch (e) { log(`factory reset: ${e.message}`, "err"); }
   });
-  // ---- Live / Settings tabs ----
+  // ---- Live / Engine B / Settings tabs ----
   function showTab(which) {
-    const live = which === "live";
-    document.getElementById("tab-live").hidden = !live;
-    document.getElementById("tab-settings").hidden = live;
-    document.getElementById("tab-btn-live").style.background = live ? "#2a6" : "";
-    document.getElementById("tab-btn-settings").style.background = live ? "" : "#2a6";
-    if (!live) loadSettings();
+    const tabs = ["live","engineb","settings"];
+    tabs.forEach(t => {
+      document.getElementById("tab-"+t).hidden = (t !== which);
+      const b = document.getElementById("tab-btn-"+t); if (b) b.style.background = (t === which) ? "#2a6" : "";
+    });
+    if (which === "settings") loadSettings();
   }
   document.getElementById("tab-btn-live").addEventListener("click", () => showTab("live"));
+  document.getElementById("tab-btn-engineb").addEventListener("click", () => showTab("engineb"));
   document.getElementById("tab-btn-settings").addEventListener("click", () => showTab("settings"));
+  // ---- Engine B (composite output) live control ----
+  (function(){
+    const g=id=>document.getElementById(id);
+    const br=g("engb-bright-r"), bn=g("engb-bright-n");
+    let t=null;
+    const sendBright=(v,now)=>{ v=Math.max(0,Math.min(400,Math.round(+v))); br.value=v; bn.value=v;
+      clearTimeout(t); const fn=()=>call("engineb.set",{brightness:v}).catch(()=>{});
+      if(now) fn(); else t=setTimeout(fn,120); };
+    br.addEventListener("input",()=>sendBright(br.value,false));
+    br.addEventListener("change",()=>sendBright(br.value,true));
+    bn.addEventListener("change",()=>sendBright(bn.value,true));
+    g("engb-comp").addEventListener("change",()=>{ if(g("engb-comp").checked) call("engineb.set",{comp_enable:true}).catch(()=>{}); });
+    g("engb-raw").addEventListener("change",()=>{ if(g("engb-raw").checked) call("engineb.set",{comp_enable:false}).catch(()=>{}); });
+  })();
   async function loadSettings() {
     try {
       const id = await call("system.identify"); const fw = id.firmware || {};
