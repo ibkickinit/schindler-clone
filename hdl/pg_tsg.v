@@ -168,7 +168,12 @@ module pg_tsg #(
             vid_active <= act_q;
             vid_hsync  <= hs_q;
             vid_vsync  <= vs_q;
-            vid_data   <= act_q ? px : 24'd0;   // blank outside active
+            // The Schindler AXIS pipeline carries pixels as R-B-G ([23:16]=R, [15:8]=B,
+            // [7:0]=G), NOT standard RGB (see schindler_pipeline_rbg_byte_order). px above
+            // is built in readable standard {R,G,B}; swap G<->B here at the boundary so the
+            // colors come out right. Bench-confirmed: without this, bars read white/magenta/
+            // cyan/blue/yellow/red/green (a clean green<->blue swap).
+            vid_data   <= act_q ? {px[23:16], px[7:0], px[15:8]} : 24'd0;   // -> R,B,G; blank outside active
         end
     end
 endmodule
