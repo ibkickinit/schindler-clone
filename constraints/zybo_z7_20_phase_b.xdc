@@ -105,6 +105,13 @@ set_property -quiet -dict { PACKAGE_PIN U12 IOSTANDARD LVCMOS33 } [get_ports {co
 set_false_path -quiet -to [get_pins -hier -filter {NAME =~ */br_q1_reg[*]/D}]
 set_false_path -quiet -to [get_pins -hier -filter {NAME =~ */ce_q1_reg/D}]
 
+# TSG write-side injection CDC false-paths (axi_gpio_20[17] tsg_enable, FCLK_CLK0):
+#   tsg_srcsel_0  : sel_async -> 2-FF sync (sel_q1_reg) into the muxed write clock.
+#   tsg_switch_rst_0 : sel_async -> 2-FF sync (sel_meta) into FCLK_CLK0.
+# Quasi-static select; ASYNC_REG handles metastability, switch reset masks the swap.
+set_false_path -quiet -to [get_pins -hier -filter {NAME =~ *tsg_srcsel_0/inst/sel_q1_reg/D}]
+set_false_path -quiet -to [get_pins -hier -filter {NAME =~ *tsg_switch_rst_0/inst/sel_meta_reg/D}]
+
 # Color-correct GPIO-to-pclk_out CDC false-paths. ASYNC_REG handles
 # metastability; these inform the timing engine the inter-clock paths are
 # async and shouldn't be constrained. Without them Vivado tries to meet
@@ -249,3 +256,11 @@ set_false_path -quiet -to [get_pins -hier -filter {NAME =~ *pg_re_0*/inh_q1_reg[
 # Quasi-static (firmware writes on a 720<->1080 mode switch only).
 set_false_path -quiet -to [get_pins -hier -filter {NAME =~ *pg_re_0*/outw_q1_reg[*]/D}]
 set_false_path -quiet -to [get_pins -hier -filter {NAME =~ *pg_re_0*/outh_q1_reg[*]/D}]
+
+# TSG WRITE-CLOCK MUX clock constraints (CLOCK_DEDICATED_ROUTE on the BUFG->BUFGCTRL
+# cascade + the FCLK<->TSG async clock-group) are NOT here on purpose: they target nets
+# inside the OOC-synthesized dvi2rgb / clk_wiz_tsg IP, which are BLACK BOXES when this XDC
+# is read at opt_design start (get_nets returns empty -> silent no-op -> place dies on the
+# 30-120 cascade). They are applied instead by tcl/tsg_place_pre.tcl, a STEPS.PLACE_DESIGN
+# .TCL.PRE hook that runs post-opt once the IP is flattened (armed in build_phase_b.tcl
+# when TSG_BUILD). See that file for the full rationale.

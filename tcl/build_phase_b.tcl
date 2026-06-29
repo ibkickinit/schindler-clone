@@ -47,7 +47,10 @@ create_project $project_name $vivado_dir -part xc7z020clg400-1
 set board [lindex [get_board_parts -filter {NAME =~ "*zybo-z7-20*"}] 0]
 if {$board eq ""} { puts "ERROR: Zybo Z7-20 board file not found"; exit 1 }
 set_property board_part $board [current_project]
-set_property ip_repo_paths $digilent_lib_path [current_project]
+# ip_repo_paths includes the Digilent library AND the packaged tsg_clkmux IP (a glitch-
+# tolerant write-clock mux whose clk_o advertises a fixed FREQ_HZ so IPI clock-freq
+# propagation is well-defined — a bare module-ref clock output carries no FREQ_HZ).
+set_property ip_repo_paths [list $digilent_lib_path [file join $project_root hdl ip_tsg_clkmux]] [current_project]
 update_ip_catalog
 
 # Add custom HDL sources used as module references inside the BD.
@@ -97,6 +100,13 @@ add_files -norecurse [file join $project_root hdl scaler_coeffs_v.v]
 add_files -norecurse [file join $project_root hdl axi_sync_inputs.v]
 add_files -norecurse [file join $project_root hdl fp_mon_detector.v]   ;# sticky frame_ptr-decrease monitor
 add_files -norecurse [file join $project_root hdl vsync_cdc_pulse.v]   ;# iter6: s2mm_fsync pulse gen
+# TSG (internal test signal generator) write-side injection — pg_tsg + clock mux + source mux + switch reset
+add_files -norecurse [file join $project_root hdl pg_tsg.v]            ;# 1080p RGB+sync internal pattern generator
+# tsg_clkmux is NOT add_files'd here — it is a PACKAGED IP (schindler:tsg:tsg_clkmux:1.0
+# in hdl/ip_tsg_clkmux/, added to ip_repo_paths above) so its clk_o output advertises a
+# FREQ_HZ (a bare module-ref clock output does not, breaking IPI clock-freq propagation).
+add_files -norecurse [file join $project_root hdl tsg_srcsel.v]        ;# parallel-video source mux (HDMI vs TSG)
+add_files -norecurse [file join $project_root hdl tsg_switch_rst.v]    ;# write-path reset pulse on source switch
 # Coefficient hex files for $readmemh — Vivado adds them to source list so
 # they're visible from the OOC synth working directory.
 add_files -norecurse [file join $project_root hdl scaler_coeffs_h.hex]
@@ -197,6 +207,23 @@ puts "STAGE_OK: Zynq PS configured"
 if {[info exists ::env(OUTPUT_MODE)]} { set OUTPUT_MODE $::env(OUTPUT_MODE) }
 if {![info exists OUTPUT_MODE]} { set OUTPUT_MODE 720p }
 puts "BUILD: using OUTPUT_MODE=$OUTPUT_MODE"
+
+# =============================================================================
+# TSG (internal Test Signal Generator) — write-side injection
+# =============================================================================
+# Injects an internally-generated 1080p test pattern at the SOURCE so the whole
+# pipeline (write -> DDR -> both read engines -> both outputs) runs INPUT-
+# INDEPENDENT (nothing plugged into HDMI). A glitch-tolerant clock mux switches
+# the write-side pixel clock between dvi2rgb's recovered PixelClk (tsg_enable=0,
+# HDMI) and an internal ~74.25 MHz PLL (tsg_enable=1, TSG); a source mux swaps
+# the parallel-video bundle; a switch reset restarts the write path cleanly.
+# Control is axi_gpio_20 bits [17]=tsg_enable [19:18]=pattern (created in
+# dual_engine_b_bd.tcl), so TSG requires DUAL_ENGINE (axi_gpio_20). Default off
+# (tsg_enable=0) => byte-identical HDMI write path. Force off with TSG=0.
+set TSG_BUILD 0
+if {[info exists ::env(DUAL_ENGINE)] && $::env(DUAL_ENGINE) ne "0"} { set TSG_BUILD 1 }
+if {[info exists ::env(TSG)] && $::env(TSG) eq "0"} { set TSG_BUILD 0 }
+puts "BUILD: TSG_BUILD=$TSG_BUILD (internal test-signal-generator write-side injection)"
 if {$OUTPUT_MODE eq "1080p60" || $OUTPUT_MODE eq "1080p"} {
     # NOTE: "1080p" alias preserved for legacy callers; prefer 1080p60.
     set TX_PIXCLK_MHZ        148.500
@@ -310,10 +337,85 @@ set_property -dict [list CONFIG.C_HAS_ASYNC_CLK {0}] [get_bd_cells v_vid_in_axi4
 # advances its frame pointer → only slot 0 ever sees fresh data, stale data
 # rotates on the output. (2026-05-14 — caught after Phase B "worked" but the
 # image drifted visibly across slots.)
-connect_bd_net [get_bd_pins dvi2rgb_0/vid_pData]  [get_bd_pins v_vid_in_axi4s_0/vid_data]
-connect_bd_net [get_bd_pins dvi2rgb_0/vid_pVDE]   [get_bd_pins v_vid_in_axi4s_0/vid_active_video]
-connect_bd_net [get_bd_pins dvi2rgb_0/vid_pHSync] [get_bd_pins v_vid_in_axi4s_0/vid_hsync]
-connect_bd_net [get_bd_pins dvi2rgb_0/vid_pVSync] [get_bd_pins v_vid_in_axi4s_0/vid_vsync]
+if {!$TSG_BUILD} {
+    connect_bd_net [get_bd_pins dvi2rgb_0/vid_pData]  [get_bd_pins v_vid_in_axi4s_0/vid_data]
+    connect_bd_net [get_bd_pins dvi2rgb_0/vid_pVDE]   [get_bd_pins v_vid_in_axi4s_0/vid_active_video]
+    connect_bd_net [get_bd_pins dvi2rgb_0/vid_pHSync] [get_bd_pins v_vid_in_axi4s_0/vid_hsync]
+    connect_bd_net [get_bd_pins dvi2rgb_0/vid_pVSync] [get_bd_pins v_vid_in_axi4s_0/vid_vsync]
+} else {
+    # =========================================================================
+    # TSG write-side injection: internal PLL + pg_tsg + clock mux + source mux.
+    # The clock mux output (tsg_clkmux_0/clk_o) becomes the write-side clock
+    # "pclk_wr" (set in the clock-domain section below). The source mux output
+    # feeds v_vid_in_axi4s. GPIO-sourced sel/pattern + switch-reset routing are
+    # wired later (dual_engine_b_bd.tcl for sel/pattern; reset section for the
+    # switch reset) once axi_gpio_20 and rst_axi exist.
+    # =========================================================================
+    # Internal write clock = 74.25 MHz (1080p30 pixel rate) from FCLK_CLK0. MUST be a PLL —
+    # all 4 MMCMs are used (pixclk_out/dvi2rgb/rgb2dvi/engb); 3 PLLs free (clk_wiz_ref only).
+    # NOTE: this REAL rate (74.25) drives pg_tsg's 1080p30 cadence and propagates through the
+    # BUFGCTRL for netlist timing. It is independent of the tsg_clkmux IP's clk_o FREQ_HZ
+    # METADATA (fixed 100 MHz), which exists only so IPI's clock-freq propagation matches the
+    # scaler/axi_vdma 100 MHz defaults at validate. Metadata != real rate is fine: v_vid_in/
+    # VDMA are frequency-agnostic AXIS movers and timing uses the real propagated clocks.
+    create_bd_cell -type ip -vlnv xilinx.com:ip:clk_wiz clk_wiz_tsg
+    set_property -dict [list \
+        CONFIG.PRIMITIVE {PLL} \
+        CONFIG.PRIM_SOURCE {No_buffer} \
+        CONFIG.PRIM_IN_FREQ {100.000} \
+        CONFIG.CLKOUT1_REQUESTED_OUT_FREQ {74.250} \
+        CONFIG.USE_LOCKED {true} \
+        CONFIG.USE_RESET {true} \
+        CONFIG.RESET_TYPE {ACTIVE_HIGH} \
+        CONFIG.RESET_PORT {reset} \
+    ] [get_bd_cells clk_wiz_tsg]
+    # PRIM_SOURCE=No_buffer: clk_in1 arrives from FCLK_CLK0, which is ALREADY on a PS
+    # global clock buffer — so clk_wiz must NOT insert its own input buffer (that made a
+    # BUFG->BUFG cascade: DRC Place 30-120). No_buffer takes the pre-buffered clock
+    # directly and also selects BUF_IN (not ZHOLD) compensation, so the PLLE2_ADV no
+    # longer needs a clock-capable IO driver (DRC REQP-1712). (clk_wiz_ref is a PLL with
+    # default ZHOLD only because it's driven by the external sys_clk pin.)
+    connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0] [get_bd_pins clk_wiz_tsg/clk_in1]
+    connect_bd_net [get_bd_ports btn_rst]          [get_bd_pins clk_wiz_tsg/reset]
+
+    # pg_tsg pattern generator on the internal PLL clock (pattern wired later).
+    create_bd_cell -type module -reference pg_tsg pg_tsg_0
+    connect_bd_net [get_bd_pins clk_wiz_tsg/clk_out1] [get_bd_pins pg_tsg_0/clk]
+    connect_bd_net [get_bd_pins clk_wiz_tsg/locked]   [get_bd_pins pg_tsg_0/rstn]
+
+    # Glitch-tolerant write-clock mux (PACKAGED IP): clk0=dvi2rgb PixelClk, clk1=TSG PLL.
+    # clk_o advertises a fixed FREQ_HZ=100 MHz (matching clk_wiz_tsg) so IPI propagates ONE
+    # consistent frequency to every muxed-domain IP (v_vid_in_axi4s, axi_vdma S2MM) and the
+    # v_vid_in->scaler->S2MM AXIS FREQ_HZ checks pass. This is BD metadata only — real
+    # netlist timing comes from the generated-clocks propagated from clk0/clk1 through the
+    # BUFGCTRL (so the HDMI path is still timed at its real recovered rate, not 100 MHz).
+    create_bd_cell -type ip -vlnv schindler:tsg:tsg_clkmux:1.0 tsg_clkmux_0
+    connect_bd_net [get_bd_pins dvi2rgb_0/PixelClk]   [get_bd_pins tsg_clkmux_0/clk0]
+    connect_bd_net [get_bd_pins clk_wiz_tsg/clk_out1] [get_bd_pins tsg_clkmux_0/clk1]
+
+    # Source mux: dvi2rgb bundle vs pg_tsg bundle -> v_vid_in_axi4s. Clocked by
+    # the muxed write clock (so the sel sync lands in the write-clock domain).
+    create_bd_cell -type module -reference tsg_srcsel tsg_srcsel_0
+    connect_bd_net [get_bd_pins tsg_clkmux_0/clk_o]  [get_bd_pins tsg_srcsel_0/clk]
+    connect_bd_net [get_bd_pins dvi2rgb_0/vid_pData]  [get_bd_pins tsg_srcsel_0/hdmi_data]
+    connect_bd_net [get_bd_pins dvi2rgb_0/vid_pVDE]   [get_bd_pins tsg_srcsel_0/hdmi_active]
+    connect_bd_net [get_bd_pins dvi2rgb_0/vid_pHSync] [get_bd_pins tsg_srcsel_0/hdmi_hsync]
+    connect_bd_net [get_bd_pins dvi2rgb_0/vid_pVSync] [get_bd_pins tsg_srcsel_0/hdmi_vsync]
+    connect_bd_net [get_bd_pins pg_tsg_0/vid_data]    [get_bd_pins tsg_srcsel_0/tsg_data]
+    connect_bd_net [get_bd_pins pg_tsg_0/vid_active]  [get_bd_pins tsg_srcsel_0/tsg_active]
+    connect_bd_net [get_bd_pins pg_tsg_0/vid_hsync]   [get_bd_pins tsg_srcsel_0/tsg_hsync]
+    connect_bd_net [get_bd_pins pg_tsg_0/vid_vsync]   [get_bd_pins tsg_srcsel_0/tsg_vsync]
+    connect_bd_net [get_bd_pins tsg_srcsel_0/vid_data]   [get_bd_pins v_vid_in_axi4s_0/vid_data]
+    connect_bd_net [get_bd_pins tsg_srcsel_0/vid_active] [get_bd_pins v_vid_in_axi4s_0/vid_active_video]
+    connect_bd_net [get_bd_pins tsg_srcsel_0/vid_hsync]  [get_bd_pins v_vid_in_axi4s_0/vid_hsync]
+    connect_bd_net [get_bd_pins tsg_srcsel_0/vid_vsync]  [get_bd_pins v_vid_in_axi4s_0/vid_vsync]
+
+    # Switch-reset generator (FCLK_CLK0). axi_rstn + rstn_o fanout wired later
+    # (reset section) once rst_axi exists.
+    create_bd_cell -type module -reference tsg_switch_rst tsg_switch_rst_0
+    connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0] [get_bd_pins tsg_switch_rst_0/clk]
+    puts "BUILD: TSG cells created (clk_wiz_tsg PLL + pg_tsg_0 + tsg_clkmux_0 + tsg_srcsel_0 + tsg_switch_rst_0)"
+}
 
 # =============================================================================
 # AXI VDMA — frame buffer through DDR3
@@ -738,19 +840,27 @@ connect_bd_intf_net [get_bd_intf_pins rgb2dvi_0/TMDS] [get_bd_intf_ports hdmi_tx
 # from each other and from M_AXI clock — VDMA's frame buffer mediates).
 set pclk_in  [get_bd_pins dvi2rgb_0/PixelClk]
 set pclk_out [get_bd_pins clk_wiz_pixclk_out/clk_out1]
-# Input side
-connect_bd_net $pclk_in  [get_bd_pins v_vid_in_axi4s_0/aclk]
-connect_bd_net $pclk_in  [get_bd_pins axi_vdma_0/s_axis_s2mm_aclk]
-connect_bd_net $pclk_in  [get_bd_pins scaler_0/aclk]
+# Write-side clock = the source-recovered dvi2rgb PixelClk, OR (TSG build) the
+# clock-mux output that glitch-switches between dvi2rgb PixelClk and the internal
+# TSG PLL. For !TSG, pclk_wr == pclk_in -> byte-identical to the prior build.
+if {$TSG_BUILD} {
+    set pclk_wr [get_bd_pins tsg_clkmux_0/clk_o]
+} else {
+    set pclk_wr $pclk_in
+}
+# Input (write) side — everything that was on dvi2rgb PixelClk now follows pclk_wr.
+connect_bd_net $pclk_wr  [get_bd_pins v_vid_in_axi4s_0/aclk]
+connect_bd_net $pclk_wr  [get_bd_pins axi_vdma_0/s_axis_s2mm_aclk]
+connect_bd_net $pclk_wr  [get_bd_pins scaler_0/aclk]
 if {[info exists RASTER_TO_TILE] && $RASTER_TO_TILE} {        ;# RASTER_TO_TILE clk: same S2MM-write pclk_in domain
-    connect_bd_net $pclk_in [get_bd_pins raster_to_tile_0/aclk]
-    connect_bd_net $pclk_in [get_bd_pins scaler_tile_fifo/s_axis_aclk]   ;# scaler->tiler decoupling FIFO (pclk_in)
+    connect_bd_net $pclk_wr [get_bd_pins raster_to_tile_0/aclk]
+    connect_bd_net $pclk_wr [get_bd_pins scaler_tile_fifo/s_axis_aclk]   ;# scaler->tiler decoupling FIFO (write clock)
     # NOTE: the dedicated WRITE DataMover clock+reset wiring lives AFTER the reset
     # infrastructure (rst_axi/rst_mem) is created — search "Path B dedicated WRITE
     # DataMover clocking + reset". rst_axi/rst_mem don't exist yet at this point.
 }
 # iter5-bisect-iter4d3: AXIS FIFO removed — clock wire not needed
-connect_bd_net $pclk_in  [get_bd_pins v_tc_rx/clk]  ;# iter4e: detector on pclk_in
+connect_bd_net $pclk_wr  [get_bd_pins v_tc_rx/clk]  ;# iter4e: detector on the write clock (sees the selected source)
 # Output side
 connect_bd_net $pclk_out [get_bd_pins axi_vdma_0/m_axis_mm2s_aclk]
 connect_bd_net $pclk_out [get_bd_pins axis_to_vid_io_0/clk]
@@ -896,8 +1006,17 @@ if {$COLOR_PIPELINE ne "bypass"} {
 }
 # VTC_rx detector also on pclk_in — reset comes from axi (input-side IP)
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]        [get_bd_pins v_tc_rx/resetn]
-connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]        [get_bd_pins v_vid_in_axi4s_0/aresetn]
-connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]        [get_bd_pins scaler_0/aresetn]
+# Write-path reset: !TSG -> rst_axi directly (unchanged). TSG -> tsg_switch_rst
+# (= rst_axi AND a switch-triggered pulse) so v_vid_in_axi4s + scaler restart on
+# each source/clock switch. tsg_switch_rst/axi_rstn = rst_axi (strict superset).
+if {$TSG_BUILD} {
+    connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]    [get_bd_pins tsg_switch_rst_0/axi_rstn]
+    connect_bd_net [get_bd_pins tsg_switch_rst_0/rstn_o]       [get_bd_pins v_vid_in_axi4s_0/aresetn]
+    connect_bd_net [get_bd_pins tsg_switch_rst_0/rstn_o]       [get_bd_pins scaler_0/aresetn]
+} else {
+    connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]    [get_bd_pins v_vid_in_axi4s_0/aresetn]
+    connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]    [get_bd_pins scaler_0/aresetn]
+}
 if {[info exists RASTER_TO_TILE] && $RASTER_TO_TILE} {         ;# RASTER_TO_TILE rst: same domain as scaler_0/v_vid_in_axi4s_0
     connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]    [get_bd_pins raster_to_tile_0/aresetn]
     connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]    [get_bd_pins scaler_tile_fifo/s_axis_aresetn]
@@ -931,9 +1050,16 @@ connect_bd_net [get_bd_pins rst_mem/peripheral_aresetn] [get_bd_pins axi_sc_mem/
 # so the pulse_out drives s2mm_fsync directly without CDC.
 # =============================================================================
 create_bd_cell -type module -reference vsync_cdc_pulse s2mm_fsync_pulse_gen
-connect_bd_net $pclk_in                                      [get_bd_pins s2mm_fsync_pulse_gen/dst_clk]
+# Pulse-gen on the WRITE clock; vsync source follows the selected source (TSG -> the
+# muxed vsync out of tsg_srcsel, which is the active source's vsync in the write-clock
+# domain; !TSG -> dvi2rgb vid_pVSync directly, unchanged).
+connect_bd_net $pclk_wr                                     [get_bd_pins s2mm_fsync_pulse_gen/dst_clk]
 connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn]      [get_bd_pins s2mm_fsync_pulse_gen/dst_rstn]
-connect_bd_net [get_bd_pins dvi2rgb_0/vid_pVSync]            [get_bd_pins s2mm_fsync_pulse_gen/vsync_async]
+if {$TSG_BUILD} {
+    connect_bd_net [get_bd_pins tsg_srcsel_0/vid_vsync]     [get_bd_pins s2mm_fsync_pulse_gen/vsync_async]
+} else {
+    connect_bd_net [get_bd_pins dvi2rgb_0/vid_pVSync]        [get_bd_pins s2mm_fsync_pulse_gen/vsync_async]
+}
 
 # Path B fsync fix (2026-06-25): the s2mm_fsync SOURCE depends on the write-leg layout.
 #   * NON-Path-B (RASTER_TO_TILE=0): S2MM stores raster; its frame boundary == source vsync. Drive
@@ -1454,6 +1580,12 @@ if {[info exists ::env(DUAL_ENGINE)] && $::env(DUAL_ENGINE) ne "0"} {
 # =============================================================================
 # Address map + validate + wrapper
 # =============================================================================
+# TSG FREQ_HZ reconcile: the muxed write clock (BUFGCTRL output) carries no propagatable
+# FREQ_HZ, so IPI resolves the write-path IP clocks inconsistently (v_vid_in_axi4s ends up
+# at clk_wiz_tsg's 74.25 MHz, axi_vdma S2MM at 100 MHz). The module-ref scaler_0 AXIS
+# interfaces accept a FREQ_HZ override, so force each scaler endpoint to MATCH its IP
+# neighbor — making both write-path AXIS links self-consistent (no BD 41-237). Pure BD
+# metadata; netlist timing is driven by the real generated-clocks, not these values.
 assign_bd_address
 # DUAL-ENGINE: report Engine B address-map entries (control GPIO on GP1 + HP2 reader)
 # so the daemon knows where to write brightness/comp_enable.
@@ -1511,6 +1643,14 @@ if {[info exists ::env(WARP_ENGINE)] && $::env(WARP_ENGINE) ne "0"} {
     set_property STEPS.POST_ROUTE_PHYS_OPT_DESIGN.IS_ENABLED    true               [get_runs impl_1]
     set_property STEPS.POST_ROUTE_PHYS_OPT_DESIGN.ARGS.DIRECTIVE AggressiveExplore [get_runs impl_1]
     puts "BUILD: WARP timing-focused impl (ExtraTimingOpt place + Explore route + pre/post phys_opt)"
+}
+# TSG: the clock-mux CDR override + FCLK<->TSG async clock-group must be applied AFTER
+# opt_design flattens the OOC dvi2rgb/clk_wiz_tsg IP (their internal nets are black boxes
+# at opt-start XDC-read time -> a project-XDC constraint silently no-ops). A pre-place hook
+# runs post-opt with the nets resolved. Guarded inside the hook too (NO-OP if nets absent).
+if {$TSG_BUILD} {
+    set_property STEPS.PLACE_DESIGN.TCL.PRE [file normalize tcl/tsg_place_pre.tcl] [get_runs impl_1]
+    puts "BUILD: TSG place-pre hook armed (CDR + FCLK<->TSG clock-group on flattened OOC nets)"
 }
 launch_runs impl_1 -to_step write_bitstream -jobs 4
 wait_on_run impl_1

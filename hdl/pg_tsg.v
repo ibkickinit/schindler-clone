@@ -49,10 +49,39 @@ module pg_tsg #(
     wire hs  = (hc >= H_ACT + H_FP) && (hc < H_ACT + H_FP + H_SYNC);
     wire vs  = (vc >= V_ACT + V_FP) && (vc < V_ACT + V_FP + V_SYNC);
 
-    // 8 color bars, 100% (each H_ACT/8 wide)
-    wire [2:0] bar = hc[11:0] / (H_ACT/8);     // 0..7 across active width
-    reg  [23:0] bars;
-    always @(*) case(bar)
+    // -------------------------------------------------------------------------
+    // 2-stage pipeline, DIVIDE-FREE. The original used runtime division (hc*255/
+    // H_ACT, hc/(H_ACT/8)) combinationally into vid_data -- a constant divider is a
+    // long combinational cone that blew the 74.25 MHz (13.46 ns) budget (WNS -1.639
+    // on vramp -> vid_data). Replace with: bar index = count of threshold crossings,
+    // ramps = constant multiply + shift; register each (stage 1) so the only logic
+    // into the output regs (stage 2) is the small pattern mux. The 2-cycle latency
+    // is invisible (sync + data are pipelined together, raster stays self-consistent).
+    // Ramp constants are tuned for 1080p (H_ACT=1920, V_ACT=1080); a non-1080p
+    // instantiation would just get a differently-scaled diagnostic ramp.
+    // -------------------------------------------------------------------------
+    localparam integer BW = H_ACT/8;          // bar width (240 @ 1920)
+
+    reg        act_q, hs_q, vs_q;
+    reg [2:0]  bar_q;
+    reg [7:0]  hramp_q, vramp_q;
+    always @(posedge clk) begin
+        if(!rstn) begin
+            act_q<=1'b0; hs_q<=1'b0; vs_q<=1'b0; bar_q<=3'd0; hramp_q<=8'd0; vramp_q<=8'd0;
+        end else begin
+            act_q <= act; hs_q <= hs; vs_q <= vs;
+            // 8 color bars: index = number of bar-boundaries crossed (divide-free)
+            bar_q <= (hc>=BW) + (hc>=2*BW) + (hc>=3*BW) + (hc>=4*BW)
+                   + (hc>=5*BW) + (hc>=6*BW) + (hc>=7*BW);
+            // luma ramps ~hc*255/1920 and ~vc*255/1080 (divide-free; overflow during
+            // blanking is masked by act_q=0 downstream).
+            hramp_q <= (hc * 12'd68) >> 9;     // 0..254 across 1920
+            vramp_q <= (vc * 12'd60) >> 8;     // 0..252 across 1080
+        end
+    end
+
+    reg [23:0] bars;
+    always @(*) case(bar_q)
         3'd0: bars = 24'hFFFFFF;  // white
         3'd1: bars = 24'hFFFF00;  // yellow
         3'd2: bars = 24'h00FFFF;  // cyan
@@ -63,24 +92,21 @@ module pg_tsg #(
         default: bars = 24'h000000; // black
     endcase
 
-    wire [7:0] hramp = (hc * 8'd255) / H_ACT;  // 0..255 across width
-    wire [7:0] vramp = (vc * 8'd255) / V_ACT;
-
     reg [23:0] px;
     always @(*) case(pattern)
         2'd0: px = bars;
-        2'd1: px = {hramp, hramp, hramp};
-        2'd2: px = {vramp, vramp, vramp};
+        2'd1: px = {hramp_q, hramp_q, hramp_q};
+        2'd2: px = {vramp_q, vramp_q, vramp_q};
         default: px = 24'h808080;   // 50% gray
     endcase
 
     always @(posedge clk) begin
         if(!rstn) begin vid_data<=24'd0; vid_active<=1'b0; vid_hsync<=1'b0; vid_vsync<=1'b0; end
         else begin
-            vid_active <= act;
-            vid_hsync  <= hs;
-            vid_vsync  <= vs;
-            vid_data   <= act ? px : 24'd0;   // blank outside active
+            vid_active <= act_q;
+            vid_hsync  <= hs_q;
+            vid_vsync  <= vs_q;
+            vid_data   <= act_q ? px : 24'd0;   // blank outside active
         end
     end
 endmodule
