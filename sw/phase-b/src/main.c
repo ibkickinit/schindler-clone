@@ -1086,8 +1086,17 @@ static void cp_dispatch_jsonrpc(const char *json)
 #ifdef ENGB_GPIO_BASE
 static unsigned g_engb_bright = 0x0100;   /* Q8.8 luma gain, 1.0 */
 static unsigned g_engb_comp_en = 1;       /* 1 = composite encode, 0 = raw bypass */
+/* TSG write-side injection (axi_gpio_20 spare bits): [17]=tsg_enable (0=HDMI input,
+ * 1=internal pattern), [19:18]=pattern (0 bars/1 h-ramp/2 v-ramp/3 gray). Default
+ * tsg_enable=0 -> HDMI write path is byte-identical to the non-TSG build. */
+static unsigned g_tsg_enable  = 0;
+static unsigned g_tsg_pattern = 0;
 static void engb_write(void) {
-    Xil_Out32(ENGB_GPIO_BASE, ((g_engb_comp_en & 1u) << 16) | (g_engb_bright & 0xFFFFu));
+    Xil_Out32(ENGB_GPIO_BASE,
+              ((g_tsg_pattern & 7u) << 18) |
+              ((g_tsg_enable  & 1u) << 17) |
+              ((g_engb_comp_en & 1u) << 16) |
+              (g_engb_bright & 0xFFFFu));
 }
 #endif
 
@@ -2259,9 +2268,22 @@ static void uart_dispatch(const char *line)
             g_engb_comp_en = (v != 0);
             engb_write();
             xil_printf("ENGB comp_enable = %u (%s)\r\n", g_engb_comp_en, g_engb_comp_en ? "composite" : "raw");
+        } else if (sub == 't' && parse_int(&p, &v)) {
+            /* TSG source select: 0 = HDMI input, 1 = internal test pattern. */
+            g_tsg_enable = (v != 0);
+            engb_write();
+            xil_printf("TSG enable = %u (%s)\r\n", g_tsg_enable, g_tsg_enable ? "internal pattern" : "HDMI input");
+        } else if (sub == 'p' && parse_int(&p, &v)) {
+            /* TSG pattern: 0 bars100 / 1 h-ramp / 2 v-ramp / 3 gray /
+             *              4 bars75 / 5 crosshatch+border / 6 checker64 / 7 checker1. */
+            if (v < 0) v = 0; if (v > 7) v = 7;
+            g_tsg_pattern = (unsigned)v;
+            engb_write();
+            xil_printf("TSG pattern = %u\r\n", g_tsg_pattern);
         } else {
-            xil_printf("ENGB: brightness=Q8.8 0x%03x comp_enable=%u  (usage 'E b <pct>' / 'E c <0|1>')\r\n",
-                       g_engb_bright, g_engb_comp_en);
+            xil_printf("ENGB: brightness=Q8.8 0x%03x comp_enable=%u tsg_enable=%u tsg_pattern=%u\r\n"
+                       "      (usage 'E b <pct>' / 'E c <0|1>' / 'E t <0|1>' / 'E p <0..7>')\r\n",
+                       g_engb_bright, g_engb_comp_en, g_tsg_enable, g_tsg_pattern);
         }
 #else
         xil_printf("UART: 'E' Engine-B control not in this build (dual-engine only)\r\n");

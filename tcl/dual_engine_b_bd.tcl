@@ -192,4 +192,26 @@ set_property -dict [list CONFIG.DIN_WIDTH {32} CONFIG.DIN_FROM {16} CONFIG.DIN_T
 connect_bd_net [get_bd_pins axi_gpio_20/gpio_io_o] [get_bd_pins sl_compen/Din]
 connect_bd_net [get_bd_pins sl_compen/Dout]        [get_bd_pins comp_out_mux_0/comp_enable_async]
 
+# ---------------------------------------------------------------------------
+# TSG (internal test signal generator) control — reuse spare axi_gpio_20 bits:
+#   [17]    = tsg_enable (0 = HDMI input, 1 = internal pattern; default 0)
+#   [19:18] = pattern    (0 bars / 1 h-ramp / 2 v-ramp / 3 gray; default 0)
+# Fans tsg_enable out to the write-side clock mux + source mux + switch reset
+# (cells created in build_phase_b.tcl), and pattern to pg_tsg.
+# ---------------------------------------------------------------------------
+if {[info exists TSG_BUILD] && $TSG_BUILD} {
+    create_bd_cell -type ip -vlnv xilinx.com:ip:xlslice sl_tsg_en
+    set_property -dict [list CONFIG.DIN_WIDTH {32} CONFIG.DIN_FROM {17} CONFIG.DIN_TO {17} CONFIG.DOUT_WIDTH {1}] [get_bd_cells sl_tsg_en]
+    connect_bd_net [get_bd_pins axi_gpio_20/gpio_io_o] [get_bd_pins sl_tsg_en/Din]
+    connect_bd_net [get_bd_pins sl_tsg_en/Dout] [get_bd_pins tsg_clkmux_0/sel]
+    connect_bd_net [get_bd_pins sl_tsg_en/Dout] [get_bd_pins tsg_srcsel_0/sel_async]
+    connect_bd_net [get_bd_pins sl_tsg_en/Dout] [get_bd_pins tsg_switch_rst_0/sel_async]
+
+    create_bd_cell -type ip -vlnv xilinx.com:ip:xlslice sl_tsg_pat
+    set_property -dict [list CONFIG.DIN_WIDTH {32} CONFIG.DIN_FROM {20} CONFIG.DIN_TO {18} CONFIG.DOUT_WIDTH {3}] [get_bd_cells sl_tsg_pat]
+    connect_bd_net [get_bd_pins axi_gpio_20/gpio_io_o] [get_bd_pins sl_tsg_pat/Din]
+    connect_bd_net [get_bd_pins sl_tsg_pat/Dout] [get_bd_pins pg_tsg_0/pattern]
+    puts "DUAL-ENGINE-B: TSG control wired — axi_gpio_20\[17\]=tsg_enable, \[19:18\]=pattern"
+}
+
 puts "DUAL-ENGINE-B: integration block complete (pg_re_b identity 1:1 on HP2, comp[7:0] -> Pmod JC)"

@@ -125,6 +125,22 @@
         <button data-range="full">Full (0–255)</button>
         <button data-range="limited">Limited (16–235)</button>
       </div>
+      <!-- Source select: HDMI input vs internal Test Signal Generator (input-independent) -->
+      <div style="margin-top:8px;display:flex;gap:14px;align-items:center;flex-wrap:wrap">
+        <label><input type="checkbox" id="src-tsg"> Internal test pattern <span style="opacity:.5;font-size:.85em">(no HDMI needed)</span></label>
+        <label style="opacity:.85">Pattern
+          <select id="src-tsg-pattern">
+            <option value="0">Color bars (100%)</option>
+            <option value="1">H ramp</option>
+            <option value="2">V ramp</option>
+            <option value="3">50% gray</option>
+            <option value="4">SMPTE bars (75%)</option>
+            <option value="5">Crosshatch + border</option>
+            <option value="6">Checkerboard (64px)</option>
+            <option value="7">Checkerboard (1px)</option>
+          </select>
+        </label>
+      </div>
     </div>
 
     <!-- ENGINE 1 → OUTPUT A (HDMI): read engine + its color proc-amp -->
@@ -1058,6 +1074,14 @@
     bn.addEventListener("change",()=>sendBright(bn.value,true));
     g("engb-comp").addEventListener("change",()=>{ if(g("engb-comp").checked) call("engineb.set",{comp_enable:true}).catch(()=>{}); });
     g("engb-raw").addEventListener("change",()=>{ if(g("engb-raw").checked) call("engineb.set",{comp_enable:false}).catch(()=>{}); });
+  })();
+  // ---- Source select: HDMI input vs internal Test Signal Generator ----
+  (function(){
+    const g=id=>document.getElementById(id);
+    const en=g("src-tsg"), pat=g("src-tsg-pattern");
+    if(!en) return;
+    en.addEventListener("change",()=>call("source.set",{tsg_enable:en.checked}).catch(()=>{}));
+    pat.addEventListener("change",()=>call("source.set",{pattern:+pat.value}).catch(()=>{}));
   })();
   async function loadSettings() {
     try {

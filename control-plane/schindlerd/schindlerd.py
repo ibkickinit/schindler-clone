@@ -550,6 +550,7 @@ class Dispatcher:
             "pincushion.set":       self._m_pincushion_set,   # radial warp (now COEXISTS with corner-pin)
             "lead.autotune":        self._m_lead_autotune,    # force prefetch-lead sweep ('U') / toggle on-break
             "engineb.set":          self._m_engineb_set,      # dual-engine Engine B composite output control ('E')
+            "source.set":           self._m_source_set,       # write-side source select: internal TSG vs HDMI ('E t'/'E p')
             "matte.set":            self._m_matte_set,        # runtime matte fill colour
             "scale.set":            self._m_scale_set,        # CANON scale: shrink=write-side, enlarge=read-side warp zoom (Z)
             "output.set":           self._m_output_set,       # live resolution / framerate (74.25 family)
@@ -764,6 +765,24 @@ class Dispatcher:
             self.uart.send_raw(f"E c {1 if self._engb_comp else 0}")
         out = {"brightness": self._engb_bright, "comp_enable": self._engb_comp}
         self.bus.publish({"jsonrpc": "2.0", "method": "engineb.changed", "params": out})
+        return out
+
+    async def _m_source_set(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Write-side source select (internal Test Signal Generator vs HDMI input), firmware 'E t'/'E p'.
+        {tsg_enable: bool} -> 'E t <0|1>' (True = internal 1080p pattern, input-independent; False = HDMI).
+        {pattern: 0..7} -> 'E p <0..7>' (0 bars100 / 1 h-ramp / 2 v-ramp / 3 gray /
+        4 bars75 / 5 crosshatch+border / 6 checker64 / 7 checker1). Either or both."""
+        if not hasattr(self, "_tsg_enable"):  self._tsg_enable = False
+        if not hasattr(self, "_tsg_pattern"): self._tsg_pattern = 0
+        if "tsg_enable" in params:
+            self._tsg_enable = bool(params["tsg_enable"])
+            self.uart.send_raw(f"E t {1 if self._tsg_enable else 0}")
+        if "pattern" in params:
+            pv = int(params["pattern"])
+            self._tsg_pattern = 0 if pv < 0 else 7 if pv > 7 else pv
+            self.uart.send_raw(f"E p {self._tsg_pattern}")
+        out = {"tsg_enable": self._tsg_enable, "pattern": self._tsg_pattern}
+        self.bus.publish({"jsonrpc": "2.0", "method": "source.changed", "params": out})
         return out
 
     def _on_uart_text(self, text: str) -> None:
