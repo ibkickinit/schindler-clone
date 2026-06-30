@@ -43,30 +43,39 @@ module pg_tsg_tb;
     ck("bar-red"    ,600,1260,24'hff0000,4'd0);
     ck("bar-blue"   ,600,1500,24'h00ff00,4'd0);
     ck("bar-black"  ,600,1700,24'h000000,4'd0);
-    // --- pattern 1: H ramp must be monotonic non-decreasing (catches the multiply-truncation bug) ---
-    pattern=4'd1; cap(600, 200,r0); cap(600, 900,r1); cap(600,1600,r2);
+    // === REORDERED LAYOUT (2026-06-30): 0 bars 1 SMPTE 2 rgbbw 3 hramp 4 vramp 5 stair 6 mramp
+    //     7 gray 8 white 9 crosshatch 10 chk64 11 chk1 12 vjcard 13 mref 14 multiburst 15 patho ===
+    // --- slot 1: SMPTE (top 75% gray bar / pluge white patch) ---
+    ck("smpte-topgray",400,  60,24'hbfbfbf,4'd1);
+    ck("smpte-pluge-white",900,420,24'hffffff,4'd1);
+    // --- slot 2: RGB+B&W split (top R/G/B in R-B-G, mid black|white) ---
+    ck("rgbbw-R",200, 200,24'hff0000,4'd2);
+    ck("rgbbw-G",200, 700,24'h0000ff,4'd2);   // standard green -> R-B-G 0000ff
+    ck("rgbbw-B",200,1400,24'h00ff00,4'd2);
+    ck("rgbbw-mid-blk",650, 200,24'h000000,4'd2);
+    ck("rgbbw-mid-wht",650,1400,24'hffffff,4'd2);
+    // --- slot 3: H ramp monotonic (catches the multiply-truncation bug) ---
+    pattern=4'd3; cap(600, 200,r0); cap(600, 900,r1); cap(600,1600,r2);
     if(!(r0[7:0] < r1[7:0] && r1[7:0] < r2[7:0])) begin errors=errors+1;
       $display("  FAIL h-ramp not monotonic: %h %h %h",r0,r1,r2); end
-    // --- pattern 3: 50% gray ---
-    ck("gray",600,960,24'h808080,4'd3);
-    // --- pattern 4: SMPTE sections (top gray bar / pluge white patch) ---
-    ck("smpte-topgray",400,  60,24'hbfbfbf,4'd4);     // 75% gray (swap-invariant)
-    ck("smpte-pluge-white",900,420,24'hffffff,4'd4);  // 100% white patch in pluge row
-    // --- pattern 7: 1px checker alternates (cols differ by 1) ---
-    pattern=4'd7; cap(600,800,r0); cap(600,801,r1);
-    if(r0===r1) begin errors=errors+1; $display("  FAIL checker1 not alternating: %h %h",r0,r1); end
-    // --- patterns 10-13: full-field flats in R-B-G order (red ff0000 / green 0000ff / blue 00ff00 / white) ---
-    ck("flat-red"  ,600,960,24'hff0000,4'd10);
-    ck("flat-green",600,960,24'h0000ff,4'd11);   // standard green -> R-B-G encodes as 00,00,ff
-    ck("flat-blue" ,600,960,24'h00ff00,4'd12);
-    ck("flat-white",600,960,24'hffffff,4'd13);
-    // --- pattern 8: staircase monotonic non-decreasing left->right ---
-    pattern=4'd8; cap(600,100,r0); cap(600,960,r1); cap(600,1800,r2);
+    // --- slot 5: staircase monotonic ---
+    pattern=4'd5; cap(600,100,r0); cap(600,960,r1); cap(600,1800,r2);
     if(!(r0[7:0] <= r1[7:0] && r1[7:0] <= r2[7:0] && r0[7:0] < r2[7:0])) begin errors=errors+1;
       $display("  FAIL staircase not monotonic: %h %h %h",r0,r1,r2); end
-    // --- pattern 14: window white in centre, black at edge ---
-    ck("window-center",540,960,24'hffffff,4'd14);
-    ck("window-edge"  ,600, 60,24'h000000,4'd14);
+    // --- slot 6: mirror-ramp top-L dark, top-R bright ---
+    pattern=4'd6; cap(100,50,r0); cap(100,1850,r1);
+    if(!(r0[7:0] < r1[7:0])) begin errors=errors+1; $display("  FAIL mirror-ramp top not L<R: %h %h",r0,r1); end
+    // --- slot 7: 50% gray ; slot 8: white ---
+    ck("gray",600,960,24'h808080,4'd7);
+    ck("white",540,960,24'hffffff,4'd8);
+    // --- slot 11: 1px checker alternates ---
+    pattern=4'd11; cap(600,800,r0); cap(600,801,r1);
+    if(r0===r1) begin errors=errors+1; $display("  FAIL checker1 not alternating: %h %h",r0,r1); end
+    // --- slot 12: VJ card crosshair white at centre ---
+    ck("vj-crosshair",540,960,24'hffffff,4'd12);
+    // --- slot 15: pathological top(eq)=666666, bottom(pll)=444444 ---
+    ck("patho-eq",200,960,24'h666666,4'd15);
+    ck("patho-pll",900,960,24'h444444,4'd15);
     // --- text banner: a glyph pixel is white, a banner-bg pixel is black (banner vc 28..92) ---
     //     row 40 col 716 lands on the 'S' glyph; far-banner-bg check at a known-blank spot.
     pattern=4'd0; cap(40, 716, r0);   // expect white-ish glyph OR black bg; just assert it's overlaid (not bars)

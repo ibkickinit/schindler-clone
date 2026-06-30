@@ -776,9 +776,9 @@ class Dispatcher:
     async def _m_source_set(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """Write-side source select (internal Test Signal Generator vs HDMI input), firmware 'E t'/'E p'.
         {tsg_enable: bool} -> 'E t <0|1>' (True = internal 1080p pattern, input-independent; False = HDMI).
-        {pattern: 0..15} -> 'E p <0..15>' (0 bars100 1 h-ramp 2 v-ramp 3 gray 4 SMPTE 5 crosshatch
-        6 checker64 7 checker1 8 staircase 9 multiburst 10 red 11 green 12 blue 13 white 14 window
-        15 PLUGE). Either or both."""
+        {pattern: 0..15} -> 'E p <0..15>' (0 bars100 1 SMPTE 2 rgb-bw-split 3 h-ramp 4 v-ramp
+        5 staircase 6 mirror-ramp 7 gray50 8 white 9 crosshatch 10 checker64 11 checker1 12 vj-card
+        13 multi-ref 14 multiburst 15 pathological). Either or both."""
         if not hasattr(self, "_tsg_enable"):  self._tsg_enable = False
         if not hasattr(self, "_tsg_pattern"): self._tsg_pattern = 0
         if "tsg_enable" in params:

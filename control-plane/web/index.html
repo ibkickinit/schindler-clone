@@ -133,22 +133,30 @@
         <label><input type="checkbox" id="src-tsg"> Internal test pattern <span style="opacity:.5;font-size:.85em">(no HDMI needed)</span></label>
         <label style="opacity:.85">Pattern
           <select id="src-tsg-pattern">
-            <option value="0">Color bars (100%)</option>
-            <option value="1">H ramp</option>
-            <option value="2">V ramp</option>
-            <option value="3">50% gray</option>
-            <option value="4">SMPTE bars</option>
-            <option value="5">Crosshatch + border</option>
-            <option value="6">Checkerboard (64px)</option>
-            <option value="7">Checkerboard (1px)</option>
-            <option value="8">Grayscale staircase</option>
-            <option value="9">Multiburst</option>
-            <option value="10">Red (100%)</option>
-            <option value="11">Green (100%)</option>
-            <option value="12">Blue (100%)</option>
-            <option value="13">White (100%)</option>
-            <option value="14">Window (center box)</option>
-            <option value="15">PLUGE</option>
+            <optgroup label="Bars & color">
+              <option value="0">Color bars (100%)</option>
+              <option value="1">SMPTE bars</option>
+              <option value="2">RGB + B&amp;W split</option>
+            </optgroup>
+            <optgroup label="Ramps & grayscale">
+              <option value="3">H ramp</option>
+              <option value="4">V ramp</option>
+              <option value="5">Grayscale staircase</option>
+              <option value="6">Mirror ramp + 11-step</option>
+              <option value="7">50% gray</option>
+              <option value="8">White (100%)</option>
+            </optgroup>
+            <optgroup label="Geometry & alignment">
+              <option value="9">Crosshatch + border</option>
+              <option value="10">Checkerboard (64px)</option>
+              <option value="11">Checkerboard (1px)</option>
+              <option value="12">VJ checker card</option>
+              <option value="13">Multi reference card</option>
+            </optgroup>
+            <optgroup label="Stress">
+              <option value="14">Multiburst</option>
+              <option value="15">Pathological (SDI)</option>
+            </optgroup>
           </select>
         </label>
       </div>

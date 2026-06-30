@@ -28,9 +28,9 @@ module pg_tsg #(
     parameter integer V_FP  = 4,    parameter integer V_SYNC = 5
 ) (
     input  wire        clk, rstn,
-    input  wire [3:0]  pattern,            // 0 bars100 1 h-ramp 2 v-ramp 3 gray 4 SMPTE 5 crosshatch 6 checker64
-                                           // 7 checker1 8 staircase 9 multiburst 10 red 11 green 12 blue 13 white
-                                           // 14 window 15 PLUGE  (async GPIO; quasi-static)
+    input  wire [3:0]  pattern,            // 0 bars100 1 SMPTE 2 rgb-bw-split 3 h-ramp 4 v-ramp 5 staircase
+                                           // 6 mirror-ramp 7 gray50 8 white 9 crosshatch 10 checker64 11 checker1
+                                           // 12 vj-card 13 multi-ref 14 multiburst 15 pathological (async; quasi-static)
     output reg  [23:0] vid_data,           // {R[23:16], G[15:8], B[7:0]}
     output reg         vid_active,
     output reg         vid_hsync,
@@ -360,13 +360,35 @@ module pg_tsg #(
     reg [2:0]  hbot_q;                         // SMPTE pluge-row horizontal segment index
     reg [7:0]  stair_q;                        // grayscale staircase luma (16 steps across width)
     reg        mburst_q;                        // multiburst on/off pixel (spatial-freq sweep)
-    reg        win_q;                           // centered window box (white-on-black) membership
-    reg [2:0]  pbar_q;                          // PLUGE-screen segment index
+    // ---- testpattern.app cards (ported from the JS generators; simplified procedural) ----
+    reg [1:0]  rb_sec_q;                        // RGB+B&W split: 0 top(RGB) / 1 mid(blk|wht) / 2 bottom ramp
+    reg [1:0]  rb_col_q;                        // RGB+B&W top column: 0 R / 1 G / 2 B
+    reg        rb_midw_q;                       // RGB+B&W mid: right (white) half
+    reg [3:0]  mr_step_q;                       // mirror-ramp 11-step wedge index (0..10)
+    reg        mr_band_q, mr_top_q, mr_hair_q;  // in wedge band / above midline / hairline
+    reg [7:0]  mr_inv_q;                        // 255-hramp (the mirrored ramp)
+    reg        vj_par_q, vj_cross_q, vj_ring_q; // VJ: checker parity / crosshair / circle ring
+    reg        vj_lstrip_q, vj_rstrip_q;        // VJ: in left(rainbow) / right(bw) edge strip
+    reg [2:0]  vj_hue_q;                        // VJ rainbow hue index (0..7)
+    reg [7:0]  vj_rval_q;                       // VJ right-strip bw value
+    reg [2:0]  mref_band_q;                     // multi-ref: 0 none/1 hue/2 R/3 G/4 B/5 shadow/6 wedge
+    reg [3:0]  mref_seg_q;                      // multi-ref: segment index within a band (0..11)
+    reg [7:0]  mref_grad_q;                     // multi-ref: gradient value across the content column
+    reg        patho_top_q, patho_split_q;      // SDI pathological: top(EQ) half / centre split line
+    // circle radial term for the VJ card (DSP products; the ring boolean is registered below).
+    wire signed [12:0] vj_dx = $signed({1'b0,hc}) - 13'sd960;
+    wire signed [12:0] vj_dy = $signed({1'b0,vc}) - 13'sd540;
+    wire signed [26:0] vj_r2 = vj_dx*vj_dx + vj_dy*vj_dy;
+    wire ringband = (vj_r2 > 27'sd71300) && (vj_r2 < 27'sd74500);   // |r2 - 72900| < ~1600 -> ~1px ring
     always @(posedge clk) begin
         if(!rstn) begin
             act_q<=1'b0; hs_q<=1'b0; vs_q<=1'b0; bar_q<=3'd0; hramp_q<=8'd0; vramp_q<=8'd0;
             grid_q<=1'b0; chk64_q<=1'b0; chk1_q<=1'b0; bar7_q<=3'd0; vsec_q<=2'd0; hbot_q<=3'd0;
-            stair_q<=8'd0; mburst_q<=1'b0; win_q<=1'b0; pbar_q<=3'd0;
+            stair_q<=8'd0; mburst_q<=1'b0;
+            rb_sec_q<=2'd0; rb_col_q<=2'd0; rb_midw_q<=1'b0; mr_step_q<=4'd0; mr_band_q<=1'b0;
+            mr_top_q<=1'b0; mr_hair_q<=1'b0; mr_inv_q<=8'd0; vj_par_q<=1'b0; vj_cross_q<=1'b0;
+            vj_ring_q<=1'b0; vj_lstrip_q<=1'b0; vj_rstrip_q<=1'b0; vj_hue_q<=3'd0; vj_rval_q<=8'd0;
+            mref_band_q<=3'd0; mref_seg_q<=4'd0; mref_grad_q<=8'd0; patho_top_q<=1'b0; patho_split_q<=1'b0;
         end else begin
             act_q <= act; hs_q <= hs; vs_q <= vs;
             // 8 color bars: index = number of bar-boundaries crossed (divide-free)
@@ -403,10 +425,53 @@ module pg_tsg #(
                         (hc < 12'd1280) ? hc[0] :        // 2px
                         (hc < 12'd1600) ? (hc[0]&vc[0]) : // 2px checker-ish
                                           1'b1;          // flat white reference
-            // centered window: 1/2-size white box on black (uniformity / ABL / overscan check).
-            win_q   <= (hc >= H_ACT/4) && (hc < (H_ACT*3)/4) && (vc >= V_ACT/4) && (vc < (V_ACT*3)/4);
-            // full-screen PLUGE: vertical bands black / +4% / black / +8% / 100% white for black-level set.
-            pbar_q  <= (hc>=12'd384)+(hc>=12'd768)+(hc>=12'd1152)+(hc>=12'd1536);
+            // ===== RGB + B&W split (testpattern.app rgb-bw-split) =====
+            // top 50% = 3 RGB columns; mid 25% = black|white; bottom 25% = B->W ramp (reuse hramp).
+            rb_sec_q  <= (vc>=12'd810) ? 2'd2 : (vc>=12'd540) ? 2'd1 : 2'd0;
+            rb_col_q  <= (hc>=12'd1280) ? 2'd2 : (hc>=12'd640) ? 2'd1 : 2'd0;
+            rb_midw_q <= (hc>=12'd960);
+
+            // ===== Mirror ramp + 11-step (testpattern.app mirror-ramp) =====
+            // base ramp top half 0->255 (hramp), bottom half 255->0 (mr_inv). middle third = 11-step
+            // wedge, top values 0..255, bottom mirrored. boundaries k*1920/11 (k=1..10).
+            mr_inv_q  <= 8'd254 - ((hc * 19'd68) >> 9);
+            mr_top_q  <= (vc < 12'd540);
+            mr_band_q <= (vc >= 12'd360) && (vc < 12'd720);
+            mr_hair_q <= (vc==12'd540) || (vc==12'd360) || (vc==12'd719);
+            mr_step_q <= (hc>=12'd175)+(hc>=12'd349)+(hc>=12'd524)+(hc>=12'd698)+(hc>=12'd873)
+                       + (hc>=12'd1047)+(hc>=12'd1222)+(hc>=12'd1396)+(hc>=12'd1571)+(hc>=12'd1745);
+
+            // ===== VJ checker card (simplified: checker + crosshair + circle + edge strips) =====
+            // 32x18 checker = 60px cells (1920/32=1080/18=60). parity via /60 multiply (1/60 ~ 17476/2^20).
+            // (literal MUST be >=27-bit: hc*17476 ~38M needs 26 bits, else a*b=max(L) wraps -> ramp bug.)
+            vj_par_q   <= ((hc*27'd17476)>>20) ^ ((vc*27'd17476)>>20);   // LSB of (hc/60) xor (vc/60)
+            vj_cross_q <= (hc>=12'd959 && hc<=12'd960) || (vc>=12'd539 && vc<=12'd540);
+            // left rainbow strip [29..106]x[216..864]; right B->W strip [1814..1891] same y.
+            vj_lstrip_q <= (hc>=12'd29)   && (hc<12'd106)  && (vc>=12'd216) && (vc<12'd864);
+            vj_rstrip_q <= (hc>=12'd1814) && (hc<12'd1891) && (vc>=12'd216) && (vc<12'd864);
+            vj_hue_q    <= (((vc-12'd216) * 18'd202) >> 14);          // (vc-216)/81 -> 0..7 hue band
+            vj_rval_q   <= (((vc-12'd216) * 19'd403) >> 10);          // (vc-216)*255/648 -> 0..254
+            // circle ring r=270 about (960,540): |dx^2+dy^2 - 72900| < ~1600 -> ~1px ring (drop AA).
+            vj_ring_q   <= ringband;
+
+            // ===== Multi reference card (simplified: hue band + RGB grad strips + 2 staircases) =====
+            // content column hc in [288,1632) (1344 wide). grad value across it = (hc-288)*255/1344.
+            mref_grad_q <= (hc>=12'd288 && hc<12'd1632) ? (((hc-12'd288) * 19'd195) >> 10) : 8'd0;  // *255/1344 -> 0..255
+            mref_seg_q  <= (hc>=12'd288 && hc<12'd1632) ? (((hc-12'd288) * 16'd18) >> 11) : 4'd0;   // /112 -> 0..11
+            mref_band_q <= (hc<12'd288 || hc>=12'd1632) ? 3'd0 :
+                           (vc>=12'd300 && vc<12'd420) ? 3'd1 :   // 12-hue band
+                           (vc>=12'd430 && vc<12'd490) ? 3'd2 :   // R gradient
+                           (vc>=12'd500 && vc<12'd560) ? 3'd3 :   // G gradient
+                           (vc>=12'd570 && vc<12'd630) ? 3'd4 :   // B gradient
+                           (vc>=12'd650 && vc<12'd730) ? 3'd5 :   // 1-12% shadow staircase
+                           (vc>=12'd740 && vc<12'd820) ? 3'd6 : 3'd0; // 2-100% gray wedge
+
+            // ===== SDI pathological (eq + pll) =====
+            // SMPTE worst-case: top half = equalizer field, bottom half = PLL field. The stress is in the
+            // post-scramble bitstream (relevant if fed to an SDI encoder); rendered as the two documented
+            // luma fields + a 1px split. EQ ~Y 0x66, PLL ~Y 0x44 (8-bit equivalents).
+            patho_top_q   <= (vc < 12'd540);
+            patho_split_q <= (vc==12'd540);
         end
     end
 
@@ -459,34 +524,93 @@ module pg_tsg #(
         endcase
     end
 
-    // full-screen PLUGE bands: black / +4% / black / +8% / 100% white
-    reg [23:0] pluge;
-    always @(*) case(pbar_q)
-        3'd0: pluge = 24'h000000;  // reference black
-        3'd1: pluge = 24'h0A0A0A;  // ~+4% (below-black-ish; visible only if level set right)
-        3'd2: pluge = 24'h000000;  // black
-        3'd3: pluge = 24'h141414;  // ~+8%
-        default: pluge = 24'hFFFFFF; // 100% white
+    // ===== RGB + B&W split (testpattern.app rgb-bw-split) =====
+    reg [23:0] rgbbw;
+    always @(*) case(rb_sec_q)
+        2'd0: rgbbw = (rb_col_q==2'd0)?24'hFF0000:(rb_col_q==2'd1)?24'h00FF00:24'h0000FF; // R/G/B 100%
+        2'd1: rgbbw = rb_midw_q ? 24'hFFFFFF : 24'h000000;     // black | white
+        default: rgbbw = {hramp_q,hramp_q,hramp_q};            // B->W ramp
     endcase
+
+    // ===== Mirror ramp + 11-step =====
+    reg [7:0]  mr_wedge; reg [23:0] mramp;
+    always @(*) case(mr_step_q)               // 0..10 -> 0..255 (k*25.5 rounded)
+        4'd0:mr_wedge=8'd0;  4'd1:mr_wedge=8'd26; 4'd2:mr_wedge=8'd51; 4'd3:mr_wedge=8'd77;
+        4'd4:mr_wedge=8'd102;4'd5:mr_wedge=8'd128;4'd6:mr_wedge=8'd153;4'd7:mr_wedge=8'd179;
+        4'd8:mr_wedge=8'd204;4'd9:mr_wedge=8'd230;default:mr_wedge=8'd255;
+    endcase
+    always @(*) begin
+        if(mr_hair_q) mramp = 24'hFFFFFF;                              // hairlines
+        else if(mr_band_q) mramp = mr_top_q ? {mr_wedge,mr_wedge,mr_wedge}
+                                            : {(8'd255-mr_wedge),(8'd255-mr_wedge),(8'd255-mr_wedge)};
+        else mramp = mr_top_q ? {hramp_q,hramp_q,hramp_q} : {mr_inv_q,mr_inv_q,mr_inv_q};
+    end
+
+    // ===== VJ checker card (simplified) =====
+    reg [23:0] vj_rainbow, vjcard;
+    always @(*) case(vj_hue_q)                // 8-hue vertical strip
+        3'd0:vj_rainbow=24'hFF0000;3'd1:vj_rainbow=24'hFF8000;3'd2:vj_rainbow=24'hFFFF00;3'd3:vj_rainbow=24'h00FF00;
+        3'd4:vj_rainbow=24'h00FFFF;3'd5:vj_rainbow=24'h0000FF;3'd6:vj_rainbow=24'h8000FF;default:vj_rainbow=24'hFF00FF;
+    endcase
+    always @(*) begin
+        if(vj_lstrip_q)      vjcard = vj_rainbow;
+        else if(vj_rstrip_q) vjcard = {vj_rval_q,vj_rval_q,vj_rval_q};
+        else if(vj_cross_q || vj_ring_q) vjcard = 24'hFFFFFF;          // crosshair + circle ring
+        else vjcard = vj_par_q ? 24'h7A7A7A : 24'h5A5A5A;             // 60px checker (#7a/#5a)
+    end
+
+    // ===== Multi reference card (simplified: hue band + R/G/B black->chan->white + 2 staircases) =====
+    reg [23:0] mref_hue, mref; reg [7:0] mref_shadow, mref_wedge;
+    wire [7:0] mr_lo  = (mref_grad_q < 8'd128) ? (mref_grad_q<<1) : 8'd255;       // black->channel
+    wire [7:0] mr_oth = (mref_grad_q < 8'd128) ? 8'd0 : ((mref_grad_q-8'd128)<<1);// ->white
+    always @(*) case(mref_seg_q)              // 12 pure hues
+        4'd0:mref_hue=24'hFF0000;4'd1:mref_hue=24'hFF8000;4'd2:mref_hue=24'hFFFF00;4'd3:mref_hue=24'h80FF00;
+        4'd4:mref_hue=24'h00FF00;4'd5:mref_hue=24'h00FF80;4'd6:mref_hue=24'h00FFFF;4'd7:mref_hue=24'h0080FF;
+        4'd8:mref_hue=24'h0000FF;4'd9:mref_hue=24'h8000FF;4'd10:mref_hue=24'hFF00FF;default:mref_hue=24'hFF0080;
+    endcase
+    always @(*) begin
+        mref_shadow = (mref_seg_q+4'd1)*8'd3;                         // ~1..12% shadow staircase
+        case(mref_seg_q)                                              // 2..100% gray wedge
+            4'd0:mref_wedge=8'd5;  4'd1:mref_wedge=8'd13; 4'd2:mref_wedge=8'd26; 4'd3:mref_wedge=8'd51;
+            4'd4:mref_wedge=8'd77; 4'd5:mref_wedge=8'd102;4'd6:mref_wedge=8'd128;4'd7:mref_wedge=8'd153;
+            4'd8:mref_wedge=8'd179;4'd9:mref_wedge=8'd204;4'd10:mref_wedge=8'd230;default:mref_wedge=8'd255;
+        endcase
+    end
+    always @(*) case(mref_band_q)
+        3'd1: mref = mref_hue;
+        3'd2: mref = {mr_lo, mr_oth, mr_oth};                          // R: black->red->white
+        3'd3: mref = {mr_oth, mr_lo, mr_oth};                          // G
+        3'd4: mref = {mr_oth, mr_oth, mr_lo};                          // B
+        3'd5: mref = {mref_shadow,mref_shadow,mref_shadow};
+        3'd6: mref = {mref_wedge,mref_wedge,mref_wedge};
+        default: mref = 24'h000000;
+    endcase
+
+    // ===== SDI pathological (eq top / pll bottom) =====
+    wire [23:0] patho = patho_split_q ? 24'hFFFFFF : (patho_top_q ? 24'h666666 : 24'h444444);
 
     reg [23:0] px;
     always @(*) case(pat_q2)
-        4'd0:  px = bars;                              // 100% color bars
-        4'd1:  px = {hramp_q, hramp_q, hramp_q};       // horizontal luma ramp
-        4'd2:  px = {vramp_q, vramp_q, vramp_q};       // vertical luma ramp
-        4'd3:  px = 24'h808080;                        // 50% gray (level check)
-        4'd4:  px = smpte;                             // proper SMPTE EG-1 color bars
-        4'd5:  px = grid_q  ? 24'hFFFFFF : 24'h000000; // crosshatch grid + border (geometry)
-        4'd6:  px = chk64_q ? 24'hFFFFFF : 24'h000000; // 64px checkerboard
-        4'd7:  px = chk1_q  ? 24'hFFFFFF : 24'h000000; // 1px checkerboard (Nyquist)
-        4'd8:  px = {stair_q, stair_q, stair_q};       // grayscale staircase (16 steps; calibration)
-        4'd9:  px = mburst_q ? 24'hFFFFFF : 24'h000000; // multiburst (spatial-freq sweep; bandwidth)
-        4'd10: px = 24'hFF0000;                        // red 100% flat (purity/convergence)
-        4'd11: px = 24'h00FF00;                        // green 100% flat
-        4'd12: px = 24'h0000FF;                        // blue 100% flat
-        4'd13: px = 24'hFFFFFF;                        // white 100% flat (uniformity)
-        4'd14: px = win_q ? 24'hFFFFFF : 24'h000000;   // centered white window (ABL/overscan)
-        default: px = pluge;                           // 15: full-screen PLUGE (black-level setup)
+        // --- bars & color ---
+        4'd0:  px = bars;                              // color bars (100%)
+        4'd1:  px = smpte;                             // SMPTE EG-1 bars
+        4'd2:  px = rgbbw;                             // RGB + B&W split
+        // --- ramps & grayscale ---
+        4'd3:  px = {hramp_q, hramp_q, hramp_q};       // horizontal ramp
+        4'd4:  px = {vramp_q, vramp_q, vramp_q};       // vertical ramp
+        4'd5:  px = {stair_q, stair_q, stair_q};       // grayscale staircase
+        4'd6:  px = mramp;                             // mirror ramp + 11-step
+        4'd7:  px = 24'h808080;                        // 50% gray
+        4'd8:  px = 24'hFFFFFF;                        // white (100%)
+        // --- geometry & alignment ---
+        4'd9:  px = grid_q  ? 24'hFFFFFF : 24'h000000; // crosshatch + border
+        4'd10: px = chk64_q ? 24'hFFFFFF : 24'h000000; // checkerboard 64px
+        4'd11: px = chk1_q  ? 24'hFFFFFF : 24'h000000; // checkerboard 1px (Nyquist)
+        4'd12: px = vjcard;                            // VJ checker card
+        4'd13: px = mref;                              // multi reference card
+        // --- stress ---
+        4'd14: px = mburst_q ? 24'hFFFFFF : 24'h000000; // multiburst
+        default: px = patho;                           // 15: SDI pathological (eq+pll)
     endcase
 
     // text-banner overlay: black box with white "SCHINDLER TSG" glyphs. White/black are
