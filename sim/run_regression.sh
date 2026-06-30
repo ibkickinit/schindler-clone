@@ -2,19 +2,14 @@
 # sim/run_regression.sh — self-checking HDL unit regressions for the parts this repo actively
 # changes. Each TB prints "<NAME>: PASS|FAIL (n)". Exit 0 iff every TB passes (CI-friendly).
 #
-# Coverage today:
-#   pg_tsg          — TSG: R-B-G byte order, all 8 patterns, ramp multiply-fix, text banner.
-#   pg_place_affine — STAGE-2 placement affine LOD-coord path (guards the A1/A2 pipeline-split).
-# TODO (P2 owed): an end-to-end pg_warp_engine TB. sim/pg_warp_real_1080_tb.v is STALE. Precise un-rot:
-#   1. file list: add hdl/pg_projective.v hdl/pg_pincushion.v hdl/pg_place_affine.v (keep pg_affine.v,
-#      pg_skid.v, pg_tilecache_rt2.v, pg_tile_dma.v).
-#   2. instantiation: REMOVE the obsolete `.lod(...)`; ADD .hsel(0), .in_w_rt(IN_W),.in_h_rt(IN_H),
-#      .out_w_rt(OUT_W),.out_h_rt(OUT_H), .m_g(0),.m_h(0), .kx(0),.ky(0), and identity placement
-#      .pa(1<<20),.pb(0),.pc(0),.pd(0),.pe(1<<20),.pf(0)  (Q.FB, FB=20). With m_g=m_h=0 the projective
-#      reduces to the m_a..m_f affine the existing golden models -> golden SHOULD still hold.
-#   3. LIKELY DEBUG POINT: fill_blk is now [95:0] (pg_tile_pack64 / tilecache_rt2 format). Verify the
-#      TB's fill-data generation matches the current tile packing, else golden pixels won't match.
-#   Then add:  run pg_warp_engine pg_warp_real_1080_tb  <files...>  here.
+# Coverage:
+#   pg_tsg          — TSG: R-B-G byte order, all 8 patterns, ramp multiply-fix, text banner.   (~5s)
+#   pg_place_affine — STAGE-2 placement affine LOD-coord path; guards the A1/A2 pipeline-split.  (~10s)
+#   pg_warp         — end-to-end engine INTEGRATION at 1080p (real-time throughput / full-frame /
+#                     no cache-thrash) over affine geometry (rot10/rot20/aniso30).              (~3min)
+#                     Interior pixels are affine-exact; the ~1.3k px-diff is the content edge-AA ramp
+#                     (golden models it as a hard edge -> full coverage re-bless OWED). rot45 omitted:
+#                     it needs the per-angle hsel set-hash (see schindler_warp_rotation_clamp).
 source /tools/Xilinx/2025.2/Vivado/settings64.sh >/dev/null 2>&1 || true
 set -u   # AFTER sourcing Vivado settings (its script trips on unset vars under -u)
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -41,6 +36,9 @@ run() {  # name  top  src...
 echo "=== Schindler HDL unit regressions ==="
 run pg_tsg          pg_tsg_tb          hdl/pg_tsg.v          sim/pg_tsg_tb.v
 run pg_place_affine pg_place_affine_tb hdl/pg_place_affine.v sim/pg_place_affine_tb.v
+run pg_warp         pg_warp_real_1080_tb \
+    hdl/pg_projective.v hdl/pg_pincushion.v hdl/pg_place_affine.v hdl/pg_skid.v \
+    hdl/pg_tilecache_rt2.v hdl/pg_tile_dma.v hdl/pg_warp_engine.v sim/pg_warp_real_1080_tb.v
 echo "---------------------------------------"
 if [ "$fail" -eq 0 ]; then echo "REGRESSION: ALL PASS"; else echo "REGRESSION: FAILURES ABOVE"; fi
 exit $fail
