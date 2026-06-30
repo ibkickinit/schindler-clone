@@ -1,0 +1,19 @@
+[Unit]
+Description=Schindler control-plane daemon (schindlerd)
+Documentation=https://github.com/ (Schindler 2.0 control-plane)
+After=default.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/warp-timing-build/control-plane
+# venv has pyserial + websockets; --port is the FT2232 UART, catalog is the control schema.
+ExecStart=%h/.local/share/schindlerd-venv/bin/python schindlerd/schindlerd.py --port /dev/ttyUSB1 --catalog catalog-v0.2.0.json
+# Auto-recover: schindlerd binds :8080/:8081 + owns /dev/ttyUSB1; on crash systemd restarts it
+# (replaces the orphaned `nohup` launch that died silently across sessions).
+Restart=on-failure
+RestartSec=3
+StandardOutput=append:%h/.local/state/schindlerd.log
+StandardError=append:%h/.local/state/schindlerd.log
+
+[Install]
+WantedBy=default.target
