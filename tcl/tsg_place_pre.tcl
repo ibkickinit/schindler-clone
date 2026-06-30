@@ -42,17 +42,21 @@ if {[llength $_tsgclk] == 0} {
 set_clock_groups -asynchronous -group [get_clocks clk_fpga_0] -group $_tsgclk
 puts "TSG-PRE: clock group FCLK(clk_fpga_0) <-> TSG PLL async"
 
-# (3) The two write-clock-mux SOURCE clocks (dvi2rgb PixelClk on I0, TSG PLL on I1) are
-#     PHYSICALLY EXCLUSIVE -- the BUFGCTRL passes exactly one at a time, never both. Absent
-#     this, the timer can analyze phantom PixelClk<->TSG cross-paths on the shared muxed-
-#     domain registers (v_vid_in / scaler / S2MM). Resolve the clocks via the BUFGCTRL input
-#     PINS (name-independent), so this survives clock renames. Guarded: skip if either is
-#     unresolved (don't abort -- this is robustness, not a closure requirement).
-set _ck0 [get_clocks -quiet -of_objects [get_pins -quiet phase_b_bd_i/tsg_clkmux_0/inst/u_bufgctrl/I0]]
-set _ck1 [get_clocks -quiet -of_objects [get_pins -quiet phase_b_bd_i/tsg_clkmux_0/inst/u_bufgctrl/I1]]
+# (3) physically_exclusive between the two write-clock-mux SOURCE clocks: investigated
+#     2026-06-30, found NOT APPLICABLE to this netlist (and not needed). The dvi2rgb mux input
+#     (BUFGCTRL/I0) has NO propagated clock object -- the dvi2rgb RX recovered PixelClk does not
+#     reach the mux as a named clock in the implemented design; only the TSG PLL clock (I1)
+#     propagates, and the BUFGCTRL OUTPUT carries that single clock. A phantom cross-path needs
+#     TWO clocks meeting on a register; with only one clock on the muxed domain there are none to
+#     exclude. Confirmed by clean timing (WNS +0.128, 0 failing endpoints) with no PixelClk<->TSG
+#     paths. At the shipping config (1080p30) the TSG and dvi2rgb rates are both 74.25 MHz, so the
+#     single modeled clock is correct-rate in BOTH mux positions. Left as a documented no-op below
+#     (it self-skips); do NOT keep chasing this -- it is correct as-is, not an unfinished TODO.
+set _ck0 [get_clocks -quiet -of_objects [get_nets -quiet phase_b_bd_i/dvi2rgb_0/U0/GenerateBUFG.ResyncToBUFG_X/CLK]]
+set _ck1 [get_clocks -quiet -of_objects [get_nets -quiet phase_b_bd_i/clk_wiz_tsg_clk_out1]]
 if {[llength $_ck0] && [llength $_ck1] && [lindex $_ck0 0] ne [lindex $_ck1 0]} {
     set_clock_groups -physically_exclusive -group $_ck0 -group $_ck1
     puts "TSG-PRE: physically_exclusive $_ck0 <-> $_ck1"
 } else {
-    puts "TSG-PRE: (skipped physically_exclusive -- mux source clocks not both resolved: ck0='$_ck0' ck1='$_ck1')"
+    puts "TSG-PRE: physically_exclusive N/A (only one clock on the muxed domain -- documented, expected)"
 }

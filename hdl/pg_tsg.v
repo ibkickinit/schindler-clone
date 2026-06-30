@@ -45,6 +45,16 @@ module pg_tsg #(
         end
     end
 
+    // pattern[2:0] is a quasi-static GPIO bit in FCLK_CLK0 crossing into this (clk_wiz_tsg) clock.
+    // 2-FF ASYNC_REG synchronizer so a pattern-change edge can't metastable-glitch the px mux. The
+    // FCLK<->TSG path is already declared async (set_clock_groups in tsg_place_pre.tcl), so no extra
+    // false-path is needed. Use pat_q2 everywhere the pattern selects.
+    (* ASYNC_REG = "TRUE" *) reg [2:0] pat_q1, pat_q2;
+    always @(posedge clk) begin
+        if(!rstn) begin pat_q1<=3'd0; pat_q2<=3'd0; end
+        else begin pat_q1<=pattern; pat_q2<=pat_q1; end
+    end
+
     wire act = (hc < H_ACT) && (vc < V_ACT);
     // sync after front porch (positive polarity)
     wire hs  = (hc >= H_ACT + H_FP) && (hc < H_ACT + H_FP + H_SYNC);
@@ -428,7 +438,7 @@ module pg_tsg #(
     end
 
     reg [23:0] px;
-    always @(*) case(pattern)
+    always @(*) case(pat_q2)
         3'd0: px = bars;                              // 100% color bars
         3'd1: px = {hramp_q, hramp_q, hramp_q};       // horizontal luma ramp
         3'd2: px = {vramp_q, vramp_q, vramp_q};       // vertical luma ramp
