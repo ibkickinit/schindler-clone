@@ -1251,7 +1251,11 @@ async def http_handler(reader: asyncio.StreamReader, writer: asyncio.StreamWrite
                 ".css":  "text/css",
                 ".json": "application/json",
             }.get(f.suffix, "application/octet-stream")
+            # no-cache: the UI is edited often and served by the same daemon that exposes the
+            # version handshake; stale cached index.html/JS was causing "did my change land?"
+            # confusion (needed hard-reloads). Always revalidate.
             writer.write(b"HTTP/1.1 200 OK\r\n"
+                         + b"Cache-Control: no-cache, no-store, must-revalidate\r\nPragma: no-cache\r\n"
                          + f"Content-Type:{ctype}\r\nContent-Length:{len(body)}\r\n\r\n".encode()
                          + body)
         await writer.drain()
