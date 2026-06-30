@@ -208,7 +208,7 @@ if {[info exists TSG_BUILD] && $TSG_BUILD} {
     connect_bd_net [get_bd_pins sl_tsg_en/Dout] [get_bd_pins tsg_switch_rst_0/sel_async]
 
     create_bd_cell -type ip -vlnv xilinx.com:ip:xlslice sl_tsg_pat
-    set_property -dict [list CONFIG.DIN_WIDTH {32} CONFIG.DIN_FROM {20} CONFIG.DIN_TO {18} CONFIG.DOUT_WIDTH {3}] [get_bd_cells sl_tsg_pat]
+    set_property -dict [list CONFIG.DIN_WIDTH {32} CONFIG.DIN_FROM {21} CONFIG.DIN_TO {18} CONFIG.DOUT_WIDTH {4}] [get_bd_cells sl_tsg_pat]
     connect_bd_net [get_bd_pins axi_gpio_20/gpio_io_o] [get_bd_pins sl_tsg_pat/Din]
     connect_bd_net [get_bd_pins sl_tsg_pat/Dout] [get_bd_pins pg_tsg_0/pattern]
     puts "DUAL-ENGINE-B: TSG control wired — axi_gpio_20\[17\]=tsg_enable, \[19:18\]=pattern"

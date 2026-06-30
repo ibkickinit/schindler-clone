@@ -776,8 +776,9 @@ class Dispatcher:
     async def _m_source_set(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """Write-side source select (internal Test Signal Generator vs HDMI input), firmware 'E t'/'E p'.
         {tsg_enable: bool} -> 'E t <0|1>' (True = internal 1080p pattern, input-independent; False = HDMI).
-        {pattern: 0..7} -> 'E p <0..7>' (0 bars100 / 1 h-ramp / 2 v-ramp / 3 gray /
-        4 SMPTE bars / 5 crosshatch+border / 6 checker64 / 7 checker1). Either or both."""
+        {pattern: 0..15} -> 'E p <0..15>' (0 bars100 1 h-ramp 2 v-ramp 3 gray 4 SMPTE 5 crosshatch
+        6 checker64 7 checker1 8 staircase 9 multiburst 10 red 11 green 12 blue 13 white 14 window
+        15 PLUGE). Either or both."""
         if not hasattr(self, "_tsg_enable"):  self._tsg_enable = False
         if not hasattr(self, "_tsg_pattern"): self._tsg_pattern = 0
         if "tsg_enable" in params:
@@ -785,7 +786,7 @@ class Dispatcher:
             self.uart.send_raw(f"E t {1 if self._tsg_enable else 0}")
         if "pattern" in params:
             pv = int(params["pattern"])
-            self._tsg_pattern = 0 if pv < 0 else 7 if pv > 7 else pv
+            self._tsg_pattern = 0 if pv < 0 else 15 if pv > 15 else pv
             self.uart.send_raw(f"E p {self._tsg_pattern}")
         out = {"tsg_enable": self._tsg_enable, "pattern": self._tsg_pattern}
         self.bus.publish({"jsonrpc": "2.0", "method": "source.changed", "params": out})

@@ -28,8 +28,9 @@ module pg_tsg #(
     parameter integer V_FP  = 4,    parameter integer V_SYNC = 5
 ) (
     input  wire        clk, rstn,
-    input  wire [2:0]  pattern,            // 0 bars100 / 1 h-ramp / 2 v-ramp / 3 gray / 4 SMPTE bars /
-                                           // 5 crosshatch+border / 6 checker64 / 7 checker1 (async GPIO; quasi-static)
+    input  wire [3:0]  pattern,            // 0 bars100 1 h-ramp 2 v-ramp 3 gray 4 SMPTE 5 crosshatch 6 checker64
+                                           // 7 checker1 8 staircase 9 multiburst 10 red 11 green 12 blue 13 white
+                                           // 14 window 15 PLUGE  (async GPIO; quasi-static)
     output reg  [23:0] vid_data,           // {R[23:16], G[15:8], B[7:0]}
     output reg         vid_active,
     output reg         vid_hsync,
@@ -49,9 +50,9 @@ module pg_tsg #(
     // 2-FF ASYNC_REG synchronizer so a pattern-change edge can't metastable-glitch the px mux. The
     // FCLK<->TSG path is already declared async (set_clock_groups in tsg_place_pre.tcl), so no extra
     // false-path is needed. Use pat_q2 everywhere the pattern selects.
-    (* ASYNC_REG = "TRUE" *) reg [2:0] pat_q1, pat_q2;
+    (* ASYNC_REG = "TRUE" *) reg [3:0] pat_q1, pat_q2;
     always @(posedge clk) begin
-        if(!rstn) begin pat_q1<=3'd0; pat_q2<=3'd0; end
+        if(!rstn) begin pat_q1<=4'd0; pat_q2<=4'd0; end
         else begin pat_q1<=pattern; pat_q2<=pat_q1; end
     end
 
@@ -357,10 +358,15 @@ module pg_tsg #(
     reg [2:0]  bar7_q;                         // SMPTE 7-bar column index (1920/7 boundaries)
     reg [1:0]  vsec_q;                         // SMPTE vertical section: 0 top bars / 1 castellation / 2 pluge row
     reg [2:0]  hbot_q;                         // SMPTE pluge-row horizontal segment index
+    reg [7:0]  stair_q;                        // grayscale staircase luma (16 steps across width)
+    reg        mburst_q;                        // multiburst on/off pixel (spatial-freq sweep)
+    reg        win_q;                           // centered window box (white-on-black) membership
+    reg [2:0]  pbar_q;                          // PLUGE-screen segment index
     always @(posedge clk) begin
         if(!rstn) begin
             act_q<=1'b0; hs_q<=1'b0; vs_q<=1'b0; bar_q<=3'd0; hramp_q<=8'd0; vramp_q<=8'd0;
             grid_q<=1'b0; chk64_q<=1'b0; chk1_q<=1'b0; bar7_q<=3'd0; vsec_q<=2'd0; hbot_q<=3'd0;
+            stair_q<=8'd0; mburst_q<=1'b0; win_q<=1'b0; pbar_q<=3'd0;
         end else begin
             act_q <= act; hs_q <= hs; vs_q <= vs;
             // 8 color bars: index = number of bar-boundaries crossed (divide-free)
@@ -385,6 +391,22 @@ module pg_tsg #(
                      | (hc < 12'd2) | (hc >= H_ACT-12'd2) | (vc < 12'd2) | (vc >= V_ACT-12'd2);
             chk64_q <= hc[6] ^ vc[6];          // 64px checkerboard (scaling/sharpness)
             chk1_q  <= hc[0] ^ vc[0];          // 1px checkerboard (Nyquist / DAC-eye stress)
+            // grayscale staircase: 16 equal steps 0..255 across the width. step = hc/120 (1920/16),
+            // level = step*17 (0,17,..,255). divide-free: step index via /128 approx -> use hc[10:7]
+            // (1920/16=120; hc>>7 gives 0..14 over 0..1919, close enough for a 16-step bar -> *17).
+            stair_q <= ({4'd0, hc[10:7]} * 8'd17);      // 0,17,34,...,238 (16 steps; calibration)
+            // multiburst: vertical bursts whose spatial frequency increases by band. 6 bands of 320px;
+            // band k toggles every (1<<(k>=5?5:k+1)) px-ish -> pick a frequency bit per band (divide-free).
+            mburst_q <= (hc < 12'd320)  ? hc[3] :        // ~16px period
+                        (hc < 12'd640)  ? hc[2] :        // ~8px
+                        (hc < 12'd960)  ? hc[1] :        // ~4px
+                        (hc < 12'd1280) ? hc[0] :        // 2px
+                        (hc < 12'd1600) ? (hc[0]&vc[0]) : // 2px checker-ish
+                                          1'b1;          // flat white reference
+            // centered window: 1/2-size white box on black (uniformity / ABL / overscan check).
+            win_q   <= (hc >= H_ACT/4) && (hc < (H_ACT*3)/4) && (vc >= V_ACT/4) && (vc < (V_ACT*3)/4);
+            // full-screen PLUGE: vertical bands black / +4% / black / +8% / 100% white for black-level set.
+            pbar_q  <= (hc>=12'd384)+(hc>=12'd768)+(hc>=12'd1152)+(hc>=12'd1536);
         end
     end
 
@@ -437,16 +459,34 @@ module pg_tsg #(
         endcase
     end
 
+    // full-screen PLUGE bands: black / +4% / black / +8% / 100% white
+    reg [23:0] pluge;
+    always @(*) case(pbar_q)
+        3'd0: pluge = 24'h000000;  // reference black
+        3'd1: pluge = 24'h0A0A0A;  // ~+4% (below-black-ish; visible only if level set right)
+        3'd2: pluge = 24'h000000;  // black
+        3'd3: pluge = 24'h141414;  // ~+8%
+        default: pluge = 24'hFFFFFF; // 100% white
+    endcase
+
     reg [23:0] px;
     always @(*) case(pat_q2)
-        3'd0: px = bars;                              // 100% color bars
-        3'd1: px = {hramp_q, hramp_q, hramp_q};       // horizontal luma ramp
-        3'd2: px = {vramp_q, vramp_q, vramp_q};       // vertical luma ramp
-        3'd3: px = 24'h808080;                        // 50% gray (level check)
-        3'd4: px = smpte;                             // proper SMPTE EG-1 color bars
-        3'd5: px = grid_q  ? 24'hFFFFFF : 24'h000000; // crosshatch grid + border (geometry)
-        3'd6: px = chk64_q ? 24'hFFFFFF : 24'h000000; // 64px checkerboard
-        default: px = chk1_q ? 24'hFFFFFF : 24'h000000; // 1px checkerboard (Nyquist)
+        4'd0:  px = bars;                              // 100% color bars
+        4'd1:  px = {hramp_q, hramp_q, hramp_q};       // horizontal luma ramp
+        4'd2:  px = {vramp_q, vramp_q, vramp_q};       // vertical luma ramp
+        4'd3:  px = 24'h808080;                        // 50% gray (level check)
+        4'd4:  px = smpte;                             // proper SMPTE EG-1 color bars
+        4'd5:  px = grid_q  ? 24'hFFFFFF : 24'h000000; // crosshatch grid + border (geometry)
+        4'd6:  px = chk64_q ? 24'hFFFFFF : 24'h000000; // 64px checkerboard
+        4'd7:  px = chk1_q  ? 24'hFFFFFF : 24'h000000; // 1px checkerboard (Nyquist)
+        4'd8:  px = {stair_q, stair_q, stair_q};       // grayscale staircase (16 steps; calibration)
+        4'd9:  px = mburst_q ? 24'hFFFFFF : 24'h000000; // multiburst (spatial-freq sweep; bandwidth)
+        4'd10: px = 24'hFF0000;                        // red 100% flat (purity/convergence)
+        4'd11: px = 24'h00FF00;                        // green 100% flat
+        4'd12: px = 24'h0000FF;                        // blue 100% flat
+        4'd13: px = 24'hFFFFFF;                        // white 100% flat (uniformity)
+        4'd14: px = win_q ? 24'hFFFFFF : 24'h000000;   // centered white window (ABL/overscan)
+        default: px = pluge;                           // 15: full-screen PLUGE (black-level setup)
     endcase
 
     // text-banner overlay: black box with white "SCHINDLER TSG" glyphs. White/black are

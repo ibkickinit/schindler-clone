@@ -1093,7 +1093,7 @@ static unsigned g_tsg_enable  = 0;
 static unsigned g_tsg_pattern = 0;
 static void engb_write(void) {
     Xil_Out32(ENGB_GPIO_BASE,
-              ((g_tsg_pattern & 7u) << 18) |
+              ((g_tsg_pattern & 15u) << 18) |
               ((g_tsg_enable  & 1u) << 17) |
               ((g_engb_comp_en & 1u) << 16) |
               (g_engb_bright & 0xFFFFu));
@@ -2274,15 +2274,15 @@ static void uart_dispatch(const char *line)
             engb_write();
             xil_printf("TSG enable = %u (%s)\r\n", g_tsg_enable, g_tsg_enable ? "internal pattern" : "HDMI input");
         } else if (sub == 'p' && parse_int(&p, &v)) {
-            /* TSG pattern: 0 bars100 / 1 h-ramp / 2 v-ramp / 3 gray /
-             *              4 SMPTE bars / 5 crosshatch+border / 6 checker64 / 7 checker1. */
-            if (v < 0) v = 0; if (v > 7) v = 7;
+            /* TSG pattern: 0 bars100 1 h-ramp 2 v-ramp 3 gray 4 SMPTE 5 crosshatch 6 checker64
+             * 7 checker1 8 staircase 9 multiburst 10 red 11 green 12 blue 13 white 14 window 15 PLUGE. */
+            if (v < 0) v = 0; if (v > 15) v = 15;
             g_tsg_pattern = (unsigned)v;
             engb_write();
             xil_printf("TSG pattern = %u\r\n", g_tsg_pattern);
         } else {
             xil_printf("ENGB: brightness=Q8.8 0x%03x comp_enable=%u tsg_enable=%u tsg_pattern=%u\r\n"
-                       "      (usage 'E b <pct>' / 'E c <0|1>' / 'E t <0|1>' / 'E p <0..7>')\r\n",
+                       "      (usage 'E b <pct>' / 'E c <0|1>' / 'E t <0|1>' / 'E p <0..15>')\r\n",
                        g_engb_bright, g_engb_comp_en, g_tsg_enable, g_tsg_pattern);
         }
 #else

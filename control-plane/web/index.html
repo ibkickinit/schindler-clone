@@ -115,7 +115,10 @@
 
     <!-- SOURCE / INPUT — shared, upstream of both engines -->
     <div class="controls" style="margin:8px 0;padding:8px;border:1px solid #555;border-radius:4px">
-      <h2 style="margin:0 0 6px">Source / Input</h2>
+      <h2 style="margin:0 0 6px">Source / Input
+        <span id="tsg-badge" style="display:none;margin-left:8px;padding:1px 8px;border-radius:10px;
+          background:#b80;color:#fff;font-size:.7em;vertical-align:middle">▶ TSG: <span id="tsg-badge-name">bars</span></span>
+      </h2>
       <div style="margin-bottom:6px;font-family:monospace">
         <span id="stat-in-lock" title="source lock">○</span>
         <span style="opacity:.6">Resolution</span> <b id="stat-in-res">—</b>
@@ -138,6 +141,14 @@
             <option value="5">Crosshatch + border</option>
             <option value="6">Checkerboard (64px)</option>
             <option value="7">Checkerboard (1px)</option>
+            <option value="8">Grayscale staircase</option>
+            <option value="9">Multiburst</option>
+            <option value="10">Red (100%)</option>
+            <option value="11">Green (100%)</option>
+            <option value="12">Blue (100%)</option>
+            <option value="13">White (100%)</option>
+            <option value="14">Window (center box)</option>
+            <option value="15">PLUGE</option>
           </select>
         </label>
       </div>
@@ -454,6 +465,7 @@
         if (m.method === "status.update") handleStatusUpdate(m.params);
         else if (m.method === "control.changed") handleControlChanged(m.params);
         else if (m.method === "autotune.changed") handleAutotune(m.params);
+        else if (m.method === "source.changed") handleSourceChanged(m.params);
         return;
       }
       const cb = pending.get(m.id);
@@ -1082,12 +1094,30 @@
     g("engb-raw").addEventListener("change",()=>{ if(g("engb-raw").checked) call("engineb.set",{comp_enable:false}).catch(e=>log(`engineb.set: ${e.message}`,"err")); });
   })();
   // ---- Source select: HDMI input vs internal Test Signal Generator ----
+  function refreshTsgUI(){
+    const en=document.getElementById("src-tsg"), pat=document.getElementById("src-tsg-pattern");
+    const badge=document.getElementById("tsg-badge"), nm=document.getElementById("tsg-badge-name");
+    if(!en) return;
+    if(pat) pat.disabled = !en.checked;                       // pattern picker only meaningful when TSG on
+    if(badge){ badge.style.display = en.checked ? "" : "none"; // prominent "you're on the internal generator" badge
+      if(nm && pat) nm.textContent = pat.options[pat.selectedIndex] ? pat.options[pat.selectedIndex].text : pat.value; }
+  }
+  // Sync UI to the daemon's actual source state (source.changed broadcast) so the badge/controls
+  // track changes made anywhere (UART, another client, the boot default).
+  function handleSourceChanged(p){
+    if(!p) return;
+    const en=document.getElementById("src-tsg"), pat=document.getElementById("src-tsg-pattern");
+    if(en && typeof p.tsg_enable==="boolean") en.checked=p.tsg_enable;
+    if(pat && typeof p.pattern==="number") pat.value=String(p.pattern);
+    refreshTsgUI();
+  }
   (function(){
     const g=id=>document.getElementById(id);
     const en=g("src-tsg"), pat=g("src-tsg-pattern");
     if(!en) return;
-    en.addEventListener("change",()=>call("source.set",{tsg_enable:en.checked}).catch(e=>log(`source.set: ${e.message}`,"err")));
-    pat.addEventListener("change",()=>call("source.set",{pattern:+pat.value}).catch(e=>log(`source.set: ${e.message}`,"err")));
+    en.addEventListener("change",()=>{ refreshTsgUI(); call("source.set",{tsg_enable:en.checked}).catch(e=>log(`source.set: ${e.message}`,"err")); });
+    pat.addEventListener("change",()=>{ refreshTsgUI(); call("source.set",{pattern:+pat.value}).catch(e=>log(`source.set: ${e.message}`,"err")); });
+    refreshTsgUI();
   })();
   async function loadSettings() {
     try {
