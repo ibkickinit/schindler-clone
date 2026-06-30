@@ -419,8 +419,14 @@
       log("connected", "ok");
       try {
         const ident = await call("system.identify");
-        log(`firmware: ${JSON.stringify(ident.firmware)} | catalog v${ident.catalog}`);
+        log(`daemon v${ident.daemon_version||"?"} | firmware: ${JSON.stringify(ident.firmware)} | catalog v${ident.catalog}`);
         checkCatalogCompat(ident.catalog);
+        // STALE-DAEMON GUARD: if the daemon predates a method the UI uses, its controls would
+        // silently no-op (the 2026-06-29 trap). Warn loudly so it's obvious to restart the daemon.
+        const need = ["source.set","engineb.set","output.set","scale.set","warp.set"];
+        const have = new Set(ident.methods||[]);
+        const missing = ident.methods ? need.filter(m=>!have.has(m)) : [];
+        if (missing.length) log(`⚠ STALE DAEMON: missing methods [${missing.join(", ")}] — restart schindlerd (its code is older than this UI)`, "err");
         const cat = await call("system.catalog");
         renderCatalog(cat);
         await refreshAllValues();
@@ -1072,16 +1078,16 @@
     br.addEventListener("input",()=>sendBright(br.value,false));
     br.addEventListener("change",()=>sendBright(br.value,true));
     bn.addEventListener("change",()=>sendBright(bn.value,true));
-    g("engb-comp").addEventListener("change",()=>{ if(g("engb-comp").checked) call("engineb.set",{comp_enable:true}).catch(()=>{}); });
-    g("engb-raw").addEventListener("change",()=>{ if(g("engb-raw").checked) call("engineb.set",{comp_enable:false}).catch(()=>{}); });
+    g("engb-comp").addEventListener("change",()=>{ if(g("engb-comp").checked) call("engineb.set",{comp_enable:true}).catch(e=>log(`engineb.set: ${e.message}`,"err")); });
+    g("engb-raw").addEventListener("change",()=>{ if(g("engb-raw").checked) call("engineb.set",{comp_enable:false}).catch(e=>log(`engineb.set: ${e.message}`,"err")); });
   })();
   // ---- Source select: HDMI input vs internal Test Signal Generator ----
   (function(){
     const g=id=>document.getElementById(id);
     const en=g("src-tsg"), pat=g("src-tsg-pattern");
     if(!en) return;
-    en.addEventListener("change",()=>call("source.set",{tsg_enable:en.checked}).catch(()=>{}));
-    pat.addEventListener("change",()=>call("source.set",{pattern:+pat.value}).catch(()=>{}));
+    en.addEventListener("change",()=>call("source.set",{tsg_enable:en.checked}).catch(e=>log(`source.set: ${e.message}`,"err")));
+    pat.addEventListener("change",()=>call("source.set",{pattern:+pat.value}).catch(e=>log(`source.set: ${e.message}`,"err")));
   })();
   async function loadSettings() {
     try {

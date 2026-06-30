@@ -1583,3 +1583,40 @@ enable (default ON); manual `L` disables it. Bench-verified: the reported combo 
 frames autonomously. Substantially addresses the open `#54 geometry-aware lead` item. **Still owed:**
 fold the harvested AUTOTUNE data into warp_calc_lead so common combos pick the right lead WITHOUT the
 ~3s sweep + transient flicker.
+
+### 2026-06-29 — INTERNAL TSG (write-side) + warp margin recovery + 8 patterns
+Branch `v1-tsg` (off `v1-dual-engine`). Internal input-independent Test Signal Generator injected on the
+WRITE side so a generated 1080p raster flows through the whole pipeline (DDR → warp → both outputs) with
+NO HDMI source. Iteration arc + the substantive fixes (all committed):
+
+- **Clock-mux integration** (`pg_tsg` + `tsg_clkmux` BUFGCTRL + `tsg_srcsel` + `tsg_switch_rst` + `clk_wiz_tsg`
+  PLL): 4 clocking root-causes — (1) PLLE2-on-FCLK needs `PRIM_SOURCE=No_buffer` (ZHOLD REQP-1712 + drop the
+  redundant input BUFG); (2) BUFG→BUFGCTRL cascade Place 30-120 → `CLOCK_DEDICATED_ROUTE FALSE` on the DRIVER
+  nets; (3) TSG PLL is DERIVED from FCLK so the timer tight-times the async reset crossing → `set_clock_groups
+  -asynchronous` FCLK↔TSG (WNS −3.9 removed); (4) `pg_tsg` runtime division blew 74.25 MHz → divide-free.
+  KEY: (2)+(3) applied via `tcl/tsg_place_pre.tcl` (STEPS.PLACE_DESIGN.TCL.PRE) because the OOC dvi2rgb/clk_wiz
+  internal nets are BLACK BOXES when the project XDC is read at opt-start (a -quiet XDC constraint silently
+  no-ops → place dies). Commit `e0d136e`.
+- **Warp margin recovery** `822b74c`: TSG congestion squeezed `pg_place_affine` (21-level cone) to WNS +0.003.
+  Split Stage-A into A1/A2 pipeline stages (both consumer+prefetch, latency-matched, elastic) → +0.195. Proven
+  BIT-EXACT vs pre-split by an equivalence TB. (Retiming tried first = no-op, pen-gated regs.)
+- **8 patterns** `5506237`: pattern bus → 3-bit (`axi_gpio_20[20:18]`). 0 bars100 / 1 h-ramp / 2 v-ramp /
+  3 gray / 4 SMPTE / 5 crosshatch+border / 6 checker64 / 7 checker1. UART `E p 0..7`; daemon `source.set`; UI.
+- **Proper SMPTE + ramp fix** `d544cbe`: ramp `hc*12'd68` truncated to 12-bit multiply (Verilog max(L,L)) →
+  black; widened to 19'd68. Pattern 4 = real SMPTE EG-1 (75% top / castellation / PLUGE). Daemon+UI default
+  output 1080p30 (was 720p60 → it pushed `R 720` onto the 1080p board → top-left-720 crop "scale off" bug).
+- **Color order** `1e96060`: `pg_tsg` emitted standard RGB but the AXIS pipeline is R-B-G → green/blue swapped
+  (bench: white/magenta/cyan/blue/yellow/red/green). Fix = swap G↔B at the output boundary. See
+  [[schindler_pipeline_rbg_byte_order]].
+- **Text banner** `008eb25`: "SCHINDLER TSG" overlay (so the bars aren't mistaken for a capture-stick
+  no-signal screen). Bitmap rendered offline (PIL/DejaVuMono) → BRAM (1 RAMB18, registered read) + pixel-
+  aligned composite. White/black are R-B-G-swap-invariant.
+
+**SHIPPED substrate:** `build/artifacts/v1-tsg-bram-text-wns+0.089` (commit `008eb25`). WNS +0.089 / WHS +0.017,
+0 failing; limiter = warp-output→color_saturation handoff (no longer the fragile tagset). Dual-engine + warp +
+TSG all running. Control: `axi_gpio_20` [16]=comp_enable [17]=tsg_enable [19:18→20:18]=pattern; UART `E t/E p`.
+Earlier same-day artifacts also banked: v1-tsg-FINAL-wns+0.003, -MARGIN-wns+0.195, -patterns8-wns+0.276,
+-smpte-ramp-wns+0.196, -colorfix-wns+0.421.
+**Owed (software hardening, P2+):** un-rot warp sim runners (stale `pg_affine.v`); commit the equivalence/
+pattern TBs; daemon as a managed service; finish `-physically_exclusive` TSG mux clock group; gate autotune
+behind a build flag. (Bench verification tracked separately.)

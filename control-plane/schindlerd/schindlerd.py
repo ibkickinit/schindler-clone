@@ -47,6 +47,11 @@ except ImportError:
 
 log = logging.getLogger("schindlerd")
 
+# Bump on any RPC-method / protocol change so a stale orphaned daemon is detectable.
+# Surfaced via system.identify (daemon_version + methods list) and logged at startup;
+# the UI warns if a method it needs is missing (the "control does nothing" trap).
+DAEMON_VERSION = "0.2.0+2026-06-29"
+
 
 # ---------------------------------------------------------------------------
 # Catalog
@@ -587,7 +592,8 @@ class Dispatcher:
             fw_result = {"error": str(e)}
         return {
             "daemon": "schindlerd",
-            "daemon_version": "0.1.0",
+            "daemon_version": DAEMON_VERSION,
+            "methods": sorted(self.methods.keys()),   # lets a client detect a STALE daemon missing a method
             "catalog": self.catalog.version,
             "firmware": fw_result,
         }
@@ -1265,6 +1271,7 @@ async def amain(args: argparse.Namespace) -> int:
     if not catalog_path.is_file():
         log.error("catalog not found: %s", catalog_path)
         return 2
+    log.info("schindlerd version %s starting", DAEMON_VERSION)
     catalog = Catalog.load(catalog_path)
     log.info("catalog: v%s with %d controls", catalog.version, len(catalog.controls))
 
