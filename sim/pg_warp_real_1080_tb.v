@@ -14,12 +14,12 @@ module pg_warp_real_1080_tb;
     // LEAD=32768, FIFO-by-fetch eviction, wide (2.67 px/clk) gearbox. (Small TB pg_warp_dma_tb runs
     // 4-way/512/PD=16.) rot20/shrink/aniso fully clean; rot45 has a single cold-start underrun (cn=3).
     localparam LTILE=4, TILE=16, NTILE=1024, WAY=8, PD=64, DREQ=64, CW=32, FB=12, NA=OUT_W*OUT_H;
-    // INTEGRATION test: the load-bearing checks are real-time throughput (underruns==0) + full-frame
-    // collection (cn==NA) -- the cache/prefetch behavior only this end-to-end TB exercises. The pixel
-    // golden is affine-exact in the INTERIOR; the residual px-diff is the 1px content edge-AA ramp this
-    // golden models as a hard edge (full coverage re-bless = owed). EDGE_BUDGET tolerates that thin band
-    // while still catching a gross interior pixel break (which would be >>this).
-    localparam EDGE_BUDGET = 20000;
+    // INTEGRATION + PIXEL test. Load-bearing: real-time throughput (underruns==0) + full-frame
+    // (cn==NA) -- the cache/prefetch behavior only this end-to-end TB exercises. The golden models the
+    // FULL pg_place_affine coverage (off-sheet->black + the edge-AA matte blend), so pixels are
+    // BYTE-EXACT: rot10/rot20/aniso30 -> px-diff 0. The small budget is just a guard for trivial
+    // edge-LSB drift in untested geometry; a real pixel break is orders of magnitude larger.
+    localparam EDGE_BUDGET = 16;
 `ifdef LEADV
     localparam LEAD=`LEADV;
 `else
@@ -96,18 +96,28 @@ module pg_warp_real_1080_tb;
             p=d*$signed({1'b0,w}); r=$signed({1'b0,a})+((p+20'sd128)>>>8); g8=r[7:0]; end endfunction
     function [23:0] g24; input [23:0] a,b; input [7:0] w;
         g24={g8(a[23:16],b[23:16],w),g8(a[15:8],b[15:8],w),g8(a[7:0],b[7:0],w)}; endfunction
-    function [23:0] golden; input integer idx; integer ox,oy,sxq,syq,col,row,cn1,rn1; reg[7:0] wx,wy;
-        reg[23:0] p00,p10,p01,p11,tp,bt; begin
+    // Full coverage golden (re-blessed 2026-06-29): off-sheet -> BLACK; on-sheet -> bilinear content,
+    // BUT blended toward `matte` over the outer ~0.5px by the edge-AA alpha = min over axes of
+    // clamp(dist+0.5), exactly as pg_place_affine computes it (identity placement: LOD coord == sxq/syq,
+    // content bounds == [0,IN_W)x[0,IN_H)). This drives px-diff to 0 (was a ~1.3k edge band).
+    function [23:0] golden; input integer idx;
+        integer ox,oy,sxq,syq,col,row,cn1,rn1, distx,disty,covx,covy,inwq,inhq;
+        reg[7:0] wx,wy,ax,ay,alpha; reg[23:0] p00,p10,p01,p11,tp,bt,content; begin
         ox=idx%OUT_W; oy=idx/OUT_W; sxq=m_c+ox*m_a+oy*m_b; syq=m_f+ox*m_d+oy*m_e;
         col=sxq>>>FB; row=syq>>>FB;
-        // OFF-SHEET -> BLACK (the current pg_place_affine coverage model; was `matte` pre-#48).
-        // For identity placement sheet==content, so matte only appears in the 1px edge-AA ramp
-        // (modeled loosely here as a hard edge -> a thin residual px-diff band, see EDGE_BUDGET).
-        if(col<0||row<0||col>=IN_W||row>=IN_H) golden=24'h000000;
+        if(col<0||row<0||col>=IN_W||row>=IN_H) golden=24'h000000;     // off-sheet
         else begin cn1=(col>=IN_W-1)?col:col+1; rn1=(row>=IN_H-1)?row:row+1;
             wx=(sxq>>4)&8'hFF; wy=(syq>>4)&8'hFF;
             p00=pxf(col,row);p10=pxf(cn1,row);p01=pxf(col,rn1);p11=pxf(cn1,rn1);
-            tp=g24(p00,p10,wx); bt=g24(p01,p11,wx); golden=g24(tp,bt,wy); end end
+            tp=g24(p00,p10,wx); bt=g24(p01,p11,wx); content=g24(tp,bt,wy);
+            inwq=IN_W<<FB; inhq=IN_H<<FB;
+            distx=(sxq < (inwq-sxq))? sxq : (inwq-sxq);
+            disty=(syq < (inhq-syq))? syq : (inhq-syq);
+            covx=distx+(1<<(FB-1)); covy=disty+(1<<(FB-1));
+            ax=(covx<0)?8'd0:((covx>=(1<<FB))?8'd255:(covx>>(FB-8))&8'hFF);
+            ay=(covy<0)?8'd0:((covy>=(1<<FB))?8'd255:(covy>>(FB-8))&8'hFF);
+            alpha=(ax<ay)?ax:ay;
+            golden=(alpha==8'd255)? content : g24(matte, content, alpha); end end
     endfunction
 
     integer cn, errors, total, cyc, axx, ayy, underruns, warp_fail=0; real PI;

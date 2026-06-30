@@ -5,11 +5,11 @@
 # Coverage:
 #   pg_tsg          — TSG: R-B-G byte order, all 8 patterns, ramp multiply-fix, text banner.   (~5s)
 #   pg_place_affine — STAGE-2 placement affine LOD-coord path; guards the A1/A2 pipeline-split.  (~10s)
-#   pg_warp         — end-to-end engine INTEGRATION at 1080p (real-time throughput / full-frame /
-#                     no cache-thrash) over affine geometry (rot10/rot20/aniso30).              (~3min)
-#                     Interior pixels are affine-exact; the ~1.3k px-diff is the content edge-AA ramp
-#                     (golden models it as a hard edge -> full coverage re-bless OWED). rot45 omitted:
-#                     it needs the per-angle hsel set-hash (see schindler_warp_rotation_clamp).
+#   pg_warp         — end-to-end engine INTEGRATION + PIXEL at 1080p (real-time throughput / full-frame
+#                     / no cache-thrash) over affine geometry (rot10/rot20/aniso30).            (~3min)
+#                     BYTE-EXACT: the golden models full pg_place_affine coverage (off-sheet black +
+#                     edge-AA matte blend) -> px-diff 0. rot45 omitted: it needs the per-angle hsel
+#                     set-hash (see schindler_warp_rotation_clamp).
 source /tools/Xilinx/2025.2/Vivado/settings64.sh >/dev/null 2>&1 || true
 set -u   # AFTER sourcing Vivado settings (its script trips on unset vars under -u)
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
