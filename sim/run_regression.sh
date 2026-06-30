@@ -5,9 +5,16 @@
 # Coverage today:
 #   pg_tsg          — TSG: R-B-G byte order, all 8 patterns, ramp multiply-fix, text banner.
 #   pg_place_affine — STAGE-2 placement affine LOD-coord path (guards the A1/A2 pipeline-split).
-# TODO (P2 owed): an end-to-end pg_warp_engine TB — sim/run_warp_real_1080.sh is STALE (drives the
-#   old pure-affine ports, missing projective/pincushion/placement/runtime-dims). Un-rot + re-bless
-#   its golden, then add it here.
+# TODO (P2 owed): an end-to-end pg_warp_engine TB. sim/pg_warp_real_1080_tb.v is STALE. Precise un-rot:
+#   1. file list: add hdl/pg_projective.v hdl/pg_pincushion.v hdl/pg_place_affine.v (keep pg_affine.v,
+#      pg_skid.v, pg_tilecache_rt2.v, pg_tile_dma.v).
+#   2. instantiation: REMOVE the obsolete `.lod(...)`; ADD .hsel(0), .in_w_rt(IN_W),.in_h_rt(IN_H),
+#      .out_w_rt(OUT_W),.out_h_rt(OUT_H), .m_g(0),.m_h(0), .kx(0),.ky(0), and identity placement
+#      .pa(1<<20),.pb(0),.pc(0),.pd(0),.pe(1<<20),.pf(0)  (Q.FB, FB=20). With m_g=m_h=0 the projective
+#      reduces to the m_a..m_f affine the existing golden models -> golden SHOULD still hold.
+#   3. LIKELY DEBUG POINT: fill_blk is now [95:0] (pg_tile_pack64 / tilecache_rt2 format). Verify the
+#      TB's fill-data generation matches the current tile packing, else golden pixels won't match.
+#   Then add:  run pg_warp_engine pg_warp_real_1080_tb  <files...>  here.
 source /tools/Xilinx/2025.2/Vivado/settings64.sh >/dev/null 2>&1 || true
 set -u   # AFTER sourcing Vivado settings (its script trips on unset vars under -u)
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
