@@ -93,6 +93,16 @@ already showed congestion can squeeze `pg_re_0`); keep `pg_osd` floor-planned aw
 
 ## Phasing
 
+0. **OSD-0 — runtime-editable banner text** (requested 2026-06-30; the recommended first slice).
+   Today the `pg_tsg` banner is a BAKED bitmap ROM (PIL renders "EDGERLY TSG" → BRAM init at synth), so
+   changing the text needs a rebuild. Replace it with the minimal OSD path: an **8×16 font ROM** (1 RAMB18)
+   + a tiny **firmware-writable char buffer** (e.g. 24 chars × 8-bit = one small dual-port BRAM or even a
+   set of GPIO/AXI-BRAM words). Firmware writes ASCII codes; the banner renderer does char-buffer →
+   font-ROM → glyph, exactly like the full OSD but with ONE fixed line and no navigation. Wire a UART/daemon/
+   UI control (`E n <text>` or a text field in the Source panel → firmware writes the char buffer). This
+   de-risks the font-ROM + char-buffer mechanics for the full OSD below, and directly delivers the
+   user-adjustable banner. Est: ~1 build (font-gen offline like the current banner; HDL swap the ROM read
+   for font-lookup; firmware char-buffer writer; small UI field). Keeps white/black (swap-invariant).
 1. **OSD-1**: `pg_osd` with a static-from-firmware char RAM + 8×16 font ROM, mono (white/black),
    on the HDMI output only. Reuse the banner's font-gen + BRAM-read code. Verify with a "HELLO" write.
 2. **OSD-2**: color attrs + selection highlight (inverse). Wire `osd_puts`/`osd_highlight` helpers.
