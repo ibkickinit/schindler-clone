@@ -31,7 +31,8 @@ module pg_tsg #(
     input  wire [3:0]  pattern,            // 0 bars100 1 SMPTE 2 rgb-bw-split 3 h-ramp 4 v-ramp 5 staircase
                                            // 6 mirror-ramp 7 gray50 8 white 9 crosshatch 10 checker64 11 checker1
                                            // 12 vj-card 13 multi-ref 14 multiburst 15 pathological (async; quasi-static)
-    input  wire [13:0] osd_load,           // OSD-0 runtime banner text load (FCLK GPIO): {strobe[13], idx[12:8], char[7:0]}
+    input  wire [23:0] osd_load,           // OSD banner load (FCLK GPIO): {boxR[23:19], boxL[18:14], strobe[13], idx[12:8], char[7:0]}
+                                           //   char/idx/strobe = char-buffer write; boxL/boxR = occupied-cell range (box hugs the text)
     output reg  [23:0] vid_data,           // {R[23:16], G[15:8], B[7:0]}
     output reg         vid_active,
     output reg         vid_hsync,
@@ -97,15 +98,22 @@ module pg_tsg #(
         char_buf[20]="G";
     end
     // load port CDC (data-then-strobe): sync osd_load, latch char_buf[idx]<=char on the strobe edge.
-    (* ASYNC_REG="TRUE" *) reg [13:0] ld_q1, ld_q2; reg [13:0] ld_q3;
+    // boxL/boxR (ld_q2[18:14]/[23:19]) are quasi-static occupied-cell bounds -> read continuously (2-FF
+    // synced), no strobe needed; firmware holds them constant across the per-char writes.
+    (* ASYNC_REG="TRUE" *) reg [23:0] ld_q1, ld_q2; reg [23:0] ld_q3;
     always @(posedge clk) begin
         ld_q1 <= osd_load; ld_q2 <= ld_q1; ld_q3 <= ld_q2;
         if (ld_q2[13] != ld_q3[13]) char_buf[ld_q2[12:8]] <= ld_q2[7:0];  // strobe toggled -> commit
     end
+    wire [4:0] box_l = ld_q2[18:14];
+    wire [4:0] box_r = ld_q2[23:19];
+    // box hugs the text: [box_l, box_r] occupied cells, 16px/cell @ TX0, +/-8px pad. box_r<box_l -> hidden.
+    wire [11:0] box_hs = TX0 + ({7'd0,box_l} << 4) - 12'd8;
+    wire [11:0] box_he = TX0 + ({7'd0,box_r+5'd1} << 4) + 12'd8;
 
     // pixel -> cell math (divide-free: 16px cells = >>4, 8 font cols at 2x = >>1 &7, 16 rows at 2x = >>1).
     wire        in_text = (hc>=TX0) && (hc<TX0+512) && (vc>=TYT) && (vc<TYT+32);
-    wire        in_box  = (hc>=TX0-12'd8) && (hc<TX0+12'd520) && (vc>=BY0) && (vc<BY1);
+    wire        in_box  = (box_r>=box_l) && (hc>=box_hs) && (hc<box_he) && (vc>=BY0) && (vc<BY1);
     wire [4:0]  ch_col  = (hc - TX0) >> 4;                 // 0..31 char cell
     wire [2:0]  g_col   = ((hc - TX0) >> 1) & 3'd7;        // 0..7 font column
     wire [3:0]  g_row   = (vc - TYT) >> 1;                 // 0..15 font row

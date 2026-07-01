@@ -39,6 +39,7 @@ echo "=== Schindler HDL unit regressions ==="
 run pg_tsg          pg_tsg_tb          hdl/pg_tsg.v          sim/pg_tsg_tb.v
 run pg_place_affine pg_place_affine_tb hdl/pg_place_affine.v sim/pg_place_affine_tb.v
 run pg_pincushion   pg_pincushion_tb   hdl/pg_pincushion.v   sim/pg_pincushion_tb.v
+run pg_chroma       pg_chroma_mod_tb   hdl/pg_chroma_mod.v   sim/pg_chroma_mod_tb.v
 run pg_warp         pg_warp_real_1080_tb \
     hdl/pg_projective.v hdl/pg_pincushion.v hdl/pg_place_affine.v hdl/pg_skid.v \
     hdl/pg_tilecache_rt2.v hdl/pg_tile_dma.v hdl/pg_warp_engine.v sim/pg_warp_real_1080_tb.v

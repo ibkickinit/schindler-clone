@@ -360,6 +360,9 @@
         <label><input type="radio" name="engb-mode" id="engb-raw"> Raw bypass (8-bit channel)</label>
         <span style="opacity:.5;font-size:.85em;margin-left:8px">live select — flip and watch the scope</span>
       </div>
+      <div style="margin:10px 0">
+        <label><input type="checkbox" id="engb-chroma"> NTSC color subcarrier (chroma) <span style="opacity:.5;font-size:.85em">stage 2 — needs scope/TV to verify color decode</span></label>
+      </div>
 
       <div style="display:flex;gap:8px;align-items:center;margin:14px 0 4px"><span style="width:80px">Brightness</span>
         <input type="range" id="engb-bright-r" min="0" max="400" value="100" style="flex:1">
@@ -1105,6 +1108,7 @@
     bn.addEventListener("change",()=>sendBright(bn.value,true));
     g("engb-comp").addEventListener("change",()=>{ if(g("engb-comp").checked) call("engineb.set",{comp_enable:true}).catch(e=>log(`engineb.set: ${e.message}`,"err")); });
     g("engb-raw").addEventListener("change",()=>{ if(g("engb-raw").checked) call("engineb.set",{comp_enable:false}).catch(e=>log(`engineb.set: ${e.message}`,"err")); });
+    { const ck=g("engb-chroma"); if(ck) ck.addEventListener("change",()=>call("engineb.set",{chroma_en:ck.checked}).catch(e=>log(`engineb.set: ${e.message}`,"err"))); }
   })();
   // ---- Source select: HDMI input vs internal Test Signal Generator ----
   function refreshTsgUI(){

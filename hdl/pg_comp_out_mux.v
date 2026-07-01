@@ -29,6 +29,7 @@ module pg_comp_out_mux #(
     // runtime control (AXI GPIO, FCLK_CLK0 — async, quasi-static)
     input  wire [15:0] brightness_async,    // Q8.8 luma gain, 0x0100 = 1.0
     input  wire        comp_enable_async,   // 1 = composite-encoded, 0 = raw bypass
+    input  wire        chroma_en_async,     // 1 = add NTSC color (stage 2); 0 = mono luma (stage 1)
     // sample to the external R-2R ladder pins
     output reg  [7:0]  comp,
     output wire        comp_blank,
@@ -37,22 +38,24 @@ module pg_comp_out_mux #(
     // ---- 2-FF CDC of the quasi-static controls into this clock domain ----
     (* ASYNC_REG = "TRUE" *) reg [15:0] br_q1, br_q2;
     (* ASYNC_REG = "TRUE" *) reg        ce_q1, ce_q2;
+    (* ASYNC_REG = "TRUE" *) reg        ck_q1, ck_q2;
     always @(posedge clk) begin
         if (!rstn) begin
-            br_q1 <= 16'h0100; br_q2 <= 16'h0100; ce_q1 <= 1'b1; ce_q2 <= 1'b1;
+            br_q1 <= 16'h0100; br_q2 <= 16'h0100; ce_q1 <= 1'b1; ce_q2 <= 1'b1; ck_q1 <= 1'b0; ck_q2 <= 1'b0;
         end else begin
             br_q1 <= brightness_async; br_q2 <= br_q1;
             ce_q1 <= comp_enable_async; ce_q2 <= ce_q1;
+            ck_q1 <= chroma_en_async;   ck_q2 <= ck_q1;
         end
     end
 
-    // ---- composite encoder (clean reusable module, untouched) ----
+    // ---- composite encoder (clean reusable module) ----
     wire [7:0] comp_enc;
     pg_composite_out #(.BLANK_LVL(BLANK_LVL)) u_enc (
         .clk(clk), .rstn(rstn),
         .vid_rgb(vid_rgb),
         .vid_active(vid_active), .vid_hsync(vid_hsync), .vid_vsync(vid_vsync),
-        .brightness(br_q2),
+        .brightness(br_q2), .chroma_en(ck_q2),
         .comp(comp_enc), .comp_blank(comp_blank), .burst_window(burst_window)
     );
 

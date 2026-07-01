@@ -10,7 +10,7 @@
 module pg_tsg_tb;
   reg clk=0,rstn=0; reg [3:0] pattern=0;
   wire [23:0] d; wire act,hsy,vsy;
-  pg_tsg dut(.clk(clk),.rstn(rstn),.pattern(pattern),.osd_load(14'd0),.vid_data(d),.vid_active(act),.vid_hsync(hsy),.vid_vsync(vsy));
+  pg_tsg dut(.clk(clk),.rstn(rstn),.pattern(pattern),.osd_load(24'h0A28000),.vid_data(d),.vid_active(act),.vid_hsync(hsy),.vid_vsync(vsy));
   always #5 clk=~clk;
   integer errors=0, g; reg done; reg [23:0] got;
 
@@ -78,9 +78,9 @@ module pg_tsg_tb;
     ck("patho-pll",900,960,24'h444444,4'd15);
     // --- text banner: a glyph pixel is white, a banner-bg pixel is black (banner vc 28..92) ---
     //     row 40 col 716 lands on the 'S' glyph; far-banner-bg check at a known-blank spot.
-    pattern=4'd0; cap(40, 716, r0);   // expect white-ish glyph OR black bg; just assert it's overlaid (not bars)
+    pattern=4'd0; cap(40, 900, r0);   // inside the text-hugged box (boxL=10..boxR=20)
     if(r0!==24'hffffff && r0!==24'h000000) begin errors=errors+1;
-      $display("  FAIL banner not overlaid at (40,716): %h (expected white/black box)",r0); end
+      $display("  FAIL banner not overlaid at (40,900): %h (expected white/black box)",r0); end
 
     $display("PG_TSG: %s (%0d)", (errors==0)?"PASS":"FAIL", errors);
     $finish;

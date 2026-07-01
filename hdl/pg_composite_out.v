@@ -29,19 +29,19 @@ module pg_composite_out #(
     input  wire        vid_vsync,
     // runtime control (AXI GPIO, async — caller may 2-FF; quasi-static)
     input  wire [15:0] brightness,       // Q8.8 gain on luma, 256 = 1.0  (0..~4.0)
+    input  wire        chroma_en,        // STAGE 2: 1 = add NTSC color subcarrier + burst; 0 = mono (stage 1)
     // composite sample to the external R-2R ladder pins
     output reg  [7:0]  comp,
     output reg         comp_blank,       // 1 during sync/blank (telemetry / future chroma gate)
-    // STAGE-2 hooks (unused in stage 1)
-    output wire        burst_window      // would gate the color burst just after hsync
+    output wire        burst_window      // color-burst gate (from the chroma modulator)
 );
     // ---- luma: Y = 0.299R + 0.587G + 0.114B  (Q0.8 coeffs: 77/150/29 = 256) ----
     wire [7:0] r = vid_rgb[23:16];
     wire [7:0] g = vid_rgb[15:8];
     wire [7:0] b = vid_rgb[7:0];
     reg [15:0] y0;                        // 8.8 luma accumulate, registered (keeps the 3 mults off the level path)
-    always @(posedge clk) if(pen_y) y0 <= (16'd77*r + 16'd150*g + 16'd29*b);
     wire pen_y = 1'b1;
+    always @(posedge clk) if(pen_y) y0 <= (16'd77*r + 16'd150*g + 16'd29*b);
     wire [7:0] y = y0[15:8];
 
     // ---- brightness gain (Q8.8), clamp to 8-bit ----
@@ -54,19 +54,29 @@ module pg_composite_out #(
     wire [15:0] y_active = BLANK_LVL + ((y_clamp * (16'd255 - BLANK_LVL)) >> 8);
     wire [7:0]  y_lvl = (y_active > 16'd255) ? 8'd255 : y_active[7:0];
 
-    // ---- level select: sync tip / blank pedestal / active luma ----
+    // ---- STAGE 2: NTSC chroma (QAM color subcarrier + back-porch burst), signed offset ----
+    wire signed [11:0] chroma_sig;
+    pg_chroma_mod u_chroma (
+        .clk(clk), .rstn(rstn), .vid_rgb(vid_rgb),
+        .active(vid_active), .hsync(vid_hsync), .chroma(chroma_sig));
+    assign burst_window = 1'b0;   // (the burst gate now lives inside pg_chroma_mod; kept for the port)
+
+    // ---- base level (sync tip / blank pedestal / active luma) + chroma ----
     wire sync = vid_hsync | vid_vsync;
+    reg [7:0] base_lvl; reg base_blank;
+    always @(*) begin
+        if(sync)            begin base_lvl = 8'd0;      base_blank = 1'b1; end  // sync tip
+        else if(!vid_active) begin base_lvl = BLANK_LVL; base_blank = 1'b1; end  // blank pedestal
+        else                begin base_lvl = y_lvl;     base_blank = 1'b0; end  // active luma
+    end
+    // add chroma everywhere EXCEPT sync (sync tip stays 0); chroma is itself 0 outside burst+active.
+    wire signed [12:0] lvl_c = (sync || !chroma_en) ? $signed({5'd0, base_lvl})
+                                                     : $signed({5'd0, base_lvl}) + $signed(chroma_sig);
+    wire [7:0] comp_next = (lvl_c < 13'sd0) ? 8'd0 : (lvl_c > 13'sd255) ? 8'd255 : lvl_c[7:0];
     always @(posedge clk) begin
         if(!rstn) begin comp <= BLANK_LVL; comp_blank <= 1'b1; end
-        else begin
-            if(sync)            begin comp <= 8'd0;     comp_blank <= 1'b1; end  // sync tip
-            else if(!vid_active) begin comp <= BLANK_LVL; comp_blank <= 1'b1; end // blank pedestal
-            else                begin comp <= y_lvl;    comp_blank <= 1'b0; end  // active luma
-        end
+        else      begin comp <= comp_next; comp_blank <= base_blank; end
     end
-
-    // STAGE 2: burst_window would be a ~9-cycle pulse after hsync falls; tie 0 for now.
-    assign burst_window = 1'b0;
 endmodule
 
 `default_nettype wire

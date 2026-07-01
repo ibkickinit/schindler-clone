@@ -760,9 +760,11 @@ class Dispatcher:
     async def _m_engineb_set(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """Dual-engine Engine B (composite output → Pmod JC R-2R ladder) live control (firmware 'E').
         {brightness: pct 0..400} → 'E b <pct>' (luma gain); {comp_enable: bool} → 'E c <0|1>'
-        (True=composite encode, False=raw bypass). Either or both."""
+        (True=composite encode, False=raw bypass); {chroma_en: bool} → 'E k <0|1>' (NTSC color
+        subcarrier: True=color stage 2, False=mono luma stage 1). Any combination."""
         if not hasattr(self, "_engb_bright"): self._engb_bright = 100
         if not hasattr(self, "_engb_comp"):   self._engb_comp = True
+        if not hasattr(self, "_engb_chroma"): self._engb_chroma = False
         if "brightness" in params:
             b = int(round(float(params["brightness"])))
             self._engb_bright = 0 if b < 0 else 400 if b > 400 else b
@@ -770,7 +772,10 @@ class Dispatcher:
         if "comp_enable" in params:
             self._engb_comp = bool(params["comp_enable"])
             self.uart.send_raw(f"E c {1 if self._engb_comp else 0}")
-        out = {"brightness": self._engb_bright, "comp_enable": self._engb_comp}
+        if "chroma_en" in params:
+            self._engb_chroma = bool(params["chroma_en"])
+            self.uart.send_raw(f"E k {1 if self._engb_chroma else 0}")
+        out = {"brightness": self._engb_bright, "comp_enable": self._engb_comp, "chroma_en": self._engb_chroma}
         self.bus.publish({"jsonrpc": "2.0", "method": "engineb.changed", "params": out})
         return out
 

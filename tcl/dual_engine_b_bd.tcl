@@ -191,6 +191,11 @@ create_bd_cell -type ip -vlnv xilinx.com:ip:xlslice sl_compen
 set_property -dict [list CONFIG.DIN_WIDTH {32} CONFIG.DIN_FROM {16} CONFIG.DIN_TO {16} CONFIG.DOUT_WIDTH {1}] [get_bd_cells sl_compen]
 connect_bd_net [get_bd_pins axi_gpio_20/gpio_io_o] [get_bd_pins sl_compen/Din]
 connect_bd_net [get_bd_pins sl_compen/Dout]        [get_bd_pins comp_out_mux_0/comp_enable_async]
+# composite STAGE 2: chroma_en on axi_gpio_20[22] (spare) -> add NTSC color subcarrier + burst.
+create_bd_cell -type ip -vlnv xilinx.com:ip:xlslice sl_chromaen
+set_property -dict [list CONFIG.DIN_WIDTH {32} CONFIG.DIN_FROM {22} CONFIG.DIN_TO {22} CONFIG.DOUT_WIDTH {1}] [get_bd_cells sl_chromaen]
+connect_bd_net [get_bd_pins axi_gpio_20/gpio_io_o] [get_bd_pins sl_chromaen/Din]
+connect_bd_net [get_bd_pins sl_chromaen/Dout]      [get_bd_pins comp_out_mux_0/chroma_en_async]
 
 # ---------------------------------------------------------------------------
 # TSG (internal test signal generator) control — reuse spare axi_gpio_20 bits:
@@ -221,13 +226,15 @@ if {[info exists TSG_BUILD] && $TSG_BUILD} {
     connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]          [get_bd_pins axi_ic_lite2/${_osd_mp}_ACLK]
     connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn] [get_bd_pins axi_ic_lite2/${_osd_mp}_ARESETN]
     create_bd_cell -type ip -vlnv xilinx.com:ip:axi_gpio axi_gpio_21
+    # DOUT default 0x00A28000 = {boxR=20[23:19], boxL=10[18:14]} so the boot banner box hugs the
+    # HDL-default "EDGERLY TSG" (11 chars centered at cells 10..20) even before firmware writes.
     set_property -dict [list CONFIG.C_GPIO_WIDTH {32} CONFIG.C_ALL_OUTPUTS {1} CONFIG.C_IS_DUAL {0} \
-        CONFIG.C_INTERRUPT_PRESENT {0} CONFIG.C_DOUT_DEFAULT {0x00000000}] [get_bd_cells axi_gpio_21]
+        CONFIG.C_INTERRUPT_PRESENT {0} CONFIG.C_DOUT_DEFAULT {0x00A28000}] [get_bd_cells axi_gpio_21]
     connect_bd_intf_net [get_bd_intf_pins axi_ic_lite2/${_osd_mp}_AXI] [get_bd_intf_pins axi_gpio_21/S_AXI]
     connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]          [get_bd_pins axi_gpio_21/s_axi_aclk]
     connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn] [get_bd_pins axi_gpio_21/s_axi_aresetn]
     create_bd_cell -type ip -vlnv xilinx.com:ip:xlslice sl_osd_load
-    set_property -dict [list CONFIG.DIN_WIDTH {32} CONFIG.DIN_FROM {13} CONFIG.DIN_TO {0} CONFIG.DOUT_WIDTH {14}] [get_bd_cells sl_osd_load]
+    set_property -dict [list CONFIG.DIN_WIDTH {32} CONFIG.DIN_FROM {23} CONFIG.DIN_TO {0} CONFIG.DOUT_WIDTH {24}] [get_bd_cells sl_osd_load]
     connect_bd_net [get_bd_pins axi_gpio_21/gpio_io_o] [get_bd_pins sl_osd_load/Din]
     connect_bd_net [get_bd_pins sl_osd_load/Dout] [get_bd_pins pg_tsg_0/osd_load]
     puts "DUAL-ENGINE-B: OSD-0 banner-text load on axi_gpio_21 (\[13\]=strobe \[12:8\]=idx \[7:0\]=char) via axi_ic_lite2/${_osd_mp}"

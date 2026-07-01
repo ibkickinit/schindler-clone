@@ -1091,8 +1091,10 @@ static unsigned g_engb_comp_en = 1;       /* 1 = composite encode, 0 = raw bypas
  * tsg_enable=0 -> HDMI write path is byte-identical to the non-TSG build. */
 static unsigned g_tsg_enable  = 0;
 static unsigned g_tsg_pattern = 0;
+static unsigned g_chroma_en   = 0;        /* composite stage 2: NTSC color subcarrier (axi_gpio_20[22]) */
 static void engb_write(void) {
     Xil_Out32(ENGB_GPIO_BASE,
+              ((g_chroma_en   & 1u) << 22) |
               ((g_tsg_pattern & 15u) << 18) |
               ((g_tsg_enable  & 1u) << 17) |
               ((g_engb_comp_en & 1u) << 16) |
@@ -1110,8 +1112,9 @@ static void engb_write(void) {
 #endif
 #ifdef OSD_GPIO_BASE
 static unsigned g_osd_strobe = 0;
+static unsigned g_osd_box = 0;     /* {boxR[23:19], boxL[18:14]} held across writes so the box hugs the text */
 static void osd_set_char(unsigned idx, unsigned ch) {
-    unsigned base = ((idx & 0x1Fu) << 8) | (ch & 0xFFu);
+    unsigned base = g_osd_box | ((idx & 0x1Fu) << 8) | (ch & 0xFFu);
     Xil_Out32(OSD_GPIO_BASE, base | (g_osd_strobe << 13));   /* data settle */
     g_osd_strobe ^= 1u;
     Xil_Out32(OSD_GPIO_BASE, base | (g_osd_strobe << 13));   /* toggle strobe -> commit */
@@ -1120,6 +1123,11 @@ static void osd_set_text(const char *s) {
     char buf[32]; int n = 0;
     while (n < 32 && s[n]) { buf[n] = s[n]; n++; }
     int pad = (32 - n) / 2; if (pad < 0) pad = 0;             /* centre in the 32-cell banner */
+    /* occupied-cell range -> box hugs the text; n==0 -> boxR<boxL hides the box. */
+    unsigned boxL = (unsigned)pad;
+    unsigned boxR = n ? (unsigned)(pad + n - 1) : 0u;
+    g_osd_box = ((boxR & 0x1Fu) << 19) | ((boxL & 0x1Fu) << 14);
+    if (!n) g_osd_box = (0u << 19) | (1u << 14);              /* boxR=0 < boxL=1 -> hidden */
     for (int i = 0; i < 32; i++) {
         int j = i - pad;
         osd_set_char((unsigned)i, (j >= 0 && j < n) ? (unsigned char)buf[j] : ' ');
@@ -2308,6 +2316,11 @@ static void uart_dispatch(const char *line)
             g_tsg_pattern = (unsigned)v;
             engb_write();
             xil_printf("TSG pattern = %u\r\n", g_tsg_pattern);
+        } else if (sub == 'k' && parse_int(&p, &v)) {
+            /* composite STAGE 2: chroma (NTSC color subcarrier) 0=mono luma / 1=color. */
+            g_chroma_en = (v != 0);
+            engb_write();
+            xil_printf("chroma_en = %u (%s)\r\n", g_chroma_en, g_chroma_en ? "NTSC color" : "mono luma");
         } else if (sub == 'n') {
             /* OSD-0: set the banner text. 'E n <text>' (up to 32 chars, centered). */
 #ifdef OSD_GPIO_BASE
