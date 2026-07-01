@@ -10,7 +10,7 @@
 module pg_tsg_tb;
   reg clk=0,rstn=0; reg [3:0] pattern=0;
   wire [23:0] d; wire act,hsy,vsy;
-  pg_tsg dut(.clk(clk),.rstn(rstn),.pattern(pattern),.vid_data(d),.vid_active(act),.vid_hsync(hsy),.vid_vsync(vsy));
+  pg_tsg dut(.clk(clk),.rstn(rstn),.pattern(pattern),.osd_load(14'd0),.vid_data(d),.vid_active(act),.vid_hsync(hsy),.vid_vsync(vsy));
   always #5 clk=~clk;
   integer errors=0, g; reg done; reg [23:0] got;
 

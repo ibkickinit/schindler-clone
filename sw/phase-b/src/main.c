@@ -1100,6 +1100,33 @@ static void engb_write(void) {
 }
 #endif
 
+/* OSD-0 runtime banner text (axi_gpio_21): {strobe[13], idx[12:8], char[7:0]}. Data-then-strobe:
+ * write {idx,char} then TOGGLE the strobe bit -> pg_tsg latches char_buf[idx] on the synced edge
+ * (per the gamma-load CDC lesson). 32 cells; text is centered like the default "EDGERLY TSG". */
+#if defined(XPAR_AXI_GPIO_21_BASEADDR)
+#  define OSD_GPIO_BASE XPAR_AXI_GPIO_21_BASEADDR
+#elif defined(XPAR_PHASE_B_BD_AXI_GPIO_21_BASEADDR)
+#  define OSD_GPIO_BASE XPAR_PHASE_B_BD_AXI_GPIO_21_BASEADDR
+#endif
+#ifdef OSD_GPIO_BASE
+static unsigned g_osd_strobe = 0;
+static void osd_set_char(unsigned idx, unsigned ch) {
+    unsigned base = ((idx & 0x1Fu) << 8) | (ch & 0xFFu);
+    Xil_Out32(OSD_GPIO_BASE, base | (g_osd_strobe << 13));   /* data settle */
+    g_osd_strobe ^= 1u;
+    Xil_Out32(OSD_GPIO_BASE, base | (g_osd_strobe << 13));   /* toggle strobe -> commit */
+}
+static void osd_set_text(const char *s) {
+    char buf[32]; int n = 0;
+    while (n < 32 && s[n]) { buf[n] = s[n]; n++; }
+    int pad = (32 - n) / 2; if (pad < 0) pad = 0;             /* centre in the 32-cell banner */
+    for (int i = 0; i < 32; i++) {
+        int j = i - pad;
+        osd_set_char((unsigned)i, (j >= 0 && j < n) ? (unsigned char)buf[j] : ' ');
+    }
+}
+#endif
+
 /* ==========================================================================
  * WARP read-engine (pg_warp_top) affine geometry. In the WARP build the SAME
  * GPIOs axi_gpio_8/9/10 carry the 6 affine coeffs m_a..m_f (Q20.12 signed),
@@ -2281,9 +2308,19 @@ static void uart_dispatch(const char *line)
             g_tsg_pattern = (unsigned)v;
             engb_write();
             xil_printf("TSG pattern = %u\r\n", g_tsg_pattern);
+        } else if (sub == 'n') {
+            /* OSD-0: set the banner text. 'E n <text>' (up to 32 chars, centered). */
+#ifdef OSD_GPIO_BASE
+            while (*p == ' ') p++;                       /* skip to the text */
+            char *e = p; while (*e && *e != '\r' && *e != '\n') e++; *e = 0;
+            osd_set_text(p);
+            xil_printf("OSD text = \"%s\"\r\n", p);
+#else
+            xil_printf("OSD banner not in this build\r\n");
+#endif
         } else {
             xil_printf("ENGB: brightness=Q8.8 0x%03x comp_enable=%u tsg_enable=%u tsg_pattern=%u\r\n"
-                       "      (usage 'E b <pct>' / 'E c <0|1>' / 'E t <0|1>' / 'E p <0..15>')\r\n",
+                       "      (usage 'E b <pct>' / 'E c <0|1>' / 'E t <0|1>' / 'E p <0..15>' / 'E n <text>')\r\n",
                        g_engb_bright, g_engb_comp_en, g_tsg_enable, g_tsg_pattern);
         }
 #else

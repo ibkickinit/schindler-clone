@@ -102,6 +102,8 @@ add_files -norecurse [file join $project_root hdl fp_mon_detector.v]   ;# sticky
 add_files -norecurse [file join $project_root hdl vsync_cdc_pulse.v]   ;# iter6: s2mm_fsync pulse gen
 # TSG (internal test signal generator) write-side injection — pg_tsg + clock mux + source mux + switch reset
 add_files -norecurse [file join $project_root hdl pg_tsg.v]            ;# 1080p RGB+sync internal pattern generator
+add_files -norecurse [file join $project_root hdl pg_font8x16.mem]     ;# OSD-0 8x16 ASCII font ROM ($readmemh)
+set_property FILE_TYPE "Memory Initialization Files" [get_files -all pg_font8x16.mem]
 # tsg_clkmux is NOT add_files'd here — it is a PACKAGED IP (schindler:tsg:tsg_clkmux:1.0
 # in hdl/ip_tsg_clkmux/, added to ip_repo_paths above) so its clk_o output advertises a
 # FREQ_HZ (a bare module-ref clock output does not, breaking IPI clock-freq propagation).

@@ -159,6 +159,11 @@
             </optgroup>
           </select>
         </label>
+        <label style="opacity:.85">Banner
+          <input type="text" id="osd-text" maxlength="32" placeholder="EDGERLY TSG"
+                 style="width:14em" title="On-screen banner text (up to 32 chars)">
+          <button id="osd-set" style="padding:1px 8px">Set</button>
+        </label>
       </div>
     </div>
 
@@ -1126,6 +1131,11 @@
     en.addEventListener("change",()=>{ refreshTsgUI(); call("source.set",{tsg_enable:en.checked}).catch(e=>log(`source.set: ${e.message}`,"err")); });
     pat.addEventListener("change",()=>{ refreshTsgUI(); call("source.set",{pattern:+pat.value}).catch(e=>log(`source.set: ${e.message}`,"err")); });
     refreshTsgUI();
+    // OSD-0 banner text
+    const ot=g("osd-text"), ob=g("osd-set");
+    const sendOsd=()=>call("osd.set",{text:ot.value}).catch(e=>log(`osd.set: ${e.message}`,"err"));
+    if(ob) ob.addEventListener("click",sendOsd);
+    if(ot) ot.addEventListener("keydown",e=>{ if(e.key==="Enter") sendOsd(); });
   })();
   async function loadSettings() {
     try {

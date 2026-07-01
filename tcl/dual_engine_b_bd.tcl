@@ -212,6 +212,25 @@ if {[info exists TSG_BUILD] && $TSG_BUILD} {
     connect_bd_net [get_bd_pins axi_gpio_20/gpio_io_o] [get_bd_pins sl_tsg_pat/Din]
     connect_bd_net [get_bd_pins sl_tsg_pat/Dout] [get_bd_pins pg_tsg_0/pattern]
     puts "DUAL-ENGINE-B: TSG control wired — axi_gpio_20\[17\]=tsg_enable, \[19:18\]=pattern"
+
+    # OSD-0 runtime banner text load: a dedicated GPIO (axi_gpio_20 spare bits are too few for the
+    # 14-bit {strobe,idx,char} word). New master port on axi_ic_lite2, gpio_io_o[13:0] -> pg_tsg_0/osd_load.
+    set _osd_mi [get_property CONFIG.NUM_MI [get_bd_cells axi_ic_lite2]]
+    set _osd_mp "M[format %02d $_osd_mi]"
+    set_property CONFIG.NUM_MI [expr {$_osd_mi + 1}] [get_bd_cells axi_ic_lite2]
+    connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]          [get_bd_pins axi_ic_lite2/${_osd_mp}_ACLK]
+    connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn] [get_bd_pins axi_ic_lite2/${_osd_mp}_ARESETN]
+    create_bd_cell -type ip -vlnv xilinx.com:ip:axi_gpio axi_gpio_21
+    set_property -dict [list CONFIG.C_GPIO_WIDTH {32} CONFIG.C_ALL_OUTPUTS {1} CONFIG.C_IS_DUAL {0} \
+        CONFIG.C_INTERRUPT_PRESENT {0} CONFIG.C_DOUT_DEFAULT {0x00000000}] [get_bd_cells axi_gpio_21]
+    connect_bd_intf_net [get_bd_intf_pins axi_ic_lite2/${_osd_mp}_AXI] [get_bd_intf_pins axi_gpio_21/S_AXI]
+    connect_bd_net [get_bd_pins zynq_ps/FCLK_CLK0]          [get_bd_pins axi_gpio_21/s_axi_aclk]
+    connect_bd_net [get_bd_pins rst_axi/peripheral_aresetn] [get_bd_pins axi_gpio_21/s_axi_aresetn]
+    create_bd_cell -type ip -vlnv xilinx.com:ip:xlslice sl_osd_load
+    set_property -dict [list CONFIG.DIN_WIDTH {32} CONFIG.DIN_FROM {13} CONFIG.DIN_TO {0} CONFIG.DOUT_WIDTH {14}] [get_bd_cells sl_osd_load]
+    connect_bd_net [get_bd_pins axi_gpio_21/gpio_io_o] [get_bd_pins sl_osd_load/Din]
+    connect_bd_net [get_bd_pins sl_osd_load/Dout] [get_bd_pins pg_tsg_0/osd_load]
+    puts "DUAL-ENGINE-B: OSD-0 banner-text load on axi_gpio_21 (\[13\]=strobe \[12:8\]=idx \[7:0\]=char) via axi_ic_lite2/${_osd_mp}"
 }
 
 puts "DUAL-ENGINE-B: integration block complete (pg_re_b identity 1:1 on HP2, comp[7:0] -> Pmod JC)"

@@ -21,6 +21,7 @@ run() {  # name  top  src...
   local srcs=(); local f
   for f in "$@"; do srcs+=("$ROOT/$f"); done
   local W="$ROOT/sim/.reg/$name"; rm -rf "$W"; mkdir -p "$W"
+  cp "$ROOT"/hdl/*.mem "$ROOT"/hdl/*.hex "$W"/ 2>/dev/null || true
   (
     cd "$W"
     if ! xvlog --nolog "${srcs[@]}" > xv.log 2>&1; then echo "$name: XVLOG-FAIL (see $W/xv.log)"; exit 2; fi

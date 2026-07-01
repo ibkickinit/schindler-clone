@@ -556,6 +556,7 @@ class Dispatcher:
             "lead.autotune":        self._m_lead_autotune,    # force prefetch-lead sweep ('U') / toggle on-break
             "engineb.set":          self._m_engineb_set,      # dual-engine Engine B composite output control ('E')
             "source.set":           self._m_source_set,       # write-side source select: internal TSG vs HDMI ('E t'/'E p')
+            "osd.set":              self._m_osd_set,          # OSD-0 runtime banner text ('E n <text>')
             "matte.set":            self._m_matte_set,        # runtime matte fill colour
             "scale.set":            self._m_scale_set,        # CANON scale: shrink=write-side, enlarge=read-side warp zoom (Z)
             "output.set":           self._m_output_set,       # live resolution / framerate (74.25 family)
@@ -790,6 +791,17 @@ class Dispatcher:
             self.uart.send_raw(f"E p {self._tsg_pattern}")
         out = {"tsg_enable": self._tsg_enable, "pattern": self._tsg_pattern}
         self.bus.publish({"jsonrpc": "2.0", "method": "source.changed", "params": out})
+        return out
+
+    async def _m_osd_set(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """OSD-0 runtime banner text (firmware 'E n <text>'). {text: str} -> up to 32 chars, ASCII
+        printable; the firmware centres it in the 32-cell banner. Empty clears to spaces."""
+        txt = str(params.get("text", ""))[:32]
+        txt = "".join(c for c in txt if 32 <= ord(c) < 127)   # printable ASCII only (font ROM range)
+        self._osd_text = txt
+        self.uart.send_raw(f"E n {txt}")
+        out = {"text": txt}
+        self.bus.publish({"jsonrpc": "2.0", "method": "osd.changed", "params": out})
         return out
 
     def _on_uart_text(self, text: str) -> None:
