@@ -91,6 +91,22 @@ tight but fits**; if not, share one char RAM, or shrink the grid (e.g. 16×40). 
 pipelined → no timing risk on the order of the warp paths. **Watch the warp margin** (the text banner
 already showed congestion can squeeze `pg_re_0`); keep `pg_osd` floor-planned away from the warp column.
 
+## Implementation status (2026-07-01)
+
+- **OSD-1/2 compositor: BUILT + sim-proven** (`hdl/pg_osd.v`, `sim/pg_osd_tb.v`, in the regression suite).
+  Output-side parallel-video compositor: derives active (hc,vc) from the incoming sync, renders a
+  COLSxROWS grid of {inv, char} from a firmware-writable BRAM using the shared 8x16 font ROM at 2x,
+  with per-cell inverse = selection highlight. `osd_en=0` = bit-passthrough. Verified: passthrough,
+  black-box bg, glyph render.
+- **Remaining to a live menu:**
+  1. BD integration (main build): insert on the HDMI parallel bus — `axis_to_vid_io_0/vid_data` +
+     sync -> `pg_osd` -> `rgb2dvi/vid_pData`. Runs on `clk_wiz_pixclk_out` (74.25 MHz). Add a GPIO for
+     `osd_load[19:0]` {strobe,inv,addr,char} + `osd_en` (new axi_gpio on a fresh interconnect master
+     port, same pattern as axi_gpio_21). pg_osd's ld_q1/2/3 CDC handles FCLK->pixclk (false-path ld_q1/D).
+  2. Firmware: `osd_put(row,col,str,inv)` grid writer + a menu tree (`osd_menu.c`) bound to the existing
+     UART control verbs; `osd.menu.*` daemon methods.
+  3. Navigation: web-driven first (daemon nav up/down/select/back), physical rotary/buttons later.
+
 ## Phasing
 
 0. **OSD-0 — runtime-editable banner text** (requested 2026-06-30; the recommended first slice).
