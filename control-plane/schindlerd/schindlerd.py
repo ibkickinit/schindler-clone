@@ -557,6 +557,7 @@ class Dispatcher:
             "engineb.set":          self._m_engineb_set,      # dual-engine Engine B composite output control ('E')
             "source.set":           self._m_source_set,       # write-side source select: internal TSG vs HDMI ('E t'/'E p')
             "osd.set":              self._m_osd_set,          # OSD-0 runtime banner text ('E n <text>')
+            "osd.menu":             self._m_osd_menu,         # OSD output menu (pg_osd): demo/on/off/clear ('Y ...')
             "matte.set":            self._m_matte_set,        # runtime matte fill colour
             "scale.set":            self._m_scale_set,        # CANON scale: shrink=write-side, enlarge=read-side warp zoom (Z)
             "output.set":           self._m_output_set,       # live resolution / framerate (74.25 family)
@@ -808,6 +809,16 @@ class Dispatcher:
         out = {"text": txt}
         self.bus.publish({"jsonrpc": "2.0", "method": "osd.changed", "params": out})
         return out
+
+    async def _m_osd_menu(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """OSD output menu (pg_osd overlay on HDMI). {action: demo|on|off|clear} -> firmware 'Y ...'.
+        demo = draw a sample menu + enable; on/off toggle the overlay; clear = blank the grid."""
+        act = str(params.get("action", "demo"))
+        cmd = {"demo": "Y d", "on": "Y e 1", "off": "Y e 0", "clear": "Y c"}.get(act)
+        if not cmd:
+            raise ValueError(f"osd.menu action '{act}' unknown (demo/on/off/clear)")
+        self.uart.send_raw(cmd)
+        return {"action": act}
 
     def _on_uart_text(self, text: str) -> None:
         """Route firmware AUTOTUNE log lines to the UI as an OSD banner: a 'tuning' event when a sweep

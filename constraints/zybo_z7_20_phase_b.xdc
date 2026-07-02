@@ -105,6 +105,10 @@ set_property -quiet -dict { PACKAGE_PIN U12 IOSTANDARD LVCMOS33 } [get_ports {co
 set_false_path -quiet -to [get_pins -hier -filter {NAME =~ */br_q1_reg[*]/D}]
 set_false_path -quiet -to [get_pins -hier -filter {NAME =~ */ce_q1_reg/D}]
 set_false_path -quiet -to [get_pins -hier -filter {NAME =~ */ck_q1_reg/D}]   ;# chroma_en CDC (stage 2)
+# OSD load CDCs (osd_load FCLK -> pg_tsg/pg_osd clock; 2-FF ASYNC_REG data-then-strobe, quasi-static).
+set_false_path -quiet -to [get_pins -hier -filter {NAME =~ */ld_q1_reg[*]/D}]
+# pg_osd osd_en CDC (FCLK GPIO -> pixclk 2-FF; quasi-static overlay enable).
+set_false_path -quiet -to [get_pins -hier -filter {NAME =~ */en_q1_reg/D}]
 
 # TSG write-side injection CDC false-paths (axi_gpio_20[17] tsg_enable, FCLK_CLK0):
 #   tsg_srcsel_0  : sel_async -> 2-FF sync (sel_q1_reg) into the muxed write clock.

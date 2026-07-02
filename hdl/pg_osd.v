@@ -59,10 +59,15 @@ module pg_osd #(
         if (ld_q2[19] != ld_q3[19]) grid[ld_q2[17:8]] <= {ld_q2[18], ld_q2[7:0]};  // strobe -> commit cell
     end
 
+    // osd_en is a quasi-static FCLK GPIO bit crossing into this pixel clock -> 2-FF sync (false-path
+    // en_q1/D in XDC). Without this the timer chases the unconstrained FCLK->pixclk crossing (WNS -3.4).
+    (* ASYNC_REG="TRUE" *) reg en_q1, en_q2;
+    always @(posedge clk) begin en_q1 <= osd_en; en_q2 <= en_q1; end
+
     // ---- region test + cell/glyph coordinates (divide-free: CW=16=>>4, CH=32=>>5, 2x font =>>1) ----
     wire in_x = (hc >= X0) && (hc < X0 + COLS*CW);
     wire in_y = (vc >= Y0) && (vc < Y0 + ROWS*CH);
-    wire in_box = osd_en && in_x && in_y;
+    wire in_box = en_q2 && in_x && in_y;
     wire [11:0] rx = hc - X0[11:0];
     wire [11:0] ry = vc - Y0[11:0];
     wire [5:0]  col = rx >> 4;                 // 0..COLS-1

@@ -1135,6 +1135,39 @@ static void osd_set_text(const char *s) {
 }
 #endif
 
+/* OSD output menu (pg_osd on the HDMI output): axi_gpio_22 [20]=osd_en, [19:0]=load
+ * {strobe[19], inv[18], addr[17:8]=cell, char[7:0]}. 40x16 grid; data-then-strobe CDC. */
+#if defined(XPAR_AXI_GPIO_22_BASEADDR)
+#  define OSD2_GPIO_BASE XPAR_AXI_GPIO_22_BASEADDR
+#elif defined(XPAR_PHASE_B_BD_AXI_GPIO_22_BASEADDR)
+#  define OSD2_GPIO_BASE XPAR_PHASE_B_BD_AXI_GPIO_22_BASEADDR
+#endif
+#ifdef OSD2_GPIO_BASE
+#define OSD2_COLS 40u
+#define OSD2_ROWS 16u
+static unsigned g_osd2_en = 0, g_osd2_strobe = 0;
+static void osd2_word(unsigned load20) {
+    Xil_Out32(OSD2_GPIO_BASE, ((g_osd2_en & 1u) << 20) | (load20 & 0xFFFFFu));
+}
+static void osd2_cell(unsigned addr, unsigned ch, unsigned inv) {
+    unsigned d = ((inv & 1u) << 18) | ((addr & 0x3FFu) << 8) | (ch & 0xFFu);
+    osd2_word(d | (g_osd2_strobe << 19));        /* data settle */
+    g_osd2_strobe ^= 1u;
+    osd2_word(d | (g_osd2_strobe << 19));        /* toggle strobe -> commit */
+}
+static void osd2_puts(unsigned row, unsigned col, const char *s, unsigned inv) {
+    for (unsigned i = 0; s[i] && (col + i) < OSD2_COLS; i++)
+        osd2_cell(row * OSD2_COLS + col + i, (unsigned char)s[i], inv);
+}
+static void osd2_clear(void) {
+    for (unsigned a = 0; a < OSD2_COLS * OSD2_ROWS; a++) osd2_cell(a, ' ', 0);
+}
+static void osd2_enable(unsigned e) {
+    g_osd2_en = e ? 1u : 0u;
+    Xil_Out32(OSD2_GPIO_BASE, ((g_osd2_en & 1u) << 20) | (g_osd2_strobe << 19)); /* en + hold strobe (no commit) */
+}
+#endif
+
 /* ==========================================================================
  * WARP read-engine (pg_warp_top) affine geometry. In the WARP build the SAME
  * GPIOs axi_gpio_8/9/10 carry the 6 affine coeffs m_a..m_f (Q20.12 signed),
@@ -2338,6 +2371,41 @@ static void uart_dispatch(const char *line)
         }
 #else
         xil_printf("UART: 'E' Engine-B control not in this build (dual-engine only)\r\n");
+#endif
+    } else if (op == 'Y') {
+        /* OSD output menu (pg_osd on HDMI, over any source). 'Y e <0|1>' enable / 'Y c' clear /
+         * 'Y w <row> <col> <text>' write / 'Y d' demo menu. */
+#ifdef OSD2_GPIO_BASE
+        int yv = 0;
+        char ysub = 0; while (*p == ' ') p++; ysub = *p ? *p++ : 0;
+        if (ysub == 'e' && parse_int(&p, &yv)) {
+            osd2_enable((unsigned)yv);
+            xil_printf("OSD en = %u\r\n", g_osd2_en);
+        } else if (ysub == 'c') {
+            osd2_clear(); xil_printf("OSD cleared\r\n");
+        } else if (ysub == 'w') {
+            int row = 0, col = 0;
+            if (parse_int(&p, &row) && parse_int(&p, &col)) {
+                while (*p == ' ') p++;
+                char *e = p; while (*e && *e != '\r' && *e != '\n') e++; *e = 0;
+                osd2_puts((unsigned)row, (unsigned)col, p, 0);
+                xil_printf("OSD (%d,%d) = \"%s\"\r\n", row, col, p);
+            } else xil_printf("usage: Y w <row> <col> <text>\r\n");
+        } else if (ysub == 'd') {
+            osd2_clear();
+            osd2_puts(0, 12, "SCHINDLER 2.0", 0);
+            osd2_puts(2, 4, " Pattern    : color bars ", 1);   /* highlighted row */
+            osd2_puts(3, 4, " Warp       : identity   ", 0);
+            osd2_puts(4, 4, " Output     : 1080p30     ", 0);
+            osd2_puts(5, 4, " Chroma     : off         ", 0);
+            osd2_puts(7, 4, "  up/down select . enter apply", 0);
+            osd2_enable(1);
+            xil_printf("OSD demo menu shown\r\n");
+        } else {
+            xil_printf("usage: Y e <0|1> | Y c | Y w <row> <col> <text> | Y d (demo)\r\n");
+        }
+#else
+        xil_printf("UART: OSD output menu not in this build\r\n");
 #endif
     } else if (op == 'B') {
         /* task-57: tile-cache set-hash select override (live bench tuning, no rebuild). hsel index->b:

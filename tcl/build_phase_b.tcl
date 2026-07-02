@@ -102,6 +102,7 @@ add_files -norecurse [file join $project_root hdl fp_mon_detector.v]   ;# sticky
 add_files -norecurse [file join $project_root hdl vsync_cdc_pulse.v]   ;# iter6: s2mm_fsync pulse gen
 # TSG (internal test signal generator) write-side injection — pg_tsg + clock mux + source mux + switch reset
 add_files -norecurse [file join $project_root hdl pg_tsg.v]            ;# 1080p RGB+sync internal pattern generator
+add_files -norecurse [file join $project_root hdl pg_osd.v]             ;# output-side OSD compositor (menu overlay)
 add_files -norecurse [file join $project_root hdl pg_font8x16.mem]     ;# OSD-0 8x16 ASCII font ROM ($readmemh)
 add_files -norecurse [file join $project_root hdl pg_chroma_mod.v]     ;# composite stage-2 NTSC chroma QAM
 add_files -norecurse [file join $project_root hdl chroma_lut_cos.hex]  ;# subcarrier cos LUT ($readmemh)
@@ -814,10 +815,27 @@ set_property -dict [list \
 # VDMA MM2S → axis_to_vid_io adapter → rgb2dvi. Both data and sync come from
 # the adapter, which gates AXIS data on VTC's active_video and registers all
 # outputs on PixelClk.
-connect_bd_net [get_bd_pins axis_to_vid_io_0/vid_data]         [get_bd_pins rgb2dvi_0/vid_pData]
-connect_bd_net [get_bd_pins axis_to_vid_io_0/vid_active_video] [get_bd_pins rgb2dvi_0/vid_pVDE]
-connect_bd_net [get_bd_pins axis_to_vid_io_0/vid_hsync]        [get_bd_pins rgb2dvi_0/vid_pHSync]
-connect_bd_net [get_bd_pins axis_to_vid_io_0/vid_vsync]        [get_bd_pins rgb2dvi_0/vid_pVSync]
+# OSD output-side compositor: insert between axis_to_vid_io_0 and rgb2dvi so a menu/text overlays the
+# HDMI OUTPUT (visible over ANY source, AFTER the warp+color). pg_osd derives position from the sync
+# and composites its char grid; osd_en=0 = bit-passthrough. Defaults tied off (xlconstant); DUAL_ENGINE
+# swaps the ties for axi_gpio_22 control in dual_engine_b_bd.tcl.
+create_bd_cell -type module -reference pg_osd pg_osd_0
+connect_bd_net [get_bd_pins clk_wiz_pixclk_out/clk_out1]       [get_bd_pins pg_osd_0/clk]
+# pg_osd/rstn wired after rst_pixclk_out is created (search "OSD rstn hookup" below)
+connect_bd_net [get_bd_pins axis_to_vid_io_0/vid_data]         [get_bd_pins pg_osd_0/vid_in]
+connect_bd_net [get_bd_pins axis_to_vid_io_0/vid_active_video] [get_bd_pins pg_osd_0/vid_active]
+connect_bd_net [get_bd_pins axis_to_vid_io_0/vid_hsync]        [get_bd_pins pg_osd_0/vid_hsync]
+connect_bd_net [get_bd_pins axis_to_vid_io_0/vid_vsync]        [get_bd_pins pg_osd_0/vid_vsync]
+connect_bd_net [get_bd_pins pg_osd_0/vid_out]        [get_bd_pins rgb2dvi_0/vid_pData]
+connect_bd_net [get_bd_pins pg_osd_0/vid_active_o]   [get_bd_pins rgb2dvi_0/vid_pVDE]
+connect_bd_net [get_bd_pins pg_osd_0/vid_hsync_o]    [get_bd_pins rgb2dvi_0/vid_pHSync]
+connect_bd_net [get_bd_pins pg_osd_0/vid_vsync_o]    [get_bd_pins rgb2dvi_0/vid_pVSync]
+create_bd_cell -type ip -vlnv xilinx.com:ip:xlconstant osd_en_const
+set_property -dict [list CONFIG.CONST_WIDTH {1}  CONFIG.CONST_VAL {0}] [get_bd_cells osd_en_const]
+connect_bd_net [get_bd_pins osd_en_const/dout]   [get_bd_pins pg_osd_0/osd_en]
+create_bd_cell -type ip -vlnv xilinx.com:ip:xlconstant osd_load_const
+set_property -dict [list CONFIG.CONST_WIDTH {20} CONFIG.CONST_VAL {0}] [get_bd_cells osd_load_const]
+connect_bd_net [get_bd_pins osd_load_const/dout] [get_bd_pins pg_osd_0/osd_load]
 connect_bd_intf_net [get_bd_intf_pins rgb2dvi_0/TMDS] [get_bd_intf_ports hdmi_tx_tmds]
 # rgb2dvi.aRst wiring is deferred until after rst_pixclk_out is created
 # (search for "iter-4c-test2 rgb2dvi reset hookup" below).
@@ -932,6 +950,8 @@ if {[info exists RASTER_TO_TILE] && $RASTER_TO_TILE} {
 # active-high companion to peripheral_aresetn from the same proc_sys_reset; it
 # stays high until dcm_locked (= clk_wiz_pixclk_out/locked) goes high.
 connect_bd_net [get_bd_pins rst_pixclk_out/peripheral_reset] [get_bd_pins rgb2dvi_0/aRst]
+# OSD rstn hookup (deferred from the pg_osd insert above — rst_pixclk_out exists now).
+connect_bd_net [get_bd_pins rst_pixclk_out/peripheral_aresetn] [get_bd_pins pg_osd_0/rstn]
 
 # =============================================================================
 # AXI-Lite control path: PS GP0 → 1×2 Interconnect → VDMA, VTC
