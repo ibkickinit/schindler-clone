@@ -93,11 +93,19 @@ already showed congestion can squeeze `pg_re_0`); keep `pg_osd` floor-planned aw
 
 ## Implementation status (2026-07-01)
 
-- **OSD-1/2 compositor: BUILT + sim-proven** (`hdl/pg_osd.v`, `sim/pg_osd_tb.v`, in the regression suite).
+- **OSD-1/2 compositor: BUILT + sim-proven + FLASHED** (`hdl/pg_osd.v`, `sim/pg_osd_tb.v`, in the regression suite).
   Output-side parallel-video compositor: derives active (hc,vc) from the incoming sync, renders a
-  COLSxROWS grid of {inv, char} from a firmware-writable BRAM using the shared 8x16 font ROM at 2x,
+  COLSxROWS grid of {inv, char} from a firmware-writable BRAM using the shared 8x16 font ROM,
   with per-cell inverse = selection highlight. `osd_en=0` = bit-passthrough. Verified: passthrough,
   black-box bg, glyph render.
+- **Baseline font (2026-07-02, `305f4a9`)**: font ROM regenerated with a fixed baseline (PIL `anchor="ms"`)
+  so glyph bottoms align and descenders (q,y,p,g,j) hang — was per-glyph vertically centered.
+- **Auto-scale + auto-center (2026-07-02, `b71b589`, WNS +0.286, flashed)**: pg_osd now measures the active
+  region from the incoming sync (width latched at active-falling, height at vsync) and adapts to the output
+  resolution: **2× cells for ≥1600-wide (1080p), 1× for smaller (720p)**, box **auto-centered** in the
+  measured region (no hardcoded X0/Y0). Divide-free — cell coords use a scale-dependent shift (`s2`).
+  Defaults to 1080p until first measured. Sim-verified both paths (1× @160w box=1024px, 2× @1620w box=4096px);
+  bench-confirmed rendering centered on the monitor (Brio). Re-centers live on a resolution change.
 - **Remaining to a live menu:**
   1. BD integration (main build): insert on the HDMI parallel bus — `axis_to_vid_io_0/vid_data` +
      sync -> `pg_osd` -> `rgb2dvi/vid_pData`. Runs on `clk_wiz_pixclk_out` (74.25 MHz). Add a GPIO for
