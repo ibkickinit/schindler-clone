@@ -1236,22 +1236,67 @@ async def _drain_status_to_ws(q: asyncio.Queue, ws) -> None:
 # Minimal HTTP static server (serves the web UI from ../web/)
 # ---------------------------------------------------------------------------
 
+# DDR image-playback: PNG bytes -> raw framebuffer (GBR byte order, 1920x1080, 3B/px) -> freeze the
+# S2MM writer -> JTAG-load all 7 DDR slots via xsct. Non-persistent (DDR clears on power cycle).
+DDR_IMG_BIN = "/tmp/schindlerd_upload.bin"
+async def ddr_upload_image(png_bytes: bytes, uart, root: Path) -> Dict[str, Any]:
+    import io
+    from PIL import Image
+    im = Image.open(io.BytesIO(png_bytes)).convert("RGB").resize((1920, 1080))
+    r, g, b = im.split()
+    # DDR pixel byte order = G,B,R (TSG vid_data {R,B,G} stored little-endian by the S2MM).
+    Path(DDR_IMG_BIN).write_bytes(Image.merge("RGB", (g, b, r)).tobytes())
+    uart.send_raw("O z 1")                      # freeze S2MM (read holds a static slot)
+    tcl = str(root / "tools" / "load_ddr_image.tcl")
+    # bash explicitly ('source' is a bash builtin; systemd's /bin/sh=dash lacks it).
+    cmd = (f"source /tools/Xilinx/2025.2/Vitis/settings64.sh >/dev/null 2>&1 && "
+           f"exec xsct {tcl} {DDR_IMG_BIN} 7")
+    proc = await asyncio.create_subprocess_exec(
+        "/bin/bash", "-c", cmd,
+        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
+    out, _ = await proc.communicate()           # ~90s over JTAG
+    ok = proc.returncode == 0 and b"DONE" in (out or b"")
+    log.info("ddr image upload: rc=%s ok=%s", proc.returncode, ok)
+    return {"ok": ok, "bytes": len(png_bytes), "log": (out or b"").decode(errors="replace")[-300:]}
+
+
 async def http_handler(reader: asyncio.StreamReader, writer: asyncio.StreamWriter,
-                       web_root: Path) -> None:
+                       web_root: Path, upload_fn=None) -> None:
     try:
         request_line = await reader.readline()
         if not request_line:
             writer.close(); return
         parts = request_line.decode("ascii", "replace").split()
-        if len(parts) < 2 or parts[0] != "GET":
+        if len(parts) < 2 or parts[0] not in ("GET", "POST"):
             writer.write(b"HTTP/1.1 405 Method Not Allowed\r\nContent-Length:0\r\n\r\n")
             await writer.drain(); writer.close(); return
         path = parts[1]
-        # Drain headers
+        # Parse headers (need Content-Length for POST body)
+        clen = 0
         while True:
             line = await reader.readline()
             if line in (b"\r\n", b"\n", b""):
                 break
+            if line.lower().startswith(b"content-length:"):
+                try: clen = int(line.split(b":", 1)[1].strip())
+                except Exception: clen = 0
+        # POST /upload_image -> DDR image-playback
+        if parts[0] == "POST":
+            if path == "/upload_image" and upload_fn is not None:
+                body = await reader.readexactly(clen) if clen else b""
+                try:
+                    result = await upload_fn(body)
+                    resp = json.dumps(result).encode()
+                    writer.write(b"HTTP/1.1 200 OK\r\nContent-Type:application/json\r\n"
+                                 + b"Cache-Control: no-store\r\n"
+                                 + f"Content-Length:{len(resp)}\r\n\r\n".encode() + resp)
+                except Exception as e:
+                    resp = json.dumps({"ok": False, "error": str(e)}).encode()
+                    writer.write(b"HTTP/1.1 500 Internal Server Error\r\nContent-Type:application/json\r\n"
+                                 + f"Content-Length:{len(resp)}\r\n\r\n".encode() + resp)
+            else:
+                writer.write(b"HTTP/1.1 404 Not Found\r\nContent-Length:0\r\n\r\n")
+            await writer.drain(); writer.close(); return
         if path == "/" or path == "":
             path = "/index.html"
         # Strip leading slash, prevent traversal
@@ -1331,8 +1376,10 @@ async def amain(args: argparse.Namespace) -> int:
 
     http_server = None
     if web_root:
+        repo_root = web_root.parent.parent            # control-plane/web -> warp-timing-build (has tools/)
+        upload_fn = lambda b: ddr_upload_image(b, uart, repo_root)
         http_server = await asyncio.start_server(
-            lambda r, w: http_handler(r, w, web_root),
+            lambda r, w: http_handler(r, w, web_root, upload_fn),
             host=args.host, port=args.http_port,
         )
         log.info("http: serving %s on http://%s:%d", web_root, args.host, args.http_port)
