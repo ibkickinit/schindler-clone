@@ -64,16 +64,37 @@ module pg_osd #(
     (* ASYNC_REG="TRUE" *) reg en_q1, en_q2;
     always @(posedge clk) begin en_q1 <= osd_en; en_q2 <= en_q1; end
 
-    // ---- region test + cell/glyph coordinates (divide-free: CW=16=>>4, CH=32=>>5, 2x font =>>1) ----
-    wire in_x = (hc >= X0) && (hc < X0 + COLS*CW);
-    wire in_y = (vc >= Y0) && (vc < Y0 + ROWS*CH);
+    // ---- measure the active region so the OSD auto-adapts to the output resolution ----
+    // (720p vs 1080p etc.) Latch active width at line-end, height at vsync. Default 1080p until measured.
+    reg [11:0] aw, ah;
+    always @(posedge clk) begin
+        if(!rstn) begin aw<=12'd1920; ah<=12'd1080; end
+        else begin
+            if (~vid_active & act_d) aw <= hc;             // active falling -> width = pixels drawn this line
+            if (vid_vsync & ~vs_d)   ah <= vc + 12'd1;     // vsync -> height = active line count
+        end
+    end
+    // auto scale: 2x cells for >=1600-wide (1080p), 1x for smaller (720p). Box auto-CENTERED in the active
+    // region so it looks right at any resolution (no hardcoded origin). Divide-free: cell = 8<<s2 wide.
+    wire        s2   = (aw >= 12'd1600);
+    wire [11:0] boxW = s2 ? (COLS*16) : (COLS*8);
+    wire [11:0] boxH = s2 ? (ROWS*32) : (ROWS*16);
+    reg  [11:0] X0d, Y0d;
+    always @(posedge clk) begin
+        X0d <= (aw > boxW) ? ((aw - boxW) >> 1) : 12'd0;
+        Y0d <= (ah > boxH) ? ((ah - boxH) >> 1) : 12'd0;
+    end
+
+    // ---- region test + cell/glyph coordinates (divide-free; variable shift by the auto scale s2) ----
+    wire in_x = (hc >= X0d) && (hc < X0d + boxW);
+    wire in_y = (vc >= Y0d) && (vc < Y0d + boxH);
     wire in_box = en_q2 && in_x && in_y;
-    wire [11:0] rx = hc - X0[11:0];
-    wire [11:0] ry = vc - Y0[11:0];
-    wire [5:0]  col = rx >> 4;                 // 0..COLS-1
-    wire [4:0]  row = ry >> 5;                 // 0..ROWS-1
-    wire [2:0]  gcol = (rx >> 1) & 3'd7;       // font column 0..7
-    wire [3:0]  grow = (ry >> 1);              // font row 0..15  (ry[4:1])
+    wire [11:0] rx = hc - X0d;
+    wire [11:0] ry = vc - Y0d;
+    wire [5:0]  col  = s2 ? (rx >> 4)          : (rx >> 3);        // / cell width (16 or 8)
+    wire [4:0]  row  = s2 ? (ry >> 5)          : (ry >> 4);        // / cell height (32 or 16)
+    wire [2:0]  gcol = s2 ? ((rx >> 1) & 3'd7) : (rx & 3'd7);      // font column 0..7
+    wire [3:0]  grow = s2 ? ((ry >> 1) & 4'd15): (ry & 4'd15);     // font row 0..15
     wire [9:0]  cell_i = row*COLS + col;
     wire [8:0]  cbits = grid[cell_i];          // {inv, char}
     wire [10:0] f_addr = {cbits[6:0], grow};
