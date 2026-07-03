@@ -2161,6 +2161,92 @@ static void re_write_geometry(void)
 }
 #endif
 
+/* ============================ OSD-3: interactive menu ============================
+ * A single-level list menu rendered into the pg_osd grid (osd2_* helpers), bound to
+ * the live control globals. Each change calls the SAME setter the UART commands use,
+ * so the menu and CLI stay in sync. Navigation verbs (UART / daemon / web):
+ *   M o | M x     open / close the menu overlay
+ *   M u | M d     move the highlighted selection up / down
+ *   M - | M +     change the selected item's value (cycles enums, steps numerics) */
+#if defined(OSD2_GPIO_BASE) && defined(ENGB_GPIO_BASE)
+enum { MI_SOURCE, MI_PATTERN, MI_BRIGHT, MI_SAT, MI_GAMMA, MI_TEMP, MI_CHROMA, MI_MONO, MI_COUNT };
+static const char *const g_mi_label[MI_COUNT] = {
+    "Source", "Pattern", "Bright", "Saturat", "Gamma", "Temp", "Chroma", "Mono"
+};
+static const char *const g_pat_name[16] = {
+    "bars100","SMPTE","RGBsplit","H-ramp","V-ramp","stairs","mirror","gray50",
+    "white","hatch","checkr64","checkr1","VJ-card","multiref","mburst","pathol"
+};
+static const unsigned g_temp_list[6] = {0u, 3200u, 4800u, 5600u, 6500u, 8000u};
+static unsigned g_menu_sel = 0u, g_menu_temp_idx = 0u;
+
+static char *m_puts(char *d, const char *s) { while (*s) *d++ = *s++; *d = 0; return d; }
+static char *m_putu(char *d, unsigned v) {
+    char t[12]; int i = 0;
+    if (!v) { *d++ = '0'; *d = 0; return d; }
+    while (v) { t[i++] = (char)('0' + v % 10u); v /= 10u; }
+    while (i) *d++ = t[--i];
+    *d = 0; return d;
+}
+static char *menu_value(unsigned id, char *b) {
+    switch (id) {
+    case MI_SOURCE:  return m_puts(b, g_tsg_enable ? "TSG pattern" : "HDMI input");
+    case MI_PATTERN: return m_puts(b, g_pat_name[g_tsg_pattern & 15u]);
+    case MI_BRIGHT:  b = m_putu(b, (g_engb_bright * 100u) / 256u); return m_puts(b, "%");
+    case MI_SAT:     b = m_putu(b, g_sat_pct); return m_puts(b, "%");
+    case MI_GAMMA:   if (!g_gamma) return m_puts(b, "off");
+                     b = m_putu(b, g_gamma / 10u); *b++ = '.'; return m_putu(b, g_gamma % 10u);
+    case MI_TEMP:    if (!g_temp_list[g_menu_temp_idx]) return m_puts(b, "Neutral");
+                     b = m_putu(b, g_temp_list[g_menu_temp_idx]); return m_puts(b, "K");
+    case MI_CHROMA:  return m_puts(b, g_chroma_en ? "NTSC color" : "mono luma");
+    case MI_MONO:    return m_puts(b, g_mono ? "on" : "off");
+    default:         *b = 0; return b;
+    }
+}
+static void menu_render(void) {
+    unsigned i;
+    osd2_clear();
+    osd2_puts(0, 13, "EDGERLY MENU", 0);
+    for (i = 0; i < MI_COUNT; i++) {
+        char line[40]; char *d = line;
+        *d++ = ' '; *d = 0;
+        d = m_puts(d, g_mi_label[i]);
+        while ((unsigned)(d - line) < 10u) *d++ = ' ';          /* pad the label column */
+        *d = 0;
+        d = m_puts(d, ": ");
+        d = menu_value(i, d);
+        while ((unsigned)(d - line) < 34u) *d++ = ' ';          /* uniform highlight-bar width */
+        *d = 0;
+        osd2_puts((unsigned)(2 + i), 4, line, (i == g_menu_sel) ? 1u : 0u);
+    }
+    osd2_puts((unsigned)(2 + MI_COUNT + 1), 4, " up/dn: select   -/+: change ", 0);
+}
+static void menu_print_current(void) {
+    char val[24]; menu_value(g_menu_sel, val);
+    xil_printf("MENU[%u/%u] %s: %s\r\n", g_menu_sel, (unsigned)MI_COUNT, g_mi_label[g_menu_sel], val);
+}
+static void menu_adjust(int dir) {
+    switch (g_menu_sel) {
+    case MI_SOURCE:  g_tsg_enable = !g_tsg_enable; engb_write(); break;
+    case MI_PATTERN: { int p = (int)g_tsg_pattern + dir; if (p < 0) p = 15; if (p > 15) p = 0;
+                       g_tsg_pattern = (unsigned)p; engb_write(); } break;
+    case MI_BRIGHT:  { int pct = (int)((g_engb_bright * 100u) / 256u) + dir * 10;
+                       if (pct < 0) pct = 0; if (pct > 400) pct = 400;
+                       g_engb_bright = (unsigned)((pct * 256) / 100); engb_write(); } break;
+    case MI_SAT:     { int s = (int)g_sat_pct + dir * 10; if (s < 0) s = 0; if (s > 200) s = 200;
+                       cp_set_sat(s); } break;
+    case MI_GAMMA:   { int g = g_gamma ? (int)g_gamma : 10; g += dir;      /* gx10; off<->1.0 boundary */
+                       if (g < 10) g = 10; if (g > 40) g = 40; gamma_load((unsigned)g); } break;
+    case MI_TEMP:    { int t = (int)g_menu_temp_idx + dir; if (t < 0) t = 5; if (t > 5) t = 0;
+                       g_menu_temp_idx = (unsigned)t; colortemp_preset(g_temp_list[t]); operator_apply(); } break;
+    case MI_CHROMA:  g_chroma_en = !g_chroma_en; engb_write(); break;
+    case MI_MONO:    g_mono = !g_mono; operator_apply(); break;
+    default: break;
+    }
+    menu_render();
+}
+#endif /* OSD2_GPIO_BASE && ENGB_GPIO_BASE */
+
 static void uart_dispatch(const char *line)
 {
     if (line[0] == '\0') return;
@@ -2420,8 +2506,23 @@ static void uart_dispatch(const char *line)
             osd2_puts(7, 4, "  up/down select . enter apply", 0);
             osd2_enable(1);
             xil_printf("OSD demo menu shown\r\n");
+        } else if (ysub == 'm') {
+            /* OSD-3 interactive menu nav: Y m o|x open/close, Y m u|d up/down, Y m -|+ change value. */
+#if defined(ENGB_GPIO_BASE)
+            while (*p == ' ') p++;
+            char ma = *p ? *p++ : 0;
+            if      (ma == 'o' || ma == '1') { menu_render(); osd2_enable(1); xil_printf("MENU: open\r\n"); menu_print_current(); }
+            else if (ma == 'x' || ma == '0') { osd2_enable(0); xil_printf("MENU: close\r\n"); }
+            else if (ma == 'u') { g_menu_sel = (g_menu_sel == 0u) ? (MI_COUNT - 1u) : (g_menu_sel - 1u); menu_render(); menu_print_current(); }
+            else if (ma == 'd') { g_menu_sel = (g_menu_sel + 1u) % MI_COUNT; menu_render(); menu_print_current(); }
+            else if (ma == '-') { menu_adjust(-1); menu_print_current(); }
+            else if (ma == '+') { menu_adjust(+1); menu_print_current(); }
+            else { xil_printf("MENU: usage 'Y m o|x|u|d|-|+' (sel=%u/%u)\r\n", g_menu_sel, (unsigned)MI_COUNT); }
+#else
+            xil_printf("MENU: needs Engine-B (dual-engine build)\r\n");
+#endif
         } else {
-            xil_printf("usage: Y e <0|1> | Y c | Y w <row> <col> <text> | Y d (demo)\r\n");
+            xil_printf("usage: Y e <0|1> | Y c | Y w <row> <col> <text> | Y d (demo) | Y m o|x|u|d|-|+ (menu)\r\n");
         }
 #else
         xil_printf("UART: OSD output menu not in this build\r\n");
