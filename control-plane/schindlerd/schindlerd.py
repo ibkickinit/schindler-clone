@@ -1259,15 +1259,19 @@ async def ddr_upload_image(png_bytes: bytes, uart, root: Path) -> Dict[str, Any]
     Path(DDR_IMG_BIN).write_bytes(Image.merge("RGB", (g, b, r)).tobytes())
     uart.send_raw("O z 1")                      # freeze S2MM (read holds a static slot)
     tcl = str(root / "tools" / "load_ddr_image.tcl")
-    # bash explicitly ('source' is a bash builtin; systemd's /bin/sh=dash lacks it).
+    # FAST PATH: JTAG-load ONLY slot 0 (1/7 the bytes, ~13s), then the firmware fans it
+    # out to all ring slots at DDR bandwidth (`O i`, tens of ms). Was: write all 7 over
+    # JTAG (~90s). bash explicitly ('source' is a bash builtin; systemd's /bin/sh=dash lacks it).
     cmd = (f"source /tools/Xilinx/2025.2/Vitis/settings64.sh >/dev/null 2>&1 && "
-           f"exec xsct {tcl} {DDR_IMG_BIN} 7")
+           f"exec xsct {tcl} {DDR_IMG_BIN} 1")
     proc = await asyncio.create_subprocess_exec(
         "/bin/bash", "-c", cmd,
         stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
-    out, _ = await proc.communicate()           # ~90s over JTAG
+    out, _ = await proc.communicate()           # ~13s over JTAG (one slot)
     ok = proc.returncode == 0 and b"DONE" in (out or b"")
-    log.info("ddr image upload: rc=%s ok=%s", proc.returncode, ok)
+    if ok:
+        uart.send_raw("O i")                    # firmware fanout: slot0 -> all slots (DDR-fast)
+    log.info("ddr image upload: rc=%s ok=%s (1-slot JTAG + firmware fanout)", proc.returncode, ok)
     return {"ok": ok, "bytes": len(png_bytes), "log": (out or b"").decode(errors="replace")[-300:]}
 
 

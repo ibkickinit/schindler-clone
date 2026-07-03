@@ -1971,6 +1971,25 @@ static void apply_scale_xy(unsigned xpct, unsigned ypct)
 static void apply_scale(unsigned pct) { apply_scale_xy(pct, pct); }   /* uniform == both axes */
 #endif /* WARP_BUILD */
 
+/* IMAGE FANOUT (2026-07-02): copy slot 0 -> every other ring slot at DDR bandwidth.
+ * Pairs with a HOST JTAG load of ONLY slot 0 (1/NUM_FRAMES the JTAG bytes, ~7x faster
+ * upload); this fans it out so a frozen read (`O z 1`, which parks on an unknown slot)
+ * always shows the image. slot 0 was written straight to DDR by JTAG, so INVALIDATE the
+ * PS cache for it first or memcpy would read stale lines; FLUSH the copies out for MM2S.
+ * Unconditional (not WARP_BUILD-gated): DDR image-playback works on every firmware build. */
+static void ring_fanout_slot0(void)
+{
+    const UINTPTR SLOT_BYTES = (UINTPTR)FRAME_BYTES + (UINTPTR)STRIDE;
+    void *s0 = (void *)(uintptr_t)FRAME_BUF_BASE;
+    int i;
+    Xil_DCacheInvalidateRange((INTPTR)FRAME_BUF_BASE, (UINTPTR)FRAME_BYTES);
+    for (i = 1; i < NUM_FRAMES; i++) {
+        void *f = (void *)(uintptr_t)(FRAME_BUF_BASE + (UINTPTR)i * SLOT_BYTES);
+        memcpy(f, s0, FRAME_BYTES);
+    }
+    Xil_DCacheFlushRange((INTPTR)FRAME_BUF_BASE, (UINTPTR)NUM_FRAMES * SLOT_BYTES);
+}
+
 /* Phase-3 gamma/tone LUT load GPIO (axi_gpio_11): bit0=bypass, bit1=tog,
  * [3:2]=ch, [11:4]=addr, [19:12]=data. See gamma_lut.v / readengine_b_bd.tcl. */
 #if defined(XPAR_AXI_GPIO_11_BASEADDR)
@@ -2616,6 +2635,11 @@ static void uart_dispatch(const char *line)
             }
             xil_printf("FREEZE: %u (vsize=%u)\r\n", g_freeze, (unsigned)g_s2mm_vsize);
         }
+        else if (sub == 'i') {
+            /* image fanout: replicate JTAG-loaded slot 0 into all ring slots (fast DDR copy). */
+            ring_fanout_slot0();
+            xil_printf("IMG: fanned out slot0 -> %u slots\r\n", (unsigned)NUM_FRAMES);
+        }
         else if (sub == 'g' && parse_uint(&p, &v)) {
 #ifdef GAMMA_GPIO_BASE
             gamma_load(v);   /* v = gamma*10 (continuous): 0/10=off, 18=1.8, 22=2.2, 23=2.3, ... */
@@ -2623,7 +2647,7 @@ static void uart_dispatch(const char *line)
             xil_printf("UART: gamma LUT not present in this build\r\n");
 #endif
         }
-        else { xil_printf("UART: usage 'O m|y|k|z <0|1> | O t <K> | O g <gamma*10> | O f <0-255> [step]'\r\n"); }
+        else { xil_printf("UART: usage 'O m|y|k|z <0|1> | O i (img fanout) | O t <K> | O g <gamma*10> | O f <0-255> [step]'\r\n"); }
         xil_printf("OP: mono=%u bypass=%u fade=%u->%u temp=%u gamma=%u\r\n", g_mono, g_bypass, g_fade_level, g_fade_to, g_colortemp, g_gamma);
     } else if (op == 'C') {
         /* input colorspace (parity 3.5). 'C r <0|1>' = range: 0=full (0-255),
