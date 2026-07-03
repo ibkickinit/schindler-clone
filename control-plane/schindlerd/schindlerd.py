@@ -811,12 +811,20 @@ class Dispatcher:
         return out
 
     async def _m_osd_menu(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        """OSD output menu (pg_osd overlay on HDMI). {action: demo|on|off|clear} -> firmware 'Y ...'.
-        demo = draw a sample menu + enable; on/off toggle the overlay; clear = blank the grid."""
+        """OSD output menu (pg_osd overlay on HDMI). {action: ...} -> firmware 'Y ...'.
+        Overlay:   demo | on | off | clear.
+        OSD-3 interactive menu nav: open | close | up | down | dec | inc
+                   -> 'Y m o|x|u|d|-|+' (list menu bound to the live control globals)."""
         act = str(params.get("action", "demo"))
-        cmd = {"demo": "Y d", "on": "Y e 1", "off": "Y e 0", "clear": "Y c"}.get(act)
+        cmd = {
+            "demo": "Y d", "on": "Y e 1", "off": "Y e 0", "clear": "Y c",
+            "open": "Y m o", "close": "Y m x",
+            "up":   "Y m u", "down":  "Y m d",
+            "dec":  "Y m -", "inc":   "Y m +",
+        }.get(act)
         if not cmd:
-            raise ValueError(f"osd.menu action '{act}' unknown (demo/on/off/clear)")
+            raise ValueError(f"osd.menu action '{act}' unknown "
+                             f"(demo/on/off/clear/open/close/up/down/dec/inc)")
         self.uart.send_raw(cmd)
         return {"action": act}
 

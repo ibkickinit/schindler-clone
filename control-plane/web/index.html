@@ -180,6 +180,16 @@
         <button id="osd-demo" style="padding:1px 8px">Demo menu</button>
         <button id="osd-off" style="padding:1px 8px">Off</button>
       </div>
+      <!-- OSD-3 interactive menu: navigate the on-screen menu bound to the live controls -->
+      <div style="margin-top:6px;display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+        <span style="opacity:.6">Menu</span>
+        <button id="menu-open"  style="padding:1px 8px">Open</button>
+        <button id="menu-up"    style="padding:1px 10px" title="select up">▲</button>
+        <button id="menu-down"  style="padding:1px 10px" title="select down">▼</button>
+        <button id="menu-dec"   style="padding:1px 10px" title="value −">−</button>
+        <button id="menu-inc"   style="padding:1px 10px" title="value +">＋</button>
+        <button id="menu-close" style="padding:1px 8px">Close</button>
+      </div>
     </div>
 
     <!-- ENGINE 1 → OUTPUT A (HDMI): read engine + its color proc-amp -->
@@ -1172,6 +1182,12 @@
     const od=g("osd-demo"), oo=g("osd-off");
     if(od) od.addEventListener("click",()=>call("osd.menu",{action:"demo"}).catch(e=>log(`osd.menu: ${e.message}`,"err")));
     if(oo) oo.addEventListener("click",()=>call("osd.menu",{action:"off"}).catch(e=>log(`osd.menu: ${e.message}`,"err")));
+    // OSD-3 interactive menu nav (each button -> one 'Y m ...' firmware step)
+    const menuNav=(action)=>call("osd.menu",{action}).catch(e=>log(`menu: ${e.message}`,"err"));
+    [["menu-open","open"],["menu-close","close"],["menu-up","up"],
+     ["menu-down","down"],["menu-dec","dec"],["menu-inc","inc"]].forEach(([id,act])=>{
+      const b=g(id); if(b) b.addEventListener("click",()=>menuNav(act));
+    });
   })();
   async function loadSettings() {
     try {
