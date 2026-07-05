@@ -12,6 +12,20 @@ Justin 2026-05-21: "If you cant look at any particular build and identify whethe
 
 Memory entries claiming `SHIPPED` or matrix entries claiming `✅` are **point-in-time observations**, not live state. This document is the live state.
 
+## ⭐ CURRENT BENCH BASE — 2026-07-05
+
+**Reflash target for bench work (chroma scope-tune, ADV7393/Si5351 analog bring-up).**
+
+| Field | Value |
+|---|---|
+| Bitstream | auto-scale OSD build, commit `b71b589`, **WNS +0.286** |
+| Firmware | OSD-3 menu, commit `696b37c` |
+| Archived | `build/artifacts/bench-base-osd3-2026-07-05/` (.bit + .elf + PROVENANCE.txt) |
+| Build env | `run_dual_engine_build.sh` — `WARP_ENGINE=1 PROJECTIVE_BUILD=1 SCALER_MODULE=scaler_top RASTER_TO_TILE=0 OUTPUT_MODE=1080p30 NO_ILA=1 DUAL_ENGINE=1` |
+| Flash | `xsct tcl/program_phase_b_full.tcl` (.bit + .elf) |
+
+**Verified 2026-07-05 (monitor + JTAG):** 1080p30 output clean/valid; fast image upload ~18s (1-slot JTAG + `O i` firmware fanout, image on monitor); OSD-3 interactive menu browser→firmware (pattern 0→3 e2e); auto-scale + auto-center OSD; baseline-aligned font; color pipeline; NTSC chroma sim-proven (scope-tune pending). ⚠️ **Firmware MUST be built with the env above** or FRAME_W/H default to 720p and the ring geometry mismatches the 1080p bitstream (cost most of a session — see memory `schindler_ddr_image_playback`). **Latent, non-blocking:** freeze re-arm writes VSIZE @+0x80 (should be +0xA0); un-freeze only, display path unaffected.
+
 ## How to use this document
 
 - Before bench-testing: look up the substrate row. If status is anything other than `✅ CLEAN (verified <date>, N boots)`, **do not bench-test other features on it** — see memory `schindler-no-coin-flip-rule`.

@@ -130,8 +130,14 @@ already showed congestion can squeeze `pg_re_0`); keep `pg_osd` floor-planned aw
 1. **OSD-1**: `pg_osd` with a static-from-firmware char RAM + 8×16 font ROM, mono (white/black),
    on the HDMI output only. Reuse the banner's font-gen + BRAM-read code. Verify with a "HELLO" write.
 2. **OSD-2**: color attrs + selection highlight (inverse). Wire `osd_puts`/`osd_highlight` helpers.
-3. **OSD-3**: the menu tree (`osd_menu.c`) bound to the existing control verbs; navigation via a GPIO/
-   UART input (or repurpose a button). Mirror to the analog output.
+3. **OSD-3 — BUILT + bench-verified 2026-07-02** (`7d09911` firmware, `696b37c` daemon/web). A single-
+   level list menu rendered into the pg_osd grid, bound live to the control globals: Source, Pattern,
+   Bright, Saturat, Gamma, Temp, Chroma, Mono. Each change calls the SAME setter the UART verbs use, so
+   menu and CLI stay in sync. Nav verbs `Y m o|x|u|d|-|+` (open/close, up/down, dec/inc) — grouped under
+   the OSD verb `Y`, NOT `M` (already the warp mip-fill/Mackin-blend verb; that collision made a first
+   `M` branch dead code). Daemon `osd.menu {action: open|close|up|down|dec|inc}`; web UI Menu row
+   (Open/▲/▼/−/＋/Close). Verified browser→daemon→firmware end-to-end (pattern 0→3). Deferred: submenus,
+   physical rotary/buttons, mirror to analog output, live value read-back into the web UI.
 4. **OSD-4** (optional): semi-transparent background blend (global alpha) for overlay-on-video menus.
 
 ## Open questions

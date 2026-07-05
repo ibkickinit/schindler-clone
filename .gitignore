@@ -49,3 +49,4 @@ sw/phase-b/src/kernel_gpio_index.h
 
 # per-build re-programmable artifacts (.bit/.elf) — Dropbox-backed, recreatable via manifest commit
 artifacts/
+sim/.reg/
