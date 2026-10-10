@@ -77,3 +77,4 @@ Concept / paper design. See [`docs/`](docs/) for the full design package.
 - [`docs/05-roadmap.md`](docs/05-roadmap.md) — phased bring-up plan and prototype platform.
 - [`docs/06-open-questions.md`](docs/06-open-questions.md) — unresolved decisions that gate the design.
 - [`docs/07-sourcing-playbook.md`](docs/07-sourcing-playbook.md) — **how to actually source the MST front end** (ease ranking + the one recommended prototype + production path).
+- [`docs/08-player-variant.md`](docs/08-player-variant.md) — **concept:** pairing the conversion core with a mini PC (MeLE / compute module) as a player with native SDI outputs.
