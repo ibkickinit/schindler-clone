@@ -233,3 +233,16 @@ re-carry HDCP; SDI cannot, so the same UX here would enable an illegal strip.
   only"** + a generic user-responsibility notice. No strip toggle.
 - Also confirm HDMI/DP/USB-C **trademark/adopter** obligations (separate from
   HDCP).
+
+## Q12 — FPGA cost vs commodity converters *(OPEN — raised by `09` teardown)*
+The AVMATRIX SC1221-12G (`09`) sells for ~€199–$337 **complete**, built on a small
+**Artix UltraScale+** — less than our MPF200T alone ($286 qty-1, `04`). Before
+committing silicon, compare **chip + SDI IP + DP-RX IP** total per unit:
+- **PolarFire:** MPF200T $286 / MPF100T $174 (fit TBD, Q0b); SDI IP free; DP-RX IP
+  cost TBD (Q0b).
+- **Artix US+:** AU10P ~€108–152 / AU15P ~$182 (DigiKey qty-1); GTH 12G-capable;
+  **AMD SMPTE UHD-SDI IP is licensed — price via AMD sales** (not public); AMD DP
+  RX IP also licensed. The `04` rejection of AMD was about the ~$16k **MST**
+  bundle, which our discrete-hub architecture doesn't need — re-evaluate.
+- Volume pricing (~30–50% off qty-1) applies to both.
+Decision input for `04` Block 3 and the $600–900 price target (`01`).
