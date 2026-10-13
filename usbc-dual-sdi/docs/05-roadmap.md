@@ -17,7 +17,7 @@ first; hub sourcing runs in parallel.
 |---|---|---|
 | **Avnet AUBoard 15P** (`AES-AUB-15P-DK-G`, ~$699) | AU15P, 12× GTH, HDMI 2.0 RX+TX on GTH, 2 GB DDR4 (PL), SFP+ cage, FMC LPC (4 GTH), QSPI | **Ordered** |
 | **SFP 12G-SDI TX module** (SFP+ cage, Quad 226 lane 3) + SFP→BNC adapter cable | SDI egress. **Refclk must come from U56** (Quad 226) — U57 is on Quad 224, out of reach (`11`) | **Justin sourcing** |
-| **LT7911UXC EVB** + **FMC breakout** (XM105-style), VADJ = 1.8 V, HP-bank LA pairs | DP-RX chip under test — Mac-capable DP path (`06` Q13, `11`) | To request (Lontium FAE) |
+| **LT7911UXC EVB** + **FMC breakout** (XM105-style), VADJ = 1.8 V, HP-bank LA pairs | DP-RX chip under test — Mac-capable DP path (`06` Q13, `11`) | **Requested 2026-10-13** — awaiting Lontium review |
 | Heatsink (Boyd EA-270-H245-T710), micro-USB cable, 18 Gb/s HDMI cables, 12G coax | Bench basics (`11` shopping list) | To get |
 | AVMATRIX SC1221-12G (`09`) | Known-good 12G-SDI reference | On hand |
 | 12G-SDI analyzer / monitor | Compliance + format/lock verification — non-negotiable | Rent / borrow |
@@ -31,6 +31,11 @@ first; hub sourcing runs in parallel.
   RX/TX Subsystem** and **SMPTE UHD-SDI**; ask for **production quotes** on both
   (+ DP-RX for the laptop variant) — feeds `06` Q12.
 - **SDI egress:** SFP 12G-SDI TX module (Justin sourcing).
+- **Lontium status (2026-10-13):** sample request submitted via the website form **and** customer
+  account application submitted — **awaiting review**. Next: NDA → latest LT7911UXC datasheet (confirm
+  **U2 vs U3** revision; the public brief is a 2021 U2 "Preview" draft) → EVB. Follow up by email
+  (sales@lontium.com, cc support@lontium.com) if no reply in ~5 business days. Technical questions
+  (HDCP/VRR disable, firmware model, MIPI-vs-LVDS lane plan, HDMI-RX part, pricing) held for round 2.
 - **DP-RX chip (`06` Q13):** request **LT7911UXC** datasheet (NDA), EVB, pricing, and
   confirmation that **HDCP advertisement can be disabled**. Same ask for the
   GSV2011-class HDMI-RX chip (HDMI products).

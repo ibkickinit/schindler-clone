@@ -51,7 +51,7 @@
 |---|---|---|
 | **Heatsink** (Boyd EA-270-H245-T710 or equal) + optional 5 V fan on J3 | Tria's tested thermal solution; 12G GTH + HDMI runs warm | *verify whether the kit includes one* |
 | **micro-USB (B) data cable** | JTAG + UART on J9 | kit-contents lists conflict |
-| **FMC breakout / adapter** (e.g. AMD XM105-style debug card, or an FMC-LPC-to-header adapter) | To wire the **LT7911UXC EVB** (DP receiver) into the FPGA over LVDS/MIPI | Pick one exposing the HP-bank LA pairs; keep LVDS runs short and matched |
+| **FMC breakout — buy ONE:** AMD **HW-FMC-XM105** debug card (eBay open-box ~$150, no returns) *or* Terasic **F2G** (P0551, new) | I²C/GPIO to the LT7911UXC EVB, STM32 hookup, probing, **low-rate** LVDS/MIPI bring-up | See "Breakout notes" below — not a 4K60 data path |
 | **LT7911UXC EVB** (+ datasheet under NDA) | The DP-RX chip under test (`06` Q13) | Request via Lontium FAE / US channel |
 | **SFP-to-BNC adapter cable** | Most SFP SDI modules are HD-BNC or DIN 1.0/2.3 | Match the module; 12G-rated |
 | **12G-rated coax** (Belden 4794R / 1694A-class) + full BNC | SDI to analyzer / monitor | — |
@@ -122,11 +122,27 @@ Not needed: anything for PCIe, SFP fiber, or the Click site.
   MIPI) deserializer in fabric → same color → SDI path. **Confirm the chip's HDCP is
   disabled** (`06` Q11). (`05` Phase 4.)
 
+## Breakout notes (XM105 vs F2G)
+
+- **Both fit physically.** The AUBoard's CON1 is an HPC-size connector wired as LPC (LA00–LA33) + 4 GTH.
+  - **XM105:** LA headers live; its HA/HB headers are dead on this board. AMD-native, Xilinx pin maps,
+    ID EEPROM on the FMC I²C bus. Passive → fine at VADJ 1.8 V.
+  - **F2G:** four 2×20 GPIO headers, **only GPIO0/GPIO1 live** on LPC-wired hosts (Terasic note);
+    no level shifting (I/O = VADJ); VCC_GPIO selectable. Intel/Terasic-first — build our own pin map.
+- **Header + jumper-wire limit:** LVDS lane rate = 7× the per-port pixel clock, so **1080p60 is already
+  ~1.04 Gb/s/lane** — unreliable over 0.1" headers/ribbons. Bring up at **720p60 / 1080p30
+  (~520 Mb/s/lane)**; full 4K60 (LVDS ~1.04 Gb/s × ~24 pairs, or MIPI 2 ports × 4 lanes) needs a
+  **small FMC → EVB adapter PCB** with length-matched pairs on **HP-bank** LA pins.
+- **HD-bank LA pairs** (LA08, 22, 25, 27, 29, 31, CLK1) are for slow signals only.
+- Set **J11 = 1-2** (FPGA-only JTAG) unless the card passes TDI→TDO.
+
 ## Open items for this guide
 
 - [ ] Confirm kit contents (heatsink? USB cable?) on arrival.
 - [ ] Confirm DDR4 size (1 GB per UG vs 2 GB marketing).
 - [ ] Find how VADJ is selected (jumper/resistor) in the schematic.
 - [ ] Get the AUBoard schematic + element14 reference designs.
-- [ ] Pick the FMC breakout once the LT7911UXC EVB connector/pinout is known.
+- [ ] Buy one FMC breakout (XM105 or F2G) for I²C/low-rate bring-up.
+- [ ] Decide on the FMC → EVB adapter PCB once the LT7911UXC EVB connector/pinout is known.
+- [ ] Lontium: sample request + account application submitted 2026-10-13 — awaiting review (`05` Phase 0).
 - [ ] Confirm U56 output plan covers both 1.000 and 1.001 SDI families.
