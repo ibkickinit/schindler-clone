@@ -28,6 +28,7 @@ USB-C power-in (aux) for when the host can't power the unit
 | 6 | Embedded audio | 2–8 ch LPCM from DP → ST 299 (SDI) and HDMI audio |
 | 7 | Status LEDs | Per channel: signal present / format matches selector / SDI rate |
 | 8 | Non-HDCP | Unprotected content only (`06` Q11) |
+| 9 | **Output swap button** | Guarded, push-and-hold; swaps channel 1 ↔ 2 on **SDI and HDMI together**. Design = `06` **Q15** |
 
 ## Format selector (the "tech switch")
 

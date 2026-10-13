@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Runs the HD-SDI TX testbench with Icarus Verilog.
-#   1) SMALL raster, 3 frames      -> must PASS
-#   2) SMALL raster + INJECT error -> must FAIL (proves the checker catches errors)
-#   3) full 1080p30, 1 frame       -> must PASS   (skip with QUICK=1)
+#   1) SMALL raster, HD and 3G-A payload IDs, 3 frames -> must PASS
+#   2) SMALL raster + INJECT error                      -> must FAIL (proves the checker catches errors)
+#   3) full 1080p30 HD-SDI and 1080p60 3G-A, 1 frame    -> must PASS   (skip with QUICK=1)
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 hdl="$here/../../hdl/sdi_tx"
@@ -19,7 +19,12 @@ run() {  # name, expect(PASS|FAIL), defines...
     if echo "$log" | grep -qx "$expect"; then echo "[$name] OK (expected $expect)"; else echo "[$name] UNEXPECTED"; exit 1; fi
 }
 
-run small   PASS -DSMALL
-run inject  FAIL -DSMALL -DINJECT
-if [ "${QUICK:-0}" != "1" ]; then run full1080p PASS; fi
+run small_hd   PASS -DSMALL
+run small_3ga  PASS -DSMALL -DG3A
+run inject     FAIL -DSMALL -DINJECT
+run inject_pid FAIL -DSMALL -DINJECT_PID
+if [ "${QUICK:-0}" != "1" ]; then
+    run full_hd_1080p30  PASS
+    run full_3ga_1080p60 PASS -DG3A
+fi
 echo "ALL OK"

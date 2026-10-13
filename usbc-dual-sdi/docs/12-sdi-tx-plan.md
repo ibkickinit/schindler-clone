@@ -33,10 +33,10 @@ video (4 px/clk YCbCr 4:2:2 10-bit, from color stage or pg_tsg)
 | # | Stage | Status |
 |---|---|---|
 | 1 | **HD-SDI 1.485 Gb/s**, 1080p30 75% bars: framing, CRC, scrambler/NRZI, 20-bit GTH word | **RTL + sim PASS** (2026-10-13) — needs GTH wrapper + bench |
-| 2 | 3G-SDI Level A (1080p60), 40-bit GTH word | — |
+| 2 | **3G-SDI Level A** (1080p50–60): same 20-bit datapath at 148.5 MHz word clock | **RTL + sim** (2026-10-13) — see below |
 | 3 | 6G (ST 2081) | — |
 | 4 | **12G** (2SI quad split, ST 2082) | — |
-| 5 | ST 352 payload ID on every rate; ST 299 embedded audio | — |
+| 5 | ST 352 payload ID on every rate; ST 299 embedded audio | **ST 352 done for HD + 3G-A** (byte values provisional); ST 299 — |
 | 6 | Interlaced 1080i, 720p, fractional-rate checks | — |
 
 Effort estimate: **~2–4 months part-time** to analyzer-clean 12G; HD in the first weeks.
@@ -57,6 +57,14 @@ Main risks: GTH clocking/jitter compliance, 2SI mapping details — not the logi
 
 **Sim result:** full 1080p30 frame — 1,125 lines, 2.48 M words, **0 errors**; injected 1-bit wire
 error → caught (video + CRC mismatches). Icarus Verilog 12; full frame ≈ 8 min (`QUICK=1` skips it).
+
+**Stage 2 (3G-A) + ST 352:** 3G Level A for 1080p uses the same two-stream (Y, C) word structure as
+HD at twice the word rate, so the framer is shared — the GTH runs **20-bit at 148.5 MHz** (2.97 Gb/s).
+Added the **ST 352 payload ID** ANC packet (ADF, DID 0x41/SDID 0x01, DC 4, 4 UDW, checksum) in the Y
+stream HANC right after CR1 on line 10. Byte values are **provisional** (HD 0x85 / 3G-A 0x89, then
+scan+rate, sampling, bit depth) — **verify against the purchased ST 352**. Testbench checks ADF,
+parity, payload bytes, checksum, and clean HANC elsewhere; a second error-injection run targets the
+packet.
 
 **Still to confirm on real equipment (sim can't prove convention):**
 - CRC bit order / word packing (CR0 = C0..C8) — both the DUT and checker assume C0 = first CRC bit.

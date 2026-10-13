@@ -9,18 +9,25 @@
 //   * CRC-18 per stream, computed with an MSB-first polynomial division (a different formulation from the
 //     DUT's reflected LFSR), over active video + EAV + LN0 + LN1
 //   * active video = 75% bars on active lines, 0x040/0x200 on blanking lines
-// Define SMALL for a tiny raster (fast); default is full 1080p30. Define INJECT to flip one bit on the
-// wire — the run script expects that run to FAIL, proving the checker can catch errors.
+//   * ST 352 payload ID on PID_LINE (ADF, DID/SDID/DC, parity, payload bytes, checksum); clean HANC elsewhere
+// Define SMALL for a tiny raster (fast); default is full 1080p30 HD-SDI. Define G3A for 3G-SDI Level A
+// payload ID (1080p60 — same raster, 148.5 MHz word clock). Define INJECT to flip one bit on the wire —
+// the run script expects that run to FAIL, proving the checker can catch errors.
 
 `timescale 1ns / 1ps
 
 module tb_sdi_hd_tx;
 `ifdef SMALL
-    localparam integer H_ACT = 32, H_TOT = 48, V_TOT = 12, V_FIRST = 4, V_LAST = 9;
-    localparam integer FRAMES = 3;
+    localparam integer H_ACT = 32, H_TOT = 64, V_TOT = 12, V_FIRST = 4, V_LAST = 9;
+    localparam integer FRAMES = 3, PID_LINE = 2;
 `else
     localparam integer H_ACT = 1920, H_TOT = 2200, V_TOT = 1125, V_FIRST = 42, V_LAST = 1121;
-    localparam integer FRAMES = 1;
+    localparam integer FRAMES = 1, PID_LINE = 10;
+`endif
+`ifdef G3A                                         // 3G-SDI Level A, 1080p60 (same raster, 148.5 MHz)
+    localparam [7:0] PB1 = 8'h89, PB2 = 8'hCB, PB3 = 8'h00, PB4 = 8'h01;
+`else                                              // HD-SDI 1080p30
+    localparam [7:0] PB1 = 8'h85, PB2 = 8'hC7, PB3 = 8'h00, PB4 = 8'h01;
 `endif
 
     reg clk = 1'b0, rst = 1'b1;
@@ -32,7 +39,9 @@ module tb_sdi_hd_tx;
     wire [10:0] dbg_ln;
 
     sdi_hd_tx_top #(.H_ACT(H_ACT), .H_TOT(H_TOT), .V_TOT(V_TOT),
-                    .V_ACT_FIRST(V_FIRST), .V_ACT_LAST(V_LAST)) dut (
+                    .V_ACT_FIRST(V_FIRST), .V_ACT_LAST(V_LAST),
+                    .PID_EN(1), .PID_LINE(PID_LINE),
+                    .PID_B1(PB1), .PID_B2(PB2), .PID_B3(PB3), .PID_B4(PB4)) dut (
         .clk(clk), .rst(rst), .txdata(txdata),
         .dbg_y(dbg_y), .dbg_c(dbg_c), .dbg_h(dbg_h), .dbg_ln(dbg_ln));
 
@@ -113,6 +122,12 @@ module tb_sdi_hd_tx;
         end
     endfunction
 
+    // ST 291 8-bit ANC word check: b8 = even parity of b7..b0, b9 = ~b8
+    function anc_ok;
+        input [9:0] w;
+        anc_ok = (w[8] == ^w[7:0]) && (w[9] == ~w[8]);
+    endfunction
+
     // ---------------- descrambler (bit-serial, LSB first) ----------------
     reg       q_prev;
     reg [8:0] s_hist;          // s_hist[k] = s[n-1-k]
@@ -145,6 +160,10 @@ module tb_sdi_hd_tx;
     reg [9:0] act_y [0:H_ACT-1];
     reg [9:0] act_c [0:H_ACT-1];
     integer   k, act_count, line_bad;
+    reg [9:0] hy [0:10];                   // HANC words at EAV-relative offsets 5..15 (ST 352 slot)
+    reg [9:0] hc [0:10];
+    integer   pids_seen = 0;
+    reg [8:0] sum9;
 
     task err;
         input [8*64-1:0] msg;
@@ -166,6 +185,24 @@ module tb_sdi_hd_tx;
                 end
             end
             if (line_bad) err("active video mismatch");
+        end
+    endtask
+
+    task check_pid_slot;
+        begin
+            if (cur_ln == PID_LINE) begin
+                if (hy[0] !== 10'h000 || hy[1] !== 10'h3FF || hy[2] !== 10'h3FF) err("PID ADF");
+                if (hy[3][7:0] !== 8'h41 || hy[4][7:0] !== 8'h01 || hy[5][7:0] !== 8'h04) err("PID DID/SDID/DC value");
+                for (k = 3; k <= 9; k = k + 1) if (!anc_ok(hy[k])) err("PID word parity");
+                if (hy[6][7:0] !== PB1 || hy[7][7:0] !== PB2 || hy[8][7:0] !== PB3 || hy[9][7:0] !== PB4) err("PID payload bytes");
+                sum9 = 9'd0;
+                for (k = 3; k <= 9; k = k + 1) sum9 = sum9 + hy[k][8:0];
+                if (hy[10] !== {~sum9[8], sum9}) err("PID checksum");
+                pids_seen = pids_seen + 1;
+            end else begin
+                for (k = 0; k <= 10; k = k + 1) if (hy[k] !== 10'h040) err("unexpected HANC data in Y");
+            end
+            for (k = 0; k <= 10; k = k + 1) if (hc[k] !== 10'h200) err("unexpected HANC data in C");
         end
     endtask
 
@@ -213,6 +250,13 @@ module tb_sdi_hd_tx;
                     if (c !== crc_word(rc, 1'b1)) err("C CR1");
                 end
                 post_eav = 0;
+            end
+
+            // HANC slot right after CR1 (EAV-relative 5..15) — ST 352 payload ID lives here on PID_LINE
+            if (have_eav && since_eav >= 5 && since_eav <= 15) begin
+                hy[since_eav - 5] = y;
+                hc[since_eav - 5] = c;
+                if (since_eav == 15 && cur_ln > 0) check_pid_slot;
             end
 
             // TRS detection: 3FF 000 000 then XYZ (this word)
@@ -269,11 +313,14 @@ module tb_sdi_hd_tx;
 `ifdef INJECT
             if (cyc == (H_TOT * (V_FIRST + 1)) + 10) tx[3] = ~tx[3];   // one wire-bit error in an active line
 `endif
+`ifdef INJECT_PID
+            if (cyc == H_TOT * (PID_LINE - 1) + H_ACT + 14) tx[12] = ~tx[12]; // hit the payload ID packet
+`endif
             descramble(tx, d);
             if (cyc > 3) parse_word(d[19:10], d[9:0]);   // skip pipeline fill + descrambler sync
             if (frames_done >= FRAMES) begin
-                $display("lines_checked=%0d frames=%0d words=%0d errors=%0d", lines_checked, frames_done, words, errors);
-                if (errors == 0 && lines_checked >= FRAMES * V_TOT) $display("PASS");
+                $display("lines_checked=%0d frames=%0d pids=%0d words=%0d errors=%0d", lines_checked, frames_done, pids_seen, words, errors);
+                if (errors == 0 && lines_checked >= FRAMES * V_TOT && pids_seen >= FRAMES) $display("PASS");
                 else                                                 $display("FAIL");
                 $finish;
             end
