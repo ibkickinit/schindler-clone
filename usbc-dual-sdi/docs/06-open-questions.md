@@ -248,6 +248,11 @@ The decision is **engineering reuse + IP**, not just chip price:
 | Schindler RTL reuse (`10`) | **Direct** — same Vivado / AXI flow | Full re-port to Libero |
 | Control CPU | MicroBlaze(-V) or MCU; MIG DDR4 | Mi-V soft core or MCU |
 
+**Gating input — is the Pro variant a *committed* follow-on on the same board?**
+(`10` "v1 vs Pro"). V1 alone reuses little Schindler RTL, so PolarFire's free SDI IP
+pulls even; Artix US+ wins decisively only if Pro is committed. **Decision owner:
+Justin.** Bench is already on Artix US+ (AUBoard 15P ordered — `05`).
+
 **Leaning:** Artix US+, because FRC/genlock/scaler/compositor/color/TSG/OSD already
 exist in Vivado. Gating items: AMD UHD-SDI + DP-RX license cost; AU10P vs AU15P fit
 (needs Schindler utilization numbers); DDR4 bandwidth for 2× 2160p60. Volume pricing

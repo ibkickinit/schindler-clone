@@ -80,6 +80,25 @@ into **Zynq PS DDR**, control from the Zynq ARM. Crossover needs **2160p60 →
 - **Recommended sequencing:** a **1080p / 3G-SDI** stepping stone first (Schindler
   pipeline nearly as-is), then widen to 4K / 12G.
 
+## v1 vs Pro — what each actually reuses
+
+**V1 is source-locked conversion with no frame buffer** (`02` Clocking) — the same
+class of design as the SC1221-12G (`09`). Most of the table above is **Pro**.
+
+| | **V1 (conversion)** | **Pro (smart)** |
+|---|---|---|
+| Datapath | RX → RGB→YCbCr, 4:4:4→4:2:2 10-bit, range → SDI TX | + frame buffer, FRC, genlock, scaler, compositor/multiview, color trims |
+| DDR / MIG / MicroBlaze | **Not needed** | Required (Artix US+) |
+| Schindler reuse | Small: `color_matrix` / `color_correct` (→10-bit YCbCr), `pg_tsg`, timing, maybe `pg_osd`, sim harness | **Large**: `pg_cadence`, `pg_genlock`, scaler, `pg_compose`/`pg_place_affine`, tiled DMA, color, OSD |
+| Hard parts | **12G-SDI TX** (framing + GTH), **clocking** (TX clock locked to the source pixel clock *through a jitter cleaner*, incl. 1.001 rates — why the SC1221 carries a Si5392), 4 px/clk at 2160p, 12G layout to BNC, RX front end (HDMI chip or DP-RX) | 4K-widening + DDR bandwidth (~40 Gb/s for 2× 2160p60) + porting control from Zynq PS to MicroBlaze |
+| MCU | STM32-class: EDID, control (as SC1221) | same, or MicroBlaze |
+
+**Consequence for `06` Q12:** judged on **v1 alone**, the Schindler-reuse argument is
+weak and **PolarFire's free SDI IP** pulls even (Artix US+ still wins on chip price
+and has the SC1221 as proof). Artix US+ wins decisively **only if Pro is a
+committed follow-on on the same board/silicon** → that commitment is the gating
+input to Q12.
+
 ## Stepping-stone product: "smart SC1221"
 
 SC1221-12G hardware recipe (`09`: HDMI 2.0 RX chip + Artix US+ + Si5392 + MCU)
