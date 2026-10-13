@@ -35,7 +35,9 @@ first; hub sourcing runs in parallel.
   account application submitted — **awaiting review**. Next: NDA → latest LT7911UXC datasheet (confirm
   **U2 vs U3** revision; the public brief is a 2021 U2 "Preview" draft) → EVB. Follow up by email
   (sales@lontium.com, cc support@lontium.com) if no reply in ~5 business days. Technical questions
-  (HDCP/VRR disable, firmware model, MIPI-vs-LVDS lane plan, HDMI-RX part, pricing) held for round 2.
+  (HDCP/VRR disable, firmware model, **MCU-writable EDID** for the v1 format selector, MIPI-vs-LVDS lane
+  plan, **output duplication on two port groups + recommended HDMI 2.0 TX chip** for Q14, HDMI-RX part,
+  pricing) held for round 2.
 - **DP-RX chip (`06` Q13):** request **LT7911UXC** datasheet (NDA), EVB, pricing, and
   confirmation that **HDCP advertisement can be disabled**. Same ask for the
   GSV2011-class HDMI-RX chip (HDMI products).

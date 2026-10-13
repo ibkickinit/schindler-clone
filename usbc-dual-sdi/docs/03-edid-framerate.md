@@ -52,6 +52,12 @@ default. Each profile is essentially a tailored EDID:
 host needs to enumerate), which is the most reliable way to force a GPU onto an
 exact timing — it has nothing else to choose.
 
+### v1 hardware format selector *(2026-10-13, `13`)*
+v1 exposes the profiles through a **3-position resolution switch (AUTO / HD / 4K)** and an
+**8-position frame-rate rotary (23.98 · 24 · 25 · 29.97 · 30 · 50 · 59.94 · 60)**. HD/4K + rate selects
+a single-mode Lock EDID; AUTO selects the broadcast-first list. Applies to both outputs. EDID is written
+by the MCU into the LT7911UXC receivers (`06` Q13) — pending Lontium confirmation that it's MCU-writable.
+
 ### Hot-plug discipline
 Changing a profile re-asserts **HPD (hot-plug detect)** to the affected sink so
 the host re-reads EDID and re-selects. This is how a profile change "takes"

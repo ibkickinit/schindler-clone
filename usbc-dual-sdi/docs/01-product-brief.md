@@ -30,6 +30,11 @@ DDR-heavy frame buffer in V1). See `02`, `04`, `06` Q0.
 > who's-the-customer decision; see `02` §2.
 
 ### Tier 0 — must-ship (v1 MVP)
+
+> **Superseded 2026-10-13 by `13` (v1 MVP definition):** one USB-C in → 2× 12G-SDI **+ 2× HDMI out**,
+> no scaling/FRC, and a **hardware format selector** (AUTO/HD/4K + 23.98–60) instead of the config app.
+> The list below is the earlier, broader draft.
+
 - USB-C input (DP 1.4 / 4-lane HBR3 for MST, **or USB4** for the Mac-independent
   variant — see platform caveat).
 - Presents as **two independent displays** (Windows/Linux via MST; Mac via USB4 —

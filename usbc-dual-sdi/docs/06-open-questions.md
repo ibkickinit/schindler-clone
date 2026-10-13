@@ -289,3 +289,16 @@ benchable now, and **keeps Mac support** (the RTS5490 USB4 hub outputs DP). **B2
 (HDMI-output MST hub e.g. RTD2186 + 2× HDMI-RX chips) stays a bench shortcut only — no
 Mac-independent path. **Risks:** Lontium docs/support (brief is "advance information";
 NDA; China-based) → engage FAE early; LVDS lane count / HP-bank fit (`11`).
+
+## Q14 — HDMI outputs in v1: how to generate them *(OPEN — 2026-10-13, `13`)*
+v1 adds **2× HDMI 2.0 out**, each mirroring its SDI channel. No AMD HDMI IP (Q12). Options:
+
+| | How | Pros | Cons |
+|---|---|---|---|
+| **A** | LT7911UXC drives **two port groups**: one to the FPGA (SDI), one straight to a **MIPI→HDMI 2.0 TX chip** (Lontium LT9611UXC-class — *verify part*) | FPGA not in the HDMI path; few pins | Needs the RX chip to **duplicate** its output on two ports (*ask Lontium*) |
+| **B** | FPGA → **HDMI TX chip** (parallel/LVDS/MIPI input) | Independent of RX-chip features | More FPGA pins/IO; MIPI TX on FPGA may need IP |
+| **C** | **In-house HDMI 2.0 TX** on GTH (TMDS encode + scrambling + SCDC) + TMDS retimer | No chip; reuses GTH | 1–2 months HDL; 2 more GTH lanes ×3 per output; compliance risk |
+
+**Leaning A if Lontium confirms port duplication, else B.** Either way: **HDMI Adopter Agreement**
+(annual fee + royalty — check terms) is needed for an HDMI-branded product. Add to Lontium round 2:
+"Can LT7911UXC output the same video on two port groups?" and "recommended MIPI/LVDS → HDMI 2.0 TX".
