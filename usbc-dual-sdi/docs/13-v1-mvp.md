@@ -28,7 +28,7 @@ USB-C power-in (aux) for when the host can't power the unit
 | 6 | Embedded audio | 2–8 ch LPCM from DP → ST 299 (SDI) and HDMI audio |
 | 7 | Status LEDs | Per channel: signal present / format matches selector / SDI rate |
 | 8 | Non-HDCP | Unprotected content only (`06` Q11) |
-| 9 | **Output swap button** | Guarded, push-and-hold; swaps channel 1 ↔ 2 on **SDI and HDMI together**. Design = `06` **Q15** |
+
 
 ## Format selector (the "tech switch")
 
@@ -48,7 +48,7 @@ Goal: a tech sets the format with a switch — no app, no OS display settings.
 
 ## Explicitly NOT in v1
 
-Scaling · frame-rate conversion · frame buffer / DDR population · genlock / REF-IN · multiview ·
+Output swap button (deferred — `06` Q15) · scaling · frame-rate conversion · frame buffer / DDR population · genlock / REF-IN · multiview ·
 color processing beyond RGB→YCbCr 4:2:2 + range · OLED/menu · config app · SDI/HDMI input · 1080i.
 (Keep the DDR and REF-IN **footprints** on the PCB for Pro — `06` Q7.)
 

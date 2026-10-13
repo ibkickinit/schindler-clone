@@ -303,7 +303,15 @@ v1 adds **2× HDMI 2.0 out**, each mirroring its SDI channel. No AMD HDMI IP (Q1
 (annual fee + royalty — check terms) is needed for an HDMI-branded product. Add to Lontium round 2:
 "Can LT7911UXC output the same video on two port groups?" and "recommended MIPI/LVDS → HDMI 2.0 TX".
 
-## Q15 — Output swap button *(DESIGN PROPOSED 2026-10-13, `13`)*
+## Q15 — Output swap button *(DEFERRED 2026-10-13 — out of v1)*
+**Decision (Justin):** leave it out of v1. Swapping HDMI needs an external 2×2 HDMI matrix (or 2:1
+switches), which isn't worth the cost/complexity now. Revisit **only if** a Lontium chip feature makes it
+easy. Note: the LT7911UXC brief lists **"port swap"**, but that swaps output ports *within one chip* —
+it cannot exchange video *between* the two receivers, so it likely doesn't help. Ask in round 2 anyway.
+No persistence across power cycles needed if it ever returns.
+
+*Original proposal kept below for reference.*
+
 Requirement (Justin): a **guarded, push-and-hold** button that flips outputs 1 ↔ 2.
 
 **Proposed design**
