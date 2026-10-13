@@ -136,6 +136,13 @@ only other dual-DP-tunnel breakout (cert-gated). ⚠️ Parade PS176-class / ITE
 Algoltek / RTD2173-class are single-stream converters, **not** MST splitters.
 
 ### Block 3 — FPGA: Microchip PolarFire (the V1 conversion core)
+
+> ⚠️ **Re-opened 2026-10-13 (`06` Q12, `09`, `10`).** The AMD rejection below was
+> about the ~$16k **MST** IP bundle, which the discrete-hub architecture does not
+> need. Re-evaluate **Artix UltraScale+ (AU10P/AU15P)**: reuses Schindler's Vivado
+> pipeline; ships in the AVMATRIX SC1221-12G; needs licensed AMD UHD-SDI IP (or
+> in-house), MIG DDR4, MicroBlaze. **Clock candidate:** add **Skyworks Si5392**
+> (used in the SC1221-12G) alongside Si534x.
 The GS12170 EOL makes the FPGA the V1 conversion engine. **PolarFire** is the
 family: **free 12G-SDI IP**, 12.7G transceivers, DP-RX IP (SST/HBR3/4K60). The
 **MPF300** dev kit (`MPF300-VIDEO-KIT-NS`) is for bring-up; **production uses the

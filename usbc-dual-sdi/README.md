@@ -79,3 +79,4 @@ Concept / paper design. See [`docs/`](docs/) for the full design package.
 - [`docs/07-sourcing-playbook.md`](docs/07-sourcing-playbook.md) — **how to actually source the MST front end** (ease ranking + the one recommended prototype + production path).
 - [`docs/08-player-variant.md`](docs/08-player-variant.md) — **concept:** pairing the conversion core with a mini PC (MeLE / compute module) as a player with native SDI outputs.
 - [`docs/09-teardown-avmatrix-sc1221.md`](docs/09-teardown-avmatrix-sc1221.md) — **reference teardown** of a commercial HDMI 2.0 → 12G-SDI converter (GSV2011 + Artix US+ + Si5392); cost implications.
+- [`docs/10-schindler-reuse-map.md`](docs/10-schindler-reuse-map.md) — which Schindler 2.0 Vivado modules (FRC, genlock, scaler, compositor, color, TSG, OSD) port to Crossover, and what is new.
