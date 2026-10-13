@@ -234,6 +234,12 @@ re-carry HDCP; SDI cannot, so the same UX here would enable an illegal strip.
 - Also confirm HDMI/DP/USB-C **trademark/adopter** obligations (separate from
   HDCP).
 
+- **Reaffirmed 2026-10-13 (Justin):** no HDCP keys, ever; we pass **unprotected
+  content only**. Applies equally to external RX chips (LT7911UXC DP-RX, GSV2011-class
+  HDMI-RX): **chip-selection criterion = HDCP advertisement can be disabled** so the
+  chip never authenticates. HDMI loop-out (HDMI product) likewise carries unprotected
+  content only — no repeater role.
+
 ## Q12 — FPGA vendor: Artix UltraScale+ (reuse Schindler) vs PolarFire (free SDI IP) *(OPEN — re-framed 2026-10-13)*
 Raised by the SC1221-12G teardown (`09`: ~€199–$337 retail on a small Artix US+,
 less than our MPF200T alone at $286 qty-1) and the Schindler reuse map (`10`).
@@ -257,3 +263,25 @@ Justin.** Bench is already on Artix US+ (AUBoard 15P ordered — `05`).
 exist in Vivado. Gating items: AMD UHD-SDI + DP-RX license cost; AU10P vs AU15P fit
 (needs Schindler utilization numbers); DDR4 bandwidth for 2× 2160p60. Volume pricing
 (~30–50% off qty-1) applies to both. Decides `04` Block 3 and the $600–900 target (`01`).
+
+## Q13 — Video receivers: FPGA IP vs external chips *(DECIDED 2026-10-13 — external chips)*
+**DP (laptop Crossover, Mac support):** **B1 = DP hub → 2× external DP-RX chip →
+FPGA** over LVDS/MIPI. Candidate **Lontium LT7911UXC** (DP1.4a 4-lane HBR3, Type-C
+capable, LVDS/MIPI out, 4K60 10-bit 4:2:2). **HDMI products** (smart-SC1221 / player):
+external HDMI-RX chip (GSV2011-class) with built-in loop-out.
+
+| | A. AMD DP 1.4 RX Subsystem | **B. External chip (chosen)** |
+|---|---|---|
+| One-time | License by quote (`04` recorded ~$16k for AMD DP — unconfirmed) | EVB + NDA datasheet (~$100s) |
+| Per unit | $0 royalty; 4 GTH/channel + logic | 2 chips/unit (est. $5–15 ea — unverified) |
+| HDCP | none unless licensed | must be disableable (Q11) |
+| EDID | in FPGA over DP AUX | **MCU over I²C** (as SC1221, `03`) |
+| Soft CPU in v1 | **required** (DP link-training driver) | **not required** |
+| Bench on AUBoard | no DP connector → DP FMC needed | EVB on the FMC (`11`) |
+
+Break-even ≈ 500–1,500 units at the assumed prices. **Why B1:** consistent with the
+HDMI-chip decision, keeps v1 free of a soft CPU, EDID stays in the MCU, no license,
+benchable now, and **keeps Mac support** (the RTS5490 USB4 hub outputs DP). **B2**
+(HDMI-output MST hub e.g. RTD2186 + 2× HDMI-RX chips) stays a bench shortcut only — no
+Mac-independent path. **Risks:** Lontium docs/support (brief is "advance information";
+NDA; China-based) → engage FAE early; LVDS lane count / HP-bank fit (`11`).

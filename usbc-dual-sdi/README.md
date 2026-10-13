@@ -80,3 +80,4 @@ Concept / paper design. See [`docs/`](docs/) for the full design package.
 - [`docs/08-player-variant.md`](docs/08-player-variant.md) — **concept:** pairing the conversion core with a mini PC (MeLE / compute module) as a player with native SDI outputs.
 - [`docs/09-teardown-avmatrix-sc1221.md`](docs/09-teardown-avmatrix-sc1221.md) — **reference teardown** of a commercial HDMI 2.0 → 12G-SDI converter (GSV2011 + Artix US+ + Si5392); cost implications.
 - [`docs/10-schindler-reuse-map.md`](docs/10-schindler-reuse-map.md) — which Schindler 2.0 Vivado modules (FRC, genlock, scaler, compositor, color, TSG, OSD) port to Crossover, and what is new.
+- [`docs/11-auboard-bench-guide.md`](docs/11-auboard-bench-guide.md) — AUBoard 15P bench: board facts, clocking/FMC findings, shopping list, step-by-step bring-up.

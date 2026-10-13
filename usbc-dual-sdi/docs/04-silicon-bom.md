@@ -135,6 +135,12 @@ path; it outputs DP-tunneled → feeds the DP-RX. Intel Goshen Ridge JHL8440 is 
 only other dual-DP-tunnel breakout (cert-gated). ⚠️ Parade PS176-class / ITE /
 Algoltek / RTD2173-class are single-stream converters, **not** MST splitters.
 
+### Block 2b — DP receiver chips *(added 2026-10-13, `06` Q13)*
+- **Lontium LT7911UXC** ×2 — DP1.4a / Type-C RX, 4-lane HBR3, LVDS/MIPI out, 4K60 10-bit
+  4:2:2. Price/stock **unverified**; datasheet "advance information" / NDA. Selection
+  criteria: HDCP advertisement disableable; LVDS/MIPI lane count fits FPGA HP-bank pins.
+- **HDMI products:** GSCoolink **GSV2011**-class HDMI 2.0 RX with loop-out (`09`).
+
 ### Block 3 — FPGA: Microchip PolarFire (the V1 conversion core)
 
 > ⚠️ **Re-opened 2026-10-13 (`06` Q12, `09`, `10`).** The AMD rejection below was

@@ -16,7 +16,9 @@ first; hub sourcing runs in parallel.
 | Item | Role | Status |
 |---|---|---|
 | **Avnet AUBoard 15P** (`AES-AUB-15P-DK-G`, ~$699) | AU15P, 12× GTH, HDMI 2.0 RX+TX on GTH, 2 GB DDR4 (PL), SFP+ cage, FMC LPC (4 GTH), QSPI | **Ordered** |
-| 12G-SDI egress — **SFP 12G-SDI TX module** (SFP+ cage) *or* **Nextera VIDIO 12G-X** FMC (~$1,495) | The board has no BNC. SFP module = likely cheapest; VIDIO is HPC-designed → **confirm lane map on AUBoard's LPC FMC with Nextera before buying** | **To decide** |
+| **SFP 12G-SDI TX module** (SFP+ cage, Quad 226 lane 3) + SFP→BNC adapter cable | SDI egress. **Refclk must come from U56** (Quad 226) — U57 is on Quad 224, out of reach (`11`) | **Justin sourcing** |
+| **LT7911UXC EVB** + **FMC breakout** (XM105-style), VADJ = 1.8 V, HP-bank LA pairs | DP-RX chip under test — Mac-capable DP path (`06` Q13, `11`) | To request (Lontium FAE) |
+| Heatsink (Boyd EA-270-H245-T710), micro-USB cable, 18 Gb/s HDMI cables, 12G coax | Bench basics (`11` shopping list) | To get |
 | AVMATRIX SC1221-12G (`09`) | Known-good 12G-SDI reference | On hand |
 | 12G-SDI analyzer / monitor | Compliance + format/lock verification — non-negotiable | Rent / borrow |
 | MeLE Quieter 4C or any 4K60 HDMI PC | HDMI 2.0 source | — |
@@ -28,13 +30,16 @@ first; hub sourcing runs in parallel.
 - **AMD IP:** request **evaluation licenses** (hardware-timeout) for the **HDMI 2.0
   RX/TX Subsystem** and **SMPTE UHD-SDI**; ask for **production quotes** on both
   (+ DP-RX for the laptop variant) — feeds `06` Q12.
-- **SDI egress:** price an SFP 12G-SDI TX module; ask Nextera about VIDIO 12G-X on
-  the AUBoard FMC.
+- **SDI egress:** SFP 12G-SDI TX module (Justin sourcing).
+- **DP-RX chip (`06` Q13):** request **LT7911UXC** datasheet (NDA), EVB, pricing, and
+  confirmation that **HDCP advertisement can be disabled**. Same ask for the
+  GSV2011-class HDMI-RX chip (HDMI products).
 - **Schindler source branch:** confirm `v1-tsg` as the HDL port source (`10`).
 - **Hub sourcing (parallel, `07`):** PS8650 / VMM5330 (DP out) or RTS5490 (USB4,
   Mac — `06` Q-MAC). Confirm **4-lane DP Alt Mode** on target laptops (`06` Q2).
 
 ## Phase 1 — Board bring-up (AUBoard)
+Step-by-step connections in **`11`**.
 1. Avnet reference design: board, JTAG, clocks, DDR4 alive.
 2. **HDMI 2.0 in → HDMI out passthrough at 4K60** using AMD's HDMI subsystem
    example design (eval license).
@@ -45,25 +50,27 @@ first; hub sourcing runs in parallel.
 - AMD **UHD-SDI TX** (eval license) on a GTH lane → SFP module (or VIDIO FMC) → BNC.
 - Step up **3G → 6G → 12G** from the TSG; verify **ST 352**, format/lock, and the
   **12G eye/jitter** on the analyzer, side by side with the SC1221-12G.
-- Work out **GTH reference clocking** for both 1.000 and 1.001 families (two refs or
-  fractional — on the custom board this is the Si5392's job).
+- **GTH reference clocking:** SFP lane is Quad 226 → program **U56 (8T49N241)** to
+  148.5 MHz; cover the 1.001 family via QPLL fractional-N or a second ref (`11`). On
+  the custom board this is the Si5392's job.
 
 ## Phase 3 — HDMI in → 12G-SDI out, source-locked (v1 core on the bench)
 - HDMI RX → RGB→YCbCr, 4:4:4→4:2:2 10-bit, range (Schindler `color_matrix` /
   `color_correct`, widened) → SDI TX. **No frame buffer.**
 - Lock the SDI TX clock to the **recovered source pixel clock** through a jitter
-  cleaner (bench: board clocking / external Si539x EVB; product: Si5392). Verify
+  cleaner (bench: **U56 8T49N241** fed by the FPGA-forwarded clock — `11`; product:
+  Si5392). Verify
   zero frame drop/repeat across 23.98 / 24 / 25 / 29.97 / 30 / 50 / 59.94 / 60.
 - Embedded audio (ST 299).
 - **This is the "smart SC1221" stepping stone (`10`)** — an HDMI→12G-SDI product
   path in its own right.
 
-## Phase 4 — DP-RX + two channels + the real front-end hub (+ MST-vs-USB4)
-- Replace HDMI RX with **DP-RX** (AMD DP RX Subsystem, license per Q12) fed from a
-  DP source / hub. **Bench gap:** AUBoard has no DP connector — needs a DP FMC card
-  or move to the custom board; *to resolve*.
-- Instantiate the **second channel** (2× RX + 2× SDI TX); confirm **resource +
-  timing fit** (AU10P vs AU15P — `10` follow-ups).
+## Phase 4 — DP-RX chips + two channels + the real front-end hub (+ MST-vs-USB4)
+- **DP path = external DP-RX chip** (`06` Q13): **LT7911UXC EVB** on the AUBoard FMC
+  (breakout, VADJ 1.8 V, HP-bank LA pairs — `11`); Mac/PC USB-C DP → EVB; LVDS or MIPI
+  deserializer in fabric → color → SDI TX. MCU/FPGA I²C init; **HDCP disabled**.
+- **Second channel:** second EVB if the FMC pin budget allows, else on the custom board;
+  confirm **resource + timing fit** (AU10P vs AU15P — `10` follow-ups).
 - Swap in the **production hub** (PS8650 / VMM5330, or RTS5490 for Mac).
 - **Resolve `06` Q-MAC:** RTS5490 dock → two independent extended displays on a real
   M4/M5 Mac; check USB4-hub behavior on a plain DP-Alt-only PC.
@@ -76,7 +83,8 @@ first; hub sourcing runs in parallel.
 - Optional **config app** (HID).
 
 ## Phase 6 — Integrated prototype PCB
-- Single **6–8 layer** board: USB-C PD/Alt-Mode ctrl + DP-output hub + **FPGA per Q12**
+- Single **6–8 layer** board: USB-C PD/Alt-Mode ctrl + DP-output hub + **2× LT7911UXC-class
+  DP-RX** + **FPGA per Q12**
   (Artix US+ AU10P/AU15P leading) + SPI flash + **Si5392** + 2× 12G driver + MCU.
   **DDR4 footprint reserved** (populated for Pro), REF-IN footprint reserved (`06` Q7).
 - 12G layout to BNC simulated (return loss / ST 2082); power-sequencing per FPGA.

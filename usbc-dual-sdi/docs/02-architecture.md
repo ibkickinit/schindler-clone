@@ -58,6 +58,11 @@ USB-C DP Alt Mode (4-lane HBR3) or USB4, negotiated by a **TI TPS65987D**-class
 PD/Alt-Mode controller. USB 2.0 sideband → MCU for HID config.
 
 ### 2. Front-end hub — split one USB-C into two **DP** streams
+
+> **Plan of record 2026-10-13 (`06` Q13):** each hub DP output feeds an **external
+> DP-RX chip (Lontium LT7911UXC-class)**, which hands video to the FPGA over
+> LVDS/MIPI. The FPGA no longer hosts a DP-RX IP. EDID lives in the **MCU over I²C**
+> to the RX chips. HDCP disabled in the chips (`06` Q11).
 Still required; unchanged by the FPGA decision *except* that we now want **DP
 outputs** (to feed the PolarFire DP-RX, which does 4K60 — the HDMI-RX path caps
 at 4K30). See `04` Block 2 and the platform note below.
