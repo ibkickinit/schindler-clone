@@ -81,3 +81,4 @@ Concept / paper design. See [`docs/`](docs/) for the full design package.
 - [`docs/09-teardown-avmatrix-sc1221.md`](docs/09-teardown-avmatrix-sc1221.md) — **reference teardown** of a commercial HDMI 2.0 → 12G-SDI converter (GSV2011 + Artix US+ + Si5392); cost implications.
 - [`docs/10-schindler-reuse-map.md`](docs/10-schindler-reuse-map.md) — which Schindler 2.0 Vivado modules (FRC, genlock, scaler, compositor, color, TSG, OSD) port to Crossover, and what is new.
 - [`docs/11-auboard-bench-guide.md`](docs/11-auboard-bench-guide.md) — AUBoard 15P bench: board facts, clocking/FMC findings, shopping list, step-by-step bring-up.
+- [`docs/12-sdi-tx-plan.md`](docs/12-sdi-tx-plan.md) — in-house SDI transmitter (no AMD license): sources, architecture, stages, Schindler reuse. RTL in [`hdl/sdi_tx/`](hdl/sdi_tx/), sim in [`sim/sdi_tx/`](sim/sdi_tx/).

@@ -240,7 +240,7 @@ re-carry HDCP; SDI cannot, so the same UX here would enable an illegal strip.
   chip never authenticates. HDMI loop-out (HDMI product) likewise carries unprotected
   content only — no repeater role.
 
-## Q12 — FPGA vendor: Artix UltraScale+ (reuse Schindler) vs PolarFire (free SDI IP) *(OPEN — re-framed 2026-10-13)*
+## Q12 — FPGA vendor: Artix UltraScale+ (reuse Schindler) vs PolarFire (free SDI IP) *(DECIDED 2026-10-13 — Artix US+, own SDI TX)*
 Raised by the SC1221-12G teardown (`09`: ~€199–$337 retail on a small Artix US+,
 less than our MPF200T alone at $286 qty-1) and the Schindler reuse map (`10`).
 The decision is **engineering reuse + IP**, not just chip price:
@@ -254,7 +254,11 @@ The decision is **engineering reuse + IP**, not just chip price:
 | Schindler RTL reuse (`10`) | **Direct** — same Vivado / AXI flow | Full re-port to Libero |
 | Control CPU | MicroBlaze(-V) or MCU; MIG DDR4 | Mi-V soft core or MCU |
 
-**Gating input — is the Pro variant a *committed* follow-on on the same board?**
+**Update 2026-10-13 — decided: AMD Artix US+, no paid IP.** Justin ruled out IP licenses (volume /
+money). SDI TX is written **in-house** (`12`); DP/HDMI RX are external chips (Q13). PolarFire's free
+SDI IP is no longer the deciding factor; the bench (AUBoard 15P) and Schindler reuse stay on AMD.
+
+**Gating input (historical) — is the Pro variant a *committed* follow-on on the same board?**
 (`10` "v1 vs Pro"). V1 alone reuses little Schindler RTL, so PolarFire's free SDI IP
 pulls even; Artix US+ wins decisively only if Pro is committed. **Decision owner:
 Justin.** Bench is already on Artix US+ (AUBoard 15P ordered — `05`).
