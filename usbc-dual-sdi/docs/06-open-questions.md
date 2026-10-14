@@ -233,3 +233,97 @@ re-carry HDCP; SDI cannot, so the same UX here would enable an illegal strip.
   only"** + a generic user-responsibility notice. No strip toggle.
 - Also confirm HDMI/DP/USB-C **trademark/adopter** obligations (separate from
   HDCP).
+
+- **Reaffirmed 2026-10-13 (Justin):** no HDCP keys, ever; we pass **unprotected
+  content only**. Applies equally to external RX chips (LT7911UXC DP-RX, GSV2011-class
+  HDMI-RX): **chip-selection criterion = HDCP advertisement can be disabled** so the
+  chip never authenticates. HDMI loop-out (HDMI product) likewise carries unprotected
+  content only — no repeater role.
+
+## Q12 — FPGA vendor: Artix UltraScale+ (reuse Schindler) vs PolarFire (free SDI IP) *(DECIDED 2026-10-13 — Artix US+, own SDI TX)*
+Raised by the SC1221-12G teardown (`09`: ~€199–$337 retail on a small Artix US+,
+less than our MPF200T alone at $286 qty-1) and the Schindler reuse map (`10`).
+The decision is **engineering reuse + IP**, not just chip price:
+
+| | **AMD Artix UltraScale+** | **Microchip PolarFire** |
+|---|---|---|
+| Chip (DigiKey qty-1) | AU10P ~€108–152 · AU15P ~$182 | MPF100T $174 (fit TBD) · MPF200T $286 |
+| 12G transceivers | GTH (proven in SC1221-12G) | yes (12.7G) |
+| SDI TX IP | **Licensed** (AMD UHD-SDI — quote via sales) or in-house | **Free** |
+| DP-RX IP | Licensed (AMD) | TBD (`Q0b`) |
+| Schindler RTL reuse (`10`) | **Direct** — same Vivado / AXI flow | Full re-port to Libero |
+| Control CPU | MicroBlaze(-V) or MCU; MIG DDR4 | Mi-V soft core or MCU |
+
+**Update 2026-10-13 — decided: AMD Artix US+, no paid IP.** Justin ruled out IP licenses (volume /
+money). SDI TX is written **in-house** (`12`); DP/HDMI RX are external chips (Q13). PolarFire's free
+SDI IP is no longer the deciding factor; the bench (AUBoard 15P) and Schindler reuse stay on AMD.
+
+**Gating input (historical) — is the Pro variant a *committed* follow-on on the same board?**
+(`10` "v1 vs Pro"). V1 alone reuses little Schindler RTL, so PolarFire's free SDI IP
+pulls even; Artix US+ wins decisively only if Pro is committed. **Decision owner:
+Justin.** Bench is already on Artix US+ (AUBoard 15P ordered — `05`).
+
+**Leaning:** Artix US+, because FRC/genlock/scaler/compositor/color/TSG/OSD already
+exist in Vivado. Gating items: AMD UHD-SDI + DP-RX license cost; AU10P vs AU15P fit
+(needs Schindler utilization numbers); DDR4 bandwidth for 2× 2160p60. Volume pricing
+(~30–50% off qty-1) applies to both. Decides `04` Block 3 and the $600–900 target (`01`).
+
+## Q13 — Video receivers: FPGA IP vs external chips *(DECIDED 2026-10-13 — external chips)*
+**DP (laptop Crossover, Mac support):** **B1 = DP hub → 2× external DP-RX chip →
+FPGA** over LVDS/MIPI. Candidate **Lontium LT7911UXC** (DP1.4a 4-lane HBR3, Type-C
+capable, LVDS/MIPI out, 4K60 10-bit 4:2:2). **HDMI products** (smart-SC1221 / player):
+external HDMI-RX chip (GSV2011-class) with built-in loop-out.
+
+| | A. AMD DP 1.4 RX Subsystem | **B. External chip (chosen)** |
+|---|---|---|
+| One-time | License by quote (`04` recorded ~$16k for AMD DP — unconfirmed) | EVB + NDA datasheet (~$100s) |
+| Per unit | $0 royalty; 4 GTH/channel + logic | 2 chips/unit (est. $5–15 ea — unverified) |
+| HDCP | none unless licensed | must be disableable (Q11) |
+| EDID | in FPGA over DP AUX | **MCU over I²C** (as SC1221, `03`) |
+| Soft CPU in v1 | **required** (DP link-training driver) | **not required** |
+| Bench on AUBoard | no DP connector → DP FMC needed | EVB on the FMC (`11`) |
+
+Break-even ≈ 500–1,500 units at the assumed prices. **Why B1:** consistent with the
+HDMI-chip decision, keeps v1 free of a soft CPU, EDID stays in the MCU, no license,
+benchable now, and **keeps Mac support** (the RTS5490 USB4 hub outputs DP). **B2**
+(HDMI-output MST hub e.g. RTD2186 + 2× HDMI-RX chips) stays a bench shortcut only — no
+Mac-independent path. **Risks:** Lontium docs/support (brief is "advance information";
+NDA; China-based) → engage FAE early; LVDS lane count / HP-bank fit (`11`).
+
+## Q14 — HDMI outputs in v1: how to generate them *(DECIDED 2026-10-13 — Option A; each HDMI mirrors its own SDI channel)*
+v1 adds **2× HDMI 2.0 out**, each mirroring its SDI channel. No AMD HDMI IP (Q12). Options:
+
+| | How | Pros | Cons |
+|---|---|---|---|
+| **A** | LT7911UXC drives **two port groups**: one to the FPGA (SDI), one straight to a **MIPI→HDMI 2.0 TX chip** (Lontium LT9611UXC-class — *verify part*) | FPGA not in the HDMI path; few pins | Needs the RX chip to **duplicate** its output on two ports (*ask Lontium*) |
+| **B** | FPGA → **HDMI TX chip** (parallel/LVDS/MIPI input) | Independent of RX-chip features | More FPGA pins/IO; MIPI TX on FPGA may need IP |
+| **C** | **In-house HDMI 2.0 TX** on GTH (TMDS encode + scrambling + SCDC) + TMDS retimer | No chip; reuses GTH | 1–2 months HDL; 2 more GTH lanes ×3 per output; compliance risk |
+
+**Decision: A** (Justin). Fallback to B only if Lontium says the LT7911UXC can't duplicate its output. Either way: **HDMI Adopter Agreement**
+(annual fee + royalty — check terms) is needed for an HDMI-branded product. Add to Lontium round 2:
+"Can LT7911UXC output the same video on two port groups?" and "recommended MIPI/LVDS → HDMI 2.0 TX".
+
+## Q15 — Output swap button *(DEFERRED 2026-10-13 — out of v1)*
+**Decision (Justin):** leave it out of v1. Swapping HDMI needs an external 2×2 HDMI matrix (or 2:1
+switches), which isn't worth the cost/complexity now. Revisit **only if** a Lontium chip feature makes it
+easy. Note: the LT7911UXC brief lists **"port swap"**, but that swaps output ports *within one chip* —
+it cannot exchange video *between* the two receivers, so it likely doesn't help. Ask in round 2 anyway.
+No persistence across power cycles needed if it ever returns.
+
+*Original proposal kept below for reference.*
+
+Requirement (Justin): a **guarded, push-and-hold** button that flips outputs 1 ↔ 2.
+
+**Proposed design**
+- **Where the swap happens:**
+  - **SDI:** a 2×2 crossbar in the FPGA (which receiver feeds which SDI TX). Each TX's
+    jitter-cleaned refclk must follow its new source, so the clock routing swaps too → expect a **brief SDI
+    re-lock (sub-second)** on swap, longer if the two channels run different rates.
+  - **HDMI:** with Q14 Option A the HDMI path bypasses the FPGA, so add **2× HDMI 2.0-rated 2:1 TMDS
+    switches** (or one 2×2 crosspoint) after the HDMI TX chips — part TBD. MCU drives both on the button.
+  - **Rejected:** swapping at the DP level (before the receivers) — forces DP link retraining/HPD, so the
+    computer sees displays re-plug and may rearrange its desktop.
+- **Button UX:** recessed or flip-cover guard; **hold ~2 s** to toggle (ignores bumps); **SWAP LED** lit
+  while swapped; state **persists across power cycles** (EEPROM) so a power blip mid-show doesn't
+  change routing. *Confirm persistence preference.*
+- Mixed-resolution modes (`13` selector) swap cleanly — SDI rate follows content.

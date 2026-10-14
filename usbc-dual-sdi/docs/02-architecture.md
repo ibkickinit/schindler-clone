@@ -58,6 +58,11 @@ USB-C DP Alt Mode (4-lane HBR3) or USB4, negotiated by a **TI TPS65987D**-class
 PD/Alt-Mode controller. USB 2.0 sideband → MCU for HID config.
 
 ### 2. Front-end hub — split one USB-C into two **DP** streams
+
+> **Plan of record 2026-10-13 (`06` Q13):** each hub DP output feeds an **external
+> DP-RX chip (Lontium LT7911UXC-class)**, which hands video to the FPGA over
+> LVDS/MIPI. The FPGA no longer hosts a DP-RX IP. EDID lives in the **MCU over I²C**
+> to the RX chips. HDCP disabled in the chips (`06` Q11).
 Still required; unchanged by the FPGA decision *except* that we now want **DP
 outputs** (to feed the PolarFire DP-RX, which does 4K60 — the HDMI-RX path caps
 at 4K30). See `04` Block 2 and the platform note below.
@@ -66,6 +71,9 @@ at 4K30). See `04` Block 2 and the platform note below.
 - Each output owns an **EDID/DDC channel** the MCU controls (`03`).
 
 ### 3. Conversion — **PolarFire FPGA (DP-RX → 12G-SDI), no bridge chip**
+
+> ⚠️ **FPGA vendor re-opened (2026-10-13)** — see `06` Q12 and `10`: Artix
+> UltraScale+ would reuse Schindler's Vivado pipeline; PolarFire keeps free SDI IP.
 The EOL of the GS12170 moves conversion into the FPGA — which is how the rest of
 the industry already builds these (Blackmagic = Spartan/Artix). Per channel:
 1. **DisplayPort RX IP** (DP 1.4, **HBR3 8.1 Gb/s/lane, SST → 4K60 4:2:2**).
@@ -145,6 +153,12 @@ Source-locked line-based conversion is **sub-frame**. (The smart variant's activ
 FRC adds ≥1 frame by definition; opt-in.)
 
 ## Future "smart" / Pro variant
+
+> **Update 2026-10-13 (`10`):** Schindler 2.0 (same repo) already has a
+> bench-validated Vivado FRC cadence engine (60/59.94/50/30/29.97/24 → 60), genlock
+> frame-follow, polyphase scaler, compositor, color and TSG. The Pro features below
+> are an **adaptation of existing RTL** (widen to 4 px/clk, 10-bit 4:2:2), not a new
+> design — but only if the FPGA is AMD (`06` Q12).
 Same chip. Add a **DDR frame buffer + asynchronous output clock** for active
 frame-rate conversion, plus color/range processing and **genlock to house
 reference** (REF-IN BNC). The FPGA choice makes this a firmware/stuffing upgrade,
