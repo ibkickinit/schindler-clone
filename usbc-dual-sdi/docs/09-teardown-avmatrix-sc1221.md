@@ -81,3 +81,37 @@ conversion is source-locked, same philosophy as Crossover v1 (`02` Clocking).
 - [DigiKey — XCAU15P-1FFVB676E](https://www.digikey.com/en/products/detail/amd/XCAU15P-1FFVB676E/16720162)
 - [DigiKey — XCAU10P-1SBVB484I](https://www.digikey.be/en/products/detail/amd/XCAU10P-1SBVB484I/16720068)
 - [AMD — SMPTE UHD-SDI IP (PG205)](https://docs.amd.com/r/en-US/pg205-v-smpte-uhdsdi)
+
+---
+
+## Addendum (2026-10-14): AVMATRIX **Mini SC1221** — HDMI → 3G-SDI (the non-12G sibling)
+
+Board silkscreen **`Mini_SC1221 Ver1.8 20231111`**. Top side, from Justin's photos.
+
+| Ref | Part | Role (inferred) |
+|---|---|---|
+| U3 | **Analog Devices ADV7611BSWZ** (LQFP-64) | HDMI 1.4 RX → parallel video (≤1080p60). Has HDCP keys. **NRND/EOL-track** (Schindler ruled it out on that basis) |
+| U6 | **Gennum/Semtech GS2972** | **3G/HD/SD-SDI serializer with integrated cable driver** — takes parallel video and does TRS/LN/CRC/ST 352/scrambling itself |
+| U1 | **ST STM32F042F6P6** (TSSOP-20) | Control MCU (configures ADV7611 + GS2972 over I²C/SPI); JP1 = programming header |
+| Y3 | 27.000 MHz crystal | Video reference |
+| U8 | APL5934D | LDO; plus a small buck (4R7) from USB-C 5 V |
+| BNC1/2 | 2× SDI OUT | Likely driven from the GS2972's **SDO and SDO-bar** (complementary outputs — NRZI is polarity-insensitive, so both are valid SDI). *Verify* |
+
+**No FPGA, no HDMI loop-out, no clock cleaner.** It's the "fixed-function, chip-to-chip" architecture
+(HDMI RX chip → SDI serializer chip) that Crossover originally planned around the GS12170 — viable at
+3G because single-chip 3G serializers still exist.
+
+**What it tells us**
+1. **The FPGA is what 12G costs.** Same brand: the 3G unit is two chips + an MCU; the 12G unit needs
+   an Artix US+ + Si5392 because there's no current single-chip 12G serializer we know of (GS12170 EOL —
+   `06` Q0). Confirms our architecture for v1's 12G requirement.
+2. **Reference for our own framer.** The **GS2972 datasheet is public** (Semtech) and documents how it
+   inserts TRS, line numbers, CRC and the ST 352 packet — use it to cross-check our CRC bit order and
+   line-number convention (`12` "still to confirm") before the analyzer session.
+3. **Bench:** a second known-good source — the right reference for our **HD and 3G-A stages** (1–2),
+   while the 12G SC1221 covers 6G/12G.
+4. **Cheap dual-output trick:** complementary serializer outputs give two BNCs for free. Not needed for
+   v1 (each channel is independent), but worth remembering for a loop/second copy.
+
+**Follow-ups:** confirm the BNC2 drive (SDO-bar?) with a meter/scope; pull the GS2972 datasheet and
+compare its framing description with `hdl/sdi_tx/`.
