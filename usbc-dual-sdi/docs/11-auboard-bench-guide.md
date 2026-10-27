@@ -78,6 +78,9 @@ Not needed: anything for PCIe, SFP fiber, or the Click site.
 
 ## Basic bring-up — connection by connection
 
+> **Board received 2026-10-27.** Step 3 ("blinky") is ready to run: [`../fpga/auboard/`](../fpga/auboard/README.md)
+> (Vivado 2025.2 batch build, same flow as Schindler). Simulated, not yet built in Vivado.
+
 **0. Before power**
 - Fit the heatsink. Check jumpers: mode = Master SPI (default), **J11 = 1-2** (FPGA only
   in JTAG), **J17** fitted (SFP enabled), leave J22 at default. Nothing in the FMC yet.
