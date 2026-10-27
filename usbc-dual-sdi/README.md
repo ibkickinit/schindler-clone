@@ -77,3 +77,9 @@ Concept / paper design. See [`docs/`](docs/) for the full design package.
 - [`docs/05-roadmap.md`](docs/05-roadmap.md) — phased bring-up plan and prototype platform.
 - [`docs/06-open-questions.md`](docs/06-open-questions.md) — unresolved decisions that gate the design.
 - [`docs/07-sourcing-playbook.md`](docs/07-sourcing-playbook.md) — **how to actually source the MST front end** (ease ranking + the one recommended prototype + production path).
+- [`docs/08-player-variant.md`](docs/08-player-variant.md) — **concept:** pairing the conversion core with a mini PC (MeLE / compute module) as a player with native SDI outputs.
+- [`docs/09-teardown-avmatrix-sc1221.md`](docs/09-teardown-avmatrix-sc1221.md) — **reference teardown** of a commercial HDMI 2.0 → 12G-SDI converter (GSV2011 + Artix US+ + Si5392); cost implications.
+- [`docs/10-schindler-reuse-map.md`](docs/10-schindler-reuse-map.md) — which Schindler 2.0 Vivado modules (FRC, genlock, scaler, compositor, color, TSG, OSD) port to Crossover, and what is new.
+- [`docs/11-auboard-bench-guide.md`](docs/11-auboard-bench-guide.md) — AUBoard 15P bench: board facts, clocking/FMC findings, shopping list, step-by-step bring-up.
+- [`docs/12-sdi-tx-plan.md`](docs/12-sdi-tx-plan.md) — in-house SDI transmitter (no AMD license): sources, architecture, stages, Schindler reuse. RTL in [`hdl/sdi_tx/`](hdl/sdi_tx/), sim in [`sim/sdi_tx/`](sim/sdi_tx/).
+- [`docs/13-v1-mvp.md`](docs/13-v1-mvp.md) — **v1 MVP (current target):** 1× USB-C → 2× 12G-SDI + 2× HDMI, no scaling/FRC, hardware format selector.
